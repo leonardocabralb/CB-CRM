@@ -87,22 +87,40 @@ describe('o reenvio passa pelo trilho do Enviar (compositor)', () => {
 });
 
 describe('o fio: botão só no texto, e a mesma bolha no reenvio', () => {
-  it('o botão some com o envio travado e enquanto o reenvio está retido', () => {
+  it('o botão some com o envio travado e enquanto o reenvio está retido — a otimista e a gravada', () => {
     expect(thread).toMatch(
-      /onTentarDeNovo=\{\s*!envioTravado && reenviaveis\.get\(msg\.id\)\?\.retida === false/,
+      /onTentarDeNovo=\{\s*!envioTravado &&\s*\(reenviaveis\.get\(msg\.id\)\?\.retida === false \|\|\s*\(msg\.id === gravadaReenviavel &&\s*reenviaveis\.get\(msg\.id\)\?\.retida !== true\)\)/,
     );
   });
 
-  it('o reenvio reaproveita a id da bolha e não limpa a citação da tela', () => {
+  it('o reenvio reaproveita a OTIMISTA; a GRAVADA fica como registro; a citação da tela fica', () => {
     const envio = trecho(thread, 'const handleSend = useCallback(', 'const tentarDeNovo = useCallback(');
-    expect(envio).toMatch(/const tempId = substitui \?\? `temp-/);
-    expect(envio).toMatch(/if \(substitui\) \{[\s\S]*?\} else \{\s*setReplyTo\(null\);/);
+    expect(envio).toMatch(
+      /const reaproveita = substitui !== undefined && ehOtimista\(\{ id: substitui \}\);\s*const tempId = reaproveita \? substitui : `temp-/,
+    );
+    expect(envio).toMatch(/if \(reaproveita\) \{[\s\S]*?\} else if \(!substitui\) \{\s*setReplyTo\(null\);/);
   });
 
-  it('só a recusa COMPROVADA guarda o texto — o incerto nunca vira botão (CLAUDE.md, 8e)', () => {
+  it('só a recusa COMPROVADA e NÃO gravada guarda o texto — o incerto nunca vira botão (CLAUDE.md, 8e)', () => {
     const envio = trecho(thread, 'const handleSend = useCallback(', 'const tentarDeNovo = useCallback(');
-    expect(envio).toMatch(/if \(naTela && falha\.podeTentarDeNovo\) \{\s*marcarReenviavel\(tempId/);
+    expect(envio).toMatch(
+      /if \(naTela && falha\.podeTentarDeNovo && !falha\.mensagemId\) \{\s*marcarReenviavel\(tempId/,
+    );
     expect((envio.match(/marcarReenviavel\(tempId/g) ?? []).length).toBe(1);
+  });
+
+  it('a GRAVADA (31/10/2026): botão só para quem tentou, pela régua pura, com o texto da linha', () => {
+    expect(thread).toMatch(/tentativaReenviavel\(messages, user\?\.id \?\? null\)/);
+    const tentar = trecho(thread, 'const tentarDeNovo = useCallback(', 'const aoDesfazerReenvio = useCallback(');
+    expect(tentar).toMatch(/!r && id === gravadaReenviavel \? messages\.find/);
+    expect(tentar).toMatch(/compositorRef\.current\?\.reenviarTexto\(texto, replyToId, id\)/);
+  });
+
+  it('os quatro caminhos trocam a otimista pela linha GRAVADA (`pintarFalha`)', () => {
+    expect(thread).toMatch(/\.\.\.\(falha\.mensagemId \? \{ id: falha\.mensagemId, sender_id: user\?\.id \} : \{\}\)/);
+    expect((thread.match(/pintarFalha\(tempId, falhaDaResposta\(/g) ?? []).length).toBe(3);
+    const envio = trecho(thread, 'const handleSend = useCallback(', 'const tentarDeNovo = useCallback(');
+    expect(envio).toMatch(/pintarFalha\(tempId, falha\)/);
   });
 
   it('o "Desfazer" só devolve o botão se a bolha ainda está no fio', () => {

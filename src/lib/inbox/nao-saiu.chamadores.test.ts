@@ -15,7 +15,9 @@ import path from 'node:path';
 // As quatro funções do banco com a mesma pergunta estão no pino da migration
 // (`supabase/migrations/envio-que-nao-saiu-1080.test.ts`); as duas do Painel
 // (a série e o tempo de resposta, que somam no banco desde a 1095), em
-// `supabase/migrations/painel-por-dia-1095.test.ts`.
+// `supabase/migrations/painel-por-dia-1095.test.ts`; a pausa da IA por gente
+// e a retomada (a tentativa da EQUIPE, 31/10/2026), em
+// `supabase/migrations/tentativa-da-equipe-1118.test.ts`.
 // ============================================================
 
 const raiz = path.join(__dirname, '..', '..');
@@ -38,6 +40,11 @@ const LEITORES: [string, number][] = [
   ['lib/ia-agentes/retomada-fatos.ts', 1],
   ['lib/cb-radar/worker.ts', 1],
   ['hooks/use-radar.ts', 1],
+  // 31/10/2026: a tentativa da EQUIPE também é gravada (`agent` + `sender_id`,
+  // a forma de "resposta de gente"). Quem pergunta "a equipe respondeu?":
+  ['lib/whatsapp/ligacoes/registrar.ts', 1],
+  ['lib/whatsapp/sem-telefone/historica.ts', 1],
+  ['lib/dashboard/queries.ts', 2],
 ];
 
 describe('quem pergunta "alguém falou?" ignora a tentativa que não saiu', () => {

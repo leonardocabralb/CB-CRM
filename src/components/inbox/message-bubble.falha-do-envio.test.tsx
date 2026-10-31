@@ -76,6 +76,27 @@ describe('MessageBubble — envio da equipe que não saiu', () => {
     expect(desenhar(m)).not.toContain(b.tentarDeNovo);
   });
 
+  // 31/10/2026: a tentativa da equipe fica GRAVADA, e o anexo dela SEM o
+  // arquivo (ele volta à prévia do compositor). A bolha nomeia o anexo —
+  // nunca "carregando" nem "indisponível", que falariam de outra coisa.
+  it('anexo GRAVADO sem o arquivo: o nome do anexo, sem "indisponível"', () => {
+    const html = desenhar(
+      otimista({
+        id: 'uuid-gravada',
+        content_type: 'document',
+        content_text: undefined,
+        media_url: undefined,
+        media_filename: 'contrato-ficticio.pdf',
+        created_at: new Date().toISOString(),
+        sender_id: 'login-1',
+        ...naBolha({ motivo: 'recusado', detalhe: 'Bad Request', podeTentarDeNovo: true }),
+      }),
+    );
+    expect(html).toContain('contrato-ficticio.pdf');
+    expect(html).toContain(b.naoSaiu.recusado);
+    expect(html).not.toContain(b.unavailable.replace('{label}', 'contrato-ficticio.pdf'));
+  });
+
   it('falha de RECIBO (saiu, tem message_id, sem nao_saiu): a frase de sempre, e nem com a prop há botão', () => {
     const html = desenhar(
       otimista({ id: 'uuid-real', status: 'failed', message_id: '3EB0FICTICIO' }),

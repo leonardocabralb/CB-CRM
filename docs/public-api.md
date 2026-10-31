@@ -758,6 +758,17 @@ answered is `inbound`; a call answered on one of the office's phones is
 message id — it can't be replied to, reacted to or deleted. The CRM does not
 carry call audio: the row only records that the call happened.
 
+**Messages that never went out** are listed too. When someone on the team,
+an automation, a robot or an AI agent tries to send and the WhatsApp
+provider refuses it (a number without WhatsApp, a connection that was down)
+or does not answer, the attempt stays in the conversation so everyone sees
+it: `outbound`, `status: "failed"`, `whatsapp_message_id: null`, with
+`sender_type` saying who tried (`agent` for the team, `bot` for the rest).
+A delivery failure is different: that message went out, has its
+`whatsapp_message_id`, and WhatsApp reported later that it was not
+delivered. A send through this API that fails is not recorded here — the
+error response is the record.
+
 **A message an automation, robot or AI agent tried to send and that did not
 go out** (the connection was down, the number is not on WhatsApp, WhatsApp
 refused it) is listed too, so the conversation shows the attempt: an

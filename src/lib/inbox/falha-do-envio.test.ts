@@ -8,7 +8,9 @@ import {
   envioQueNaoSaiu,
   falhaDaResposta,
   naBolha,
+  tentativaReenviavel,
 } from './falha-do-envio';
+import type { Message } from '@/types';
 
 // ============================================================
 // A bolha do robô que NÃO saiu (06/10/2026). A frase é chave MONTADA
@@ -132,3 +134,79 @@ describe('a frase de cada motivo existe nos DOIS dicionários', () => {
     });
   }
 });
+
+describe('falhaDaResposta — a tentativa GRAVADA (31/10/2026)', () => {
+  it('leva o id da linha quando a rota o devolve', () => {
+    expect(
+      falhaDaResposta(502, { motivo: 'recusado', detalhe: 'x', mensagem_id: 'msg-9' }).mensagemId,
+    ).toBe('msg-9');
+  });
+
+  it('sem `mensagem_id` (não gravou, ou parou no CRM), nada', () => {
+    expect(falhaDaResposta(502, { motivo: 'recusado' })).not.toHaveProperty('mensagemId');
+    expect(falhaDaResposta(502, { motivo: 'recusado', mensagem_id: '' })).not.toHaveProperty('mensagemId');
+    expect(falhaDaResposta(502, { motivo: 'recusado', mensagem_id: 7 })).not.toHaveProperty('mensagemId');
+  });
+});
+
+describe('tentativaReenviavel — o "Tentar de novo" da bolha GRAVADA (31/10/2026)', () => {
+  let n = 0;
+  const m = (over: Partial<Message> = {}): Message =>
+    ({
+      id: `m-${++n}`,
+      conversation_id: 'conv-1',
+      sender_type: 'agent',
+      sender_id: 'eu',
+      content_type: 'text',
+      content_text: '*Eu:*\nBom dia',
+      status: 'failed',
+      nao_saiu: true,
+      error_title: 'recusado',
+      created_at: `2026-10-30T17:26:${String(10 + n).padStart(2, '0')}.000Z`,
+      ...over,
+    }) as Message;
+
+  it('a minha, de texto, recusada e a última nossa do fio: ganha', () => {
+    const t = m();
+    expect(tentativaReenviavel([m({ sender_type: 'customer', nao_saiu: false, status: 'delivered' }), t], 'eu')).toBe(t.id);
+  });
+
+  it('conexão fora do ar também; número sem WhatsApp e incerto, não', () => {
+    const fora = m({ error_title: 'conexao_fora_do_ar' });
+    expect(tentativaReenviavel([fora], 'eu')).toBe(fora.id);
+    expect(tentativaReenviavel([m({ error_title: 'sem_whatsapp' })], 'eu')).toBeNull();
+    expect(tentativaReenviavel([m({ error_title: 'incerto' })], 'eu')).toBeNull();
+  });
+
+  it('decisão do operador: só QUEM TENTOU — a do colega não ganha, e sem login nada', () => {
+    expect(tentativaReenviavel([m({ sender_id: 'colega' })], 'eu')).toBeNull();
+    expect(tentativaReenviavel([m()], null)).toBeNull();
+  });
+
+  it('só a ÚLTIMA nossa: a reenviada (saindo ou saiu), outra tentativa, o robô ou um colega depois tiram o botão', () => {
+    const t = m();
+    expect(tentativaReenviavel([t, m({ id: 'temp-1', nao_saiu: false, status: 'sending' })], 'eu')).toBeNull();
+    expect(tentativaReenviavel([t, m({ nao_saiu: false, status: 'sent' })], 'eu')).toBeNull();
+    const outra = m();
+    expect(tentativaReenviavel([t, outra], 'eu')).toBe(outra.id);
+    expect(tentativaReenviavel([t, m({ sender_type: 'bot', sender_id: undefined, nao_saiu: false, status: 'sent' })], 'eu')).toBeNull();
+    // O cliente escrever depois NÃO tira (a resposta ainda está devendo).
+    expect(tentativaReenviavel([t, m({ sender_type: 'customer', nao_saiu: false, status: 'delivered' })], 'eu')).toBe(t.id);
+    // Ligação não é mensagem.
+    expect(tentativaReenviavel([t, m({ content_type: 'call', nao_saiu: false, status: 'sent', from_device: true })], 'eu')).toBe(t.id);
+  });
+
+  it('pela ordem do DESENHO, não da lista (o tempo real acrescenta no fim)', () => {
+    const t = m({ created_at: '2026-10-30T18:00:00.000Z' });
+    const antiga = m({ nao_saiu: false, status: 'sent', created_at: '2026-10-30T17:00:00.000Z' });
+    expect(tentativaReenviavel([t, antiga], 'eu')).toBe(t.id);
+  });
+
+  it('anexo, apagada, otimista e texto vazio ficam de fora', () => {
+    expect(tentativaReenviavel([m({ content_type: 'document' })], 'eu')).toBeNull();
+    expect(tentativaReenviavel([m({ deleted_at: '2026-10-30T18:00:00.000Z' })], 'eu')).toBeNull();
+    expect(tentativaReenviavel([m({ id: 'temp-9' })], 'eu')).toBeNull();
+    expect(tentativaReenviavel([m({ content_text: '   ' })], 'eu')).toBeNull();
+  });
+});
+

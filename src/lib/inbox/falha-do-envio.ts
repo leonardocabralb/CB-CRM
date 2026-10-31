@@ -1,3 +1,5 @@
+import { ehOtimista } from '@/lib/inbox/bolhas-otimistas';
+import { naOrdemDoFio } from '@/lib/inbox/ordem-do-fio';
 import type { Message } from '@/types';
 
 // ============================================================
@@ -14,10 +16,12 @@ import type { Message } from '@/types';
 // (tem o id do provedor) e o WhatsApp avisou depois que não entregou — a
 // bolha "Não entregue" de sempre, com o texto da Meta (`motivo-da-falha.ts`).
 //
-// A bolha OTIMISTA do envio da equipe (19/10/2026) usa as mesmas frases, sem
-// gravar nada: na falha, o fio lhe dá `nao_saiu` + o motivo
-// (`falhaDaResposta`, abaixo). Antes ela só ficava `failed` e dizia "não
-// entregue — envie de novo", inclusive a número sem WhatsApp.
+// A bolha OTIMISTA do envio da equipe (19/10/2026) usa as mesmas frases: na
+// falha, o fio lhe dá `nao_saiu` + o motivo (`falhaDaResposta`, abaixo). Antes
+// ela só ficava `failed` e dizia "não entregue — envie de novo", inclusive a
+// número sem WhatsApp. Desde 31/10/2026 a falha do PROVEDOR também é GRAVADA
+// (`agent` + o `sender_id` de quem tentou, `registrarTentativaDaEquipe`): a
+// rota devolve o id e o fio troca a otimista pela linha, que todos veem.
 // ============================================================
 
 /**
@@ -51,7 +55,18 @@ export interface FalhaDoEnvio {
    * reenviar a número sem WhatsApp falha igual.
    */
   podeTentarDeNovo: boolean;
+  /**
+   * A tentativa ficou GRAVADA (31/10/2026): o id da linha, que a rota devolve
+   * em `mensagem_id`. O fio troca a otimista por ela.
+   */
+  mensagemId?: string | null;
 }
+
+/**
+ * A recusa comprovada que PODE mudar: só nela reenviar faz sentido. Número
+ * sem WhatsApp falha igual; o incerto pode ter saído.
+ */
+const MOTIVOS_QUE_REENVIAM: readonly MotivoDoEnvio[] = ['recusado', 'conexao_fora_do_ar'];
 
 /** O `fetch` lançou (rede, aba, proxy): o servidor pode ter enviado. */
 export const FALHA_SEM_RESPOSTA: FalhaDoEnvio = {
@@ -84,12 +99,12 @@ export function falhaDaResposta(status: number, corpo: unknown): FalhaDoEnvio {
     doServidor ?? (status >= 400 && status < 500 ? 'barrado' : 'incerto');
   const detalhe = doServidor ? texto(c.detalhe) : motivo === 'barrado' ? texto(c.error) : null;
   const podeTentarDeNovo =
-    motivo === 'recusado' ||
-    motivo === 'conexao_fora_do_ar' ||
+    MOTIVOS_QUE_REENVIAM.includes(motivo) ||
     // Barrado só vale de novo quando a barreira passa: a sessão que caiu um
     // instante (o login fora do ar, 19/10) e o limite de envios.
     (motivo === 'barrado' && (status === 401 || status === 429));
-  return { motivo, detalhe, podeTentarDeNovo };
+  const gravada = typeof c.mensagem_id === 'string' && c.mensagem_id ? c.mensagem_id : null;
+  return { motivo, detalhe, podeTentarDeNovo, ...(gravada ? { mensagemId: gravada } : {}) };
 }
 
 /** Os campos que pintam a bolha otimista como "não enviada" com o motivo. */
@@ -112,4 +127,44 @@ export function envioQueNaoSaiu(m: Campos): MotivoDoEnvio | null {
   return (MOTIVOS_DO_ENVIO as readonly string[]).includes(codigo)
     ? (codigo as MotivoDoEnvio)
     : 'incerto';
+}
+
+/**
+ * A tentativa GRAVADA da equipe que ganha "Tentar de novo" (31/10/2026), ou
+ * `null`. Decisão do operador: só QUEM TENTOU reenvia (os colegas veem a falha
+ * e o motivo) — dois atendentes reenviando a mesma bolha mandariam em dobro.
+ *
+ * - de texto, com recusa que pode mudar (`MOTIVOS_QUE_REENVIAM`);
+ * - a ÚLTIMA nossa do fio: qualquer mensagem nossa depois dela (a reenviada
+ *   que saiu ou está saindo, outra tentativa, o robô, um colega) tira o botão.
+ *   A bolha que falhou fica como registro (decisão do operador), e reenviá-la
+ *   depois de a conversa andar mandaria fora de ordem. A ligação não conta:
+ *   não é mensagem.
+ *
+ * A otimista (`temp-`) fica de fora: o fio cuida dela pelo próprio mapa
+ * (`reenviaveis`). Ordem pelo DESENHO (`naOrdemDoFio`).
+ */
+export function tentativaReenviavel(
+  mensagens: readonly Message[],
+  eu: string | null,
+): string | null {
+  if (!eu) return null;
+  const fio = naOrdemDoFio(mensagens);
+  for (let i = fio.length - 1; i >= 0; i--) {
+    const m = fio[i];
+    if (m.sender_type === 'customer' || m.content_type === 'call') continue;
+    // A ÚLTIMA nossa decide, e só ela.
+    const motivo = envioQueNaoSaiu(m);
+    const reenvia =
+      motivo !== null &&
+      MOTIVOS_QUE_REENVIAM.includes(motivo) &&
+      m.sender_type === 'agent' &&
+      m.sender_id === eu &&
+      m.content_type === 'text' &&
+      !ehOtimista(m) &&
+      !m.deleted_at &&
+      !!m.content_text?.trim();
+    return reenvia ? m.id : null;
+  }
+  return null;
 }

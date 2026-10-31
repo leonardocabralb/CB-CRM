@@ -279,9 +279,9 @@ describe('a fila de anexos e a troca de conversa (#146)', () => {
     expect(ocorrencias(f, 'const naTela = conversaNaTelaRef.current === conversation.id;')).toBe(3);
     expect(ocorrencias(f, 'if (naTela) publicarMensagemOtimista(optimisticMsg);')).toBe(2);
     // A citação da tela só sai no envio NOVO; o reenvio de uma bolha que não
-    // saiu (19/10/2026) não mexe nela.
+    // saiu (19/10/2026; a gravada, 31/10/2026) não mexe nela.
     expect(f).toMatch(
-      /if \(naTela\) \{\s*publicarMensagemOtimista\(optimisticMsg\);\s*if \(substitui\) \{[\s\S]*?\} else \{\s*setReplyTo\(null\);\s*\}\s*\}/,
+      /if \(naTela\) \{\s*publicarMensagemOtimista\(optimisticMsg\);\s*if \(reaproveita\) \{[\s\S]*?\} else if \(!substitui\) \{\s*setReplyTo\(null\);\s*\}\s*\}/,
     );
   });
 

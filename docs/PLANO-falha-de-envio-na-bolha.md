@@ -36,8 +36,8 @@ Evolution trata `send.message` como "just ack"; `WEBHOOK_EVENTS` sem
 
 | Fase | O quê | Estado |
 |---|---|---|
-| 1 | Motivo na bolha otimista + "Tentar de novo" só em recusa comprovada | Implementada e testada na tela (19/10/2026), branch `fix/motivo-da-recusa-na-bolha`; falta PR e merge |
-| 2 | Gravar no banco a tentativa da equipe que falhou (vale para todos, sobrevive ao recarregar) | Aguarda decisão do operador |
+| 1 | Motivo na bolha otimista + "Tentar de novo" só em recusa comprovada | Implementada e testada na tela (19/10/2026); trazida para o `main` de 31/10/2026 no mesmo PR (#417) |
+| 2 | Gravar no banco a tentativa da equipe que falhou (vale para todos, sobrevive ao recarregar) | Decidida (31/10/2026) e implementada no PR #417, com a migration 1118; falta aplicar a 1118, CI, Codex e merge |
 | 3 | "Conferir e reenviar" no caso incerto | Não recomendada; só depois de medir uma leitura confiável |
 
 ## Fase 1 — o que entra
@@ -121,19 +121,60 @@ Limites conhecidos (aceitos na Fase 1):
   o modelo de mídia sem arquivo foi resolvido em seguida, no mesmo PR (acima).
   Mutação: tirar a montagem antecipada reprova os dois testes de recusa.
 
-## Fase 2 — riscos já levantados (para a decisão)
+## Fase 2 — decidida e implementada (31/10/2026)
 
-- Muda a regra "o envio de GENTE não grava bolha" (`whatsapp-envio.md`): a bolha
-  "não enviada" de 06/10 foi decidida só para o robô.
-- A linha `agent` + `sender_id` + `nao_saiu` pausaria o agente de IA como "gente
-  respondeu" (gatilho da 1049 não filtra `nao_saiu`) e entraria no ramo `agent`
-  da `cb_ia_reservar_envio` (1080): migration nova.
-- Três leitores com o predicado `sender_id`/`from_device` sem `nao_saiu`
-  (`ligacoes/registrar.ts`, `sem-telefone/historica.ts`, `dashboard/queries.ts`).
-- Autoria: gravar como `bot` perde quem mandou; como `agent`, dispara os itens
-  acima.
-- Botão visível a toda a equipe: dois cliques mandam em dobro sem um cadeado no
-  banco (`UPDATE … RETURNING`).
-- Não gravar o `incerto` (o eco, se existir, viraria segunda bolha).
-- Gravar só na rota do compositor, nunca no núcleo (agendada e API v1 têm o
-  próprio contrato).
+Por quê: em 30/10/2026 uma atendente tentou responder a uma cliente do
+Bancário pelas duas conexões; as tentativas foram recusadas antes de sair (o
+número da ficha não estava no WhatsApp — causa provável, o log não foi lido) e
+a bolha vermelha existiu só na tela dela. Os colegas não viram nada, e uma
+delas encerrou a conversa sem saber.
+
+Decisões do operador (31/10/2026), uma por risco levantado:
+
+| Risco | Decisão |
+|---|---|
+| A linha `agent` pausaria a IA e pararia a retomada | **Não pausa nem para**: migration 1118 (`NOT new.nao_saiu` no gatilho da 1049, mantido o WHEN do sinal da Lixeira; `NOT m.nao_saiu` no "a equipe respondeu" da reserva) |
+| Gravar o `incerto` | **Grava**, como o robô: a frase diz "pode ter saído — confira no celular", sem botão |
+| Botão visível a toda a equipe | **Só quem tentou** reenvia; os colegas veem a falha e o motivo |
+| A bolha depois do reenvio | **Fica como registro**; o reenvio é bolha nova |
+
+O que entrou:
+
+1. **Núcleo** (`send-message.ts`): o texto e a prévia são montados antes do
+   provedor, e os dois `throw` dele levam `tentativa` (`TentativaDoNucleo`) —
+   só a falha do PROVEDOR; o que parou no CRM (`barrado`) continua sem.
+2. **Rota** (`/api/whatsapp/send`, caixa de entrada e ficha):
+   `registrarTentativaDaEquipe` grava `agent` + o `sender_id` de quem tentou +
+   `failed` + `nao_saiu` + motivo, com a citação e SEM o arquivo do anexo (ele
+   volta à prévia do compositor, que o apaga no descarte); sobe a conversa na
+   lista. A resposta leva `mensagem_id`. A agendada e a API v1 não gravam
+   (contrato próprio).
+3. **Fio**: `pintarFalha` troca a otimista pela linha gravada (mesmo id: o
+   INSERT do tempo real chega repetido e é descartado; se chegar ANTES da
+   resposta, ele mesmo troca a otimista). "Tentar de novo" na gravada:
+   `tentativaReenviavel` — de texto, recusa que pode mudar, de QUEM ESTÁ NA
+   TELA e a ÚLTIMA nossa do fio. O reenvio passa pelo compositor como na
+   Fase 1, mas cria bolha nova (só a otimista é reaproveitada).
+4. **Bolha**: anexo gravado sem arquivo mostra o nome, nunca "carregando" nem
+   "indisponível".
+5. **Leitores** de "a equipe respondeu?" que não filtravam a coluna: a
+   ligação (`ligacoes/registrar.ts`), a mensagem sem telefone
+   (`sem-telefone/historica.ts`) e as contagens do Painel
+   (`dashboard/queries.ts`). Os webhooks de recibo procuram pelo id do
+   WhatsApp, que a tentativa não tem.
+6. **Doc pública**: a listagem de mensagens da v1 passa a explicar a linha
+   que não saiu (`outbound`, `failed`, sem `whatsapp_message_id`).
+
+Provas: suíte inteira, typecheck e lint; a 1118 num Postgres 16 descartável
+com o histórico inteiro — banco vazio (pula com NOTICE) e com dado fictício
+(os quatro cenários exercitados, aplicada duas vezes, sem rastro) — e dois
+mutantes (gatilho sem a cerca, reserva sem a cerca) reprovam com a frase
+certa; `verify-schema.sql` OK.
+
+Limites conhecidos:
+- A falha que vem da REDE do navegador (o pedido nem voltou) continua só na
+  tela de quem tentou: o servidor pode ter gravado ou enviado, e a tela não
+  sabe.
+- Duas abas da MESMA pessoa podem reenviar a mesma bolha (o botão é dela nas
+  duas); entre pessoas diferentes, não.
+- A causa exata do caso de 30/10 não foi confirmada no log do servidor.

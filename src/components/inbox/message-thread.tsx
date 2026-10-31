@@ -135,8 +135,10 @@ import {
   FALHA_SEM_RESPOSTA,
   falhaDaResposta,
   naBolha,
+  tentativaReenviavel,
   type FalhaDoEnvio,
 } from "@/lib/inbox/falha-do-envio";
+import { ehOtimista } from "@/lib/inbox/bolhas-otimistas";
 import { TemplatePicker } from "./template-picker";
 import { AiThreadBanner } from "./ai-thread-banner";
 import { buildReplyPreview } from "./reply-quote";
@@ -1923,16 +1925,36 @@ export function MessageThread({
   );
 
   /**
+   * Pinta a otimista que falhou. Com a tentativa GRAVADA (a rota devolve
+   * `mensagem_id`, 31/10/2026), ela VIRA a linha: o mesmo id (o INSERT dela
+   * pelo tempo real chega repetido e é descartado) e o autor, que liga o
+   * "Tentar de novo" pela régua da linha gravada (`tentativaReenviavel`). Se o
+   * INSERT chegou ANTES da resposta, ele já trocou a otimista e aqui nada muda.
+   */
+  const pintarFalha = useCallback(
+    (tempId: string, falha: FalhaDoEnvio) => {
+      onUpdateMessage(tempId, {
+        ...naBolha(falha),
+        ...(falha.mensagemId ? { id: falha.mensagemId, sender_id: user?.id } : {}),
+      });
+    },
+    [onUpdateMessage, user?.id],
+  );
+
+  /**
    * `substitui`: o REENVIO de uma bolha que não saiu ("Tentar de novo"),
-   * vindo do compositor depois da janela de desfazer. Reaproveita a MESMA
-   * bolha (a mesma id), em vez de deixar a vermelha e criar outra — e não
-   * mexe na citação da tela, que é de quem está escrevendo outra coisa.
+   * vindo do compositor depois da janela de desfazer. A OTIMISTA é
+   * reaproveitada (a mesma id), em vez de deixar a vermelha e criar outra; a
+   * GRAVADA fica como registro (decisão do operador, 31/10/2026) e o reenvio
+   * é bolha nova. Nos dois, a citação da tela fica — é de quem está
+   * escrevendo outra coisa.
    */
   const handleSend = useCallback(
     async (text: string, replyToId?: string, substitui?: string) => {
       if (!conversation) return;
 
-      const tempId = substitui ?? `temp-${Date.now()}`;
+      const reaproveita = substitui !== undefined && ehOtimista({ id: substitui });
+      const tempId = reaproveita ? substitui : `temp-${Date.now()}`;
       if (substitui) marcarReenviavel(substitui, null);
 
       // Optimistic update — shows the message immediately with "sending" status
@@ -1964,22 +1986,23 @@ export function MessageThread({
         // ignora `onNewMessage` com id repetido); se um INSERT já a levou, a
         // publicação a recria.
         publicarMensagemOtimista(optimisticMsg);
-        if (substitui) {
+        if (reaproveita) {
           onUpdateMessage(substitui, {
             ...optimisticMsg,
             nao_saiu: false,
             error_title: null,
             error_details: null,
           });
-        } else {
+        } else if (!substitui) {
           setReplyTo(null);
         }
       }
 
-      // A falha que vale de novo guarda o texto para o "Tentar de novo".
+      // A falha que vale de novo guarda o texto para o "Tentar de novo". A
+      // GRAVADA não: a linha tem a régua própria (`tentativaReenviavel`).
       const falhou = (falha: FalhaDoEnvio) => {
-        onUpdateMessage(tempId, naBolha(falha));
-        if (naTela && falha.podeTentarDeNovo) {
+        pintarFalha(tempId, falha);
+        if (naTela && falha.podeTentarDeNovo && !falha.mensagemId) {
           marcarReenviavel(tempId, { texto: text, replyToId, retida: false });
         }
       };
@@ -2066,6 +2089,7 @@ export function MessageThread({
       conversation,
       publicarMensagemOtimista,
       onUpdateMessage,
+      pintarFalha,
       marcarReenviavel,
       activeChannel?.id,
       channels,
@@ -2076,19 +2100,32 @@ export function MessageThread({
     ]
   );
 
+  /** A tentativa GRAVADA de quem está na tela que ainda pode ir de novo. */
+  const gravadaReenviavel = useMemo(
+    () => tentativaReenviavel(messages, user?.id ?? null),
+    [messages, user?.id],
+  );
+
   /**
    * O "Tentar de novo" da bolha: entrega o texto ao COMPOSITOR, que o retém
    * na janela de desfazer e o manda pela fila de saída — o mesmo trilho do
    * Enviar. Recusado lá (conexão fora do ar, janela fechada), nada muda.
+   *
+   * A GRAVADA (31/10/2026) reenvia o texto como ficou na linha, já assinado:
+   * `aplicarAssinatura` não assina de novo o que começa com a mesma assinatura.
    */
   const tentarDeNovo = useCallback(
     (id: string) => {
       const r = reenviaveis.get(id);
-      if (!r || r.retida) return;
-      if (!compositorRef.current?.reenviarTexto(r.texto, r.replyToId, id)) return;
-      marcarReenviavel(id, { ...r, retida: true });
+      if (r?.retida) return;
+      const gravada = !r && id === gravadaReenviavel ? messages.find((m) => m.id === id) : undefined;
+      const texto = r?.texto ?? gravada?.content_text;
+      if (!texto) return;
+      const replyToId = r ? r.replyToId : (gravada?.reply_to_message_id ?? undefined);
+      if (!compositorRef.current?.reenviarTexto(texto, replyToId, id)) return;
+      marcarReenviavel(id, { texto, replyToId, retida: true });
     },
-    [reenviaveis, marcarReenviavel],
+    [reenviaveis, marcarReenviavel, gravadaReenviavel, messages],
   );
 
   // O "Desfazer" do compositor cancelou o reenvio: o botão volta — se a bolha
@@ -2193,7 +2230,7 @@ export function MessageThread({
           // O motivo na bolha, sem "Tentar de novo": o anexo já volta à
           // prévia para isso — dois lugares para o mesmo arquivo mandariam em
           // dobro.
-          onUpdateMessage(tempId, naBolha(falhaDaResposta(res.status, data)));
+          pintarFalha(tempId, falhaDaResposta(res.status, data));
           // ⚠️ O objeto FICA — ver o cabeçalho: o compositor volta a ser dono.
           return false;
         }
@@ -2213,6 +2250,7 @@ export function MessageThread({
       conversation,
       publicarMensagemOtimista,
       onUpdateMessage,
+      pintarFalha,
       marcarEnviada,
       janelaFechadaAgora,
       t,
@@ -2278,7 +2316,7 @@ export function MessageThread({
           console.error("Failed to send interactive message:", reason);
           toast.error(t("sendFailed", { reason }));
           // O motivo na bolha; o reenvio da interativa é pelo diálogo dela.
-          onUpdateMessage(tempId, naBolha(falhaDaResposta(res.status, data)));
+          pintarFalha(tempId, falhaDaResposta(res.status, data));
           return;
         }
 
@@ -2295,6 +2333,7 @@ export function MessageThread({
       conversation,
       publicarMensagemOtimista,
       onUpdateMessage,
+      pintarFalha,
       marcarEnviada,
       janelaFechadaAgora,
       t,
@@ -2403,7 +2442,7 @@ export function MessageThread({
           console.error("Failed to send template:", reason);
           toast.error(t("sendTemplateFailed", { reason }));
           // O motivo na bolha; o reenvio do modelo é pelo seletor dele.
-          onUpdateMessage(tempId, naBolha(falhaDaResposta(res.status, payload)));
+          pintarFalha(tempId, falhaDaResposta(res.status, payload));
           return;
         }
 
@@ -2420,6 +2459,7 @@ export function MessageThread({
       conexaoForaDoAr,
       publicarMensagemOtimista,
       onUpdateMessage,
+      pintarFalha,
       marcarEnviada,
       activeChannel?.id,
       activeChannel?.label,
@@ -3565,7 +3605,10 @@ export function MessageThread({
                             confirmadasComoEnviadas.has(msg.id)
                           }
                           onTentarDeNovo={
-                            !envioTravado && reenviaveis.get(msg.id)?.retida === false
+                            !envioTravado &&
+                            (reenviaveis.get(msg.id)?.retida === false ||
+                              (msg.id === gravadaReenviavel &&
+                                reenviaveis.get(msg.id)?.retida !== true))
                               ? () => tentarDeNovo(msg.id)
                               : undefined
                           }

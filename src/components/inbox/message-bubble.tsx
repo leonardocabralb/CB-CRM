@@ -22,6 +22,7 @@ import {
   Pencil,
   Download,
   MessageSquareWarning,
+  Paperclip,
   RotateCcw,
   Reply,
   ExternalLink,
@@ -101,9 +102,11 @@ interface MessageBubbleProps {
   naoConfirmada?: boolean;
   /**
    * "Tentar de novo" na bolha que NÃO saiu (19/10/2026). O fio só passa isto
-   * à bolha OTIMISTA de texto com recusa comprovada (`podeTentarDeNovo` de
-   * `falha-do-envio.ts`) e com o compositor livre; a bolha não decide nada —
-   * sem a prop, nada muda (falha de recibo, robô, anexo, incerto).
+   * à bolha de texto com recusa comprovada e com o compositor livre: a
+   * OTIMISTA (`podeTentarDeNovo` de `falha-do-envio.ts`) ou a GRAVADA de quem
+   * está na tela, se for a última nossa do fio (`tentativaReenviavel`,
+   * 31/10/2026). A bolha não decide nada — sem a prop, nada muda (falha de
+   * recibo, robô, anexo, incerto, tentativa de um colega).
    */
   onTentarDeNovo?: () => void;
   /**
@@ -260,6 +263,18 @@ function MediaPendente({
     return () => clearTimeout(timer);
   }, [chegando, message.created_at]);
 
+  // A tentativa da EQUIPE que não saiu é gravada SEM o arquivo (31/10/2026:
+  // ele volta à prévia do compositor, que o apaga no descarte —
+  // `registrarTentativaDaEquipe`). Não há o que esperar nem o que faltar: a
+  // bolha nomeia o anexo, e a faixa "Não enviada" embaixo diz o resto.
+  if (message.nao_saiu === true) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+        <Paperclip className="h-4 w-4 shrink-0" />
+        <span className="min-w-0 truncate">{label}</span>
+      </div>
+    );
+  }
   // O teto do Storage é decisão FINAL — não adianta esperar a janela de
   // download nem oferecer nova tentativa.
   if (message.media_state === "too_large") {

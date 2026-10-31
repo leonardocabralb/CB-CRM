@@ -137,6 +137,16 @@ describe('gravarHistorica', () => {
     expect(b.rpcs[0].args.p_conta_nao_lida).toBe(true);
   });
 
+  it('a tentativa da equipe que NÃO saiu (31/10/2026) não é resposta: a não lida conta', async () => {
+    const b = criarBanco({
+      messages: [
+        ecoDoEscritorio({ from_device: false, sender_id: 'membro-1', message_id: null, nao_saiu: true }),
+      ],
+    });
+    await gravarHistorica(b.db, recuperada(), 'conv-1');
+    expect(b.rpcs[0].args.p_conta_nao_lida).toBe(true);
+  });
+
   it('resposta pelo CRM (`sender_id`) é gente; resposta ANTERIOR à fala não conta; apagada não conta', async () => {
     const peloCrm = criarBanco({
       messages: [ecoDoEscritorio({ from_device: false, sender_id: 'membro-1' })],

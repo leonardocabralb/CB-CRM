@@ -159,32 +159,29 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
   nunca repete). Embrulhar em `new Error(msg)` desliga a retentativa em
   silêncio (`retentativa.ts` só reconhece a classe). Regra em
   `.claude/rules/automacoes.md` ("retentativa").
-- ⚠️⚠️ **A tentativa do robô que NÃO saiu vira bolha "não enviada" no fio**
-  (decisão do operador, 06/10/2026; `envio-que-falhou.ts`, 1080): a linha
-  `bot`, `failed`, `nao_saiu = true`, sem `message_id`, com o motivo como
-  CÓDIGO em `error_title` (`falha-do-envio.ts`; `incerto` quando pode ter
-  saído). Só a falha do PROVEDOR (o `try` cerca só a chamada a ele); antes
-  dela, nada vai ao fio. A conversa SEM número ganha o da conexão ANTES da
-  chamada (`preencherCanalDaConversa`), também na recusa. O motor passa
-  `aoFalhar` e grava só quando DESISTE (fora da retentativa: uma bolha por
-  tentativa daria três); robô e agente de IA gravam na hora. ⚠️ Não é fala:
-  todo leitor que pergunta "alguém falou?" filtra `.eq('nao_saiu', false)`
-  (Aguardar sem conversa, contexto e turno da IA, Radar), e as funções do
-  banco também (as quatro da 1080 e as duas do Painel, 1095). Leitor novo entra no pino
-  `src/lib/inbox/nao-saiu.chamadores.test.ts`. O envio de GENTE não grava
-  bolha (a otimista falha na tela).
-- ⚠️⚠️ **A bolha OTIMISTA que falha diz POR QUÊ, com as mesmas frases**
-  (19/10/2026; `docs/PLANO-falha-de-envio-na-bolha.md`): a rota
-  `/api/whatsapp/send` responde `code` + `motivo` + `detalhe`
-  (`motivoDaFalhaDoNucleo`, a régua do robô sobre o erro do provedor que o
-  núcleo carrega em `SendMessageError.cause`), e o fio pinta a otimista com
-  `naBolha(falhaDaResposta(...))` — nada gravado. `barrado` = parou no CRM.
-  "Tentar de novo" só no TEXTO com recusa COMPROVADA (`podeTentarDeNovo`):
-  nunca no incerto (`db_error`, 5xx, `meta_error` 5xx, rede), em número sem
-  WhatsApp, 409, janela fechada, anexo (volta à prévia) nem em `failed` com
-  `message_id` (recibo). O clique vai ao COMPOSITOR (`reenviarTexto`): trava,
-  janela de desfazer e fila de saída do Enviar; reaproveita a id da bolha
-  (`substitui`). Pino `reenvio-da-bolha.chamadores.test.ts`.
+- ⚠️⚠️ **A tentativa que NÃO saiu vira bolha "não enviada" no fio, para
+  todos** (operador: robô 06/10, equipe 31/10/2026;
+  `envio-que-falhou.ts`, 1080/1118): `failed`, `nao_saiu = true`, sem
+  `message_id`, motivo como CÓDIGO em `error_title` (`falha-do-envio.ts`;
+  `incerto` = pode ter saído). Só a falha do PROVEDOR: o que parou antes
+  (`barrado`) não vai ao fio. A conversa SEM número ganha o da conexão ANTES
+  da chamada. ROBÔ: `bot`; o motor passa `aoFalhar` e grava só quando DESISTE
+  (retentar daria três bolhas). EQUIPE: `agent` + `sender_id` de quem
+  tentou, gravada pela ROTA do compositor (`registrarTentativaDaEquipe`, com
+  `SendMessageError.tentativa`), nunca pelo núcleo (agendada e v1 têm o
+  próprio contrato), SEM o arquivo do anexo (volta à prévia); a resposta
+  leva `mensagem_id` e o fio troca a otimista pela linha (`pintarFalha`). ⚠️
+  Não é fala: todo "alguém respondeu?" filtra `.eq('nao_saiu', false)` (pino
+  `src/lib/inbox/nao-saiu.chamadores.test.ts`), e o banco também (1080, 1095;
+  a pausa da IA e a retomada, 1118).
+- ⚠️⚠️ **"Tentar de novo"** só no TEXTO com recusa que pode mudar
+  (`recusado`, `conexao_fora_do_ar`; na otimista, o `barrado` 401/429) —
+  nunca no incerto, em número sem WhatsApp, 409, janela fechada, anexo nem em
+  `failed` com `message_id` (recibo). Na GRAVADA, só para quem tentou e só a
+  última nossa do fio (`tentativaReenviavel`): ela fica como registro e o
+  reenvio é bolha nova. O clique vai ao COMPOSITOR (`reenviarTexto`): trava,
+  janela de desfazer e fila de saída do Enviar. Pino
+  `reenvio-da-bolha.chamadores.test.ts`.
 - ⚠️ **O contrato de falha é o NOSSO** (`send_interactive_failed`; a
   re-pergunta que falha ENCERRA o run): libera o contato na hora e deixa a
   falha visível, ao preço de perder o fluxo num erro transitório. O do
@@ -246,14 +243,11 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
 
 ### Modelos da Meta
 
-- ⚠️ **O núcleo MONTA o modelo antes de tentar** (`buildSendComponents`, com
-  os valores que o `attempt` entrega a `sendTemplateMessage`; 19/10/2026):
-  cabeçalho de mídia sem arquivo (o modelo criado no painel da Meta chega sem
-  `header_media_url`), MENOS valores que as variáveis do corpo, variável do
-  cabeçalho vazia e botão de URL sem o final são 400 `bad_request` ANTES da
-  Meta e do número na conversa sem número — nunca `meta_error` ("pode ter
-  saído"). Valor de corpo VAZIO não é conferido (vai à Meta, que recusa). O
-  robô tem a régua dele, mais estrita (`faltaNoModelo`).
+- ⚠️ **O núcleo MONTA o modelo antes de tentar** (`buildSendComponents`):
+  mídia de cabeçalho sem arquivo, valores a menos, variável de cabeçalho vazia
+  e botão de URL sem o final são 400 `bad_request` ANTES da Meta — nunca
+  `meta_error` ("pode ter saído"). Corpo VAZIO vai à Meta, que recusa. O robô
+  tem a régua dele (`faltaNoModelo`).
 - ⚠️⚠️ **`resolveTemplateRow` (`template-body.ts`) tem o 5º parâmetro NOSSO,
   `channelId`, e os 5 call sites o passam.** O catálogo da Meta é POR WABA: sem
   o recorte, numa conta com dois números o atendente vê o preview de um modelo
@@ -307,9 +301,8 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
 
 - ⚠️ **O WABA ID é OBRIGATÓRIO na conexão Meta** (`POST /api/cb/channels` e o
   formulário, 25/09/2026): é a WABA que `provisionMetaChannel` assina ao app,
-  e sem ela a conexão nascia `connected` sem a Meta entregar nada. O teste
-  que fixava "WABA em branco continua opcional" virou o contrário
-  (`route.meta.test.ts`). Revisão do PR #285.
+  e sem ela a conexão nascia `connected` sem a Meta entregar nada. Pino
+  `route.meta.test.ts`.
 - ⚠️ `listWabaPhoneNumbers` só segue `paging.next` dentro de
   `https://graph.facebook.com` (`isGraphUrl`: o cursor vem da RESPOSTA e o
   token vai no cabeçalho) e LANÇA quando o teto de páginas acaba com página

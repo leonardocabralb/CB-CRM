@@ -112,8 +112,8 @@ const SEM_ANEXOS: Record<string, { motivo: string; leituras: string[] }> = {
   },
   'src/components/inbox/message-thread.tsx': {
     motivo:
-      '`cor.texto` é a classe de cor de uma faixa do fio e `r.texto` o texto de uma bolha que não saiu, reenviado pelo "Tentar de novo"; a anotação no fio é desenhada pela NoteLine',
-    leituras: ['cor.texto', 'r.texto'],
+      '`cor.texto` é a classe de cor de uma faixa do fio e `r?.texto` o texto de uma bolha que não saiu, reenviado pelo "Tentar de novo"; a anotação no fio é desenhada pela NoteLine',
+    leituras: ['cor.texto', 'r?.texto'],
   },
 };
 

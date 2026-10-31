@@ -572,6 +572,8 @@ async function genteRespondeuDepois(
     .eq('conversation_id', conversationId)
     .eq('sender_type', 'agent')
     .or('sender_id.not.is.null,from_device.is.true')
+    // A tentativa da equipe que NÃO saiu (31/10/2026) não é resposta.
+    .eq('nao_saiu', false)
     .is('deleted_at', null)
     .gte('created_at', carimboIso)
     .limit(1);

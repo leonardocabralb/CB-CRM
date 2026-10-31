@@ -100,6 +100,8 @@ async function genteRespondeuDepois(
     .eq('sender_type', 'agent')
     // A MESMA forma que o Radar e o Meu dia já usam em produção (`use-radar.ts`).
     .or('sender_id.not.is.null,from_device.is.true')
+    // A tentativa da equipe que NÃO saiu (31/10/2026) não é resposta.
+    .eq('nao_saiu', false)
     .is('deleted_at', null)
     .gt('created_at', carimboIso)
     .limit(1);

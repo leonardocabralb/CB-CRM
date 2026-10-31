@@ -36,6 +36,9 @@ faz, em `.claude/rules/ia-agentes.md`. ⚠️ "Retomada" aqui é o FOLLOW-UP; o
   (`motivoDaParada`: cliente — apagada também —, equipe, robô ou outro agente
   depois da âncora). A última palavra é a reserva (1056: `cliente_respondeu`,
   `equipe_respondeu`, `robo_falou`, `sem_ancora`, `retomada_desligada`).
+  ⚠️ A tentativa que NÃO saiu (`nao_saiu`) não para nada: nem a do robô
+  (1080) nem a da equipe (1118, `agent` com `sender_id`) — o cliente não a
+  recebeu. Os dois lados filtram (`retomada-fatos.ts` e a reserva).
 - **Ao rodar, tudo é reconferido**: card, agente, retomada ligada, quem
   escreveu, e o vencimento — fora da janela ou a menos de 30 min de um
   LEMBRETE = volta à fila; a 90 min da reunião, cadência no fim ou janela de

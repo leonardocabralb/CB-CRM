@@ -543,6 +543,8 @@ describe('sendMessageToConversation — template persistence (#483)', () => {
     expect((err as Error).message).toMatch(/image header requires a media link/);
     expect(sendTemplateMessage).not.toHaveBeenCalled();
     expect(captured.message).toBeUndefined();
+    // Parou no CRM: sem `tentativa`, a rota não grava bolha (31/10/2026).
+    expect((err as SendMessageError).tentativa).toBeUndefined();
     // Não houve tentativa por conexão nenhuma: a conversa sem número fica sem.
     expect(
       escritasDoAdmin.updates.filter((u) => u.tabela === 'conversations' && 'channel_id' in u.row)
@@ -852,6 +854,17 @@ describe('sendMessageToConversation — alvo por BSUID (Fase 11.3)', () => {
     expect((err as SendMessageError).cause).toBe(recusa);
     expect(motivoDaFalhaDoNucleo(err as SendMessageError).motivo).toBe('sem_whatsapp');
     expect(captured.message).toBeUndefined();
+    // 31/10/2026: o que este envio ia gravar vai no erro — a rota do
+    // compositor o grava como bolha "não enviada" de quem tentou.
+    expect((err as SendMessageError).tentativa).toMatchObject({
+      accountId: 'acct-1',
+      conversationId: 'cv-1',
+      contentType: 'text',
+      texto: 'oi',
+      previa: 'oi',
+      mediaUrl: null,
+      replyToMessageId: null,
+    });
   });
 
   it('o tempo esgotado da Evolution também leva o cru — e é incerto, nunca "não saiu"', async () => {
@@ -865,6 +878,8 @@ describe('sendMessageToConversation — alvo por BSUID (Fase 11.3)', () => {
     expect((err as SendMessageError).code).toBe('evolution_error');
     expect((err as SendMessageError).cause).toBeInstanceOf(EvolutionApiError);
     expect(motivoDaFalhaDoNucleo(err as SendMessageError).motivo).toBe('incerto');
+    // O incerto também vai gravado (decisão do operador): a frase diz "pode ter saído".
+    expect((err as SendMessageError).tentativa?.conversationId).toBe('cv-1');
   });
 
   // 19/10/2026: o endereço gravado é o que a Evolution USOU. Ela confere o

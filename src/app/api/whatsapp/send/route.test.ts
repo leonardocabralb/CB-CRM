@@ -370,6 +370,7 @@ describe('POST /api/whatsapp/send — role enforcement', () => {
 describe('POST /api/whatsapp/send — o motivo da falha na resposta', () => {
   beforeEach(() => {
     conversationInserts.length = 0
+    conversationUpdates.length = 0
     messageInserts.length = 0
     existingConversation = {
       id: 'conv-existing',
@@ -387,7 +388,10 @@ describe('POST /api/whatsapp/send — o motivo da falha na resposta', () => {
     vi.clearAllMocks()
   })
 
-  it('recusa 4xx da Meta: "recusado", com o código e o error de sempre — e nada gravado', async () => {
+  // 31/10/2026 (decisão do operador): a falha do PROVEDOR fica GRAVADA, com
+  // quem tentou — os colegas veem, e ela sobrevive à recarga. A linha não é
+  // fala (`nao_saiu`), e a resposta leva o id para a tela trocar a otimista.
+  it('recusa 4xx da Meta: "recusado", com o código e o error de sempre — e a tentativa GRAVADA de quem tentou', async () => {
     const { MetaApiError } = await import('@/lib/whatsapp/meta-api')
     sendTemplateMessage.mockRejectedValueOnce(
       new MetaApiError('Template does not exist', { httpStatus: 400, code: 132001 }),
@@ -397,13 +401,26 @@ describe('POST /api/whatsapp/send — o motivo da falha na resposta', () => {
     const json = await res.json()
 
     expect(res.status).toBe(502)
-    expect(json).toMatchObject({ code: 'meta_error', motivo: 'recusado' })
+    expect(json).toMatchObject({ code: 'meta_error', motivo: 'recusado', mensagem_id: 'msg-1' })
     expect(json.error).toMatch(/Meta API error/)
     expect(json.detalhe).toMatch(/Template does not exist/)
-    expect(messageInserts).toHaveLength(0)
+    expect(messageInserts).toHaveLength(1)
+    expect(messageInserts[0]).toMatchObject({
+      sender_type: 'agent',
+      // Quem APERTOU enviar (o login), nunca o dono da conta.
+      sender_id: 'user-1',
+      content_type: 'template',
+      status: 'failed',
+      nao_saiu: true,
+      error_title: 'recusado',
+      error_code: 132001,
+    })
+    expect(messageInserts[0]).not.toHaveProperty('message_id')
+    // A conversa sobe na lista, como com a tentativa do robô.
+    expect(conversationUpdates.some((u) => 'last_message_text' in u)).toBe(true)
   })
 
-  it('5xx da Meta: "incerto" — pode ter saído, a bolha não oferece reenvio', async () => {
+  it('5xx da Meta: "incerto" — pode ter saído, a bolha não oferece reenvio; gravada como incerta', async () => {
     const { MetaApiError } = await import('@/lib/whatsapp/meta-api')
     sendTemplateMessage.mockRejectedValueOnce(new MetaApiError('Service unavailable', { httpStatus: 503 }))
 
@@ -411,7 +428,24 @@ describe('POST /api/whatsapp/send — o motivo da falha na resposta', () => {
     const json = await res.json()
 
     expect(res.status).toBe(502)
-    expect(json).toMatchObject({ code: 'meta_error', motivo: 'incerto' })
+    expect(json).toMatchObject({ code: 'meta_error', motivo: 'incerto', mensagem_id: 'msg-1' })
+    expect(messageInserts).toHaveLength(1)
+    expect(messageInserts[0]).toMatchObject({ sender_type: 'agent', nao_saiu: true, error_title: 'incerto' })
+  })
+
+  it('o que parou NO CRM (sem chegar ao provedor) não é gravado: fica só na tela de quem tentou', async () => {
+    // Ficha sem telefone nem BSUID: o núcleo recusa ANTES da Meta
+    // (`bad_request`), e o erro não leva `tentativa`.
+    contactRow = { ...CONTACT, phone: null, wa_user_id: null }
+    existingConversation = { ...existingConversation!, contact: contactRow }
+
+    const res = await postContactTemplate()
+    const json = await res.json()
+
+    expect(res.status).toBe(400)
+    expect(sendTemplateMessage).not.toHaveBeenCalled()
+    expect(json.mensagem_id).toBeUndefined()
+    expect(messageInserts).toHaveLength(0)
   })
 })
 

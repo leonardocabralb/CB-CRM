@@ -345,6 +345,26 @@ describe('a bolha entra na hora REAL da ligação (teste real de 26/09/2026)', (
     expect(banco.rpcs[0]).toMatchObject({ args: { p_conta_nao_lida: false } });
   });
 
+  it('a tentativa da equipe que NÃO saiu depois da ligação não é resposta (31/10/2026)', async () => {
+    banco.tabelas.messages = [
+      {
+        id: 'tentativa-que-nao-saiu',
+        conversation_id: 'conversa-1',
+        sender_type: 'agent',
+        from_device: false,
+        sender_id: 'membro-1',
+        nao_saiu: true,
+        deleted_at: null,
+        content_type: 'text',
+        created_at: new Date(T0 + 45_000).toISOString(),
+      },
+    ];
+    await registrar(evento('offer'));
+    await registrar(evento('terminate'));
+
+    expect(banco.rpcs[0]).toMatchObject({ args: { p_conta_nao_lida: true } });
+  });
+
   it('a própria bolha (mesmo carimbo) não conta como "mensagem depois" na 2ª conferência', async () => {
     await registrar(evento('offer'));
     await registrar(evento('terminate'));
