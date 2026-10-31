@@ -179,6 +179,25 @@ describe('comLinhaDoTempoReal', () => {
     expect(ids(depois)).toEqual(['temp-2', 'temp-3', 'real-1']);
   });
 
+  // 31/10/2026: a tentativa GRAVADA que não saiu chega pelo tempo real, às
+  // vezes antes da resposta da rota.
+  it('a linha que NÃO saiu troca a otimista EM VOO, nunca uma `sent` que espera o próprio INSERT', () => {
+    const lista = [
+      // Já saiu (a rota respondeu), espera a linha dela; legenda diverge.
+      otimista('temp-0', { content_type: 'image', content_text: 'legenda', status: 'sent' }),
+      otimista('temp-1', { content_type: 'image', content_text: 'outra' }),
+    ];
+    const falha = minha('gravada-1', {
+      content_type: 'image',
+      content_text: '*Leo:*\noutra',
+      status: 'failed',
+      nao_saiu: true,
+    });
+    expect(ids(comLinhaDoTempoReal(lista, falha, EU))).toEqual(['temp-0', 'gravada-1']);
+    // Só com a `sent` na tela: ela fica, e a linha entra sem trocar nada.
+    expect(ids(comLinhaDoTempoReal([lista[0]], falha, EU))).toEqual(['temp-0', 'gravada-1']);
+  });
+
   it('mensagem de COLEGA não tira a minha, nem com o mesmo texto', () => {
     const lista = [otimista('temp-1', { content_text: 'oi' })];
     const depois = comLinhaDoTempoReal(

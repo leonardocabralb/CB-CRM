@@ -241,7 +241,8 @@ export async function registrarEnvioQueFalhou(
  *   preencher aqui de novo o poria no grupo.
  * - ⚠️ SEM o arquivo: o anexo que não saiu volta à prévia do compositor, que
  *   continua dono do objeto e o apaga no descarte. Apontar para ele deixaria
- *   a bolha gravada "indisponível" depois; ela mostra o nome e o tipo.
+ *   a bolha gravada "indisponível" depois; ela mostra o rótulo (o documento
+ *   pelo nome) e a legenda.
  */
 export async function registrarTentativaDaEquipe(
   db: SupabaseClient,

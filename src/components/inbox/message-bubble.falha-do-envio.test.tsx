@@ -84,7 +84,7 @@ describe('MessageBubble — envio da equipe que não saiu', () => {
       otimista({
         id: 'uuid-gravada',
         content_type: 'document',
-        content_text: undefined,
+        content_text: '*Atendente:*\nSegue o contrato',
         media_url: undefined,
         media_filename: 'contrato-ficticio.pdf',
         created_at: new Date().toISOString(),
@@ -93,6 +93,8 @@ describe('MessageBubble — envio da equipe que não saiu', () => {
       }),
     );
     expect(html).toContain('contrato-ficticio.pdf');
+    // A legenda que não saiu também aparece.
+    expect(html).toContain('Segue o contrato');
     expect(html).toContain(b.naoSaiu.recusado);
     expect(html).not.toContain(b.unavailable.replace('{label}', 'contrato-ficticio.pdf'));
   });

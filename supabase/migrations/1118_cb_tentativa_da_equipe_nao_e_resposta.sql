@@ -33,7 +33,11 @@ SET LOCAL lock_timeout = '5s';
 -- ---------------------------------------------------------------------------
 -- 0) A conversa da conferência, escolhida ANTES de qualquer trava (a forma da
 --    1080): 1:1 aberta, sem pausa, sem turno vivo, card ABERTO numa etapa sem
---    agente, uma conexão da conta e uma última mensagem viva com `gravada_em`.
+--    agente, uma conexão da conta, e a mensagem MAIS NOVA por `gravada_em` —
+--    apagadas incluídas — viva: ela é a âncora da retomada. ⚠️ Âncora "a
+--    última VIVA" não serve: a reserva conta a mensagem APAGADA depois dela
+--    (o cliente escreveu; a equipe falou), e uma apagada mais nova reprovaria
+--    a conferência com um motivo falso.
 -- ---------------------------------------------------------------------------
 DO $$
 DECLARE
@@ -50,8 +54,10 @@ BEGIN
      AND NOT EXISTS (SELECT 1 FROM cb_ia_turnos t
                       WHERE t.conversation_id = cv.id AND t.status IN ('aguardando', 'rodando'))
      AND NOT EXISTS (SELECT 1 FROM cb_ia_agente_etapas e WHERE e.stage_id = dl.stage_id)
-     AND EXISTS (SELECT 1 FROM messages m
-                  WHERE m.conversation_id = cv.id AND m.gravada_em IS NOT NULL AND m.deleted_at IS NULL)
+     AND EXISTS (SELECT 1 FROM (SELECT m.deleted_at FROM messages m
+                                 WHERE m.conversation_id = cv.id AND m.gravada_em IS NOT NULL
+                                 ORDER BY m.gravada_em DESC, m.id DESC LIMIT 1) u
+                  WHERE u.deleted_at IS NULL)
    LIMIT 1;
   IF r.conv IS NOT NULL THEN
     PERFORM set_config('cb1118.conv', r.conv::text, true);
@@ -62,10 +68,14 @@ BEGIN
     PERFORM set_config('cb1118.dono', coalesce(r.dono::text, ''), true);
     PERFORM set_config('cb1118.ultima', (
       SELECT m.id::text FROM messages m
-       WHERE m.conversation_id = r.conv AND m.gravada_em IS NOT NULL AND m.deleted_at IS NULL
+       WHERE m.conversation_id = r.conv AND m.gravada_em IS NOT NULL
        ORDER BY m.gravada_em DESC, m.id DESC LIMIT 1), true);
   END IF;
 END $$;
+
+-- O comentário da coluna (1080) falava só do robô.
+COMMENT ON COLUMN messages.nao_saiu IS
+  'true = a tentativa de envio que NÃO saiu: do robô (1080) ou da equipe (1118). A bolha "não enviada" do fio. Não é fala de ninguém — todo leitor que pergunta "alguém falou?" a ignora, e ela não pausa a IA.';
 
 -- ---------------------------------------------------------------------------
 -- 1) A pausa por gente (1049; o WHEN do sinal da 1097): a tentativa que não
@@ -258,6 +268,7 @@ DECLARE
   v_desde    timestamptz;
   v_tentou   uuid;
   v_res      text;
+  v_antes    text;
 BEGIN
   SELECT pg_get_triggerdef(t.oid) INTO v_def
     FROM pg_trigger t
@@ -304,6 +315,11 @@ BEGIN
                 'retomada', 1, 1)
         RETURNING id, rodando_desde INTO v_turno, v_desde;
 
+      -- A reserva ANTES da tentativa: o dado real pode já pará-la (uma mensagem
+      -- que chegou depois do passo 0, por ex.). Sem `ok` aqui, (b) e (c) não
+      -- provam nada e são puladas com NOTICE — a pausa, (a) e (d), roda igual.
+      v_antes := public.cb_ia_reservar_envio(v_turno, v_desde);
+
       -- (a) A tentativa da equipe que NÃO saiu: não pausa a IA…
       -- `gravada_em` pelo RELÓGIO, não pelo `now()` da transação: uma âncora
       -- gravada depois do início desta transação ficaria "depois" da linha.
@@ -316,17 +332,21 @@ BEGIN
         RAISE EXCEPTION '1118: a tentativa da equipe que não saiu pausou a IA';
       END IF;
 
-      -- (b) …nem para a retomada como "a equipe respondeu".
-      v_res := public.cb_ia_reservar_envio(v_turno, v_desde);
-      IF v_res = 'equipe_respondeu' THEN
-        RAISE EXCEPTION '1118: a tentativa da equipe que não saiu parou a retomada';
-      END IF;
+      IF v_antes = 'ok' THEN
+        -- (b) …nem para a retomada como "a equipe respondeu".
+        v_res := public.cb_ia_reservar_envio(v_turno, v_desde);
+        IF v_res <> 'ok' THEN
+          RAISE EXCEPTION '1118: a tentativa da equipe que não saiu parou a retomada (%)', v_res;
+        END IF;
 
-      -- (c) A resposta da equipe que SAIU continua parando a retomada…
-      UPDATE messages SET nao_saiu = false, status = 'sent' WHERE id = v_tentou;
-      v_res := public.cb_ia_reservar_envio(v_turno, v_desde);
-      IF v_res <> 'equipe_respondeu' THEN
-        RAISE EXCEPTION '1118: com a resposta da equipe que saiu, a reserva respondeu % (esperava equipe_respondeu)', v_res;
+        -- (c) A resposta da equipe que SAIU continua parando a retomada…
+        UPDATE messages SET nao_saiu = false, status = 'sent' WHERE id = v_tentou;
+        v_res := public.cb_ia_reservar_envio(v_turno, v_desde);
+        IF v_res <> 'equipe_respondeu' THEN
+          RAISE EXCEPTION '1118: com a resposta da equipe que saiu, a reserva respondeu % (esperava equipe_respondeu)', v_res;
+        END IF;
+      ELSE
+        RAISE NOTICE '1118: a reserva já respondia % antes da tentativa — a retomada não foi exercitada aqui.', v_antes;
       END IF;
 
       -- (d) …e pausando a IA (o ramo do gatilho continua de pé).

@@ -171,6 +171,25 @@ com o histórico inteiro — banco vazio (pula com NOTICE) e com dado fictício
 mutantes (gatilho sem a cerca, reserva sem a cerca) reprovam com a frase
 certa; `verify-schema.sql` OK.
 
+Revisão independente (31/10/2026), corrigido no mesmo PR:
+- a gravada usada fica marcada na tela: a recarga silenciosa com o reenvio em
+  voo não devolve o botão (envio em dobro);
+- o "Desfazer" da gravada devolve a decisão à régua (uma mensagem nossa
+  depois dele tira o botão);
+- o reenvio da gravada vai SEM a assinatura da linha (o envio assina com o
+  nome de agora);
+- a otimista que vira a linha gravada perde o arquivo, como a linha; o
+  documento gravado mostra a legenda;
+- a linha que não saiu, chegando pelo tempo real, só troca otimista EM VOO;
+- a conferência da 1118 escolhe como âncora a mensagem mais nova COM as
+  apagadas (com a última viva, uma apagada mais nova a reprovava com motivo
+  falso — reproduzido no Postgres local) e só exercita a retomada quando a
+  reserva diz `ok` antes da tentativa; o comentário da coluna fala da equipe.
+
+Pergunta em aberto ao operador: o INCERTO gravado (pode ter chegado) também
+não pausa a IA nem para a retomada — é a régua do robô, mas foram duas
+decisões separadas.
+
 Limites conhecidos:
 - A falha que vem da REDE do navegador (o pedido nem voltou) continua só na
   tela de quem tentou: o servidor pode ter gravado ou enviado, e a tela não

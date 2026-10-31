@@ -106,6 +106,28 @@ describe('1118 — a conferência', () => {
     expect(compacto).not.toContain('create temp');
   });
 
+  it('a âncora é a mensagem MAIS NOVA, apagadas incluídas, e tem de estar viva (a reserva conta a apagada)', () => {
+    const passo0 = compacto.slice(0, compacto.indexOf("set_config('cb1118.conv'"));
+    expect(passo0).toContain(
+      'select m.deleted_at from messages m where m.conversation_id = cv.id and m.gravada_em is not null order by m.gravada_em desc, m.id desc limit 1) u where u.deleted_at is null',
+    );
+    const i = compacto.indexOf("set_config('cb1118.ultima'");
+    const ultima = compacto.slice(i, compacto.indexOf('true);', i));
+    expect(ultima).not.toContain('deleted_at');
+  });
+
+  it('a retomada só é exercitada quando a reserva diz `ok` ANTES da tentativa; senão, NOTICE', () => {
+    const antes = compacto.indexOf('v_antes := public.cb_ia_reservar_envio(v_turno, v_desde);');
+    expect(antes).toBeGreaterThan(-1);
+    expect(antes).toBeLessThan(compacto.indexOf('a tentativa da equipe que não saiu pausou a ia'));
+    expect(compacto).toContain("if v_antes = 'ok' then");
+    expect(compacto).toContain("raise notice '1118: a reserva já respondia % antes da tentativa");
+  });
+
+  it('o comentário da coluna fala do robô E da equipe', () => {
+    expect(compacto).toMatch(/comment on column messages\.nao_saiu is '[^']*robô \(1080\) ou da equipe \(1118\)/);
+  });
+
   it('exercita num subbloco desfeito por SQLSTATE PRÓPRIO, nunca WHEN OTHERS', () => {
     expect(compacto).toContain("raise exception using errcode = 'p1118';");
     expect(compacto).toContain("exception when sqlstate 'p1118' then null;");

@@ -1928,14 +1928,18 @@ export function MessageThread({
    * Pinta a otimista que falhou. Com a tentativa GRAVADA (a rota devolve
    * `mensagem_id`, 31/10/2026), ela VIRA a linha: o mesmo id (o INSERT dela
    * pelo tempo real chega repetido e é descartado) e o autor, que liga o
-   * "Tentar de novo" pela régua da linha gravada (`tentativaReenviavel`). Se o
-   * INSERT chegou ANTES da resposta, ele já trocou a otimista e aqui nada muda.
+   * "Tentar de novo" pela régua da linha gravada (`tentativaReenviavel`), e
+   * SEM o arquivo, como a linha (o anexo voltou à prévia, que o apaga no
+   * descarte). Se o INSERT chegou ANTES da resposta, ele já trocou a
+   * otimista e aqui nada muda.
    */
   const pintarFalha = useCallback(
     (tempId: string, falha: FalhaDoEnvio) => {
       onUpdateMessage(tempId, {
         ...naBolha(falha),
-        ...(falha.mensagemId ? { id: falha.mensagemId, sender_id: user?.id } : {}),
+        ...(falha.mensagemId
+          ? { id: falha.mensagemId, sender_id: user?.id, media_url: undefined }
+          : {}),
       });
     },
     [onUpdateMessage, user?.id],
@@ -1955,7 +1959,12 @@ export function MessageThread({
 
       const reaproveita = substitui !== undefined && ehOtimista({ id: substitui });
       const tempId = reaproveita ? substitui : `temp-${Date.now()}`;
-      if (substitui) marcarReenviavel(substitui, null);
+      // ⚠️ A GRAVADA usada fica marcada (`retida`) para sempre nesta tela: o
+      // botão dela não pode voltar com o reenvio em voo — a recarga
+      // silenciosa (voltar à aba) tira a otimista nova da lista, e a gravada
+      // voltaria a ser "a última nossa". Falhando de novo, o botão sai da
+      // linha nova.
+      if (reaproveita) marcarReenviavel(substitui, null);
 
       // Optimistic update — shows the message immediately with "sending" status
       const optimisticMsg: Message = {
@@ -2111,15 +2120,17 @@ export function MessageThread({
    * na janela de desfazer e o manda pela fila de saída — o mesmo trilho do
    * Enviar. Recusado lá (conexão fora do ar, janela fechada), nada muda.
    *
-   * A GRAVADA (31/10/2026) reenvia o texto como ficou na linha, já assinado:
-   * `aplicarAssinatura` não assina de novo o que começa com a mesma assinatura.
+   * A GRAVADA (31/10/2026) só enquanto for a última nossa
+   * (`gravadaReenviavel`), e SEM a assinatura que a linha tem — o envio
+   * assina de novo com o nome de agora (`removerAssinatura`, como a edição);
+   * com o nome mudado, o cliente receberia as duas.
    */
   const tentarDeNovo = useCallback(
     (id: string) => {
       const r = reenviaveis.get(id);
       if (r?.retida) return;
       const gravada = !r && id === gravadaReenviavel ? messages.find((m) => m.id === id) : undefined;
-      const texto = r?.texto ?? gravada?.content_text;
+      const texto = r?.texto ?? removerAssinatura(gravada?.content_text);
       if (!texto) return;
       const replyToId = r ? r.replyToId : (gravada?.reply_to_message_id ?? undefined);
       if (!compositorRef.current?.reenviarTexto(texto, replyToId, id)) return;
@@ -2131,6 +2142,8 @@ export function MessageThread({
   // O "Desfazer" do compositor cancelou o reenvio: o botão volta — se a bolha
   // ainda está no fio. Sumiu (recarga silenciosa, mensagem nova)? `false`, e
   // o compositor devolve o texto ao campo, para ele não desaparecer.
+  // Na GRAVADA, a entrada SAI: quem decide o botão volta a ser a régua
+  // (`gravadaReenviavel`) — uma mensagem nossa depois do Desfazer o tira.
   const aoDesfazerReenvio = useCallback(
     (id: string) => {
       const r = reenviaveis.get(id);
@@ -2138,7 +2151,7 @@ export function MessageThread({
         marcarReenviavel(id, null);
         return false;
       }
-      marcarReenviavel(id, { ...r, retida: false });
+      marcarReenviavel(id, ehOtimista({ id }) ? { ...r, retida: false } : null);
       return true;
     },
     [messages, reenviaveis, marcarReenviavel],

@@ -266,7 +266,8 @@ function MediaPendente({
   // A tentativa da EQUIPE que não saiu é gravada SEM o arquivo (31/10/2026:
   // ele volta à prévia do compositor, que o apaga no descarte —
   // `registrarTentativaDaEquipe`). Não há o que esperar nem o que faltar: a
-  // bolha nomeia o anexo, e a faixa "Não enviada" embaixo diz o resto.
+  // bolha mostra o rótulo (o documento pelo NOME; foto, vídeo e áudio pelo
+  // tipo), e a faixa "Não enviada" embaixo diz o resto.
   if (message.nao_saiu === true) {
     return (
       <div className="flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
@@ -839,7 +840,16 @@ function MessageContent({
           : null;
 
       if (!message.media_url) {
-        return <MediaPendente message={message} label={nome} t={t} />;
+        // A tentativa gravada sem o arquivo (31/10/2026) mostra a legenda
+        // que não saiu, como a foto e o vídeo já mostram.
+        return (
+          <div>
+            <MediaPendente message={message} label={nome} t={t} />
+            {message.nao_saiu === true && legenda && (
+              <FormattedText texto={legenda} className="mt-1" />
+            )}
+          </div>
+        );
       }
       return (
         <div>

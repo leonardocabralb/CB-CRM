@@ -109,15 +109,35 @@ describe('o fio: botão só no texto, e a mesma bolha no reenvio', () => {
     expect((envio.match(/marcarReenviavel\(tempId/g) ?? []).length).toBe(1);
   });
 
-  it('a GRAVADA (31/10/2026): botão só para quem tentou, pela régua pura, com o texto da linha', () => {
+  it('a GRAVADA (31/10/2026): botão só para quem tentou, pela régua pura, com o texto da linha SEM a assinatura', () => {
     expect(thread).toMatch(/tentativaReenviavel\(messages, user\?\.id \?\? null\)/);
     const tentar = trecho(thread, 'const tentarDeNovo = useCallback(', 'const aoDesfazerReenvio = useCallback(');
     expect(tentar).toMatch(/!r && id === gravadaReenviavel \? messages\.find/);
+    // O envio assina de novo com o nome de AGORA: com o nome mudado, o
+    // cliente receberia as duas assinaturas.
+    expect(tentar).toMatch(/r\?\.texto \?\? removerAssinatura\(gravada\?\.content_text\)/);
     expect(tentar).toMatch(/compositorRef\.current\?\.reenviarTexto\(texto, replyToId, id\)/);
   });
 
+  it('a GRAVADA usada não volta a oferecer o botão com o reenvio em voo (a marca fica)', () => {
+    // A recarga silenciosa tira a otimista nova da lista, e a gravada voltaria
+    // a ser "a última nossa": o reenvio em voo sairia em dobro.
+    const envio = trecho(thread, 'const handleSend = useCallback(', 'const tentarDeNovo = useCallback(');
+    expect(envio).toMatch(/if \(reaproveita\) marcarReenviavel\(substitui, null\);/);
+    expect(envio).not.toMatch(/if \(substitui\) marcarReenviavel\(substitui, null\);/);
+  });
+
+  it('o "Desfazer" da GRAVADA tira a entrada: quem decide o botão volta a ser a régua', () => {
+    const desfeito = trecho(thread, 'const aoDesfazerReenvio = useCallback(', 'const messagesById = useMemo(');
+    expect(desfeito).toMatch(/marcarReenviavel\(id, ehOtimista\(\{ id \}\) \? \{ \.\.\.r, retida: false \} : null\);/);
+  });
+
+  it('a otimista que vira a linha gravada perde o arquivo, como a linha', () => {
+    expect(thread).toMatch(/\{ id: falha\.mensagemId, sender_id: user\?\.id, media_url: undefined \}/);
+  });
+
   it('os quatro caminhos trocam a otimista pela linha GRAVADA (`pintarFalha`)', () => {
-    expect(thread).toMatch(/\.\.\.\(falha\.mensagemId \? \{ id: falha\.mensagemId, sender_id: user\?\.id \} : \{\}\)/);
+    expect(thread).toMatch(/falha\.mensagemId\s*\?\s*\{ id: falha\.mensagemId, sender_id: user\?\.id/);
     expect((thread.match(/pintarFalha\(tempId, falhaDaResposta\(/g) ?? []).length).toBe(3);
     const envio = trecho(thread, 'const handleSend = useCallback(', 'const tentarDeNovo = useCallback(');
     expect(envio).toMatch(/pintarFalha\(tempId, falha\)/);
