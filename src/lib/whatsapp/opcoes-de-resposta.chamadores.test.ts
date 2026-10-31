@@ -77,8 +77,11 @@ describe('o clique numa opção da bolha', () => {
     expect(preparar).toContain('const preparada = textoComAOpcao(');
     expect(preparar).toContain("anterior?.de === conversationId ? anterior : null");
     expect(preparar).toContain('setText(preparada.resultado);');
-    expect(compositor).toContain(
-      'useImperativeHandle(ref, () => ({ prepararResposta }), [prepararResposta]);',
+    // Um `useImperativeHandle` só: o mesmo `ref` serve também ao "Tentar de
+    // novo" (`reenviarTexto`), e uma segunda chamada apagaria a primeira.
+    expect(compositor.match(/useImperativeHandle\(ref,/g)).toHaveLength(1);
+    expect(compositor).toMatch(
+      /useImperativeHandle\(ref, \(\) => \(\{[^}]*\bprepararResposta\b[^}]*\}\), \[[^\]]*\bprepararResposta\b/,
     );
   });
 

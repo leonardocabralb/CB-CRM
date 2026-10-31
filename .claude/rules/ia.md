@@ -327,14 +327,13 @@ ingestões), `fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron
   `botao` | `transferencia` | `automacao`). Só "Retomar IA" (`POST
   /api/ai/autoreply`: limpa e grava `ia_retomada_em`) a desfaz; mudar de etapa
   não. A de GENTE é o gatilho da 1049: mensagem de gente (`sender_id` OU
-  `from_device`) sem `ia_agente_id`, com `gravada_em` (a carga fica fora), 1:1,
-  e a conversa com `ia_agente_id`, OU turno vivo, OU o contato com card aberto
-  numa etapa COM agente, OU SEM card aberto (a equipe abriu a conversa: o card
-  nasce DEPOIS da mensagem). Card só em etapa sem agente NÃO pausa: é o SDR
-  fora do território da IA, e mover o card entrega a conversa ao agente
-  (revisão da F2). O eco do turno (`mensagem_enviada_id`) não
-  pausa; a agendada e o eco antes do id pausam (o lado seguro). O turno só LÊ
-  a pausa. `set_ai`: desligar = `automacao` sem pisar noutro motivo; ligar
+  `from_device`) sem `ia_agente_id`, com `gravada_em` (sem a carga), que SAIU
+  (`nao_saiu` não, 1118), 1:1, e a conversa com `ia_agente_id`, OU turno
+  vivo, OU o contato com card aberto numa etapa COM agente, OU SEM card aberto
+  (a equipe abriu a conversa: o card nasce DEPOIS da mensagem). Card só em
+  etapa sem agente NÃO pausa: é o SDR fora do território da IA, e mover o
+  card entrega a conversa ao agente. O eco do turno (`mensagem_enviada_id`)
+  não pausa; a agendada e o eco antes do id pausam. O turno só LÊ a pausa. `set_ai`: desligar = `automacao` sem pisar noutro motivo; ligar
   desfaz SÓ `automacao`, sem zerar o teto nem soltar o responsável.
 - ⚠️ **Encerrar limpa agente e pausa, recomeça o teto (`ia_retomada_em`)
   e descarta os turnos** `aguardando` e `rodando` (`cb_encerrar_limpa_ia`,

@@ -85,7 +85,7 @@ export function MessageActions({
   // `temp-…`) e a mensagem que falhou no envio não têm um — sem ele a
   // Evolution não tem o que apagar, e o botão só produziria erro.
   const existeNoWhatsApp = !!message.message_id && !message.id.startsWith("temp-");
-  // A tentativa do robô que NÃO saiu (1080): o cliente nunca a recebeu —
+  // A tentativa que NÃO saiu (do robô, 1080; da equipe, 1118): o cliente nunca a recebeu —
   // reagir falharia, e responder citaria no CRM o que ele não viu. Copiar
   // fica (é como se reenvia à mão).
   const naoSaiu = message.nao_saiu === true;

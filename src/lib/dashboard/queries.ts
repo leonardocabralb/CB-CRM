@@ -224,8 +224,10 @@ export async function loadMetrics(
           .select(`id, ${EMBED_SEM_GRUPO}`, { count: 'exact', head: true })
           .eq('sender_type', 'agent')
           // A ligação atendida no celular (1044) é linha 'agent', mas não é
-          // mensagem enviada.
+          // mensagem enviada — nem a tentativa da equipe que não saiu
+          // (31/10/2026).
           .neq('content_type', 'call')
+          .eq('nao_saiu', false)
           .gte('created_at', todayStart),
       ),
       channelId,
@@ -237,8 +239,10 @@ export async function loadMetrics(
           .select(`id, ${EMBED_SEM_GRUPO}`, { count: 'exact', head: true })
           .eq('sender_type', 'agent')
           // A ligação atendida no celular (1044) é linha 'agent', mas não é
-          // mensagem enviada.
+          // mensagem enviada — nem a tentativa da equipe que não saiu
+          // (31/10/2026).
           .neq('content_type', 'call')
+          .eq('nao_saiu', false)
           .gte('created_at', yesterdayStart)
           .lt('created_at', todayStart),
       ),

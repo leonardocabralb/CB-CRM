@@ -28,6 +28,15 @@ const UNIQUES: Record<string, string[]> = {
   cb_ligacoes: ['account_id', 'call_id'],
 };
 
+/**
+ * Colunas NOT NULL com DEFAULT: a linha de teste que não as traz vale o
+ * default nos FILTROS, como no Postgres — sem isso, `.eq('nao_saiu', false)`
+ * (1080) não casaria com nenhuma linha montada antes da coluna existir.
+ */
+const PADROES: Record<string, Linha> = {
+  messages: { nao_saiu: false },
+};
+
 export interface Banco {
   tabelas: Record<string, Linha[]>;
   /** tabela → erro devolvido por TODA operação nela (`{ data: null, error }`). */
@@ -72,6 +81,12 @@ export function criarBanco(tabelas: Record<string, Linha[]> = {}): Banco {
 
   function consulta(tabela: string) {
     const filtros: ((l: Linha) => boolean)[] = [];
+    const padrao = PADROES[tabela] ?? {};
+    /** `ler`, com o DEFAULT da coluna quando a linha não a traz. */
+    const valor = (l: Linha, c: string): unknown => {
+      const v = ler(l, c);
+      return v === undefined && c in padrao ? padrao[c] : v;
+    };
     let op: 'select' | 'insert' | 'update' | 'upsert' = 'select';
     let payload: Linha = {};
     let opcoes: { onConflict?: string; ignoreDuplicates?: boolean } = {};
@@ -127,16 +142,16 @@ export function criarBanco(tabelas: Record<string, Linha[]> = {}): Banco {
       insert: (p: Linha) => ((op = 'insert'), (payload = p), q),
       update: (p: Linha) => ((op = 'update'), (payload = p), q),
       upsert: (p: Linha, o: typeof opcoes = {}) => ((op = 'upsert'), (payload = p), (opcoes = o), q),
-      eq: (c: string, v: unknown) => (filtros.push((l) => ler(l, c) === v), q),
-      is: (c: string, v: unknown) => (filtros.push((l) => (ler(l, c) ?? null) === v), q),
-      gt: (c: string, v: string) => (filtros.push((l) => String(ler(l, c)) > v), q),
-      gte: (c: string, v: string) => (filtros.push((l) => String(ler(l, c)) >= v), q),
-      neq: (c: string, v: unknown) => (filtros.push((l) => ler(l, c) !== v), q),
-      in: (c: string, vs: unknown[]) => (filtros.push((l) => vs.includes(ler(l, c))), q),
+      eq: (c: string, v: unknown) => (filtros.push((l) => valor(l, c) === v), q),
+      is: (c: string, v: unknown) => (filtros.push((l) => (valor(l, c) ?? null) === v), q),
+      gt: (c: string, v: string) => (filtros.push((l) => String(valor(l, c)) > v), q),
+      gte: (c: string, v: string) => (filtros.push((l) => String(valor(l, c)) >= v), q),
+      neq: (c: string, v: unknown) => (filtros.push((l) => valor(l, c) !== v), q),
+      in: (c: string, vs: unknown[]) => (filtros.push((l) => vs.includes(valor(l, c))), q),
       /** Só a forma `.not(col, 'is', null)` (nomes do grupo). */
       not: (c: string, operador: string, v: unknown) => {
         if (operador !== 'is') throw new Error(`dublê: .not(${operador}) não suportado`);
-        filtros.push((l) => (ler(l, c) ?? null) !== v);
+        filtros.push((l) => (valor(l, c) ?? null) !== v);
         return q;
       },
       like: (c: string, padrao: string) => {

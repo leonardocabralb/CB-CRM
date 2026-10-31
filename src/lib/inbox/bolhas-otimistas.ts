@@ -85,11 +85,16 @@ export function comLinhaDoTempoReal(
     linha.sender_id === quemEstaNaTela;
   if (!doAtendenteDaTela) return [...semFalhadas, linha];
 
+  // A tentativa GRAVADA que não saiu (31/10/2026) só troca uma otimista
+  // ainda EM VOO (`sending`): a `sent` já saiu e espera o próprio INSERT —
+  // trocá-la deixaria a falha no lugar de uma mensagem que chegou, e o fio,
+  // ao receber a resposta da rota, renomearia a otimista certa para o MESMO
+  // id (duas bolhas com um id).
+  const serve = (m: Message) =>
+    deTroca(m, linha) && (linha.nao_saiu !== true || m.status === 'sending');
   const texto = linha.content_text ?? '';
-  let alvo = semFalhadas.findIndex(
-    (m) => deTroca(m, linha) && (m.content_text ?? '') === texto
-  );
-  if (alvo < 0) alvo = semFalhadas.findIndex((m) => deTroca(m, linha));
+  let alvo = semFalhadas.findIndex((m) => serve(m) && (m.content_text ?? '') === texto);
+  if (alvo < 0) alvo = semFalhadas.findIndex(serve);
   const sem =
     alvo < 0 ? semFalhadas : semFalhadas.filter((_, i) => i !== alvo);
   return [...sem, linha];

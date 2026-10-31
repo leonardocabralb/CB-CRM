@@ -248,6 +248,9 @@ const caminhosEntregues = new Set<string>();
  * `handleSend`), e `origem` é a conversa — a fila de saída é por conversa.
  * `rascunho` é a fila de anexos DELA, presa também na retenção: o anexo que
  * falhar ou for desfeito volta para lá, esteja ela na tela ou não.
+ *
+ * `substitui` marca o REENVIO pedido pelo "Tentar de novo" de uma bolha que
+ * não saiu (`reenviarTexto`): é o id dela, que o envio reaproveita.
  */
 type Retida =
   | {
@@ -255,7 +258,8 @@ type Retida =
       origem: string;
       texto: string;
       replyToId?: string;
-      enviar: (texto: string, replyToId?: string) => void | Promise<void>;
+      substitui?: string;
+      enviar: (texto: string, replyToId?: string, substitui?: string) => void | Promise<void>;
     }
   | {
       tipo: "anexos";
@@ -284,6 +288,16 @@ export interface CompositorHandle {
    * vai para a caixa (`textoComAOpcao`). A citação é do fio.
    */
   prepararResposta: (opcao: string) => void;
+  /**
+   * O "Tentar de novo" de uma bolha que não saiu. Um caminho só: passa pela
+   * mesma trava, janela de desfazer e fila de saída do Enviar (decisões de
+   * 05/10 e 15/10/2026), em vez de um envio paralelo que as furasse. Retém
+   * `texto` e, ao fim da janela, o manda pela fila de saída desta conversa,
+   * reaproveitando a bolha `substitui`. Não mexe no campo nem na citação de
+   * quem está escrevendo outra coisa. Devolve `false` (nada retido) com o
+   * envio travado — conexão fora do ar, janela de 24 h.
+   */
+  reenviarTexto: (texto: string, replyToId: string | undefined, substitui: string) => boolean;
 }
 
 interface MessageComposerProps {
@@ -325,8 +339,16 @@ interface MessageComposerProps {
   /**
    * A promessa (o envio do fio é assíncrono) é o que a fila de saída espera
    * antes do próximo envio da MESMA conversa — ver `fila-de-saida.ts`.
+   * `substitui`: o reenvio de uma bolha que não saiu (`CompositorHandle`).
    */
-  onSend: (text: string, replyToId?: string) => void | Promise<void>;
+  onSend: (text: string, replyToId?: string, substitui?: string) => void | Promise<void>;
+  /**
+   * O "Desfazer" cancelou um reenvio (`reenviarTexto`): a bolha `substitui`
+   * volta a oferecer "Tentar de novo" e o texto NÃO volta ao campo — senão a
+   * pessoa poderia mandá-lo pelos dois lugares. Devolve se a bolha ainda
+   * existe; `false` (ou sem a prop) = o texto volta ao campo, para não sumir.
+   */
+  onReenvioDesfeito?: (substitui: string) => boolean;
   /**
    * ⚠️ Devolve se ENTREGOU. Com vários anexos o compositor envia um por vez,
    * com `await` (senão chegam fora de ordem no celular do cliente), e só
@@ -393,6 +415,7 @@ export function MessageComposer({
   channelKind = null,
   transporteConhecido = true,
   onSend,
+  onReenvioDesfeito,
   onSendMedia,
   onSendInteractive,
   onOpenTemplates,
@@ -879,7 +902,7 @@ export function MessageComposer({
   const despachar = useCallback(
     (p: Retida) => {
       if (p.tipo === "texto") {
-        void filaDeSaida.enfileirar(p.origem, () => p.enviar(p.texto, p.replyToId));
+        void filaDeSaida.enfileirar(p.origem, () => p.enviar(p.texto, p.replyToId, p.substitui));
         return;
       }
       const lote: Lote = { parou: false, comecados: 0, faltam: p.itens.length };
@@ -910,8 +933,16 @@ export function MessageComposer({
     // procurar de novo a mensagem que estava respondendo. Nos anexos quem
     // limpa é o FIM do lote (`enviarAnexo`): se um falhar, ele volta à
     // prévia, e a nova tentativa lê a citação de `replyTo` (#146).
-    if (p.tipo === "texto") onClearReplyRef.current?.();
+    // ⚠️ O REENVIO leva a citação da bolha que falhou, não a da tela: a que
+    // está na tela é de quem escreve outra coisa, e não pode sumir.
+    if (p.tipo === "texto" && !p.substitui) onClearReplyRef.current?.();
   }, [descartarTimer, despachar]);
+
+  // Mesmo motivo do `onSendRef`.
+  const onReenvioDesfeitoRef = useRef(onReenvioDesfeito);
+  useEffect(() => {
+    onReenvioDesfeitoRef.current = onReenvioDesfeito;
+  }, [onReenvioDesfeito]);
 
   const desfazerEnvio = useCallback(() => {
     descartarTimer();
@@ -919,6 +950,14 @@ export function MessageComposer({
     pendenteRef.current = null;
     setPendente(null);
     if (!p) return;
+    // Desfazer um REENVIO devolve o botão à bolha, e só: com o texto também
+    // no campo, a pessoa poderia mandar pelos dois. Se a bolha já SUMIU (a
+    // recarga silenciosa ou uma mensagem nova levam as `temp-`), o texto não
+    // tem mais onde ficar: volta ao campo, sem apagar o que já está nele
+    // (o reenvio não mexeu no campo, e ali pode haver outro rascunho).
+    const reenvioSemBolha =
+      p.tipo === "texto" && !!p.substitui && !onReenvioDesfeitoRef.current?.(p.substitui);
+    if (p.tipo === "texto" && p.substitui && !reenvioSemBolha) return;
     if (p.tipo === "anexos") {
       // Os anexos voltam à prévia, com as legendas (e no teto — ver
       // `devolverAPrevia`). A citação ficou na tela: só sai quando o lote sai.
@@ -926,12 +965,12 @@ export function MessageComposer({
       return;
     }
     // Devolve o texto ao campo para o operador corrigir em vez de redigitar.
-    setText(p.texto);
+    setText((atual) => (reenvioSemBolha && atual.trim() ? `${atual}\n${p.texto}` : p.texto));
     requestAnimationFrame(() => {
       const el = textareaRef.current;
       if (!el) return;
       el.focus();
-      el.setSelectionRange(p.texto.length, p.texto.length);
+      el.setSelectionRange(el.value.length, el.value.length);
       adjustHeight();
     });
   }, [descartarTimer, adjustHeight, setText, devolverAPrevia]);
@@ -1075,6 +1114,31 @@ export function MessageComposer({
     // A altura volta ao `auto` pelo efeito sobre `text`.
     setText("");
   }, [text, envioTravado, replyTo?.id, liberarPendente, quandoAg, agendar, setText, conversationId]);
+
+  // O "Tentar de novo" do fio (`CompositorHandle`): o MESMO trilho do Enviar —
+  // trava, janela de desfazer, fila de saída, despachante preso à origem —,
+  // sem o campo e sem a hora de agendar: o reenvio é de agora, e a hora no
+  // campo é de quem está escrevendo outra coisa.
+  const reenviarTexto = useCallback(
+    (texto: string, replyToId: string | undefined, substitui: string) => {
+      if (envioTravado || !texto.trim()) return false;
+      // Já havia uma esperando: ela vai antes, como no Enviar.
+      liberarPendente();
+      const retida: Retida = {
+        tipo: "texto",
+        origem: conversationId,
+        texto,
+        replyToId,
+        substitui,
+        enviar: onSendRef.current,
+      };
+      setPendente({ ...retida, expiraEm: Date.now() + SEGUNDOS_DESFAZER * 1000 });
+      pendenteRef.current = retida;
+      timerDesfazerRef.current = setTimeout(liberarPendente, SEGUNDOS_DESFAZER * 1000);
+      return true;
+    },
+    [envioTravado, liberarPendente, conversationId],
+  );
 
   // Trocar de conversa solta a pendente na hora.
   //
@@ -1433,7 +1497,7 @@ export function MessageComposer({
     },
     [text, conversationId, setText, toque],
   );
-  useImperativeHandle(ref, () => ({ prepararResposta }), [prepararResposta]);
+  useImperativeHandle(ref, () => ({ prepararResposta, reenviarTexto }), [prepararResposta, reenviarTexto]);
 
   // Upload a captured file to chat-media and stage it as a draft.
   const stageUpload = useCallback(

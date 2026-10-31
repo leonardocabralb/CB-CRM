@@ -179,7 +179,10 @@ describe('a fila de anexos e a troca de conversa (#146)', () => {
     // liberação, o anexo que falhava voltava à prévia sem a citação, e a nova
     // tentativa saía solta (#146 de novo, por outro caminho).
     const liberar = c.slice(c.indexOf('const liberarPendente = useCallback('), c.indexOf('const desfazerEnvio'));
-    expect(liberar).toContain('if (p.tipo === "texto") onClearReplyRef.current?.();');
+    // O texto limpa ao sair — menos o REENVIO de uma bolha que não saiu
+    // (19/10/2026): ele leva a citação DELA, e a da tela é de quem escreve
+    // outra coisa (`reenvio-da-bolha.chamadores.test.ts`).
+    expect(liberar).toContain('if (p.tipo === "texto" && !p.substitui) onClearReplyRef.current?.();');
     expect(liberar).not.toContain('p.replyToId');
     const laco = c.slice(c.indexOf('const enviarAnexo = useCallback('), c.indexOf('const despachar = useCallback('));
     expect(ocorrencias(laco, 'lote.faltam -= 1;')).toBe(1);
@@ -275,7 +278,11 @@ describe('a fila de anexos e a troca de conversa (#146)', () => {
     );
     expect(ocorrencias(f, 'const naTela = conversaNaTelaRef.current === conversation.id;')).toBe(3);
     expect(ocorrencias(f, 'if (naTela) publicarMensagemOtimista(optimisticMsg);')).toBe(2);
-    expect(f).toMatch(/if \(naTela\) \{\s*publicarMensagemOtimista\(optimisticMsg\);\s*setReplyTo\(null\);/);
+    // A citação da tela só sai no envio NOVO; o reenvio de uma bolha que não
+    // saiu (19/10/2026; a gravada, 31/10/2026) não mexe nela.
+    expect(f).toMatch(
+      /if \(naTela\) \{\s*publicarMensagemOtimista\(optimisticMsg\);\s*if \(reaproveita\) \{[\s\S]*?\} else if \(!substitui\) \{\s*setReplyTo\(null\);\s*\}\s*\}/,
+    );
   });
 
   it('a única porta que apaga objeto do bucket é `removeStaged`, que respeita a marca', () => {

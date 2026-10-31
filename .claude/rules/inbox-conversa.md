@@ -90,9 +90,9 @@ ficha em `.claude/rules/campos-e-nome.md`.
   propósito**: pelo carimbo, toda mensagem atrasada nasceria acima da dobra,
   despercebida. Ao recarregar, ela vai para o lugar do carimbo.
 - ⚠️ **A provisória EM VOO só sai pela linha do PRÓPRIO atendente; a que
-  FALHOU sai com qualquer linha e na recarga** (`bolhas-otimistas.ts`): falha
-  incerta (502, rede) pode ter saído, e mantê-la convida ao reenvio em dobro.
-  Segurá-la pede o motivo da recusa na resposta (#417).
+  FALHOU sai com qualquer linha e na recarga** (`bolhas-otimistas.ts`): a do
+  provedor é GRAVADA (31/10/2026) e a resposta a troca pela linha
+  (`pintarFalha`, `mensagem_id`); a da rede (pode ter saído) não fica.
 - ⚠️ **A faixa da nota fixada compara `conversation_id` com a prop do render
   atual**: o `useConversationNotes` esvazia num efeito, e a nota do cliente
   anterior aparecia sob o cabeçalho do novo.
@@ -276,9 +276,9 @@ O WhatsApp quase nunca anuncia a falha; este vermelho é INFERIDO.
 - ⚠️⚠️ **Acende quando saiu pelo CRM, está em ✓ há mais de 1 min e há prova de
   que o aparelho estava no ar** (mensagem nossa posterior entregue ou lida, por
   qualquer conexão, ou o destinatário escreveu mais de 1 min depois). Recortes,
-  cada um contra um alarme falso: só EVOLUTION (alargar para a Meta exige medir
-  de novo e decisão do operador, `docs/PLANO-link-sem-previa.md`); só o que saiu
-  pelo CRM; só desde 11/09/2026 00:00 UTC; grupo fora.
+  cada um contra um alarme falso: só EVOLUTION (a Meta, só medindo de novo e
+  com o operador: `docs/PLANO-link-sem-previa.md`); só o que saiu pelo CRM; só
+  desde 11/09/2026 00:00 UTC; grupo fora.
 - ⚠️⚠️ **O fio CONFERE NO BANCO antes de pintar**: a recarga
   (`handleMessagesLoaded`) pode atropelar um recibo do realtime, e o vermelho
   levaria a reenviar o que já chegou. O banco corrige a tela
@@ -286,7 +286,8 @@ O WhatsApp quase nunca anuncia a falha; este vermelho é INFERIDO.
 - ⚠️ **O relógio é o tique da badge (`agoraDaBadge`)**, sem depender da janela
   da Meta (senão apagaria num fio parado da Evolution).
 - ⚠️ **Saída se mede por `sender_type`, nunca por `from_me`** (a Meta grava nulo).
-- **A falha da Meta mostra o texto dela na bolha** (`motivoNaBolha`).
+- **A falha diz o porquê**: Meta, `motivoNaBolha`; otimista e reenvio,
+  `whatsapp-envio.md`.
 
 ### Cartão de contato e tipo não suportado na bolha (1060)
 

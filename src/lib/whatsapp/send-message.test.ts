@@ -6,6 +6,8 @@ import {
   SendMessageError,
   type SendMessageParams,
 } from './send-message';
+import { motivoDaFalhaDoNucleo } from './envio-que-falhou';
+import { EvolutionApiError } from './transport/evolution-client';
 
 // Só o resolvedor de canal é substituído — os testes de `channelId` no fim
 // do arquivo precisam mandar nele. Os demais estouram antes de chegar lá.
@@ -518,6 +520,61 @@ describe('sendMessageToConversation — template persistence (#483)', () => {
     expect(captured.message?.content_text).toBeNull();
     expect(captured.conversation?.last_message_text).toBe('[template]');
   });
+
+  // 19/10/2026: o que o `buildSendComponents` recusa nunca chega à Meta. É
+  // recusado ANTES (400 `bad_request`: nada saiu, a bolha diz "parou antes de
+  // sair" com o motivo), e não lançado de dentro do envio como `meta_error`
+  // ("pode ter saído"). O modelo criado direto no painel da Meta chega pela
+  // sincronização SEM `header_media_url`.
+  const MODELO_COM_IMAGEM = { ...TEMPLATE_ROW, header_type: 'image', header_media_url: null };
+
+  it('cabeçalho de imagem SEM arquivo: 400 antes da Meta, nada gravado, sem número na conversa', async () => {
+    sendTemplateMessage.mockClear();
+    escritasDoAdmin.updates = [];
+    const captured: CapturedWrites = {};
+    const err = await sendMessageToConversation(sendPathDb([MODELO_COM_IMAGEM], captured), 'acct-1', {
+      conversationId: 'cv-1',
+      messageType: 'template',
+      templateName: 'order_update',
+      templateParams: ['A123', 'Friday'],
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SendMessageError);
+    expect(err).toMatchObject({ code: 'bad_request', status: 400 });
+    expect((err as Error).message).toMatch(/image header requires a media link/);
+    expect(sendTemplateMessage).not.toHaveBeenCalled();
+    expect(captured.message).toBeUndefined();
+    // Parou no CRM: sem `tentativa`, a rota não grava bolha (31/10/2026).
+    expect((err as SendMessageError).tentativa).toBeUndefined();
+    // Não houve tentativa por conexão nenhuma: a conversa sem número fica sem.
+    expect(
+      escritasDoAdmin.updates.filter((u) => u.tabela === 'conversations' && 'channel_id' in u.row)
+    ).toEqual([]);
+    expect(motivoDaFalhaDoNucleo(err as SendMessageError)).toMatchObject({ motivo: 'barrado' });
+  });
+
+  it('o mesmo modelo, com o arquivo nos valores do envio, sai — a régua é a do envio', async () => {
+    sendTemplateMessage.mockClear();
+    await sendMessageToConversation(sendPathDb([MODELO_COM_IMAGEM], {}), 'acct-1', {
+      conversationId: 'cv-1',
+      messageType: 'template',
+      templateName: 'order_update',
+      templateMessageParams: { body: ['A123', 'Friday'], headerMediaUrl: 'https://exemplo.test/a.png' },
+    });
+    expect(sendTemplateMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('menos valores que as variáveis do corpo: 400 antes da Meta', async () => {
+    sendTemplateMessage.mockClear();
+    await expect(
+      sendMessageToConversation(sendPathDb([TEMPLATE_ROW], {}), 'acct-1', {
+        conversationId: 'cv-1',
+        messageType: 'template',
+        templateName: 'order_update',
+        templateParams: ['A123'],
+      })
+    ).rejects.toMatchObject({ code: 'bad_request', status: 400 });
+    expect(sendTemplateMessage).not.toHaveBeenCalled();
+  });
 });
 
 // ============================================================
@@ -776,6 +833,53 @@ describe('sendMessageToConversation — alvo por BSUID (Fase 11.3)', () => {
       expect.objectContaining({ to: '15551234567' })
     );
     expect(captured.message?.remote_jid).toBe('15551234567@s.whatsapp.net');
+  });
+
+  // O caso de 19/10/2026: a Evolution recusa o número sem WhatsApp ANTES de
+  // mandar. O erro CRU dela viaja em `cause` — é por ele que a bolha diz
+  // "este número não tem WhatsApp" e não oferece "Tentar de novo"; sem ele,
+  // `evolution_rejected` vira "recusado", com botão (`motivoDaFalhaDoNucleo`).
+  it('a recusa da Evolution leva o erro cru em `cause`: número sem WhatsApp', async () => {
+    await comCanal(EVOLUTION);
+    const recusa = new EvolutionApiError('number 15551234567 is not on WhatsApp', 400, true);
+    evolutionSendText.mockRejectedValueOnce(recusa);
+    const captured: CapturedWrites = {};
+    const err = await sendMessageToConversation(
+      sendPathDb([], captured, { id: 'ct-1', phone: '+15551234567' }),
+      'acct-1',
+      { conversationId: 'cv-1', messageType: 'text', contentText: 'oi' }
+    ).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SendMessageError);
+    expect((err as SendMessageError).code).toBe('evolution_rejected');
+    expect((err as SendMessageError).cause).toBe(recusa);
+    expect(motivoDaFalhaDoNucleo(err as SendMessageError).motivo).toBe('sem_whatsapp');
+    expect(captured.message).toBeUndefined();
+    // 31/10/2026: o que este envio ia gravar vai no erro — a rota do
+    // compositor o grava como bolha "não enviada" de quem tentou.
+    expect((err as SendMessageError).tentativa).toMatchObject({
+      accountId: 'acct-1',
+      conversationId: 'cv-1',
+      contentType: 'text',
+      texto: 'oi',
+      previa: 'oi',
+      mediaUrl: null,
+      replyToMessageId: null,
+    });
+  });
+
+  it('o tempo esgotado da Evolution também leva o cru — e é incerto, nunca "não saiu"', async () => {
+    await comCanal(EVOLUTION);
+    evolutionSendText.mockRejectedValueOnce(new EvolutionApiError('Evolution não respondeu em 15000ms', 504));
+    const err = await sendMessageToConversation(
+      sendPathDb([], {}, { id: 'ct-1', phone: '+15551234567' }),
+      'acct-1',
+      { conversationId: 'cv-1', messageType: 'text', contentText: 'oi' }
+    ).catch((e: unknown) => e);
+    expect((err as SendMessageError).code).toBe('evolution_error');
+    expect((err as SendMessageError).cause).toBeInstanceOf(EvolutionApiError);
+    expect(motivoDaFalhaDoNucleo(err as SendMessageError).motivo).toBe('incerto');
+    // O incerto também vai gravado (decisão do operador): a frase diz "pode ter saído".
+    expect((err as SendMessageError).tentativa?.conversationId).toBe('cv-1');
   });
 
   // 19/10/2026: o endereço gravado é o que a Evolution USOU. Ela confere o

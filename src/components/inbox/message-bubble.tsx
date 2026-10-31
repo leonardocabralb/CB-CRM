@@ -22,6 +22,8 @@ import {
   Pencil,
   Download,
   MessageSquareWarning,
+  Paperclip,
+  RotateCcw,
   Reply,
   ExternalLink,
   Phone,
@@ -98,6 +100,15 @@ interface MessageBubbleProps {
    * (lib/inbox/entrega-nao-confirmada.ts). Sem a prop, nada muda.
    */
   naoConfirmada?: boolean;
+  /**
+   * "Tentar de novo" na bolha que NÃO saiu (19/10/2026). O fio só passa isto
+   * à bolha de texto com recusa comprovada e com o compositor livre: a
+   * OTIMISTA (`podeTentarDeNovo` de `falha-do-envio.ts`) ou a GRAVADA de quem
+   * está na tela, se for a última nossa do fio (`tentativaReenviavel`,
+   * 31/10/2026). A bolha não decide nada — sem a prop, nada muda (falha de
+   * recibo, robô, anexo, incerto, tentativa de um colega).
+   */
+  onTentarDeNovo?: () => void;
   /**
    * Clique numa opção de resposta de uma mensagem de EMPRESA recebida (1111):
    * o fio põe o rótulo na caixa do compositor, citando a mensagem. Sem o
@@ -252,6 +263,19 @@ function MediaPendente({
     return () => clearTimeout(timer);
   }, [chegando, message.created_at]);
 
+  // A tentativa da EQUIPE que não saiu é gravada SEM o arquivo (31/10/2026:
+  // ele volta à prévia do compositor, que o apaga no descarte —
+  // `registrarTentativaDaEquipe`). Não há o que esperar nem o que faltar: a
+  // bolha mostra o rótulo (o documento pelo NOME; foto, vídeo e áudio pelo
+  // tipo), e a faixa "Não enviada" embaixo diz o resto.
+  if (message.nao_saiu === true) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+        <Paperclip className="h-4 w-4 shrink-0" />
+        <span className="min-w-0 truncate">{label}</span>
+      </div>
+    );
+  }
   // O teto do Storage é decisão FINAL — não adianta esperar a janela de
   // download nem oferecer nova tentativa.
   if (message.media_state === "too_large") {
@@ -816,7 +840,16 @@ function MessageContent({
           : null;
 
       if (!message.media_url) {
-        return <MediaPendente message={message} label={nome} t={t} />;
+        // A tentativa gravada sem o arquivo (31/10/2026) mostra a legenda
+        // que não saiu, como a foto e o vídeo já mostram.
+        return (
+          <div>
+            <MediaPendente message={message} label={nome} t={t} />
+            {message.nao_saiu === true && legenda && (
+              <FormattedText texto={legenda} className="mt-1" />
+            )}
+          </div>
+        );
       }
       return (
         <div>
@@ -931,6 +964,7 @@ export function MessageBubble({
   baixandoAnexo = false,
   onAbrirGaleria,
   naoConfirmada = false,
+  onTentarDeNovo,
   onResponderComOpcao,
 }: MessageBubbleProps) {
   const t = useTranslations("Inbox.bubble");
@@ -1282,14 +1316,25 @@ export function MessageBubble({
             {t(`naoSaiu.${naoSaiu}`)}
           </p>
         )}
-        {/* "Recusado" sem mais: o porquê do provedor, como o da Meta acima. */}
-        {naoSaiu === "recusado" && message.error_details && (
+        {/* "Recusado" e "barrado" sem mais: o porquê do provedor (ou do
+            CRM), como o da Meta acima. */}
+        {(naoSaiu === "recusado" || naoSaiu === "barrado") && message.error_details && (
           <p
             className="aviso-falha mt-0.5 line-clamp-2 text-[10px] leading-tight !text-muted-foreground"
             title={message.error_details}
           >
             {t("naoSaiuMotivo", { motivo: message.error_details })}
           </p>
+        )}
+        {naoSaiu && onTentarDeNovo && (
+          <button
+            type="button"
+            onClick={onTentarDeNovo}
+            className="aviso-falha mt-1.5 inline-flex items-center gap-1 rounded-md border border-destructive/40 bg-background px-2 py-0.5 text-[11px] font-semibold !text-destructive hover:bg-destructive/10"
+          >
+            <RotateCcw className="h-3 w-3 shrink-0" />
+            {t("tentarDeNovo")}
+          </button>
         )}
         {semConfirmacao && (
           <p

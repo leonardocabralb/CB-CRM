@@ -6,9 +6,13 @@ import { EvolutionApiError } from '@/lib/whatsapp/transport/evolution-client';
 import {
   classificarFalha,
   falhouAoEnviar,
+  motivoDaFalhaDoNucleo,
   registrarEnvioQueFalhou,
+  registrarTentativaDaEquipe,
   type RascunhoDoEnvio,
+  type TentativaDoNucleo,
 } from './envio-que-falhou';
+import { SendMessageError } from './send-message';
 
 // ============================================================
 // A tentativa do robô que não saiu vira bolha no fio (06/10/2026). Ids e
@@ -43,6 +47,74 @@ describe('classificarFalha — a mesma régua de `recusaComprovada`', () => {
     );
     expect(r.detalhe).not.toMatch(/EAAB/);
     expect(classificarFalha(new Error('x'.repeat(1000))).detalhe.length).toBeLessThanOrEqual(300);
+  });
+});
+
+// ------------------------------------------------------------
+// A falha do NÚCLEO de gente → a bolha otimista (19/10/2026)
+// ------------------------------------------------------------
+describe('motivoDaFalhaDoNucleo — o que a rota do compositor diz à bolha', () => {
+  const doProvedor = (code: string, cause: unknown) =>
+    new SendMessageError(code, `Provider error: ${String(cause)}`, 502, { cause });
+
+  it('o caso de 19/10: número sem WhatsApp (o code sozinho diria só "recusado")', () => {
+    const err = doProvedor(
+      'evolution_rejected',
+      new EvolutionApiError('number 550000000000 is not on WhatsApp', 400, true),
+    );
+    expect(motivoDaFalhaDoNucleo(err)).toEqual({
+      motivo: 'sem_whatsapp',
+      detalhe: 'number 550000000000 is not on WhatsApp',
+    });
+  });
+
+  it('a conexão fechada e a recusa genérica da Evolution', () => {
+    expect(
+      motivoDaFalhaDoNucleo(doProvedor('evolution_rejected', new EvolutionApiError('Error: Connection Closed', 400)))
+        .motivo,
+    ).toBe('conexao_fora_do_ar');
+    expect(
+      motivoDaFalhaDoNucleo(doProvedor('evolution_rejected', new EvolutionApiError('Bad Request', 400))).motivo,
+    ).toBe('recusado');
+  });
+
+  it('tempo esgotado e 5xx são INCERTOS, nunca "não saiu"', () => {
+    expect(
+      motivoDaFalhaDoNucleo(doProvedor('evolution_error', new EvolutionApiError('timeout', 504))).motivo,
+    ).toBe('incerto');
+    expect(motivoDaFalhaDoNucleo(doProvedor('evolution_error', new Error('fetch failed'))).motivo).toBe('incerto');
+  });
+
+  it('Meta: 4xx recusado, 5xx incerto — o `meta_error` sozinho mistura os dois', () => {
+    expect(
+      motivoDaFalhaDoNucleo(doProvedor('meta_error', new MetaApiError('Re-engagement', { httpStatus: 400, code: 131047 })))
+        .motivo,
+    ).toBe('recusado');
+    expect(
+      motivoDaFalhaDoNucleo(doProvedor('meta_error', new MetaApiError('oops', { httpStatus: 500 }))).motivo,
+    ).toBe('incerto');
+  });
+
+  it('sem o erro do provedor: só o 4xx da Evolution afirma "não saiu"', () => {
+    expect(motivoDaFalhaDoNucleo({ code: 'evolution_rejected', message: 'x' })).toEqual({ motivo: 'recusado', detalhe: null });
+    expect(motivoDaFalhaDoNucleo({ code: 'evolution_error', message: 'x' }).motivo).toBe('incerto');
+    expect(motivoDaFalhaDoNucleo({ code: 'meta_error', message: 'x' }).motivo).toBe('incerto');
+  });
+
+  it('db_error SAIU (o CRM só não gravou): incerto, sem o texto cru do banco', () => {
+    expect(
+      motivoDaFalhaDoNucleo({ code: 'db_error', message: 'violates constraint cb_xyz on column abc' }),
+    ).toEqual({ motivo: 'incerto', detalhe: null });
+  });
+
+  it('o resto parou NO CRM, antes de qualquer conexão: barrado, com a frase do núcleo', () => {
+    for (const code of ['bad_request', 'not_found', 'not_supported', 'whatsapp_not_configured', 'channel_unavailable', 'not_allowed', 'template_malformed']) {
+      expect(motivoDaFalhaDoNucleo({ code, message: 'Conversation not found' })).toEqual({
+        motivo: 'barrado',
+        detalhe: 'Conversation not found',
+      });
+    }
+    expect(motivoDaFalhaDoNucleo({ code: 'bad_request', message: 'y'.repeat(1000) }).detalhe?.length).toBe(300);
   });
 });
 
@@ -165,3 +237,76 @@ describe('falhouAoEnviar', () => {
     ).resolves.toBeUndefined();
   });
 });
+
+// ------------------------------------------------------------
+// A tentativa da EQUIPE (31/10/2026): a rota do compositor grava, com quem
+// tentou.
+// ------------------------------------------------------------
+const TENTATIVA: TentativaDoNucleo = {
+  accountId: 'acc-1',
+  conversationId: 'conv-1',
+  canalId: 'canal-1',
+  contentType: 'document',
+  texto: '*Atendente Teste:*\nSegue o contrato.',
+  previa: '*Atendente Teste:*\nSegue o contrato.',
+  mediaUrl: 'https://exemplo.test/chat-media/contrato.pdf',
+  mediaFilename: 'contrato.pdf',
+  replyToMessageId: 'msg-citada',
+};
+
+describe('registrarTentativaDaEquipe', () => {
+  it('grava `agent` com QUEM tentou, a citação e o motivo — e devolve o id da linha', async () => {
+    const { db, inserts } = makeDb();
+    const id = await registrarTentativaDaEquipe(
+      db,
+      TENTATIVA,
+      'login-1',
+      new EvolutionApiError('number 5511900000000 is not on WhatsApp', 400, true),
+    );
+    expect(id).toBe('m-1');
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0]).toMatchObject({
+      conversation_id: 'conv-1',
+      sender_type: 'agent',
+      sender_id: 'login-1',
+      content_type: 'document',
+      content_text: TENTATIVA.texto,
+      media_filename: 'contrato.pdf',
+      reply_to_message_id: 'msg-citada',
+      status: 'failed',
+      nao_saiu: true,
+      error_title: 'sem_whatsapp',
+      channel_id: 'canal-1',
+    });
+    expect(inserts[0]).not.toHaveProperty('message_id');
+  });
+
+  it('SEM o arquivo: o anexo volta à prévia do compositor, que o apaga no descarte', async () => {
+    const { db, inserts } = makeDb();
+    await registrarTentativaDaEquipe(db, TENTATIVA, 'login-1', new Error('x'));
+    expect(inserts[0]).not.toHaveProperty('media_url');
+  });
+
+  it('sobe a conversa na lista, mas NÃO preenche o número (o núcleo já preencheu, e nunca em grupo)', async () => {
+    const { db, updates } = makeDb();
+    await registrarTentativaDaEquipe(db, TENTATIVA, 'login-1', new Error('x'));
+    expect(updates.find((u) => 'channel_id' in u.row)).toBeUndefined();
+    const previa = updates.find((u) => 'last_message_text' in u.row);
+    expect(previa?.row.last_message_text).toBe(TENTATIVA.previa);
+    expect(previa?.filtros).toContainEqual(['account_id', 'acc-1']);
+  });
+
+  it('INSERT recusado: devolve null e não mexe na conversa (a bolha fica só na tela de quem tentou)', async () => {
+    const { db, updates } = makeDb({ insertError: { code: '42501', message: 'denied' } });
+    await expect(registrarTentativaDaEquipe(db, TENTATIVA, 'login-1', new Error('x'))).resolves.toBeNull();
+    expect(updates).toEqual([]);
+  });
+
+  it('o robô continua `bot`, sem `sender_id`', async () => {
+    const { db, inserts } = makeDb();
+    await registrarEnvioQueFalhou(db, RASCUNHO, new Error('x'));
+    expect(inserts[0]).toMatchObject({ sender_type: 'bot' });
+    expect(inserts[0]).not.toHaveProperty('sender_id');
+  });
+});
+

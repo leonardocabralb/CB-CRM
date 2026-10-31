@@ -68,7 +68,12 @@ import {
   templateBodyParams,
   templateContentText,
 } from '@/lib/whatsapp/template-body';
+import {
+  buildSendComponents,
+  type SendTimeParams,
+} from '@/lib/whatsapp/template-send-builder';
 import { ehEvolution, ehInstagram, ehMeta } from '@/lib/cb-channels/transporte';
+import type { TentativaDoNucleo } from '@/lib/whatsapp/envio-que-falhou';
 
 export const MEDIA_KINDS = ['image', 'video', 'document', 'audio'] as const;
 export const VALID_MESSAGE_TYPES = [
@@ -82,15 +87,34 @@ export const VALID_MESSAGE_TYPES = [
  * Typed failure with a machine `code` and a suggested HTTP `status`.
  * Callers map it to their own response shape (`toErrorResponse` for
  * the dashboard route, the v1 envelope for the public endpoint).
+ *
+ * Na falha do PROVEDOR, `cause` carrega o erro cru dele (`EvolutionApiError`,
+ * `MetaApiError` ou o de rede): é por ele que a rota do compositor diz à bolha
+ * POR QUE não saiu (`motivoDaFalhaDoNucleo`) — o `code` junta "número sem
+ * WhatsApp" e "conexão fechada" no mesmo `evolution_rejected`. Não muda código
+ * nem status: a API v1 e a agendada continuam lendo os mesmos.
  */
 export class SendMessageError extends Error {
   readonly code: string;
   readonly status: number;
-  constructor(code: string, message: string, status: number) {
-    super(message);
+  /**
+   * Só na falha do PROVEDOR (a tentativa de verdade): o que este envio ia
+   * gravar. A rota do compositor o grava como bolha "não enviada", com quem
+   * tentou (31/10/2026, `registrarTentativaDaEquipe`); a agendada e a API v1
+   * ignoram — o contrato de falha delas é outro.
+   */
+  readonly tentativa?: TentativaDoNucleo;
+  constructor(
+    code: string,
+    message: string,
+    status: number,
+    options?: { cause?: unknown; tentativa?: TentativaDoNucleo },
+  ) {
+    super(message, options);
     this.name = 'SendMessageError';
     this.code = code;
     this.status = status;
+    this.tentativa = options?.tentativa;
   }
 }
 
@@ -608,6 +632,47 @@ export async function sendMessageToConversation(
     }
   }
 
+  // Interactive messages persist the body as content_text (so the
+  // conversation-list preview reads sensibly) plus the full structured
+  // payload so the thread can re-render the buttons / rows.
+  //
+  // Templates persist the *substituted* body. The composer pre-renders
+  // and posts it as contentText; every other caller (the public API,
+  // most importantly) sends none, and storing null there left the
+  // Inbox rendering an empty bubble — issue #483.
+  const persistedText =
+    messageType === 'interactive'
+      ? interactivePayload!.body
+      : messageType === 'template'
+        ? templateContentText(
+            templateRow,
+            templateBodyParams(templateParams, templateMessageParams),
+            contentText
+          )
+        : (textoFinal ?? contentText ?? null);
+
+  const lastMessageText =
+    messageType === 'interactive'
+      ? interactivePayloadPreviewText(interactivePayload!)
+      : persistedText || `[${messageType}]`;
+
+  // O que este envio gravaria, montado ANTES de chamar o provedor: se ele
+  // falhar, vai no erro (`SendMessageError.tentativa`) e a rota do
+  // compositor grava a bolha "não enviada" de quem tentou (31/10/2026).
+  const tentativa: TentativaDoNucleo = {
+    accountId,
+    conversationId,
+    canalId: channel.channelId,
+    contentType: messageType,
+    texto: persistedText,
+    previa: lastMessageText,
+    templateName: templateName || null,
+    mediaUrl: mediaUrl || null,
+    mediaFilename: filename || null,
+    interactivePayload: messageType === 'interactive' ? interactivePayload : null,
+    replyToMessageId: replyToMessageId || null,
+  };
+
   let waMessageId = '';
   let workingPhone = destinatario;
   // For Evolution rows: the recipient JID, persisted so reactions/replies
@@ -693,7 +758,8 @@ export async function sendMessageToConversation(
       throw new SendMessageError(
         recusa ? 'evolution_rejected' : 'evolution_error',
         `Evolution API error: ${message}`,
-        502
+        502,
+        { cause: err, tentativa }
       );
     }
     // Chave da Baileys para citar/reagir/apagar depois. Em grupo o JID JÁ é
@@ -776,6 +842,36 @@ export async function sendMessageToConversation(
       return result.messageId;
     };
 
+    // O modelo é MONTADO antes de qualquer tentativa, com os mesmos valores
+    // que o `attempt` entrega a `sendTemplateMessage` (19/10/2026). O que o
+    // `buildSendComponents` recusa — cabeçalho de mídia sem arquivo (o modelo
+    // criado direto no painel da Meta chega pela sincronização sem
+    // `header_media_url`), menos valores que as variáveis do corpo, variável
+    // do cabeçalho vazia, botão de URL sem o final — nunca chega à Meta.
+    // Lançado de dentro do `attempt`, virava `meta_error`, que diz "pode ter
+    // saído"; aqui é `bad_request`: nada saiu, e a frase diz o que falta. (Valor
+    // de corpo VAZIO ele não confere: vai à Meta, que recusa.) Vem antes do
+    // número na conversa sem número (abaixo): não houve tentativa por conexão
+    // nenhuma — como no robô, cuja checagem (`faltaNoModelo`) também vem antes.
+    if (messageType === 'template' && templateRow) {
+      const valores = templateMessageParams as SendTimeParams | undefined;
+      try {
+        buildSendComponents(templateRow, {
+          body: valores?.body ?? (templateParams || []),
+          headerText: valores?.headerText,
+          headerMediaUrl: valores?.headerMediaUrl,
+          headerMediaId: valores?.headerMediaId,
+          buttonParams: valores?.buttonParams,
+        });
+      } catch (err) {
+        throw new SendMessageError(
+          'bad_request',
+          `Template cannot be sent: ${err instanceof Error ? err.message : String(err)}`,
+          400
+        );
+      }
+    }
+
     // A TENTATIVA por esta conexão dá à conversa SEM número o número dela,
     // também quando o provedor recusa (decisão do operador, 06/10/2026): a
     // conversa aparece no filtro da conexão por onde se tentou. A que já tem
@@ -815,7 +911,10 @@ export async function sendMessageToConversation(
       const message =
         err instanceof Error ? err.message : 'Unknown Meta API error';
       console.error('[send-message] Meta send failed for all variants:', message);
-      throw new SendMessageError('meta_error', `Meta API error: ${message}`, 502);
+      throw new SendMessageError('meta_error', `Meta API error: ${message}`, 502, {
+        cause: err,
+        tentativa,
+      });
     }
 
     // ⚠️ Só com TELEFONE: sem o `ehTelefone`, o envio a um BSUID gravaria o
@@ -835,26 +934,8 @@ export async function sendMessageToConversation(
   }
 
   // Persist the sent message. Field names MUST match the messages
-  // schema (see 001_initial_schema.sql).
-  // Interactive messages persist the body as content_text (so the
-  // conversation-list preview reads sensibly) plus the full structured
-  // payload so the thread can re-render the buttons / rows.
-  //
-  // Templates persist the *substituted* body. The composer pre-renders
-  // and posts it as contentText; every other caller (the public API,
-  // most importantly) sends none, and storing null there left the
-  // Inbox rendering an empty bubble — issue #483.
-  const persistedText =
-    messageType === 'interactive'
-      ? interactivePayload!.body
-      : messageType === 'template'
-        ? templateContentText(
-            templateRow,
-            templateBodyParams(templateParams, templateMessageParams),
-            contentText
-          )
-        : (textoFinal ?? contentText ?? null);
-
+  // schema (see 001_initial_schema.sql). O texto (`persistedText`) e a
+  // prévia (`lastMessageText`) são montados antes do envio — ver a tentativa.
   const { data: messageRecord, error: msgError } = await db
     .from('messages')
     .insert({
@@ -910,11 +991,6 @@ export async function sendMessageToConversation(
     assignTo: senderUserId ?? null,
     via: senderUserId ? 'envio' : 'api',
   });
-
-  const lastMessageText =
-    messageType === 'interactive'
-      ? interactivePayloadPreviewText(interactivePayload!)
-      : persistedText || `[${messageType}]`;
 
   await db
     .from('conversations')

@@ -14,6 +14,10 @@ import {
   SendMessageError,
 } from '@/lib/whatsapp/send-message'
 import { alvoDeEnvio, FRASE_SO_NUMERO_OFICIAL } from '@/lib/whatsapp/alvo-de-envio'
+import {
+  motivoDaFalhaDoNucleo,
+  registrarTentativaDaEquipe,
+} from '@/lib/whatsapp/envio-que-falhou'
 
 // The dashboard's outbound-send endpoint. It owns auth, per-user rate
 // limiting, and the two ways the UI targets a thread — an existing
@@ -290,8 +294,28 @@ export async function POST(request: Request) {
       })
     } catch (err) {
       if (err instanceof SendMessageError) {
+        // `motivo` e `detalhe` são o que a bolha otimista diz (19/10/2026):
+        // "não saiu" com o porquê, ou "pode ter saído" — e só o primeiro
+        // ganha "Tentar de novo" (`falhaDaResposta`). Sem eles a bolha dizia
+        // "não entregue, envie de novo" a um número sem WhatsApp.
+        const { motivo, detalhe } = motivoDaFalhaDoNucleo(err)
+        // A falha do PROVEDOR vira bolha GRAVADA, com quem tentou (decisão do
+        // operador, 31/10/2026): os colegas veem e ela sobrevive à recarga. Só
+        // aqui, nunca no núcleo — a agendada e a API v1 têm o próprio contrato
+        // de falha. A recusa que parou no CRM (`barrado`) não chegou a conexão
+        // nenhuma e continua só na tela de quem tentou, como no robô.
+        // `mensagem_id` deixa a tela trocar a otimista pela linha gravada.
+        const mensagemId = err.tentativa
+          ? await registrarTentativaDaEquipe(supabase, err.tentativa, userId, err.cause ?? err)
+          : null
         return NextResponse.json(
-          { error: err.message },
+          {
+            error: err.message,
+            code: err.code,
+            motivo,
+            detalhe,
+            ...(mensagemId ? { mensagem_id: mensagemId } : {}),
+          },
           { status: err.status }
         )
       }
