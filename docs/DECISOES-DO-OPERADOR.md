@@ -102,8 +102,8 @@ qualquer uma é pergunta ao operador.
   bolha; fundo do fio a 15% (01/10/2026).
 - Envio que não saiu fica no fio como bolha "não enviada", PARA TODOS: a do
   robô (06/10/2026) e a da equipe (31/10/2026), inclusive a incerta ("pode
-  ter saído"). A da equipe não pausa a IA nem para a retomada; "Tentar de
-  novo" só para quem tentou, e a vermelha fica como registro
+  ter saído"). A da equipe — a incerta também — não pausa a IA nem para a
+  retomada; "Tentar de novo" só para quem tentou, e a vermelha fica como registro
   (`whatsapp-envio.md`).
 - Instagram: robô não responde no Direct; unificar fichas é manual; o que a
   API não cobre fica inacessível na conversa.

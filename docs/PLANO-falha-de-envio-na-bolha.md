@@ -37,7 +37,7 @@ Evolution trata `send.message` como "just ack"; `WEBHOOK_EVENTS` sem
 | Fase | O quê | Estado |
 |---|---|---|
 | 1 | Motivo na bolha otimista + "Tentar de novo" só em recusa comprovada | Implementada e testada na tela (19/10/2026); trazida para o `main` de 31/10/2026 no mesmo PR (#417) |
-| 2 | Gravar no banco a tentativa da equipe que falhou (vale para todos, sobrevive ao recarregar) | Decidida (31/10/2026) e implementada no PR #417, com a migration 1118; falta aplicar a 1118, CI, Codex e merge |
+| 2 | Gravar no banco a tentativa da equipe que falhou (vale para todos, sobrevive ao recarregar) | Decidida (31/10/2026) e implementada no PR #417; 1118 APLICADA em produção (31/10/2026); falta o merge |
 | 3 | "Conferir e reenviar" no caso incerto | Não recomendada; só depois de medir uma leitura confiável |
 
 ## Fase 1 — o que entra
@@ -186,9 +186,8 @@ Revisão independente (31/10/2026), corrigido no mesmo PR:
   falso — reproduzido no Postgres local) e só exercita a retomada quando a
   reserva diz `ok` antes da tentativa; o comentário da coluna fala da equipe.
 
-Pergunta em aberto ao operador: o INCERTO gravado (pode ter chegado) também
-não pausa a IA nem para a retomada — é a régua do robô, mas foram duas
-decisões separadas.
+Decidido pelo operador (31/10/2026, "Manter assim"): o INCERTO gravado (pode
+ter chegado) também não pausa a IA nem para a retomada — a régua do robô.
 
 Limites conhecidos:
 - A falha que vem da REDE do navegador (o pedido nem voltou) continua só na

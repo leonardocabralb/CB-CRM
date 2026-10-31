@@ -1709,6 +1709,22 @@ nome da época em que foram aplicadas.
   (desfeita). No preview, a primeira conferência de um grupo interno gravou as
   5 fichas de clientes, sem o número da conexão nem o de outra conexão da
   conta.
+- **1118_cb_tentativa_da_equipe_nao_e_resposta** — a tentativa da EQUIPE que
+  não saiu (`agent` + `sender_id` + `nao_saiu`, gravada pela rota do
+  compositor desde o PR #417) não é resposta de gente: o gatilho
+  `cb_pausa_ia_por_gente_trigger` ganha `NOT new.nao_saiu` (mantido o WHEN do
+  sinal da Lixeira) e o "a equipe respondeu" da `cb_ia_reservar_envio` ganha
+  `NOT m.nao_saiu` (corpo da 1080); o comentário de `messages.nao_saiu` fala
+  do robô e da equipe.
+
+  Pode ir ANTES do deploy (o app de antes nunca grava `agent` com
+  `nao_saiu`). Autorização do operador em 31/10/2026 ("Aplique a 1118", à
+  pergunta de aplicar a 1118 em produção), aplicada em 31/10/2026 (histórico
+  `20261031181116`) depois do replay verde do CI e da revisão limpa do Codex
+  no commit `963b05e4` do PR #417. Conferida: gatilho com a cerca e com o
+  sinal da Lixeira; uma `cb_ia_reservar_envio`, com a cerca, fechada ao
+  navegador e aberta ao `service_role`; comentário novo; zero linhas da
+  conferência (desfeita).
 
 ## Notas do histórico
 
