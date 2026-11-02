@@ -42,6 +42,23 @@ describe("ordenarComoOBanco", () => {
     expect(ordenarComoOBanco(lista).map((c) => c.id)).toEqual(["a", "b", "c"]);
   });
 
+  it("⚠️ a ordem não depende da ordem de chegada: a carga vem por `id`", () => {
+    const t = "2026-09-23T18:00:00Z";
+    const porId = [
+      conversa("a", "2026-09-01T00:00:00Z"),
+      conversa("b"),
+      conversa("c", t),
+      conversa("d", t),
+      conversa("e", "2026-10-01T00:00:00Z"),
+      conversa("f"),
+    ];
+    const esperada = ["e", "c", "d", "a", "b", "f"];
+    expect(ordenarComoOBanco(porId).map((c) => c.id)).toEqual(esperada);
+    expect(ordenarComoOBanco([...porId].reverse()).map((c) => c.id)).toEqual(esperada);
+    const embaralhada = [porId[3], porId[5], porId[0], porId[4], porId[1], porId[2]];
+    expect(ordenarComoOBanco(embaralhada).map((c) => c.id)).toEqual(esperada);
+  });
+
   it("devolve cópia e não toca a entrada (é estado do React)", () => {
     const lista = [conversa("a", "2026-09-01T00:00:00Z"), conversa("b", "2026-09-02T00:00:00Z")];
     const antes = lista.map((c) => c.id);
@@ -192,9 +209,21 @@ describe("pinos: quem usa a ordem", () => {
     expect(lista).not.toMatch(/aplicarFiltros\(\s*conversations\s*,/);
   });
 
-  it("a consulta da lista continua na ordem que ordenarComoOBanco espelha", () => {
-    expect(lista).toContain('.order("last_message_at", { ascending: false, nullsFirst: false })');
-    expect(lista).toContain('.order("id", { ascending: true })');
+  it("⚠️ a carga da lista pagina por CHAVE: a ordem da tela é só ordenarComoOBanco", () => {
+    // Por OFFSET sobre `last_message_at`, a conversa que recebia mensagem
+    // entre duas páginas subia para a página já lida e sumia da carga, e cada
+    // página montava e ordenava a lista inteira (406–443 × 129–145 ms).
+    const inicio = lista.indexOf("const resultado = await buscarPorChave<RawConversation>(");
+    const fim = lista.indexOf("onConversationsLoadedRef.current(normalizeConversations(");
+    expect(inicio).toBeGreaterThan(-1);
+    expect(fim).toBeGreaterThan(inicio);
+    const carga = lista.slice(inicio, fim);
+
+    expect(carga).toContain('consulta.gt("id", depoisDe)');
+    expect(carga).toContain('.order("id", { ascending: true })');
+    expect(carga).toContain(".limit(PAGINA)");
+    expect(carga).not.toContain("last_message_at");
+    expect(carga).not.toContain(".range(");
   });
 
   it("o tempo real da página não grava a hora da mensagem crua — passa por comMensagemNova", () => {

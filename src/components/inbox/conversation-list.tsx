@@ -7,7 +7,7 @@ import {
   normalizeConversations,
   type RawConversation,
 } from "@/lib/inbox/conversations";
-import { buscarPaginado } from "@/lib/supabase/paginar";
+import { buscarPaginado, buscarPorChave, PAGINA } from "@/lib/supabase/paginar";
 import {
   aplicarFiltros,
   canalDaConversa,
@@ -343,33 +343,36 @@ export function ConversationList({
     let cancelled = false;
 
     (async () => {
-      // ⚠️⚠️ PAGINADA desde 19/09/2026. Era uma consulta só, sem `range` e
-      // sem `count`, e o PostgREST corta em ~1000 linhas SEM AVISAR: passando
-      // de mil conversas, a caixa de entrada esconderia o excedente em
-      // silêncio, a busca (que atravessa as abas) deixaria de achar cliente
-      // que existe, e o contador "Exibindo N de M" mentiria. A consulta de
-      // `deals` logo abaixo já paginava por esta razão; esta, não. Hoje são
-      // ~970 conversas, crescendo ~30 por semana.
-      const resultado = await buscarPaginado<RawConversation>(
-        async (de, ate) => {
-          const { data, error, count } = await supabase
-            .from("conversations")
-            .select(CONVERSATION_SELECT, { count: "exact" })
-            // ⚠️ `nullsFirst: false` é load-bearing desde os grupos (906). Em
-            // ordem DECRESCENTE o Postgres põe NULL PRIMEIRO por padrão, e um
-            // grupo sincronizado em que ninguém falou ainda tem
-            // `last_message_at` nulo. Sem isto, ligar o interruptor num número
-            // com 58 grupos empurra as conversas ativas para baixo de 58 linhas
-            // vazias — o inbox vira inútil no exato instante em que o operador
-            // liga o recurso.
-            .order("last_message_at", { ascending: false, nullsFirst: false })
-            // ⚠️ E o desempate por `id`: as conversas SEM mensagem empatam
-            // todas em NULL, que é exatamente onde a página quebra.
-            .order("id", { ascending: true })
-            .range(de, ate);
-          return { data: (data ?? null) as RawConversation[] | null, error, count };
-        },
-      );
+      // ⚠️⚠️ PAGINADA desde 19/09/2026: o PostgREST corta em ~1000 linhas SEM
+      // AVISAR, e passando de mil conversas a caixa de entrada esconderia o
+      // excedente em silêncio, a busca (que atravessa as abas) deixaria de
+      // achar cliente que existe, e o contador "Exibindo N de M" mentiria.
+      //
+      // ⚠️⚠️ POR CHAVE (`id`) desde 02/11/2026, nunca por OFFSET sobre
+      // `last_message_at`. Medido em produção (3.943 conversas, RLS real): a
+      // página por OFFSET monta contato e etiquetas de TODAS as conversas e
+      // ordena tudo, 406–443 ms cada (6,5 MB em disco a partir da 2ª); por
+      // chave, só as mil da página, pelo índice `(id, account_id)`, 129–145 ms.
+      // Como a lista recarrega a cada volta à aba, duas ou três pessoas
+      // carregando juntas saturavam o banco. E o OFFSET errava: a conversa
+      // que recebe mensagem entre duas páginas SOBE para a página já lida e
+      // some da carga, enquanto a seguinte repete uma linha e a contagem
+      // fecha. O `id` não muda: mensagem nova não desloca ninguém (a mesma
+      // `buscarPorChave` do contador do menu).
+      //
+      // A ORDEM DA TELA não sai daqui: `ordenarComoOBanco` reordena a lista
+      // inteira antes do recorte — última mensagem primeiro e, sem mensagem,
+      // no FIM (load-bearing desde os grupos, 906: grupo sincronizado em que
+      // ninguém falou ainda tem `last_message_at` nulo, e no topo empurraria
+      // as ativas para baixo).
+      const resultado = await buscarPorChave<RawConversation>(async (depoisDe) => {
+        let consulta = supabase.from("conversations").select(CONVERSATION_SELECT);
+        if (depoisDe) consulta = consulta.gt("id", depoisDe);
+        const { data, error } = await consulta
+          .order("id", { ascending: true })
+          .limit(PAGINA);
+        return { data: (data ?? null) as RawConversation[] | null, error };
+      });
 
       if (cancelled) return;
 
@@ -681,12 +684,12 @@ export function ConversationList({
     [conversations, filtros.status, search],
   );
 
-  // ⚠️ REORDENADA na ordem da consulta sempre que a lista muda: o tempo real
-  // só atualiza as linhas no lugar, e sem isto a conversa que recebe
-  // mensagem nova ficava onde a carga a deixou — abaixo da dobra (ver
-  // `ordem-da-lista.ts`). Num memo próprio: o recorte roda a cada tecla e a
-  // cada minuto, a ordem só muda com `conversations`, e `aplicarFiltros` é
-  // um `.filter`, que preserva a ordem.
+  // ⚠️ É AQUI que a lista ganha a ordem da tela, sempre que muda: a carga vem
+  // por `id` (a paginação por chave) e o tempo real só atualiza as linhas no
+  // lugar, e sem isto a conversa que recebe mensagem nova ficava onde a carga
+  // a deixou — abaixo da dobra (ver `ordem-da-lista.ts`). Num memo próprio: o
+  // recorte roda a cada tecla e a cada minuto, a ordem só muda com
+  // `conversations`, e `aplicarFiltros` é um `.filter`, que preserva a ordem.
   const ordenadas = useMemo(() => ordenarComoOBanco(conversations), [conversations]);
 
   const filtered = useMemo(
