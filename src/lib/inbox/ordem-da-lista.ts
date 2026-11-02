@@ -1,16 +1,18 @@
 // ============================================================
 // Ordem da caixa de entrada entre uma carga e outra.
 //
-// A lista chega ORDENADA do banco (`last_message_at` decrescente, nulos no
-// fim, desempate por `id`), e daí em diante o tempo real só PATCHEAVA as
-// linhas no lugar: a conversa que recebia mensagem nova atualizava a hora e a
-// prévia, mas ficava onde estava. Medido em 23/09/2026 (relato do operador):
-// a conversa de teste recebeu mensagem e continuou na 3ª posição, abaixo de
-// uma de 12 minutos atrás — e, reaberta pela mensagem depois de encerrada,
-// apareceu na aba "Abertas" no lugar da carga, abaixo da dobra. Parecia que a
-// mensagem não tinha chegado; a busca a achava (é a única linha) e recarregar
-// a página "resolvia" (a carga reordena). Mudar de aba do navegador também
-// resolvia, pelo `visibilitychange`, e é por isso que passou despercebido.
+// A ordem da TELA (`last_message_at` decrescente, nulos no fim, desempate por
+// `id`) mora aqui, e só aqui: a carga traz a lista por `id` (a paginação por
+// chave, 02/11/2026, ver `conversation-list.tsx`) e o tempo real só atualiza
+// as linhas no lugar. Antes desta função, a conversa que recebia mensagem nova
+// atualizava a hora e a prévia, mas ficava onde estava. Medido em 23/09/2026
+// (relato do operador): a conversa de teste recebeu mensagem e continuou na 3ª
+// posição, abaixo de uma de 12 minutos atrás — e, reaberta pela mensagem depois
+// de encerrada, apareceu na aba "Abertas" no lugar da carga, abaixo da dobra.
+// Parecia que a mensagem não tinha chegado; a busca a achava (é a única linha)
+// e recarregar a página "resolvia" (a carga reordena). Mudar de aba do
+// navegador também resolvia, pelo `visibilitychange`, e é por isso que passou
+// despercebido.
 //
 // O que muda junto, por escrito (revisão por duas lentes):
 // · Conversa NOVA deixa de ir para o topo ao nascer: ela nasce sem
@@ -43,10 +45,11 @@ function instante(iso: string | null | undefined): number | null {
 }
 
 /**
- * A MESMA ordem da consulta da lista (`conversation-list.tsx`):
- * `.order("last_message_at", { ascending: false, nullsFirst: false })
- *  .order("id", { ascending: true })`. Mudou um lado, muda o outro — senão a
- * lista pula de ordem ao recarregar.
+ * A ordem da caixa de entrada: `last_message_at` decrescente, nulos no FIM,
+ * desempate por `id` crescente — a que a consulta da lista pedia ao banco até
+ * 02/11/2026, e que hoje só existe aqui (a carga pagina por `id`). O `id`
+ * desempata tudo, então a ordem é TOTAL: o resultado não depende da ordem em
+ * que a lista chega, e por isso a carga pode vir em qualquer ordem.
  *
  * Devolve CÓPIA; a entrada não é tocada (é estado do React).
  */

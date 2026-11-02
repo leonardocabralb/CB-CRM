@@ -10,7 +10,8 @@
  *  - a consulta de `deals` do filtro da caixa de entrada (PR #71): passar de
  *    1000 negócios derrubava o recorte por etapa PARA SEMPRE;
  *  - a RPC das trajetórias do funil (`src/lib/funil/carregar.ts`, 975);
- *  - o QUADRO do funil e a LISTA de conversas, consertados aqui.
+ *  - o QUADRO do funil e a LISTA de conversas, consertados aqui (a LISTA
+ *    passou a `buscarPorChave` em 02/11/2026).
  *
  * Quatro invariantes, e todas já foram violadas:
  *
@@ -41,8 +42,8 @@
  *     repete linha ou perde a NOVA. Quem precisar de velocidade aqui troca
  *     OFFSET por chave (keyset), não paraleliza.
  *
- * ⚠️ Recorte que MUDA enquanto se lê pede `buscarPorChave`, não este laço —
- * ver lá.
+ * ⚠️ Recorte ou ORDEM que MUDA enquanto se lê pede `buscarPorChave`, não este
+ * laço — ver lá.
  *
  * ⚠️ `src/lib/funil/carregar.ts` NÃO usa este laço: desde a 1078 ela pagina
  * a RPC das trajetórias por CHAVE (`deal_id`), em quatro faixas disjuntas em
@@ -137,6 +138,14 @@ export async function buscarPaginado<T>(
  * recorte não desloca as outras linhas. Não precisa de `count`: a página
  * seguinte começa depois do último visto, então página curta é o fim — e,
  * com as `MAX_PAGINAS` cheias, uma sondagem vazia também.
+ *
+ * ⚠️⚠️ E quando a ORDEM muda enquanto se lê: a lista de conversas ordenava por
+ * `last_message_at`, que muda a cada mensagem. A conversa que SUBIA entre duas
+ * páginas não vinha em nenhuma, e a seguinte repetia uma linha, com a contagem
+ * fechando. Por `id`, que não muda, isso não existe, e o banco também deixa de
+ * montar e ordenar a coleção inteira a cada página (um terço do custo na
+ * lista, medido em 02/11/2026). Quem precisa de outra ordem na tela a aplica
+ * na memória, depois da carga (`ordenarComoOBanco`).
  *
  * `pagina(depoisDe)` tem de ordenar por `id` ASCENDENTE, limitar a `PAGINA`
  * e, com `depoisDe` preenchido, filtrar `.gt('id', depoisDe)`.
