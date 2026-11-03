@@ -115,6 +115,10 @@ qualquer uma é pergunta ao operador.
 - Celular: no toque o Enter pula linha; o app instalado abre em `/inbox`.
 - "Sair" do menu sai só deste aparelho; 4 h inativo reabre o Meu dia, sem
   senha.
+- Sessão conferida pela assinatura no middleware: "Sair de todos os
+  aparelhos" e login apagado tiram as TELAS dos outros aparelhos em até 1 h
+  (o vencimento do token), não no próximo clique; as rotas recusam na hora.
+  Encurtar o token para 15 min foi oferecido e recusado (03/11/2026).
 - Celular do membro: EXIGIDO ao abrir o CRM, não só no login (26/09/2026).
 - Contatos relacionados: vínculo PAR A PAR, visto dos dois lados, com
   descrição opcional; quem edita contato vincula; faixa "Voltar para" de um

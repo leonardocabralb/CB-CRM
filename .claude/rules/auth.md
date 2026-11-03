@@ -151,3 +151,33 @@ operador).
   `/radar`); as rotas de senha e de convite ficam fora. Pino
   `src/middleware.test.ts` (do original, #607): lê a pasta `(dashboard)` e
   reprova a tela que faltar.
+
+### `middleware.ts`: a sessão conferida pela assinatura
+
+- ⚠️⚠️ **`getClaims()`, nunca `getUser()`** (03/11/2026). Os tokens são ES256
+  com `kid`: a biblioteca confere a assinatura com as chaves públicas em cache
+  (10 min, global no processo) e só vai à rede para RENOVAR o token. O
+  `getUser()` fazia um `GET /auth/v1/user` por pedido, cada um
+  com uma vaga no banco, e no teto de conexões o 500 dele mandava ao login
+  quem estava logado. As ROTAS seguem no `getUser()` (`getCurrentAccount`).
+  Pinos: `middleware.test.ts` conta as chamadas ao `getUser`;
+  `middleware.assinatura.test.ts` roda a biblioteca real.
+- **Troca aceita** (decisão do operador, 03/11/2026): "Sair de todos os
+  aparelhos" e login apagado tiram a pessoa da TELA no vencimento do token
+  (`jwt_exp` 3600 s), não na próxima navegação; até lá, `/login` devolve ao
+  painel. O banco (PostgREST) já aceitava o token até vencer; as rotas
+  recusam na hora.
+- ⚠️ **Login que não respondeu não é "saiu"** (`sessaoIncerta`:
+  `AuthRetryableFetchError` ao renovar o token ou ao buscar as chaves — o
+  cache delas vence a cada 10 min —, ou erro que não é da biblioteca): a
+  tela abre, e o navegador renova sozinho; a API de `/api/whatsapp/` segue
+  até a ROTA, que confere o login por conta própria. Por isso toda rota ali
+  chama `requireRole`/`getCurrentAccount`/`auth.getUser()` (ou é webhook, ou
+  só responde 410): pino no `middleware.test.ts`, que reprova rota nova sem
+  conferência.
+- ⚠️ **`getCurrentAccount` repete UMA vez e recusa com o MESMO 401**: a bolha
+  de envio lê 401 como "barrado, tente de novo" e 5xx como "pode ter saído"
+  (`falhaDaResposta`). Nunca trocar esse 401 por 503.
+- A renovação que falha com 5xx é repetida pela biblioteca por até ~30 s
+  (espera crescente) antes de o pedido decidir — já era assim no `getUser()`.
+

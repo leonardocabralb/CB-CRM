@@ -1,4 +1,5 @@
 import { createServerClient } from '@supabase/ssr'
+import { isAuthRetryableFetchError } from '@supabase/supabase-js'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
@@ -23,9 +24,41 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
+  // A sessão é conferida AQUI, pela assinatura do token (getClaims: chaves
+  // públicas do projeto em cache por 10 min), sem perguntar ao serviço de
+  // login a cada pedido: o getUser() custava um GET /auth/v1/user por
+  // navegação, cada um com uma vaga no banco, e no teto de conexões o 500
+  // dele mandava ao login quem estava logado. As ROTAS continuam no
+  // getUser() (`getCurrentAccount`). Troca aceita: "Sair de todos os
+  // aparelhos" e o login apagado tiram a pessoa da TELA no vencimento do
+  // token (até 1 h), não na próxima navegação; o banco já aceitava esse
+  // token até vencer.
+  //
+  // `sessaoIncerta`: o login não respondeu (5xx/rede, `AuthRetryableFetchError`)
+  // ao renovar o token ou ao buscar as chaves (o cache delas vence a cada
+  // 10 min). Não é "saiu": a tela abre e o navegador renova sozinho; a API
+  // segue até a rota, que confere o login por conta própria (`requireRole`/
+  // `getUser`; pino no `middleware.test.ts`). Sem isso, as chaves fora do ar
+  // por um instante dariam 401 a todo envio, mesmo com o login respondendo.
+  let logado = false
+  let sessaoIncerta = false
+  try {
+    const { data, error } = await supabase.auth.getClaims()
+    logado = Boolean(data?.claims?.sub)
+    if (!logado && error && isAuthRetryableFetchError(error)) {
+      sessaoIncerta = true
+      console.warn('[middleware] o login não respondeu; sessão incerta neste pedido:', error.status)
+    }
+  } catch (err) {
+    // Só erro que não é da biblioteca chega aqui (a WebCrypto recusando a
+    // chave, um cookie corrompido); quem não tem cookie de sessão nunca passa
+    // por este ramo. O token ainda é conferido pelo banco a cada leitura da
+    // tela.
+    console.error('[middleware] a conferência da sessão lançou:', err)
+    sessaoIncerta = true
+  }
 
-  // getUser() transparently refreshes an expired access token, which
+  // getClaims() transparently refreshes an expired access token, which
   // ROTATES the refresh token and writes the new cookies onto
   // `supabaseResponse` via setAll() above. Any response we return in
   // place of `supabaseResponse` (every redirect / JSON branch below)
@@ -48,7 +81,7 @@ export async function middleware(request: NextRequest) {
   // they can accept the invitation in one click. Without this,
   // a forwarded invite link to someone who's already signed in
   // would silently drop them on /dashboard.
-  if (user && (
+  if (logado && (
     request.nextUrl.pathname === '/login' ||
     request.nextUrl.pathname === '/signup' ||
     request.nextUrl.pathname === '/forgot-password'
@@ -78,14 +111,14 @@ export async function middleware(request: NextRequest) {
   // se chamar `/marcar/<token>`, nunca `/agendar/<token>`: esta linha mandaria
   // o cliente, que não tem login, para a tela de login.
   const protectedPaths = ['/dashboard', '/meu-dia', '/radar', '/inbox', '/contacts', '/agenda', '/reunioes', '/pipelines', '/broadcasts', '/automations', '/flows', '/agents', '/notifications', '/tarefas', '/settings']
-  if (!user && protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
+  if (!logado && !sessaoIncerta && protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return withRefreshedCookies(NextResponse.redirect(url))
   }
 
   // API routes that need auth (not webhooks)
-  if (!user && request.nextUrl.pathname.startsWith('/api/whatsapp/') &&
+  if (!logado && !sessaoIncerta && request.nextUrl.pathname.startsWith('/api/whatsapp/') &&
       !request.nextUrl.pathname.includes('/webhook')) {
     return withRefreshedCookies(
       NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
