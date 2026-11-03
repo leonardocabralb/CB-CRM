@@ -1,16 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { NextRequest } from "next/server";
+import { AuthApiError, AuthRetryableFetchError } from "@supabase/supabase-js";
 
 // --- Scenario knobs the mock reads -----------------------------------------
-// `mockUser`         — what getUser() resolves to (a refreshed session ⇒ user,
-//                      or null for the logged-out path).
-// `refreshedCookies` — cookies Supabase writes via setAll() during getUser(),
+// `mockUser`         — whose verified token getClaims() resolves to (a
+//                      refreshed session ⇒ user, or null for the logged-out path).
+// `mockErro`         — the error getClaims() returns when there is no user
+//                      (null = no session at all).
+// `mockLanca`        — what getClaims() throws (an error that is not the
+//                      library's own), or null.
+// `refreshedCookies` — cookies Supabase writes via setAll() during getClaims(),
 //                      i.e. the freshly *rotated* auth token. The whole point
 //                      of the test is that these must survive onto whatever
 //                      response the middleware returns — including redirects.
 let mockUser: { id: string } | null = null;
+let mockErro: unknown = null;
+let mockLanca: unknown = null;
+let chamadasAoGetUser = 0;
 let refreshedCookies: Array<{
   name: string;
   value: string;
@@ -27,11 +35,21 @@ vi.mock("@supabase/ssr", () => ({
   ) => ({
     auth: {
       // Mirrors real auth-js: an expired access token is transparently
-      // refreshed inside getUser(), which rotates the refresh token and
-      // pushes the new cookies through setAll() before resolving.
-      getUser: async () => {
+      // refreshed inside getClaims() (through getSession()), which rotates
+      // the refresh token and pushes the new cookies through setAll()
+      // before resolving.
+      getClaims: async () => {
         if (refreshedCookies.length) opts.cookies.setAll(refreshedCookies);
-        return { data: { user: mockUser } };
+        if (mockLanca) throw mockLanca;
+        return mockUser
+          ? { data: { claims: { sub: mockUser.id } }, error: null }
+          : { data: null, error: mockErro };
+      },
+      // A conferência por pedido não pergunta ao serviço de login: contar
+      // as chamadas prova que o middleware não voltou ao getUser().
+      getUser: async () => {
+        chamadasAoGetUser += 1;
+        return { data: { user: mockUser }, error: null };
       },
     },
   }),
@@ -44,6 +62,9 @@ beforeEach(() => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://test.supabase.co";
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-key";
   mockUser = null;
+  mockErro = null;
+  mockLanca = null;
+  chamadasAoGetUser = 0;
   refreshedCookies = [];
 });
 
@@ -75,7 +96,7 @@ describe("middleware — refreshed auth cookies survive redirects", () => {
 
   it("carries the rotated token when redirecting an unauth user to /login", async () => {
     mockUser = null;
-    // Even on the logged-out path getUser() may emit cookie writes (e.g.
+    // Even on the logged-out path getClaims() may emit cookie writes (e.g.
     // clearing a dead session); those must not be dropped on the redirect.
     refreshedCookies = [{ ...ROTATED, value: "cleared" }];
 
@@ -136,5 +157,146 @@ describe("middleware — every dashboard route requires a session", () => {
 
     expect(res.status).toBe(307);
     expect(new URL(res.headers.get("location")!).pathname).toBe("/login");
+  });
+});
+
+describe("middleware — a sessão é conferida sem perguntar ao login", () => {
+  it("não chama getUser() em nenhum caminho", async () => {
+    mockUser = { id: "user-1" };
+    await middleware(new NextRequest("https://app.test/dashboard"));
+    await middleware(new NextRequest("https://app.test/login"));
+    await middleware(new NextRequest("https://app.test/api/whatsapp/send"));
+    mockUser = null;
+    await middleware(new NextRequest("https://app.test/inbox"));
+
+    expect(chamadasAoGetUser).toBe(0);
+  });
+
+  it.each(["/signup", "/forgot-password"])(
+    "leva quem está logado de %s ao /dashboard",
+    async (rota) => {
+      mockUser = { id: "user-1" };
+
+      const res = await middleware(new NextRequest(`https://app.test${rota}`));
+
+      expect(new URL(res.headers.get("location")!).pathname).toBe("/dashboard");
+    },
+  );
+
+  it("deixa a API passar para quem está logado", async () => {
+    mockUser = { id: "user-1" };
+
+    const res = await middleware(new NextRequest("https://app.test/api/whatsapp/send"));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  it("recusa a API de quem não tem sessão com o 401 de sempre", async () => {
+    const res = await middleware(new NextRequest("https://app.test/api/whatsapp/send"));
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "Unauthorized" });
+  });
+
+  it("deixa o webhook passar sem sessão", async () => {
+    const res = await middleware(new NextRequest("https://app.test/api/whatsapp/webhook"));
+
+    expect(res.status).toBe(200);
+  });
+
+  it("leva ao login quando a renovação do token é RECUSADA (sessão morta)", async () => {
+    mockErro = new AuthApiError("Invalid Refresh Token: Refresh Token Not Found", 400, "refresh_token_not_found");
+    refreshedCookies = [{ ...ROTATED, value: "" }];
+
+    const res = await middleware(new NextRequest("https://app.test/inbox"));
+
+    expect(new URL(res.headers.get("location")!).pathname).toBe("/login");
+    expect(res.cookies.get(ROTATED.name)?.value).toBe("");
+  });
+});
+
+describe("middleware — o login que não respondeu não é 'saiu'", () => {
+  beforeEach(() => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  const LOGIN_FORA_DO_AR = () => new AuthRetryableFetchError("Internal Server Error", 500);
+
+  it.each(["/dashboard", "/inbox", "/settings", "/agendadas"])(
+    "abre %s sem mandar ao login",
+    async (rota) => {
+      mockErro = LOGIN_FORA_DO_AR();
+
+      const res = await middleware(new NextRequest(`https://app.test${rota}`));
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("location")).toBeNull();
+    },
+  );
+
+  it("também quando a rede caiu (status 0)", async () => {
+    mockErro = new AuthRetryableFetchError("fetch failed", 0);
+
+    const res = await middleware(new NextRequest("https://app.test/inbox"));
+
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  it("não leva ao /dashboard quem está no /login (não sabemos se está logado)", async () => {
+    mockErro = LOGIN_FORA_DO_AR();
+
+    const res = await middleware(new NextRequest("https://app.test/login"));
+
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  it("a API segue até a rota, que confere o login sozinha", async () => {
+    // As chaves públicas vencem no cache a cada 10 min: se o login falhar
+    // nesse instante, um 401 aqui recusaria TODO envio, mesmo com a rota
+    // capaz de conferir a sessão pelo getUser().
+    mockErro = LOGIN_FORA_DO_AR();
+
+    const res = await middleware(new NextRequest("https://app.test/api/whatsapp/send"));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  it("um erro que não é da biblioteca não derruba o pedido nem manda ao login", async () => {
+    mockLanca = new TypeError("chave recusada pela WebCrypto");
+    const erro = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const tela = await middleware(new NextRequest("https://app.test/inbox"));
+    const api = await middleware(new NextRequest("https://app.test/api/whatsapp/send"));
+
+    expect(tela.headers.get("location")).toBeNull();
+    expect(api.status).toBe(200);
+    expect(erro).toHaveBeenCalled();
+    erro.mockRestore();
+  });
+});
+
+describe("middleware — toda rota de /api/whatsapp confere o login sozinha", () => {
+  // Com a sessão INCERTA (o login não respondeu), o middleware deixa a API
+  // seguir até a rota. Isso só é seguro porque cada rota confere o login por
+  // conta própria. Rota nova aqui sem essa conferência reprova: ou ela chama
+  // `requireRole`/`getCurrentAccount`/`auth.getUser()`, ou é webhook (fica
+  // fora do middleware), ou é rota aposentada que só responde 410.
+  const raiz = join(__dirname, "app", "api", "whatsapp");
+  const rotas = (readdirSync(raiz, { recursive: true }) as string[])
+    .filter((caminho) => caminho.endsWith("route.ts"))
+    .filter((caminho) => !caminho.includes("webhook"));
+
+  it("acha as rotas", () => {
+    expect(rotas.length).toBeGreaterThan(5);
+  });
+
+  it.each(rotas)("%s", (caminho) => {
+    const fonte = readFileSync(join(raiz, caminho), "utf8");
+    const conferePorContaPropria = /requireRole\(|getCurrentAccount\(|auth\.getUser\(/.test(fonte);
+    const soAposentada = fonte.includes("status: 410") && !/supabase|createClient/i.test(fonte);
+
+    expect(conferePorContaPropria || soAposentada).toBe(true);
   });
 });

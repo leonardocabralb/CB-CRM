@@ -26,10 +26,16 @@
 // ============================================================
 
 import { NextResponse } from "next/server";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  isAuthRetryableFetchError,
+  type SupabaseClient,
+} from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasMinRole, isAccountRole, type AccountRole } from "./roles";
+
+/** A pausa antes da segunda pergunta ao login que não respondeu. */
+const ESPERA_ANTES_DE_REPETIR_O_LOGIN_MS = 300;
 
 // ------------------------------------------------------------
 // Errors
@@ -106,10 +112,26 @@ export interface AccountContext {
 export async function getCurrentAccount(): Promise<AccountContext> {
   const supabase = await createClient();
 
+  let resposta = await supabase.auth.getUser();
+  if (resposta.error && isAuthRetryableFetchError(resposta.error)) {
+    // O login não respondeu (5xx/rede: o 500 dele quando o banco está no teto
+    // de conexões). Isso não é "saiu": uma nova tentativa antes de recusar.
+    // Ela vale para o GET /user; a renovação do token que falhou não se
+    // repete (a biblioteca guarda a falha por 60 s no mesmo cliente).
+    // Persistindo, fica o 401 de sempre, de propósito: a bolha de envio o lê
+    // como "barrado, tente de novo"; um 5xx ela leria como "pode ter saído"
+    // (`falhaDaResposta`, `falha-do-envio.ts`).
+    console.warn(
+      "[getCurrentAccount] o login não respondeu; nova tentativa:",
+      resposta.error.status,
+    );
+    await new Promise((r) => setTimeout(r, ESPERA_ANTES_DE_REPETIR_O_LOGIN_MS));
+    resposta = await supabase.auth.getUser();
+  }
   const {
     data: { user },
     error: userErr,
-  } = await supabase.auth.getUser();
+  } = resposta;
   if (userErr || !user) {
     throw new UnauthorizedError();
   }

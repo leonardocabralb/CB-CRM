@@ -1,4 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  AuthApiError,
+  AuthRetryableFetchError,
+  AuthSessionMissingError,
+} from "@supabase/supabase-js";
+
+import { falhaDaResposta } from "@/lib/inbox/falha-do-envio";
 
 // getCurrentAccount resolves the caller's account context. The
 // regression this file guards (issue #294): account loading must NOT
@@ -66,9 +73,8 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: () => createClient(),
 }));
 
-const { getCurrentAccount, UnauthorizedError, ForbiddenError } = await import(
-  "./account"
-);
+const { getCurrentAccount, toErrorResponse, UnauthorizedError, ForbiddenError } =
+  await import("./account");
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -172,5 +178,79 @@ describe("getCurrentAccount", () => {
     await expect(getCurrentAccount()).rejects.toThrow(
       "Profile is not linked to an account",
     );
+  });
+});
+
+// O login que não responde (o 500 dele com o banco no teto de conexões, ou
+// a rede) não é "não está logado": uma nova tentativa antes de recusar. E,
+// persistindo, a recusa é o MESMO 401 de antes — a bolha de envio o lê como
+// "barrado, tente de novo"; um 5xx viraria "pode ter saído".
+describe("getCurrentAccount — o login que não respondeu", () => {
+  const PERFIL = {
+    profiles: { data: { account_id: "acct-1", account_role: "agent" }, error: null },
+    accounts: { data: { id: "acct-1", name: "Acme" }, error: null },
+  };
+
+  function clienteComRespostas(...respostas: Array<{ user: { id: string } | null; error: unknown }>) {
+    const { client } = makeClient({ user: null, byTable: PERFIL });
+    const getUser = vi.fn();
+    for (const r of respostas) {
+      getUser.mockResolvedValueOnce({ data: { user: r.user }, error: r.error });
+    }
+    client.auth.getUser = getUser;
+    createClient.mockReturnValue(client);
+    return getUser;
+  }
+
+  it("tenta de novo e segue com a segunda resposta", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const getUser = clienteComRespostas(
+      { user: null, error: new AuthRetryableFetchError("Internal Server Error", 500) },
+      { user: { id: "user-1" }, error: null },
+    );
+
+    const ctx = await getCurrentAccount();
+
+    expect(ctx).toMatchObject({ userId: "user-1", accountId: "acct-1", role: "agent" });
+    expect(getUser).toHaveBeenCalledTimes(2);
+  });
+
+  it("persistindo, recusa com o 401 de sempre (nunca 5xx) depois de UMA nova tentativa", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const getUser = clienteComRespostas(
+      { user: null, error: new AuthRetryableFetchError("Internal Server Error", 500) },
+      { user: null, error: new AuthRetryableFetchError("fetch failed", 0) },
+    );
+
+    const err = await getCurrentAccount().catch((e) => e);
+    const resposta = toErrorResponse(err);
+
+    expect(err).toBeInstanceOf(UnauthorizedError);
+    expect(resposta.status).toBe(401);
+    expect(getUser).toHaveBeenCalledTimes(2);
+    // O contrato que o 401 preserva na bolha de envio: "barrado, tente de
+    // novo". Um 5xx viraria "pode ter saído", sem botão de reenviar.
+    expect(falhaDaResposta(resposta.status, await resposta.json())).toMatchObject({
+      motivo: "barrado",
+      podeTentarDeNovo: true,
+    });
+    expect(falhaDaResposta(503, {})).toMatchObject({ motivo: "incerto", podeTentarDeNovo: false });
+  });
+
+  it("a recusa definitiva do login não se repete", async () => {
+    const getUser = clienteComRespostas({
+      user: null,
+      error: new AuthApiError("Session from session_id claim in JWT does not exist", 403, "session_not_found"),
+    });
+
+    await expect(getCurrentAccount()).rejects.toBeInstanceOf(UnauthorizedError);
+    expect(getUser).toHaveBeenCalledTimes(1);
+  });
+
+  it("sem sessão não se repete", async () => {
+    const getUser = clienteComRespostas({ user: null, error: new AuthSessionMissingError() });
+
+    await expect(getCurrentAccount()).rejects.toBeInstanceOf(UnauthorizedError);
+    expect(getUser).toHaveBeenCalledTimes(1);
   });
 });
