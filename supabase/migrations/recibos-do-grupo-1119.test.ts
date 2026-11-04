@@ -33,15 +33,34 @@ describe('1119 — a função que grava o recibo e conta os da mensagem', () => 
     expect(funcao).toMatch(/hashtextextended\(p_account_id::text \|\| '\|' \|\| p_message_id/);
   });
 
-  it('é VOLATILE e em instruções separadas: a contagem tira foto depois da trava', () => {
+  it('⚠️ é VOLATILE e em TRÊS instruções separadas, a trava sozinha na primeira: numa só (CTE), a contagem usaria a foto de antes da trava', () => {
     expect(funcao).toMatch(/LANGUAGE sql\s+VOLATILE/);
     expect(funcao).toMatch(/SECURITY INVOKER/);
+    const corpo = funcao.slice(funcao.indexOf('$$') + 2, funcao.lastIndexOf('$$'));
+    const instrucoes = corpo
+      .split(';')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    expect(instrucoes).toHaveLength(3);
+    expect(instrucoes[0]).toMatch(/^SELECT pg_advisory_xact_lock\([^;]*\)$/);
+    expect(instrucoes[1]).toMatch(/^INSERT INTO public\.cb_recibos_do_grupo/);
+    expect(instrucoes[2]).toMatch(/^SELECT count\(\*\)/);
   });
 
   it('só avança: recibo repetido ou fora de ordem não apaga nem atrasa', () => {
     expect(funcao).toContain('entregue_em = LEAST(r.entregue_em, EXCLUDED.entregue_em)');
     expect(funcao).toContain('lida_em = LEAST(r.lida_em, EXCLUDED.lida_em)');
-    expect(funcao).toContain('telefone = COALESCE(EXCLUDED.telefone, r.telefone)');
+    expect(funcao).toContain('contact_id = COALESCE(EXCLUDED.contact_id, r.contact_id)');
+  });
+
+  it('⚠️ o TELEFONE de quem recebeu não é guardado (decisão do operador de 29/10/2026): só a ficha', () => {
+    const tabela = codigo.slice(
+      codigo.indexOf('CREATE TABLE IF NOT EXISTS public.cb_recibos_do_grupo'),
+      codigo.indexOf('CREATE INDEX IF NOT EXISTS cb_recibos_do_grupo_grupo_idx'),
+    );
+    expect(tabela).not.toMatch(/telefone|phone/i);
+    expect(funcao).not.toMatch(/p_telefone|telefone/);
+    expect(tabela).toContain('contact_id uuid');
   });
 
   it('o grupo é procurado NESTA conta (o de outra conta não grava nada)', () => {

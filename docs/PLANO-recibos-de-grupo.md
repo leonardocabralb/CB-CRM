@@ -52,7 +52,7 @@ chegado (ele conferiu no WhatsApp).
 | Fase | O quê | Estado |
 |---|---|---|
 | 1 | O ERROR de grupo não vira "não entregue" | Implementada na branch `fix/erro-de-grupo-nao-e-falha` (04/11/2026); falta PR, CI e merge |
-| 2 | ✓✓ e azul em grupo, e "Dados da mensagem" (quem recebeu e quem leu) | Decidida (D1–D3 e D5, 04/11/2026) e implementada na branch `feat/recibos-de-grupo`, que já traz a Fase 1; falta: PR, CI, aplicar a 1119 (antes do deploy), merge, a imagem nova, a troca na VPS e a prova num grupo de teste. D4 pendente |
+| 2 | ✓✓ e azul em grupo, e "Dados da mensagem" (quem recebeu e quem leu) | Decidida (D1–D3 e D5, 04/11/2026) e implementada na branch `feat/recibos-de-grupo`, que já traz a Fase 1; revisão independente feita e corrigida (abaixo); falta: PR, CI, aplicar a 1119 (antes do deploy), merge, a imagem nova, a troca na VPS e a prova num grupo de teste. D4 e D6 pendentes |
 
 ## Fase 1 — o ERROR de grupo não vira falha
 
@@ -102,10 +102,12 @@ leram, e "Dados da mensagem" diz quem recebeu e quem leu, com hora.
      mesmo PR (`deploy.md`).
 2. **Migration** (número = maior do `main` + 1 na hora; ADITIVA, antes do
    deploy):
-   - `cb_recibos_do_grupo`: conta, `message_id` do WhatsApp, participante (a
-     chave de pessoa do telefone quando há; senão o LID), `entregue_em`,
-     `lida_em`; PK (conta, `message_id`, participante). Só o servidor
-     escreve; leitura por membro na forma da 1032; nada para `anon`.
+   - `cb_recibos_do_grupo`: conta, grupo, `message_id` do WhatsApp,
+     participante (o JID como chegou, sem o aparelho: quase sempre o LID), a
+     ficha (`contact_id`, sem FK, achada pelo telefone da chegada),
+     `entregue_em`, `lida_em`; PK (conta, `message_id`, participante). Nunca
+     o telefone à parte (a D4 de 29/10, `grupos.md`). Só o servidor escreve;
+     leitura por membro na forma da 1032; nada para `anon`.
    - `cb_groups.participantes_de_fora` (int, nulo = não sei): quantos
      participantes NÃO são números da conta, gravado na mesma conferência que
      já grava `participant_count` e as fichas (`fichasParaGravar` e
@@ -126,11 +128,12 @@ leram, e "Dados da mensagem" diz quem recebeu e quem leu, com hora.
      volta a marcar falha (ex.: conta restrita); sem código (imagem sem o
      patch) segue ignorado.
 4. **Tela:** "Dados da mensagem" na barra de ações da bolha de grupo enviada
-   pela equipe: "Lida por" e "Entregue a", com nome e hora. O nome segue
-   `nomes-dos-participantes.ts` (a ficha pelo telefone; senão o nome com que a
-   pessoa escreveu no grupo; senão o telefone; sem telefone, "Número oculto").
-   Rota de leitura por mensagem, recortada pela conta. "Ainda não recebeu"
-   pede a lista ao vivo (`findGroupInfos`, ~0,8 s) — D2.
+   pela equipe: "Lida por" e "Entregue a", com nome e hora. O nome: a ficha
+   gravada com o recibo; senão `nomes-dos-participantes.ts` (o nome com que a
+   pessoa escreveu no grupo); sem nenhum, "Número oculto", nunca o LID. O
+   telefone só aparece quando o participante é um JID de telefone. Rota de
+   leitura por mensagem, recortada pela conta. Sem leitura ao vivo (D2): não
+   há "ainda não recebeu".
 5. **Docs e regras:** `docs/webhooks.md`; `whatsapp-evolution.md`;
    `grupos.md`; `ingestao.md` (no teto: condensar antes de acrescentar);
    `inbox-conversa.md`; `docs/INFRA-VPS.md` (a troca de imagem);
@@ -143,9 +146,33 @@ leram, e "Dados da mensagem" diz quem recebeu e quem leu, com hora.
 ### Riscos e limites
 
 - **O denominador envelhece:** quem entrou no grupo depois da última
-  conferência (até 24 h, ou até alguém abrir o painel) não conta, e o ✓✓ pode
-  sair antes de ele receber; quem saiu conta, e a bolha fica em ✓ até a
-  conferência seguinte. O detalhe nunca afirma nada de quem não mandou recibo.
+  conferência (até 24 h, ou até alguém abrir o painel) fica fora do
+  denominador, mas o recibo dele conta: o ✓✓ pode sair com um participante
+  ORIGINAL ainda sem receber (a tela esconde o "N de M" quando N passa de M).
+  Quem saiu conta, e a bolha fica em ✓ até a conferência seguinte. O detalhe
+  nunca afirma nada de quem não mandou recibo.
+- **Duas conferências juntas (revisão, B5b, aceito):** o denominador é
+  gravado depois da `cb_gravar_fichas_do_grupo`, fora da trava do grupo. O
+  painel e a chegada conferindo ao mesmo tempo podem deixar o número da
+  leitura mais velha, até a conferência seguinte.
+- **A chave é o JID como chegou (B9):** num grupo migrando para LID, a
+  entrega como `…@s.whatsapp.net` e a leitura como `…@lid` viram duas linhas
+  da mesma pessoa, e o ✓✓ sai antes da hora. Raro; trocar a chave não
+  resolveria o caso em que o par do LID só aparece depois.
+- **A trava ocupa conexão (B10):** cada recibo espera a trava da mensagem
+  segurando uma conexão do PostgREST, e a contagem percorre os recibos da
+  mensagem (O(N) por recibo). Nos grupos de 3 a 6 pessoas não pesa; num grupo
+  grande (D5, sem teto) as chamadas enfileiram num banco que vive no teto de
+  conexões. Sem `lock_timeout` de propósito: o recibo recusado se perderia e
+  a bolha ficaria em ✓.
+- **Conexão com grupos desligados (M1):** não grava recibo nenhum; o envio
+  do CRM a um grupo por ela (configuração incoerente) fica em ✓.
+- **Guardado sem prazo (M2):** os recibos ficam enquanto o grupo existir
+  (CASCADE com o grupo e a conta). O "Excluir agora" da Lixeira (1097) não os
+  alcança: a ficha apagada deixa o `contact_id` solto (a tela cai para o nome
+  do grupo) e o JID do participante fica, como já ficam as mensagens dele no
+  grupo (`messages.group_sender_jid`). No grupo endereçado por telefone
+  (raro), esse JID é o número. Prazo e exclusão: D6.
 - **Nosso outro número contado como de fora** (sem `own_lid` e sem o par do
   LID) anteciparia o ✓✓. A cobertura é o `participantAlt`; medir no grupo de
   teste antes de ligar.
@@ -176,13 +203,16 @@ leram, e "Dados da mensagem" diz quem recebeu e quem leu, com hora.
   produção, só com o "pode gravar".
 - **D5. Grupo grande — DECIDIDA:** sem teto agora; o volume está registrado
   no README da imagem e no guia de instalação (um aviso por recibo).
+- **D6. Prazo dos recibos e o "Excluir agora" — PENDENTE** (revisão de
+  04/11/2026): podar `cb_recibos_do_grupo` depois de N dias? Apagar os
+  recibos da ficha no "Excluir agora"? Nada disso foi decidido; hoje ficam.
 
 ## Fase 2 — o que foi feito (04/11/2026)
 
 - **Migration `1119_cb_recibos_do_grupo.sql`:** `cb_groups.participantes_de_fora`
-  (CHECK ≥ 0), `cb_recibos_do_grupo` (PK conta + mensagem + participante; FK
-  composta e CASCADE para `cb_groups`; leitura na forma da 1032; escrita só do
-  servidor) e `cb_registrar_recibo_do_grupo` (grava só avançando por `LEAST`,
+  (CHECK ≥ 0), `cb_recibos_do_grupo` (PK conta + mensagem + participante; a
+  ficha sem FK; FK composta e CASCADE para `cb_groups`; leitura na forma da
+  1032; escrita só do servidor) e `cb_registrar_recibo_do_grupo` (grava só avançando por `LEAST`,
   trava por mensagem com `pg_advisory_xact_lock`, devolve a contagem e o
   denominador). Pino `recibos-do-grupo-1119.test.ts`.
 - **CRM:** `src/lib/cb-groups/recibos-do-grupo.ts` (ler o aviso, número da
@@ -213,3 +243,31 @@ leram, e "Dados da mensagem" diz quem recebeu e quem leu, com hora.
   `status@broadcast`, `fromMe` falso e carimbo inválido ficam de fora; com
   `groupsIgnore`, nenhum), e o `479` vai ao webhook e nunca ao Prisma. Não
   rodado: o build Docker (a máquina não tem Docker; roda no workflow).
+- **Revisão independente (04/11/2026; nenhum achado alto), corrigido no
+  mesmo PR:** M1, o recibo só com `groups_enabled` e espera da linha mais
+  curta no grupo (1 + 2 + 4 s; a do 1:1 segue em 30 s); M2, a tabela guarda a
+  ficha, nunca o telefone; B1, a regra `grupos.md` carrega para o balão e a
+  1119; B2, a linha do MERGE-UPSTREAM; B3, o pino conta as instruções da
+  função (a trava sozinha na primeira); B4, a prova escolhe uma conta sem o
+  mesmo `jid`; B5a, o grupo sem denominador é detalhado na chegada; B6, o
+  `total` pelo `count` e o aviso de lista cortada; B7, sem "N de M" com N
+  maior que M; B8, a dica da lista vazia não afirma o estado. B5b, B9 e B10
+  ficaram como limites (acima). Medido de novo depois das correções: replay
+  do zero (243 migrations, `verify-schema.sql` OK); a tabela sem coluna de
+  telefone; a ficha gravada na entrega não some com a leitura sem ficha; com
+  o mesmo `jid` na outra conta, a prova pula com aviso em vez de abortar; o
+  corpo que o supabase-js manda, pelo `json_to_recordset` com os tipos da
+  função (a forma do PostgREST), grava e devolve a contagem; a suíte inteira
+  no Node 22 verde.
+
+## Conferência no grupo de TESTE (depois da troca na VPS)
+
+1. Um grupo de teste com a conexão e UM celular de fora (número de conexão
+   nunca serve de destino de teste).
+2. Enviar pelo CRM: ✓; o celular de fora recebe → ✓✓; lê → azul.
+3. `cb_recibos_do_grupo` dessa mensagem: só a linha do celular de fora. O
+   `sender`/`read-self` do PRÓPRIO celular da conexão não pode virar linha (a
+   bancada usou um `me.lid` fictício; sem `me.lid` e sem `own_lid`, ele
+   contaria como leitura de fora a cada envio).
+4. "Dados da mensagem": o nome (a ficha, se houver) e as horas.
+5. Com um segundo celular de fora: ✓✓ só depois do segundo.

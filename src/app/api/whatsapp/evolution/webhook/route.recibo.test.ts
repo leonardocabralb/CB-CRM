@@ -488,6 +488,8 @@ describe('o recibo de GRUPO por participante (5º patch, 1119)', () => {
   });
 
   beforeEach(() => {
+    // A conexão do recibo com grupos LIGADOS (o fixture de cima nasce desligado).
+    h.estado.tabelas.cb_channels[0].groups_enabled = true;
     h.estado.tabelas.messages.push(linhaDaMensagem());
     h.estado.tabelas.cb_groups.push({
       id: 'grupo-1',
@@ -580,6 +582,26 @@ describe('o recibo de GRUPO por participante (5º patch, 1119)', () => {
 
     expect(situacao()).toBe('delivered');
     expect(anunciados()).toEqual(['delivered']);
+  });
+
+  it('⚠️ conexão com grupos DESLIGADOS: o recibo de grupo nem chega ao banco', async () => {
+    h.estado.tabelas.cb_channels[0].groups_enabled = false;
+    expect(await trabalhosDeixados(reciboDeGrupo('100000000000001@lid', 'DELIVERY_ACK'))).toBe(0);
+    expect(await trabalhosDeixados(reciboDeGrupo('100000000000002@lid', 'DELIVERY_ACK'))).toBe(0);
+    expect(h.estado.rpcs).toEqual([]);
+    expect(situacao()).toBe('sent');
+  });
+
+  it('⚠️ grava a ficha do cliente (achada pelo telefone), nunca o telefone', async () => {
+    h.estado.tabelas.contacts = [
+      { id: 'ficha-1', account_id: 'conta-1', name: 'Cliente de Teste', telefone_canonico: '5583999990001' },
+    ];
+    await (
+      await receber(reciboDeGrupo('100000000000001@lid', 'DELIVERY_ACK', '5583999990001@s.whatsapp.net'))
+    )();
+    expect(h.estado.rpcs).toHaveLength(1);
+    expect(h.estado.rpcs[0].args.p_contact_id).toBe('ficha-1');
+    expect(JSON.stringify(h.estado.rpcs[0].args)).not.toContain('5583999990001');
   });
 
   it('banco sem a 1119 (a função não existe): só log, nada muda', async () => {

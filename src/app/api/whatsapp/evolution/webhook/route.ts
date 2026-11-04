@@ -39,6 +39,7 @@ import {
 import { detalharGruposDaChegada } from '@/lib/cb-groups/detalhar-na-chegada';
 import {
   ehNumeroDaConta,
+  fichaDoRecibo,
   gravarReciboDoGrupo,
   lerReciboDoGrupo,
   statusDoGrupo,
@@ -294,11 +295,21 @@ async function aplicarReciboDoGrupo(accountId: string, recibo: ReciboDoGrupo): P
     return;
   }
   if (ehNumeroDaConta(recibo, (conexoes ?? []) as NumeroDaConta[])) return;
-  const contagem = await gravarReciboDoGrupo(db, accountId, recibo);
+  // A ficha, nunca o telefone (decisão do operador de 29/10/2026).
+  const contatoId = await fichaDoRecibo(db, accountId, recibo);
+  const contagem = await gravarReciboDoGrupo(db, accountId, recibo, contatoId);
   if (!contagem) return;
   const status = statusDoGrupo(contagem);
-  if (status) await aplicarStatusDoRecibo(recibo.keyId, status, PAUSAS_DO_RECIBO_MS);
+  if (status) await aplicarStatusDoRecibo(recibo.keyId, status, PAUSAS_DO_RECIBO_DE_GRUPO_MS);
 }
+
+// O recibo de grupo espera MENOS pela linha (7 s, contra ~30 s do de sempre):
+// o que fecha a conta chega segundos depois do envio, quando a linha do CRM já
+// existe; e a mensagem que nunca terá linha `agent` (a do celular de outra
+// conexão no mesmo grupo, gravada como fala de quem está nele) não pode custar
+// 30 s de consultas a cada recibo depois da conta fechada. O recibo seguinte
+// tenta de novo.
+const PAUSAS_DO_RECIBO_DE_GRUPO_MS: readonly number[] = [1_000, 2_000, 4_000];
 
 interface EvolutionWebhookBody {
   event?: string;
@@ -835,7 +846,10 @@ export async function POST(request: Request) {
     // caminho próprio — gravar por participante e só então decidir a bolha.
     const reciboDoGrupo = lerReciboDoGrupo(body.data);
     if (reciboDoGrupo) {
-      after(() => aplicarReciboDoGrupo(route.accountId, reciboDoGrupo));
+      // Conexão com grupos DESLIGADOS não grava nada de grupo — nem recibo
+      // (o mesmo interruptor do upsert de grupo, abaixo). Custo aceito: o envio
+      // a um grupo por uma conexão assim (configuração incoerente) fica em ✓.
+      if (route.groupsEnabled) after(() => aplicarReciboDoGrupo(route.accountId, reciboDoGrupo));
       return NextResponse.json({ ok: true });
     }
 

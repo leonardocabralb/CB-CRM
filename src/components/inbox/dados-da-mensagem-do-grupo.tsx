@@ -36,6 +36,8 @@ export type Estado =
       de: string;
       situacao: "pronto";
       recibos: ReciboNaTela[];
+      /** Quantos recibos há de fato (o PostgREST corta em 1000). */
+      total: number;
       participantesDeFora: number | null;
     };
 
@@ -69,14 +71,17 @@ export function DadosDaMensagemDoGrupo({
         if (!resposta.ok) throw new Error(`HTTP ${resposta.status}`);
         const corpo = (await resposta.json()) as {
           recibos?: unknown;
+          total?: unknown;
           participantesDeFora?: unknown;
         };
         if (!Array.isArray(corpo.recibos)) throw new Error("resposta sem recibos");
+        const recibos = corpo.recibos as ReciboNaTela[];
         if (vivo) {
           setEstado({
             de: chave,
             situacao: "pronto",
-            recibos: corpo.recibos as ReciboNaTela[],
+            recibos,
+            total: typeof corpo.total === "number" ? corpo.total : recibos.length,
             participantesDeFora:
               typeof corpo.participantesDeFora === "number" ? corpo.participantesDeFora : null,
           });
@@ -127,6 +132,7 @@ export function ConteudoDosDados({
       ) : (
         <ListaDeRecibos
           recibos={atual.recibos}
+          total={atual.total}
           participantesDeFora={atual.participantesDeFora}
           t={t}
         />
@@ -137,18 +143,26 @@ export function ConteudoDosDados({
 
 function ListaDeRecibos({
   recibos,
+  total,
   participantesDeFora,
   t,
 }: {
   recibos: ReciboNaTela[];
+  total: number;
   participantesDeFora: number | null;
   t: ReturnType<typeof useTranslations>;
 }) {
   const lidas = recibos.filter((r) => r.lidaEm);
   const soEntregues = recibos.filter((r) => !r.lidaEm);
+  // Lista cortada (o teto de 1000 do PostgREST): só o que se leu, sem resumo.
+  const cortada = total > recibos.length;
+  // "4 de 3" não se afirma: quem entrou depois da conferência (ou um número
+  // nosso não reconhecido) passa o denominador, que deixa de valer.
+  const resumoValido =
+    !cortada && participantesDeFora != null && participantesDeFora > 0 && recibos.length <= participantesDeFora;
   return (
     <div className="space-y-2">
-      {participantesDeFora != null && participantesDeFora > 0 && (
+      {resumoValido && (
         <p className="text-muted-foreground text-xs">
           {t("summary", {
             entregues: recibos.length,
@@ -156,6 +170,9 @@ function ListaDeRecibos({
             total: participantesDeFora,
           })}
         </p>
+      )}
+      {cortada && (
+        <p className="text-muted-foreground text-xs">{t("truncated", { n: recibos.length })}</p>
       )}
       {lidas.length > 0 && (
         <Secao titulo={t("readBy")} itens={lidas} quando={(r) => r.lidaEm ?? r.entregueEm} t={t} />

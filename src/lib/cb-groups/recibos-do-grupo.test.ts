@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { criarBanco } from '@/lib/whatsapp/sem-telefone/banco.test-helper';
+
 import {
   ehNumeroDaConta,
+  fichaDoRecibo,
   gravarReciboDoGrupo,
   lerReciboDoGrupo,
   statusDoGrupo,
@@ -135,9 +138,9 @@ describe('gravarReciboDoGrupo — a chamada ao banco', () => {
     return { db: { rpc } as unknown as SupabaseClient, rpc };
   }
 
-  it('manda o recibo pela função e devolve a contagem', async () => {
+  it('⚠️ manda o recibo pela função com a FICHA, nunca o telefone, e devolve a contagem', async () => {
     const { db, rpc } = banco({ data: [{ entregues: 2, lidas: 1, participantes_de_fora: 3 }], error: null });
-    await expect(gravarReciboDoGrupo(db, 'conta-1', recibo)).resolves.toEqual({
+    await expect(gravarReciboDoGrupo(db, 'conta-1', recibo, 'ficha-1')).resolves.toEqual({
       entregues: 2,
       lidas: 1,
       participantesDeFora: 3,
@@ -147,15 +150,17 @@ describe('gravarReciboDoGrupo — a chamada ao banco', () => {
       p_group_jid: GRUPO,
       p_message_id: '3EB0000000000000AB26',
       p_participante: '100000000000001@lid',
-      p_telefone: '5583900000001',
+      p_contact_id: 'ficha-1',
       p_lida: true,
       p_instante: new Date(1793818464 * 1000).toISOString(),
     });
+    // O telefone que veio no aviso não vai ao banco por nenhum argumento.
+    expect(JSON.stringify(rpc.mock.calls)).not.toContain('5583900000001');
   });
 
   it('denominador nulo continua nulo', async () => {
     const { db } = banco({ data: [{ entregues: 1, lidas: 0, participantes_de_fora: null }], error: null });
-    await expect(gravarReciboDoGrupo(db, 'conta-1', recibo)).resolves.toEqual({
+    await expect(gravarReciboDoGrupo(db, 'conta-1', recibo, null)).resolves.toEqual({
       entregues: 1,
       lidas: 0,
       participantesDeFora: null,
@@ -164,9 +169,39 @@ describe('gravarReciboDoGrupo — a chamada ao banco', () => {
 
   it('erro ou resposta sem contagem vira nulo, sem lançar', async () => {
     const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
-    await expect(gravarReciboDoGrupo(banco({ data: null, error: { message: 'x' } }).db, 'c', recibo)).resolves.toBeNull();
-    await expect(gravarReciboDoGrupo(banco({ data: [], error: null }).db, 'c', recibo)).resolves.toBeNull();
-    await expect(gravarReciboDoGrupo(banco({ data: [{ entregues: '2' }], error: null }).db, 'c', recibo)).resolves.toBeNull();
+    await expect(gravarReciboDoGrupo(banco({ data: null, error: { message: 'x' } }).db, 'c', recibo, null)).resolves.toBeNull();
+    await expect(gravarReciboDoGrupo(banco({ data: [], error: null }).db, 'c', recibo, null)).resolves.toBeNull();
+    await expect(gravarReciboDoGrupo(banco({ data: [{ entregues: '2' }], error: null }).db, 'c', recibo, null)).resolves.toBeNull();
+    erro.mockRestore();
+  });
+});
+
+describe('fichaDoRecibo — a ficha do cliente pelo telefone da chegada', () => {
+  const recibo = (telefone: string | null): ReciboDoGrupo => ({
+    keyId: 'k',
+    groupJid: GRUPO,
+    participante: '100000000000001@lid',
+    telefone,
+    lida: false,
+    instante: AGORA,
+  });
+
+  it('pela chave de pessoa (o nono dígito gravado diferente casa); sem telefone ou sem ficha, nula', async () => {
+    const b = criarBanco({
+      contacts: [{ id: 'ficha-1', account_id: 'conta-1', name: 'Cliente de Teste', telefone_canonico: '5583999990001' }],
+    });
+    await expect(fichaDoRecibo(b.db, 'conta-1', recibo('558399990001'))).resolves.toBe('ficha-1');
+    await expect(fichaDoRecibo(b.db, 'conta-1', recibo(null))).resolves.toBeNull();
+    await expect(fichaDoRecibo(b.db, 'conta-1', recibo('5583999990009'))).resolves.toBeNull();
+    // Ficha de OUTRA conta não casa.
+    await expect(fichaDoRecibo(b.db, 'conta-2', recibo('5583999990001'))).resolves.toBeNull();
+  });
+
+  it('leitura que falha: nula, sem lançar (o recibo conta do mesmo jeito)', async () => {
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const b = criarBanco({ contacts: [] });
+    b.falhas.contacts = { message: 'fora do ar' };
+    await expect(fichaDoRecibo(b.db, 'conta-1', recibo('5583999990001'))).resolves.toBeNull();
     erro.mockRestore();
   });
 });

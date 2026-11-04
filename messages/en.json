@@ -603,8 +603,9 @@
       "failed": "Couldn't load the receipts.",
       "retry": "Try again",
       "none": "No receipts recorded for this message.",
-      "noneHint": "Group receipts are recorded since the WhatsApp connection update; earlier messages have none.",
+      "noneHint": "Group receipts depend on the WhatsApp connection update: without it, or for messages sent before it, nothing is recorded.",
       "summary": "Received by {entregues} of {total} · read by {lidas}",
+      "truncated": "The list shows the first {n} receipts.",
       "readBy": "Read by",
       "deliveredTo": "Delivered to",
       "hiddenNumber": "Hidden number"

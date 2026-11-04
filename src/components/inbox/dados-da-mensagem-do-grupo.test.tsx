@@ -47,7 +47,7 @@ describe('o balão "Dados da mensagem"', () => {
   });
 
   it('⚠️ vazio é "nenhum recibo REGISTRADO" (a mensagem de antes do patch não tem), com a explicação', () => {
-    const html = balao({ de: 'x', situacao: 'pronto', recibos: [], participantesDeFora: 4 });
+    const html = balao({ de: 'x', situacao: 'pronto', recibos: [], total: 0, participantesDeFora: 4 });
     expect(html).toContain(T.none);
     expect(html).toContain(T.noneHint);
   });
@@ -56,6 +56,7 @@ describe('o balão "Dados da mensagem"', () => {
     const html = balao({
       de: 'x',
       situacao: 'pronto',
+      total: 2,
       participantesDeFora: 3,
       recibos: [
         { participante: '444@lid', nome: null, telefone: null, entregueEm: '2026-11-04T18:54:26Z', lidaEm: '2026-11-04T19:01:00Z' },
@@ -76,10 +77,28 @@ describe('o balão "Dados da mensagem"', () => {
     const html = balao({
       de: 'x',
       situacao: 'pronto',
+      total: 1,
       participantesDeFora: null,
       recibos: [{ participante: '111@lid', nome: 'Cliente de Teste', telefone: null, entregueEm: '2026-11-04T18:54:24Z', lidaEm: null }],
     });
     expect(html).toContain('Cliente de Teste');
+    expect(html).not.toContain('Recebida por');
+  });
+
+  const dois = [
+    { participante: '111@lid', nome: 'Cliente de Teste', telefone: null, entregueEm: '2026-11-04T18:54:24Z', lidaEm: null },
+    { participante: '222@lid', nome: 'Outro Cliente', telefone: null, entregueEm: '2026-11-04T18:54:25Z', lidaEm: null },
+  ];
+
+  it('⚠️ mais recibos que o denominador (alguém entrou depois da conferência): sem o "2 de 1"', () => {
+    const html = balao({ de: 'x', situacao: 'pronto', total: 2, participantesDeFora: 1, recibos: dois });
+    expect(html).toContain('Outro Cliente');
+    expect(html).not.toContain('Recebida por');
+  });
+
+  it('⚠️ lista cortada pelo teto da leitura: avisa quantos mostra e não afirma o resumo', () => {
+    const html = balao({ de: 'x', situacao: 'pronto', total: 1500, participantesDeFora: 1600, recibos: dois });
+    expect(html).toContain('A lista mostra os primeiros 2 recibos.');
     expect(html).not.toContain('Recebida por');
   });
 

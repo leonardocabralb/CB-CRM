@@ -75,6 +75,19 @@ describe('grupoParaDetalhar', () => {
     }
   });
 
+  it('(1119) conferido há pouco mas SEM o denominador do ✓✓ pede de novo; sem a coluna (banco sem a 1119), não', async () => {
+    const conferidoEm = new Date(Date.now() - 60 * 60_000).toISOString();
+    const semDenominador = banco([
+      { id: 'g-1', account_id: 'conta-1', jid: JID, channel_id: 'canal-a', participant_count: 12, participantes_conferidos_em: conferidoEm, participantes_de_fora: null },
+    ]);
+    expect((await persistGroupMessage({ db: semDenominador.db, m: mensagem() }))?.grupoParaDetalhar).toBe(true);
+
+    const comDenominador = banco([
+      { id: 'g-1', account_id: 'conta-1', jid: JID, channel_id: 'canal-a', participant_count: 12, participantes_conferidos_em: conferidoEm, participantes_de_fora: 4 },
+    ]);
+    expect((await persistGroupMessage({ db: comDenominador.db, m: mensagem() }))?.grupoParaDetalhar).toBe(false);
+  });
+
   it('mensagem que chega por OUTRO número nosso não pede o detalhe', async () => {
     // O "somos admin?" seria o do número errado: o renomear sai pela
     // `channel_id` do grupo.

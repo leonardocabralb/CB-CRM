@@ -6,14 +6,18 @@
 // operador, 04/11/2026: sem ler o grupo ao vivo). Os recibos chegam um por
 // participante pelo 5º patch da Evolution (`recibos-do-grupo.ts`).
 //
-// O nome segue a regra do painel de participantes
-// (`nomes-dos-participantes.ts`): a ficha pelo telefone; senão o nome com que
-// a pessoa escreveu no grupo; senão o telefone; sem telefone, a tela diz
-// "Número oculto" — nunca o LID cru.
+// O nome: a FICHA gravada com o recibo (o cliente); senão a regra do painel
+// de participantes (`nomes-dos-participantes.ts`: o nome com que a pessoa
+// escreveu no grupo); sem nenhum, a tela diz "Número oculto" — nunca o LID
+// cru. O telefone de quem recebeu NÃO é guardado (decisão do operador de
+// 29/10/2026); só aparece quando o próprio participante é um JID de telefone
+// (grupo endereçado por telefone, raro).
 //
 // ⚠️ Lista vazia é "nenhum recibo REGISTRADO", nunca "ninguém recebeu": a
 // mensagem de antes do patch não tem recibo nenhum. Leitura que falha é 500,
-// nunca uma lista vazia com cara de resposta.
+// nunca uma lista vazia com cara de resposta. E o PostgREST corta em 1000
+// linhas: o `total` vem pelo `count` exato, e a tela não afirma número acima
+// do que leu.
 // ============================================================
 
 import { NextResponse } from 'next/server';
@@ -22,6 +26,7 @@ import { createClient } from '@supabase/supabase-js';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import { nomearParticipantes } from '@/lib/cb-groups/nomes-dos-participantes';
+import { telefoneDoJid } from '@/lib/cb-groups/recibos-do-grupo';
 
 function admin() {
   return createClient(
@@ -33,11 +38,40 @@ function admin() {
 /** O id que a Baileys dá (`3EB0…`), com folga; nada além disso vai à consulta. */
 const ID_DA_MENSAGEM = /^[A-Za-z0-9_-]{8,128}$/;
 
+/** Fatia do `.in()` de ids de ficha: 100 uuids cabem com folga na URL. */
+const FATIA_DE_FICHAS = 100;
+
 interface LinhaDoRecibo {
   participante: string;
-  telefone: string | null;
+  contact_id: string | null;
   entregue_em: string;
   lida_em: string | null;
+}
+
+/** O nome de cada ficha. A fatia que falha só tira nomes (o log diz). */
+async function nomesDasFichas(
+  db: ReturnType<typeof admin>,
+  accountId: string,
+  ids: string[],
+): Promise<Map<string, string>> {
+  const mapa = new Map<string, string>();
+  const unicos = [...new Set(ids)];
+  for (let i = 0; i < unicos.length; i += FATIA_DE_FICHAS) {
+    const { data, error } = await db
+      .from('contacts')
+      .select('id, name')
+      .eq('account_id', accountId)
+      .in('id', unicos.slice(i, i + FATIA_DE_FICHAS));
+    if (error) {
+      console.error('[cb/groups/recibos] ler as fichas falhou:', error.message);
+      continue;
+    }
+    for (const c of (data ?? []) as { id: string; name: string | null }[]) {
+      const nome = c.name?.trim();
+      if (nome) mapa.set(c.id, nome);
+    }
+  }
+  return mapa;
 }
 
 export async function GET(
@@ -71,9 +105,9 @@ export async function GET(
       return NextResponse.json({ error: 'Grupo não encontrado.' }, { status: 404 });
     }
 
-    const { data: linhas, error: erroDosRecibos } = await ctx.supabase
+    const { data: linhas, error: erroDosRecibos, count } = await ctx.supabase
       .from('cb_recibos_do_grupo')
-      .select('participante, telefone, entregue_em, lida_em')
+      .select('participante, contact_id, entregue_em, lida_em', { count: 'exact' })
       .eq('account_id', ctx.accountId)
       .eq('group_id', id)
       .eq('message_id', mensagem);
@@ -83,7 +117,8 @@ export async function GET(
     }
     const recibos = (linhas ?? []) as LinhaDoRecibo[];
 
-    let nomes = new Map<string, string | null>();
+    let fichas = new Map<string, string>();
+    let doGrupo = new Map<string, string | null>();
     if (recibos.length) {
       const db = admin();
       const { data: conversa, error: erroDaConversa } = await db
@@ -95,19 +130,27 @@ export async function GET(
       if (erroDaConversa) {
         console.error('[cb/groups/recibos] ler a conversa falhou:', erroDaConversa.message);
       }
-      // O nome é enfeite: a leitura dele que falha deixa o telefone na tela.
-      const { participantes } = await nomearParticipantes(db, {
-        accountId: ctx.accountId,
-        conversationId: (conversa as { id: string } | null)?.id ?? null,
-        participantes: recibos.map((r) => ({
-          id: r.participante,
-          telefone: r.telefone,
-          lid: r.participante.endsWith('@lid') ? r.participante : null,
-          papel: null,
-          somosNos: false,
-        })),
-      });
-      nomes = new Map(participantes.map((p) => [p.id, p.nome]));
+      // O nome é enfeite: a leitura que falha deixa "Número oculto" na tela.
+      const [nomesDeFicha, { participantes }] = await Promise.all([
+        nomesDasFichas(
+          db,
+          ctx.accountId,
+          recibos.flatMap((r) => (r.contact_id ? [r.contact_id] : [])),
+        ),
+        nomearParticipantes(db, {
+          accountId: ctx.accountId,
+          conversationId: (conversa as { id: string } | null)?.id ?? null,
+          participantes: recibos.map((r) => ({
+            id: r.participante,
+            telefone: telefoneDoJid(r.participante),
+            lid: r.participante.endsWith('@lid') ? r.participante : null,
+            papel: null,
+            somosNos: false,
+          })),
+        }),
+      ]);
+      fichas = nomesDeFicha;
+      doGrupo = new Map(participantes.map((p) => [p.id, p.nome]));
     }
 
     // Quem leu primeiro, depois quem só recebeu — cada grupo pela hora.
@@ -121,11 +164,13 @@ export async function GET(
     return NextResponse.json({
       recibos: ordenados.map((r) => ({
         participante: r.participante,
-        nome: nomes.get(r.participante) ?? null,
-        telefone: r.telefone,
+        nome: (r.contact_id ? fichas.get(r.contact_id) : undefined) ?? doGrupo.get(r.participante) ?? null,
+        telefone: telefoneDoJid(r.participante),
         entregueEm: r.entregue_em,
         lidaEm: r.lida_em,
       })),
+      // Acima de 1000 o PostgREST corta: o total vem do `count`.
+      total: typeof count === 'number' ? count : recibos.length,
       participantesDeFora: (grupo as { participantes_de_fora: number | null }).participantes_de_fora ?? null,
     });
   } catch (err) {

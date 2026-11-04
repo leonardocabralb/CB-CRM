@@ -14,12 +14,15 @@
 --     entrega (`entregue_em` nunca é nulo). Só AVANÇA: recibo repetido (um por
 --     aparelho do participante) ou fora de ordem não apaga nem atrasa nada
 --     (`LEAST`).
---   * `participante` = como o WhatsApp o chamou (LID ou telefone, sem o
---     aparelho): a chave da linha. `telefone` = só dígitos, com DDI, quando a
---     Evolution conhece o par do LID — é ele que dá nome (a ficha) e que
---     mostra o participante na tela (D4 dos grupos: quem vê o grupo vê os
---     telefones). Os números das conexões da conta NÃO entram: a rota os
---     descarta antes de gravar.
+--   * `participante` = como o WhatsApp o chamou (o LID, quase sempre; num grupo
+--     endereçado por telefone, o JID do telefone, como o `group_sender_jid`),
+--     sem o aparelho: a chave da linha.
+--   * ⚠️ O TELEFONE de quem recebeu NÃO é guardado (decisão do operador de
+--     29/10/2026: os telefones dos participantes são lidos na hora e nunca
+--     guardados). Guarda-se só a FICHA (`contact_id`), quando o telefone que a
+--     Evolution conhece para o LID casa com um cliente — o vínculo da 1117. O
+--     telefone só vive na chegada do recibo, para achar a ficha e para
+--     descartar os números das conexões da conta (que nem entram).
 --   * `cb_groups.participantes_de_fora`: quantos participantes NÃO são
 --     números da conta, gravado a cada conferência da lista (a mesma que
 --     refaz as fichas, 1117). É o denominador do ✓✓: a bolha vira entregue
@@ -31,9 +34,11 @@
 --     (`pg_advisory_xact_lock`). Sem ela, dois recibos da mesma mensagem ao
 --     mesmo tempo (o normal: os participantes recebem juntos) não se veriam,
 --     cada um contaria "1", e a bolha ficaria em ✓ com todos tendo recebido.
---   * Sem FK para `contacts`, `conversations` nem `messages`: a Lixeira (1097)
---     e a união de fichas (1093) são DEFAULT-DENY sobre as FKs para o fecho do
---     contato, e o grupo não é contato. `group_id` com FK COMPOSTA para
+--   * Sem FK para `contacts`, `conversations` nem `messages` — nem no
+--     `contact_id`: a Lixeira (1097) e a união de fichas (1093) são
+--     DEFAULT-DENY sobre as FKs para o fecho do contato (o precedente é o
+--     `contact_id` da 1117). A ficha que sai deixa o id solto, que não aponta
+--     para nada e não aparece na tela. `group_id` com FK COMPOSTA para
 --     `cb_groups (id, account_id)` (padrão da 1117) e CASCADE: grupo apagado
 --     leva os recibos.
 --   * Escrita só pelo servidor (service role); leitura por membro, na forma
@@ -71,7 +76,8 @@ CREATE TABLE IF NOT EXISTS public.cb_recibos_do_grupo (
   -- O id da mensagem no WhatsApp (`messages.message_id`). Sem FK: ver o cabeçalho.
   message_id text NOT NULL,
   participante text NOT NULL,
-  telefone text,
+  -- A ficha de quem recebeu, quando é cliente. Sem FK: ver o cabeçalho.
+  contact_id uuid,
   entregue_em timestamptz NOT NULL,
   lida_em timestamptz,
   PRIMARY KEY (account_id, message_id, participante),
@@ -107,8 +113,11 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.cb_recibos_do_grupo TO service_ro
 -- quantos leram (`lidas`) esta mensagem, e o denominador do grupo. Grupo que
 -- não existe nesta conta: nada é gravado e volta (0, 0, NULL).
 --
--- LANGUAGE sql e VOLATILE: cada instrução tira foto nova, então a contagem
--- (a última) já vê o que a outra chamada gravou antes de soltar a trava.
+-- LANGUAGE sql e VOLATILE, em TRÊS instruções separadas: cada uma tira foto
+-- nova (em READ COMMITTED, o padrão), então a contagem (a última) já vê o
+-- que a outra chamada gravou antes de soltar a trava. Juntar tudo numa
+-- instrução só (CTE) voltaria a contar com a foto de ANTES da trava — e nem
+-- veria o próprio INSERT: cada recibo contaria "1".
 -- SECURITY INVOKER: quem chama é o service role.
 -- ------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.cb_registrar_recibo_do_grupo(
@@ -116,7 +125,7 @@ CREATE OR REPLACE FUNCTION public.cb_registrar_recibo_do_grupo(
   p_group_jid text,
   p_message_id text,
   p_participante text,
-  p_telefone text,
+  p_contact_id uuid,
   p_lida boolean,
   p_instante timestamptz
 ) RETURNS TABLE (entregues integer, lidas integer, participantes_de_fora integer)
@@ -128,15 +137,15 @@ AS $$
   SELECT pg_advisory_xact_lock(hashtextextended(p_account_id::text || '|' || p_message_id, 1119));
 
   INSERT INTO public.cb_recibos_do_grupo AS r
-         (account_id, group_id, message_id, participante, telefone, entregue_em, lida_em)
-  SELECT p_account_id, g.id, p_message_id, p_participante, nullif(p_telefone, ''),
+         (account_id, group_id, message_id, participante, contact_id, entregue_em, lida_em)
+  SELECT p_account_id, g.id, p_message_id, p_participante, p_contact_id,
          p_instante, CASE WHEN p_lida THEN p_instante END
     FROM public.cb_groups g
    WHERE g.account_id = p_account_id AND g.jid = p_group_jid
   ON CONFLICT (account_id, message_id, participante) DO UPDATE
      SET entregue_em = LEAST(r.entregue_em, EXCLUDED.entregue_em),
          lida_em = LEAST(r.lida_em, EXCLUDED.lida_em),
-         telefone = COALESCE(EXCLUDED.telefone, r.telefone);
+         contact_id = COALESCE(EXCLUDED.contact_id, r.contact_id);
 
   SELECT count(*)::integer,
          count(r.lida_em)::integer,
@@ -146,9 +155,9 @@ AS $$
    WHERE r.account_id = p_account_id AND r.message_id = p_message_id;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.cb_registrar_recibo_do_grupo(uuid, text, text, text, text, boolean, timestamptz)
+REVOKE EXECUTE ON FUNCTION public.cb_registrar_recibo_do_grupo(uuid, text, text, text, uuid, boolean, timestamptz)
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.cb_registrar_recibo_do_grupo(uuid, text, text, text, text, boolean, timestamptz)
+GRANT EXECUTE ON FUNCTION public.cb_registrar_recibo_do_grupo(uuid, text, text, text, uuid, boolean, timestamptz)
   TO service_role;
 
 -- ------------------------------------------------------------
@@ -201,12 +210,12 @@ BEGIN
     RAISE EXCEPTION '1119: service_role precisa gravar os recibos';
   END IF;
 
-  IF has_function_privilege('authenticated', 'public.cb_registrar_recibo_do_grupo(uuid, text, text, text, text, boolean, timestamptz)', 'EXECUTE')
-     OR has_function_privilege('anon', 'public.cb_registrar_recibo_do_grupo(uuid, text, text, text, text, boolean, timestamptz)', 'EXECUTE') THEN
+  IF has_function_privilege('authenticated', 'public.cb_registrar_recibo_do_grupo(uuid, text, text, text, uuid, boolean, timestamptz)', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.cb_registrar_recibo_do_grupo(uuid, text, text, text, uuid, boolean, timestamptz)', 'EXECUTE') THEN
     RAISE EXCEPTION '1119: só o servidor chama cb_registrar_recibo_do_grupo';
   END IF;
 
-  IF NOT has_function_privilege('service_role', 'public.cb_registrar_recibo_do_grupo(uuid, text, text, text, text, boolean, timestamptz)', 'EXECUTE') THEN
+  IF NOT has_function_privilege('service_role', 'public.cb_registrar_recibo_do_grupo(uuid, text, text, text, uuid, boolean, timestamptz)', 'EXECUTE') THEN
     RAISE EXCEPTION '1119: service_role precisa chamar cb_registrar_recibo_do_grupo';
   END IF;
 
@@ -236,9 +245,15 @@ DECLARE
   v_f integer;
   v_entregue timestamptz;
   v_lida timestamptz;
+  v_ficha uuid := gen_random_uuid();
 BEGIN
   SELECT g.id, g.account_id, g.jid INTO v_grupo, v_conta, v_jid FROM public.cb_groups g LIMIT 1;
-  SELECT a.id INTO v_outra FROM public.accounts a WHERE a.id <> v_conta LIMIT 1;
+  -- A outra conta NÃO pode ter o mesmo grupo: senão a função gravaria de
+  -- verdade nela, e a prova acusaria a função certa.
+  SELECT a.id INTO v_outra FROM public.accounts a
+   WHERE a.id <> v_conta
+     AND NOT EXISTS (SELECT 1 FROM public.cb_groups g2 WHERE g2.account_id = a.id AND g2.jid = v_jid)
+   LIMIT 1;
 
   IF v_grupo IS NULL OR v_outra IS NULL THEN
     RAISE NOTICE '1119: banco sem grupo e segunda conta, nada a provar.';
@@ -250,7 +265,7 @@ BEGIN
 
     -- Entrega de A.
     SELECT * INTO v_e, v_l, v_f FROM public.cb_registrar_recibo_do_grupo(
-      v_conta, v_jid, v_msg, 'a@lid', '5500000000001', false, v_t0 + interval '10 seconds');
+      v_conta, v_jid, v_msg, 'a@lid', v_ficha, false, v_t0 + interval '10 seconds');
     IF (v_e, v_l, v_f) IS DISTINCT FROM (1, 0, 2) THEN
       RAISE EXCEPTION '1119: a 1ª entrega devolveu (%, %, %)', v_e, v_l, v_f;
     END IF;
@@ -269,13 +284,13 @@ BEGIN
         v_e, v_l, v_entregue, v_lida;
     END IF;
 
-    -- O telefone nulo de um recibo depois não apaga o que já se sabia.
+    -- A ficha nula de um recibo depois não apaga a que já se sabia.
     IF NOT EXISTS (
       SELECT 1 FROM public.cb_recibos_do_grupo
        WHERE account_id = v_conta AND message_id = v_msg AND participante = 'a@lid'
-         AND telefone = '5500000000001'
+         AND contact_id = v_ficha
     ) THEN
-      RAISE EXCEPTION '1119: um recibo sem telefone apagou o telefone';
+      RAISE EXCEPTION '1119: um recibo sem ficha apagou a ficha';
     END IF;
 
     -- B leu direto (a leitura conta como entrega).
