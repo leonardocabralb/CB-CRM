@@ -32,7 +32,7 @@ export async function GET(
       return fail('internal', 'Failed to read task', 500);
     }
     if (!data) return fail('not_found', 'Task not found', 404);
-    // NOSSO (1120): tarefa de cliente fora do recorte por funil (ou sem
+    // NOSSO (1121): tarefa de cliente fora do recorte por funil (ou sem
     // cliente) = o mesmo 404.
     const contactId = (data as { contact_id?: string | null }).contact_id ?? null;
     if (!(await contatoNoRecorte(ctx, contactId))) {

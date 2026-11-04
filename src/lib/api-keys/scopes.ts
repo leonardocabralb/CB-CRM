@@ -34,7 +34,7 @@ export const API_SCOPES = [
   'notes:write',
   'custom_fields:read',
   'custom_fields:write',
-  // NOSSO (1120): o histórico de automações de um cliente (leitura).
+  // NOSSO (1121): o histórico de automações de um cliente (leitura).
   'automations:read',
 ] as const;
 
@@ -75,7 +75,7 @@ export const SCOPE_DESCRIPTIONS: Record<ApiScope, string> = {
 };
 
 /**
- * NOSSO (1120): é escopo de LEITURA? A chave recortada por funil só aceita
+ * NOSSO (1121): é escopo de LEITURA? A chave recortada por funil só aceita
  * estes (formulário e rota de criação recusam o resto). A régua é o sufixo:
  * todo escopo de leitura termina em `:read`, e os de escrita não.
  */

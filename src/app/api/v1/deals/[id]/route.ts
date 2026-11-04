@@ -48,7 +48,7 @@ export async function GET(
       return fail('internal', 'Failed to read deal', 500);
     }
     if (!data) return fail('not_found', 'Deal not found', 404);
-    // NOSSO (1120): card de funil fora do recorte = o mesmo 404.
+    // NOSSO (1121): card de funil fora do recorte = o mesmo 404.
     if (!funilNoRecorte(ctx, (data as { pipeline_id?: string | null }).pipeline_id)) {
       return fail('not_found', 'Deal not found', 404);
     }

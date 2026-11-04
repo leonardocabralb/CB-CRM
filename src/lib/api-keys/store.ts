@@ -23,12 +23,12 @@ export interface ApiKeyRow {
   expires_at: string | null;
   revoked_at: string | null;
   /**
-   * NOSSO (1120): o funcionário dono da chave. Nulo = chave da CONTA (n8n,
+   * NOSSO (1121): o funcionário dono da chave. Nulo = chave da CONTA (n8n,
    * Make), como toda chave anterior. Com valor, `requireApiKey` confere a
    * cada chamada que ele continua na conta e não está suspenso.
    */
   membro_user_id: string | null;
-  /** NOSSO (1120): funis que a chave enxerga. Nulo = todos. */
+  /** NOSSO (1121): funis que a chave enxerga. Nulo = todos. */
   funis: string[] | null;
 }
 
@@ -72,7 +72,7 @@ export async function findActiveKeyByHash(
 }
 
 /**
- * NOSSO (1120): o funcionário dono da chave ainda é membro ATIVO da conta
+ * NOSSO (1121): o funcionário dono da chave ainda é membro ATIVO da conta
  * da chave? Lê `profiles` com service role, então a RLS (e com ela o corte
  * de `is_account_member` para o suspenso, 1067) NÃO se aplica: a suspensão
  * é conferida aqui, por escrito. Remover da equipe (`remove_account_member`)

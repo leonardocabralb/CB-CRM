@@ -1,5 +1,5 @@
 // ============================================================
-// Recorte por funil da chave de API (1120) — a régua única.
+// Recorte por funil da chave de API (1121) — a régua única.
 //
 // Chave com `funis` (a do funcionário do Trabalhista, por exemplo) enxerga
 // SÓ os clientes cujo card está num desses funis, e deles enxerga tudo:

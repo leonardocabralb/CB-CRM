@@ -64,7 +64,7 @@ Vale ao mexer nas rotas `/api/v1`, nas chaves e escopos, na doc pública (`docs/
 - ⚠️ **O que a doc pública promete, a rota cumpre:** `POST /api/v1/broadcasts` leva o `channel_id` do corpo até `createBroadcast` (a rota do upstream o descarta; com dois números oficiais a campanha sairia por um escolhido ao acaso). Canal inválido = 400 `meta_channel_required`, nada enviado. Pino: `src/app/api/v1/broadcasts/route.test.ts`.
 - ⚠️ **`src/lib/rate-limit.ts` é um `Map` em memória POR PROCESSO.** No deploy `start-first` há dois processos vivos: o limite não serializa nada. Idempotência de verdade (não pagar duas vezes, não enviar duas vezes) mora no banco, por cadeado.
 
-### Chave do FUNCIONÁRIO, recortada por funil (1120)
+### Chave do FUNCIONÁRIO, recortada por funil (1121)
 
 `api_keys.membro_user_id`/`funis`, `src/lib/api-keys/configuracao.ts`
 (gestão), `src/lib/api/v1/recorte-por-funil.ts` (a régua), o `PATCH
@@ -79,7 +79,7 @@ Decisões do operador (04/11/2026): `docs/PLANO-chave-por-funcionario.md`.
   com SET NULL, apagar o login viraria a chave da conta inteira.
 - ⚠️⚠️ **Recorte DEFAULT-DENY**: chave com `funis` só passa em rota que
   declara `requireApiKey(…, { aceitaRecorte: true })`; o resto é 403
-  `restricted_key`. Lista vazia FECHA (403), nunca abre (o CHECK da 1120 a
+  `restricted_key`. Lista vazia FECHA (403), nunca abre (o CHECK da 1121 a
   recusa). Rota que declara recorta TODA leitura: o cliente tem card num funil
   da chave (`contatoNoRecorte`), o card/funil é da lista (`funilNoRecorte`,
   `funisDaChave`). Fora = o MESMO 404/lista vazia de quem não existe, nunca
@@ -88,9 +88,20 @@ Decisões do operador (04/11/2026): `docs/PLANO-chave-por-funcionario.md`.
   `funil_filter:deals!inner(pipeline_id)` (a forma do `tag_filter`). Pino
   `src/app/api/v1/recorte-por-funil.chamadores.test.ts`: o manifesto de quem
   aceita, só GET, e a régua chamada.
-- ⚠️ **A recortada é SÓ LEITURA** (`escritaNaChaveRecortada`, no POST e no
-  resultado do PATCH; escopo `:read` = `ehEscopoDeLeitura`). Liberar escrita
-  exigiria recortar cada escrita: decisão nova do operador.
+- ⚠️ **Chave de funcionário OU recortada é SÓ LEITURA** (decisão do
+  operador): `escritaProibida` no POST e no RESULTADO do PATCH, e de novo em
+  `requireApiKey` (403 em rota de escrita — a corrida de dois PATCHs). A
+  escrita da chave de funcionário sairia assinada como o dono
+  (`resolveAuditUserId`). Escopo `:read` = `ehEscopoDeLeitura`.
+- **Validade SUGERIDA** (`validadeSugerida`): 90 dias com funcionário, sem
+  validade na chave da conta (a do n8n não pode parar sozinha). O admin troca.
+- **O corte é a FILIAÇÃO**, não revoga: readicionar o funcionário ressuscita a
+  chave, e bloquear o login em Authentication → Users sem suspender não a
+  corta (a doc diz isso; a saída é revogar).
+- ⚠️ **A tela cria só com funis E membros carregados** (sem eles, criaria a
+  chave da conta inteira sem querer); funil apagado aparece para ser
+  desmarcado; o diálogo é montado só aberto (montado sempre, o "Nova chave"
+  reabria com o segredo da chave anterior).
 - **Sem recorte nem funcionário, nada muda**: `contatoNoRecorte` responde sem
   consultar, e a conferência do perfil só roda na chave do funcionário — as
   integrações (n8n, Make, iMotion) seguem iguais.

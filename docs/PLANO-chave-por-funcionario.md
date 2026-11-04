@@ -24,7 +24,7 @@
 
 | Fase | Escopo | Estado | Migration | PR |
 | --- | --- | --- | --- | --- |
-| **1** | Chave: funcionário, funis, validade e "Só leitura" na tela; corte na suspensão; EDITAR a chave | 🟡 código pronto (04/11), falta aplicar a 1120 e o e2e | `1120` (aditiva) **não aplicada** | `feat/chave-por-funcionario` |
+| **1** | Chave: funcionário, funis, validade e "Só leitura" na tela; corte na suspensão; EDITAR a chave | 🟡 código pronto (04/11), falta aplicar a 1121 e o e2e | `1121` (aditiva) **não aplicada** | `feat/chave-por-funcionario` |
 | **2** | Recorte por funil nas rotas de leitura (chave recortada = default-deny) | 🟡 código pronto; forma do `deals!inner` MEDIDA no PostgREST real (5.534 = SQL) | não | idem |
 | **3** | O que falta ler: nome do arquivo, transcrição do áudio, histórico de automações | 🟡 código pronto | não | idem |
 | **4** | Guia do Claude do funcionário (sem MCP) e o piloto com uma pessoa | ⬜ depois do merge | não | — |
@@ -36,8 +36,20 @@ D4 = qualquer um dos dois (Claude Code ou Cowork). Pedido junto: "não mudar
 as automações e APIs já existentes" — chave sem funcionário e sem funis segue
 igual (nenhuma consulta a mais), e o contrato só GANHA campos.
 
+**Depois da revisão independente (04/11/2026), mais duas respostas:** a chave
+de FUNCIONÁRIO também é só leitura, com ou sem funil (a escrita sairia
+assinada como o dono); e os 90 dias são o padrão SÓ com funcionário — a
+chave de integração sugere "sem validade". A revisão achou 8 defeitos (o pior:
+"Nova chave" reabria com o segredo da anterior), todos corrigidos, e o número
+virou **1121** (a 1119 e a 1120 são dos PRs #457 e #458).
+
+**Medido no banco:** nenhum anexo com endereço de proxy (`/api/…`, que exige
+login); 714 anexos sem arquivo na Trabalhista - Comercial e 2.659 na
+Trabalhista e Previdenciário - Jurídico (`media_url` nulo — o Claude não os
+baixa; a doc diz).
+
 **Medido na execução:** replay completo local (243 migrations + verify-schema)
-verde; cenários da 1120 (reaplicar, lista vazia recusada, login apagado leva
+verde; cenários da 1121 (reaplicar, lista vazia recusada, login apagado leva
 a chave) verdes; suíte inteira verde (12.887 testes, Node 22).
 
 As fases 1 e 2 podem ir no MESMO PR: a chave recortada (Fase 1) sem a Fase 2
@@ -92,7 +104,7 @@ separadas, a Fase 1 recusa criar chave com funis até a Fase 2 estar no ar.
 ### O que muda
 
 - **Migration aditiva** `NNNN_cb_chave_por_funcionario.sql` (número = maior do
-  `main` + 1 no dia; hoje seria 1119, conferir worktrees e `list_migrations`):
+  `main` + 1 no dia; ficou 1121, porque a 1119 e a 1120 são dos PRs #457 e #458):
   - `api_keys.membro_user_id uuid NULL REFERENCES auth.users ON DELETE CASCADE`
     (nulo = chave da conta, como hoje);
   - `api_keys.funis uuid[] NULL` (nulo = todos), com CHECK de que não é lista

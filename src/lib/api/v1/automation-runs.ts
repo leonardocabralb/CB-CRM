@@ -1,5 +1,5 @@
 // ============================================================
-// Histórico de automações de um cliente na API pública (1120) — o formato.
+// Histórico de automações de um cliente na API pública (1121) — o formato.
 //
 // Uma linha de `automation_logs` = uma EXECUÇÃO de automação para o cliente.
 // Montado por allowlist de campos (como `serializeMessage`): a linha tem

@@ -26,7 +26,7 @@ import {
 } from '@/lib/auth/account';
 import {
   COLUNAS_DA_CHAVE,
-  escritaNaChaveRecortada,
+  escritaProibida,
   funisSaoDaConta,
   lerFunis,
   lerMembro,
@@ -44,7 +44,7 @@ import {
 const MAX_NAME_LEN = 80;
 
 // Columns safe to expose. `key_hash` is deliberately excluded — it
-// never leaves the server. NOSSO (1120): a lista mora em `configuracao.ts`
+// never leaves the server. NOSSO (1121): a lista mora em `configuracao.ts`
 // (a rota de edição devolve a mesma), com o funcionário dono e os funis.
 const SAFE_COLUMNS = COLUNAS_DA_CHAVE;
 
@@ -116,7 +116,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // NOSSO (1120): validade, funcionário e funis pela régua de
+    // NOSSO (1121): validade, funcionário e funis pela régua de
     // `configuracao.ts`. Ausente = como antes (sem validade, chave da conta,
     // todos os funis).
     const validade = lerValidade(body?.expiresInDays, Date.now());
@@ -129,11 +129,12 @@ export async function POST(request: Request) {
     const membroUserId = (membro.ok && membro.valor) || null;
     const funisDaChave = (funis.ok && funis.valor) || null;
 
-    // A chave recortada por funil é SÓ DE LEITURA (decisão do operador).
-    const escrita = escritaNaChaveRecortada(funisDaChave, scopes);
+    // A chave de funcionário e a recortada por funil são SÓ DE LEITURA
+    // (decisão do operador).
+    const escrita = escritaProibida({ funis: funisDaChave, membroUserId }, scopes);
     if (escrita) {
       return NextResponse.json(
-        { error: `A key limited to pipelines is read-only: remove '${escrita}'` },
+        { error: `A team member's or pipeline-limited key is read-only: remove '${escrita}'` },
         { status: 400 }
       );
     }

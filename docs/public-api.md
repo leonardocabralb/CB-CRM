@@ -26,8 +26,10 @@ In the dashboard: **Settings → API → Keys → New API key**. Only
 **admins and owners** can create keys.
 
 1. Give the key a name (after the integration that will use it).
-2. Choose its **validity**: 90 days by default, or 30, 180, 365 days, or no
-   expiry. An expired key answers `401`, like a revoked one.
+2. Choose its **validity**: 30, 90, 180 or 365 days, or no expiry. The form
+   suggests 90 days for a team member's key and no expiry for an account key
+   (so an integration doesn't stop on its own). An expired key answers `401`,
+   like a revoked one.
 3. Optionally, pick the **team member** the key belongs to and the
    **pipelines** it can see (see [below](#keys-for-a-team-member-limited-to-pipelines)).
    Leave both empty for an account key (an integration such as n8n or Make).
@@ -54,10 +56,14 @@ key's next request. Revoked keys stay in the list as an audit trail.
 
 A key can **belong to a team member** — for someone on the team who uses an
 AI assistant (Claude, for instance) to read a client's conversation and
-documents. Such a key works only while that person is on the team: the
-moment they are **suspended** or **removed**, every request with it answers
-`401`, as if it were revoked (deleting their login deletes the key). An
-account key (no team member) keeps working as before, whoever created it.
+documents. Such a key is **read-only** (`:read` scopes only; a write
+endpoint answers `403`) and works only while that person is on the team: the
+moment they are **suspended** or **removed** from the account, every request
+with it answers `401`, as if it were revoked (deleting their login deletes
+the key). The check is the person's membership: adding them back to the team
+brings the key back, and blocking their login elsewhere without suspending
+them does not stop it — revoke the key for that. An account key (no team
+member) keeps working as before, whoever created it.
 
 A key can also be **limited to pipelines**. It then sees **only the clients
 that have a card in one of those pipelines** — and, of those clients,
@@ -839,7 +845,7 @@ first (`404` otherwise).
   "content_type": "text",         // text | image | video | audio | document | location | template | interactive | call | contact…
   "content_text": "Hi 👋",
   "media_url": null,              // the file's address (images, audio, video, documents, stickers)
-  "media_filename": null,         // the file's name — the sender's, or the one stored for older documents
+  "media_filename": null,         // a name to save the file under (see "Files" below)
   "media_mime_type": null,        // e.g. "application/pdf", when known
   "transcription": null,          // a voice note's transcription, once it is ready (audio only)
   "template_name": null,
@@ -851,11 +857,21 @@ first (`404` otherwise).
 }
 ```
 
-**Files.** `media_url` opens the file itself — download it from there, with
-no key (anyone holding the address can open it, so treat it like the file).
-`media_filename` is the name to save it under. A voice note carries its
-`transcription` once the CRM has transcribed it (`null` before that, or when
-transcription is off).
+**Files.**
+- **`media_url`** — when it is a full `https://` address, it opens the file
+  stored in the CRM. Download it from there with no key: anyone holding the
+  address can open it, so treat it like the file.
+- **`media_url` that starts with `/api/`** — the CRM could not keep a copy.
+  This address works only for someone logged in to the CRM, not with a key.
+- **`media_url` is `null`** — the CRM does not have the file (often messages
+  brought in from the WhatsApp history). It can't be downloaded through the
+  API.
+- **`media_filename`** — the sender's file name when there is one, otherwise
+  the name stored with the file. When neither exists, a generated name in the
+  form `whatsapp-<type>-<date and time in UTC>.<extension>`. It is cleaned up
+  for saving to disk, with no folders.
+- **`transcription`** — a voice note carries it once the CRM has transcribed
+  it. It is `null` before that, or when transcription is off.
 
 **WhatsApp calls** are listed here too (WhatsApp connections by QR code
 only), with `content_type: "call"` and `content_text: null`. A call nobody

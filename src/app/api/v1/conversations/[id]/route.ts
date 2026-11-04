@@ -40,7 +40,7 @@ export async function GET(
       return fail('internal', 'Failed to read conversation', 500);
     }
     if (!data) return fail('not_found', 'Conversation not found', 404);
-    // NOSSO (1120): fora do recorte por funil, o mesmo 404 de quem não existe.
+    // NOSSO (1121): fora do recorte por funil, o mesmo 404 de quem não existe.
     const contactId = (data as { contact_id?: string | null }).contact_id ?? null;
     if (!(await contatoNoRecorte(ctx, contactId))) {
       return fail('not_found', 'Conversation not found', 404);

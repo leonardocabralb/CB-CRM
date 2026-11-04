@@ -42,7 +42,7 @@ import {
   touchLastUsed,
 } from '@/lib/api-keys/store';
 import { hashApiKey, looksLikeApiKey } from '@/lib/api-keys/keys';
-import { hasScope, type ApiScope } from '@/lib/api-keys/scopes';
+import { ehEscopoDeLeitura, hasScope, type ApiScope } from '@/lib/api-keys/scopes';
 import { ApiError, forbidden, rateLimited, unauthorized } from '@/lib/api/v1/respond';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
@@ -63,19 +63,19 @@ export interface ApiKeyContext {
   /** Who minted the key (null if that user was later removed). */
   createdBy: string | null;
   /**
-   * NOSSO (1120): o funcionário dono da chave (nulo = chave da conta). Já
+   * NOSSO (1121): o funcionário dono da chave (nulo = chave da conta). Já
    * conferido: chegar aqui quer dizer que ele está na conta e não suspenso.
    */
   membroUserId: string | null;
   /**
-   * NOSSO (1120): os funis que a chave enxerga; nulo = todos. Só chega a uma
+   * NOSSO (1121): os funis que a chave enxerga; nulo = todos. Só chega a uma
    * rota que declarou `aceitaRecorte` — e ela recorta TODA leitura por eles
    * (`src/lib/api/v1/recorte-por-funil.ts`).
    */
   funis: string[] | null;
 }
 
-/** NOSSO (1120): o que a rota declara a `requireApiKey`. */
+/** NOSSO (1121): o que a rota declara a `requireApiKey`. */
 export interface OpcoesDaChave {
   /**
    * A rota sabe recortar por funil. Sem esta declaração, chave com `funis`
@@ -147,7 +147,7 @@ export async function requireApiKey(
     throw rateLimited(limit);
   }
 
-  // NOSSO (1120): chave do FUNCIONÁRIO vale enquanto ele estiver na conta e
+  // NOSSO (1121): chave do FUNCIONÁRIO vale enquanto ele estiver na conta e
   // ativo. A API roda em service role, então o corte da suspensão (1067)
   // não chega aqui sozinho. Suspenso ou fora da conta = 401, igual a uma
   // chave revogada; a leitura que falha = 500 (nunca 401, que o integrador
@@ -162,8 +162,8 @@ export async function requireApiKey(
     if (!ativo) throw unauthorized();
   }
 
-  // NOSSO (1120): DEFAULT-DENY do recorte por funil. Lista VAZIA fecha (o
-  // CHECK da 1120 a recusa no banco; se ela aparecer mesmo assim, a chave
+  // NOSSO (1121): DEFAULT-DENY do recorte por funil. Lista VAZIA fecha (o
+  // CHECK da 1121 a recusa no banco; se ela aparecer mesmo assim, a chave
   // não vê nada — nunca a conta inteira).
   const funis = Array.isArray(row.funis) ? row.funis : null;
   if (funis && funis.length === 0) {
@@ -175,6 +175,13 @@ export async function requireApiKey(
       'This API key is limited to selected pipelines and cannot call this endpoint',
       403
     );
+  }
+
+  // NOSSO (1121): a chave de funcionário e a recortada só LEEM (decisão do
+  // operador). As rotas de gestão já recusam escopo de escrita nelas; esta é
+  // a 2ª defesa (dois PATCHs em corrida, ou linha escrita por fora).
+  if (scope && (row.membro_user_id || funis) && !ehEscopoDeLeitura(scope)) {
+    throw forbidden("This API key is read-only (a team member's or pipeline-limited key)");
   }
 
   if (scope && !hasScope(row.scopes, scope)) {

@@ -16,7 +16,7 @@ import { NextResponse } from 'next/server';
 
 import {
   COLUNAS_DA_CHAVE,
-  escritaNaChaveRecortada,
+  escritaProibida,
   funisSaoDaConta,
   lerFunis,
   lerMembro,
@@ -35,7 +35,7 @@ import { ehUuid } from '@/lib/tasks/validar';
 const MAX_NAME_LEN = 80;
 
 // ============================================================
-// NOSSO (1120): PATCH /api/account/api-keys/[id] — o admin EDITA a chave
+// NOSSO (1121): PATCH /api/account/api-keys/[id] — o admin EDITA a chave
 // (decisão do operador, 04/11/2026): nome, permissões, validade,
 // funcionário e funis, sem gerar outra. O segredo não muda: quem já usa a
 // chave continua usando. Só os campos ENVIADOS mudam; a regra "recortada
@@ -120,7 +120,7 @@ export async function PATCH(
     // O que JÁ está gravado, para conferir o resultado da edição.
     const { data: atual, error: erroAtual } = await ctx.supabase
       .from('api_keys')
-      .select('scopes, funis')
+      .select('scopes, funis, membro_user_id')
       .eq('id', id)
       .eq('account_id', ctx.accountId)
       .is('revoked_at', null)
@@ -138,11 +138,18 @@ export async function PATCH(
 
     const funisDepois =
       'funis' in mudancas ? (mudancas.funis as string[] | null) : ((atual.funis as string[] | null) ?? null);
+    const membroDepois =
+      'membro_user_id' in mudancas
+        ? (mudancas.membro_user_id as string | null)
+        : ((atual.membro_user_id as string | null) ?? null);
     const escoposDepois = scopes ?? ((atual.scopes as ApiScope[] | null) ?? []);
-    const escrita = escritaNaChaveRecortada(funisDepois, escoposDepois);
+    const escrita = escritaProibida(
+      { funis: funisDepois, membroUserId: membroDepois },
+      escoposDepois
+    );
     if (escrita) {
       return NextResponse.json(
-        { error: `A key limited to pipelines is read-only: remove '${escrita}'` },
+        { error: `A team member's or pipeline-limited key is read-only: remove '${escrita}'` },
         { status: 400 }
       );
     }

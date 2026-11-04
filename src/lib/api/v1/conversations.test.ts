@@ -125,7 +125,7 @@ describe('serializeMessage', () => {
     expect(publico.direction).toBe('outbound');
   });
 
-  // NOSSO (1120): o nome do arquivo, o tipo e a transcrição do áudio.
+  // NOSSO (1121): o nome do arquivo, o tipo e a transcrição do áudio.
   it('expõe o nome do arquivo, o tipo e a transcrição PRONTA só do áudio', () => {
     const base = {
       id: 'm1',

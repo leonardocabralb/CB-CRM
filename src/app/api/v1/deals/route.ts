@@ -74,7 +74,7 @@ export async function GET(request: Request) {
       .eq('account_id', ctx.accountId);
 
     if (pipelineId) query = query.eq('pipeline_id', pipelineId);
-    // NOSSO (1120): a chave recortada vê só os cards dos funis dela (um
+    // NOSSO (1121): a chave recortada vê só os cards dos funis dela (um
     // `pipeline_id` de fora devolve a lista vazia, como um funil sem card).
     const funis = funisDaChave(ctx);
     if (funis) query = query.in('pipeline_id', funis);

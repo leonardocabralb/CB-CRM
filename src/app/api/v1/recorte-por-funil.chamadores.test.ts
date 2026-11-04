@@ -1,5 +1,5 @@
 // ============================================================
-// Pino DEFAULT-DENY do recorte por funil da chave de API (1120).
+// Pino DEFAULT-DENY do recorte por funil da chave de API (1121).
 //
 // A chave recortada (`api_keys.funis`) só chega a uma rota que declara
 // `aceitaRecorte: true` a `requireApiKey`; as outras a recusam com 403. Este
@@ -65,7 +65,7 @@ function handlers(): Map<string, string> {
   return mapa;
 }
 
-describe('recorte por funil da chave de API (1120) — quem aceita', () => {
+describe('recorte por funil da chave de API (1121) — quem aceita', () => {
   const todos = handlers();
   const aceitam = [...todos].filter(([, corpo]) => /aceitaRecorte:\s*true/.test(corpo));
 

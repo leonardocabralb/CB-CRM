@@ -54,7 +54,7 @@ import {
 import { RequireRole } from '@/components/auth/require-role';
 import { useAuth } from '@/hooks/use-auth';
 import { useMembros } from '@/hooks/use-membros';
-import { OPCOES_DE_VALIDADE_DIAS } from '@/lib/api-keys/configuracao';
+import { OPCOES_DE_VALIDADE_DIAS, validadeSugerida } from '@/lib/api-keys/configuracao';
 import {
   API_SCOPES,
   SCOPE_DESCRIPTIONS,
@@ -76,9 +76,9 @@ interface ApiKey {
   expires_at: string | null;
   revoked_at: string | null;
   created_at: string;
-  /** NOSSO (1120): o funcionário dono (nulo = chave da conta). */
+  /** NOSSO (1121): o funcionário dono (nulo = chave da conta). */
   membro_user_id: string | null;
-  /** NOSSO (1120): os funis que a chave vê (nulo = todos). */
+  /** NOSSO (1121): os funis que a chave vê (nulo = todos). */
   funis: string[] | null;
 }
 
@@ -89,6 +89,11 @@ interface Funil {
 
 /** Sentinela do "Nenhum (chave da conta)" no seletor: o Select não aceita ''. */
 const SEM_FUNCIONARIO = '__conta__';
+
+/** O nome do membro na tela: a rota devolve `full_name: ""` para quem não tem. */
+function nomeDe(m: AccountMember): string {
+  return m.full_name?.trim() || m.email || '—';
+}
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, {
@@ -119,7 +124,7 @@ export function ApiKeysSettings() {
   const [dialogo, setDialogo] = useState<Dialogo>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
 
-  // NOSSO (1120): nomes para a lista e opções para o diálogo. `undefined` =
+  // NOSSO (1121): nomes para a lista e opções para o diálogo. `undefined` =
   // ainda não chegou; `null` = falhou — nunca "a conta não tem funil".
   const { membros, carregando: membrosCarregando, falhou: membrosFalhou } = useMembros();
   const [funis, setFunis] = useState<Funil[] | null | undefined>(undefined);
@@ -147,10 +152,6 @@ export function ApiKeysSettings() {
     };
   }, [accountId]);
 
-  function nomeDoMembro(userId: string): string | null {
-    return membros.find((m) => m.user_id === userId)?.full_name ?? null;
-  }
-
   function nomesDosFunis(ids: string[]): string | null {
     if (!funis) return null; // carregando ou falhou: não afirma nome nenhum
     return ids
@@ -158,16 +159,27 @@ export function ApiKeysSettings() {
       .join(', ');
   }
 
-  /** "Funcionário: Ana · Funis: Trabalhista - Comercial", ou nada. */
+  /**
+   * "Funcionário: Ana · Funis: Trabalhista - Comercial", ou nada para a chave
+   * da conta. ⚠️ Nome ou funil que não carregou NUNCA some da linha: a
+   * chave recortada pareceria a da conta inteira. Diz o que se sabe.
+   */
   function resumoDoRecorte(k: ApiKey): string | null {
     const partes: string[] = [];
-    if (k.membro_user_id && !membrosCarregando && !membrosFalhou) {
-      const nome = nomeDoMembro(k.membro_user_id);
-      partes.push(nome ? t('ofMember', { name: nome }) : t('memberGone'));
+    if (k.membro_user_id) {
+      const m = membros.find((x) => x.user_id === k.membro_user_id);
+      if (membrosCarregando || membrosFalhou) partes.push(t('ofMemberUnknown'));
+      else if (!m) partes.push(t('memberGone'));
+      else if (m.suspenso_em) partes.push(t('ofMemberSuspended', { name: nomeDe(m) }));
+      else partes.push(t('ofMember', { name: nomeDe(m) }));
     }
     if (k.funis) {
       const nomes = nomesDosFunis(k.funis);
-      if (nomes !== null) partes.push(t('onlyPipelines', { names: nomes }));
+      partes.push(
+        nomes !== null
+          ? t('onlyPipelines', { names: nomes })
+          : t('onlyPipelinesCount', { count: k.funis.length })
+      );
     }
     return partes.length > 0 ? partes.join(' · ') : null;
   }
@@ -343,7 +355,7 @@ export function ApiKeysSettings() {
                           ))
                         )}
                       </div>
-                      {/* NOSSO (1120): de quem é a chave e o que ela vê. Sem
+                      {/* NOSSO (1121): de quem é a chave e o que ela vê. Sem
                           funcionário nem funis, nada aparece (a chave de
                           sempre). Nome que ainda não chegou fica de fora,
                           nunca vira "fora da equipe". */}
@@ -367,7 +379,7 @@ export function ApiKeysSettings() {
                     {status === 'active' && (
                       <RequireRole min="admin">
                         <div className="flex shrink-0 gap-2 self-start sm:self-auto">
-                          {/* NOSSO (1120): o admin edita a chave sem gerar outra. */}
+                          {/* NOSSO (1121): o admin edita a chave sem gerar outra. */}
                           <Button
                             variant="outline"
                             size="sm"
@@ -401,10 +413,13 @@ export function ApiKeysSettings() {
         </Card>
       )}
 
-      {/* `key` por chave: o diálogo guarda rascunho, e trocar de chave (ou
-          de criar para editar) recomeça o formulário do zero. */}
+      {/* ⚠️ Montado SÓ enquanto aberto: o diálogo guarda rascunho e a chave
+          recém-criada (`createdKey`). Montado sempre, o "Nova chave" seguinte
+          reabria na tela "Copie sua chave" com o segredo da ANTERIOR (achado
+          da revisão do PR). O `key` recomeça o formulário ao trocar de chave. */}
+      {dialogo && (
       <KeyDialog
-        key={dialogo?.modo === 'editar' ? `editar:${dialogo.chave.id}` : 'criar'}
+        key={dialogo.modo === 'editar' ? `editar:${dialogo.chave.id}` : 'criar'}
         dialogo={dialogo}
         onClose={() => setDialogo(null)}
         onSaved={load}
@@ -413,18 +428,21 @@ export function ApiKeysSettings() {
         membrosFalhou={membrosFalhou}
         funis={funis}
       />
+      )}
     </div>
   );
 }
 
 // ------------------------------------------------------------
 // Diálogo da chave — criar (formulário → a chave inteira, UMA vez) ou
-// editar (NOSSO, 1120: o mesmo formulário sobre a chave existente; o
+// editar (NOSSO, 1121: o mesmo formulário sobre a chave existente; o
 // segredo não muda).
 //
-// NOSSO (1120): validade (padrão 90 dias, decisão do operador), funcionário
-// dono e funis. Chave com funis é SÓ DE LEITURA: os escopos de escrita
-// ficam desmarcados e travados (o servidor recusa de novo).
+// NOSSO (1121): validade, funcionário dono e funis. Decisões do operador:
+// a validade SUGERIDA é 90 dias com funcionário e "sem validade" sem ele (a
+// chave do n8n não para sozinha); chave de funcionário ou com funis é SÓ DE
+// LEITURA: os escopos de escrita ficam desmarcados e travados (o servidor
+// recusa de novo, nas rotas de gestão e no caminho da chave).
 // ------------------------------------------------------------
 
 type Validade = 'manter' | 'sem' | `${(typeof OPCOES_DE_VALIDADE_DIAS)[number]}`;
@@ -460,7 +478,11 @@ function KeyDialog({
   const [scopes, setScopes] = useState<ApiScope[]>(
     (chave?.scopes ?? []).filter((s): s is ApiScope => isApiScope(s))
   );
-  const [validade, setValidade] = useState<Validade>(editando ? 'manter' : '90');
+  const [validade, setValidade] = useState<Validade>(
+    editando ? 'manter' : validadeSugerida(false)
+  );
+  // A validade só acompanha o funcionário enquanto o admin não a escolheu.
+  const [validadeEscolhida, setValidadeEscolhida] = useState(false);
   const [membro, setMembro] = useState<string>(chave?.membro_user_id ?? SEM_FUNCIONARIO);
   const [funisEscolhidos, setFunisEscolhidos] = useState<string[]>(chave?.funis ?? []);
   const [submitting, setSubmitting] = useState(false);
@@ -468,6 +490,11 @@ function KeyDialog({
   const [createdKey, setCreatedKey] = useState<string | null>(null);
 
   const recortada = funisEscolhidos.length > 0;
+  const soLeitura = recortada || membro !== SEM_FUNCIONARIO;
+  // ⚠️ Criar sem saber os funis ou os membros criaria, sem querer, a chave
+  // da conta INTEIRA (falha aberta). Na edição, o que não carregou não é
+  // enviado e fica como está.
+  const opcoesProntas = funis != null && !membrosCarregando && !membrosFalhou;
 
   function toggleScope(scope: ApiScope, checked: boolean) {
     setScopes((prev) =>
@@ -484,6 +511,19 @@ function KeyDialog({
     if (proximos.length > 0) setScopes((s) => s.filter(ehEscopoDeLeitura));
   }
 
+  function escolherMembro(proximo: string) {
+    setMembro(proximo);
+    const comFuncionario = proximo !== SEM_FUNCIONARIO;
+    // Chave de funcionário só lê: a escrita sai junto (e a caixa trava).
+    if (comFuncionario) setScopes((s) => s.filter(ehEscopoDeLeitura));
+    if (!editando && !validadeEscolhida) setValidade(validadeSugerida(comFuncionario));
+  }
+
+  // Funil gravado na chave que já não existe na conta: aparece para ser
+  // DESMARCADO (sem a linha, o salvar mandaria o id apagado e o servidor
+  // recusaria toda edição dos funis — achado da revisão do PR).
+  const funisApagados = funis ? funisEscolhidos.filter((id) => !funis.some((f) => f.id === id)) : [];
+
   function marcarSoLeitura() {
     setScopes(API_SCOPES.filter(ehEscopoDeLeitura));
   }
@@ -498,7 +538,7 @@ function KeyDialog({
     if (userId === SEM_FUNCIONARIO) return t('memberNone');
     const m = membros.find((x) => x.user_id === userId);
     if (!m) return t('memberGone');
-    return m.suspenso_em ? t('memberSuspended', { name: m.full_name }) : m.full_name;
+    return m.suspenso_em ? t('memberSuspended', { name: nomeDe(m) }) : nomeDe(m);
   };
 
   function rotuloDaValidade(v: Validade): string {
@@ -508,13 +548,17 @@ function KeyDialog({
         : t('validityKeepNever');
     }
     if (v === 'sem') return t('validityNever');
-    return v === '90' ? t('validityDaysDefault', { days: Number(v) }) : t('validityDays', { days: Number(v) });
+    return t('validityDays', { days: Number(v) });
   }
 
   async function handleSubmit() {
     const trimmed = name.trim();
     if (!trimmed) {
       toast.error(t('nameRequired'));
+      return;
+    }
+    if (!editando && !opcoesProntas) {
+      toast.error(t('optionsNotLoaded'));
       return;
     }
     const membroUserId = membro === SEM_FUNCIONARIO ? null : membro;
@@ -649,7 +693,14 @@ function KeyDialog({
 
               <div className="space-y-1.5">
                 <Label className="text-muted-foreground">{t('validityLabel')}</Label>
-                <Select value={validade} onValueChange={(v) => v && setValidade(v as Validade)}>
+                <Select
+                  value={validade}
+                  onValueChange={(v) => {
+                    if (!v) return;
+                    setValidade(v as Validade);
+                    setValidadeEscolhida(true);
+                  }}
+                >
                   <SelectTrigger className="bg-muted border-border text-foreground w-full">
                     <SelectValue>{rotuloDaValidade(validade)}</SelectValue>
                   </SelectTrigger>
@@ -673,7 +724,7 @@ function KeyDialog({
                 {membrosCarregando ? (
                   <p className="text-muted-foreground text-xs">{t('loadingOptions')}</p>
                 ) : !membrosFalhou ? (
-                  <Select value={membro} onValueChange={(v) => v && setMembro(v)}>
+                  <Select value={membro} onValueChange={(v) => v && escolherMembro(v)}>
                     <SelectTrigger className="bg-muted border-border text-foreground w-full">
                       <SelectValue>{rotuloDoMembro(membro)}</SelectValue>
                     </SelectTrigger>
@@ -681,13 +732,13 @@ function KeyDialog({
                       <SelectItem value={SEM_FUNCIONARIO}>{t('memberNone')}</SelectItem>
                       {opcoesDeMembro.map((m) => (
                         <SelectItem key={m.user_id} value={m.user_id}>
-                          {m.full_name}
+                          {nomeDe(m)}
                         </SelectItem>
                       ))}
                       {/* O atual que não se pode escolher de novo (suspenso). */}
                       {atual?.suspenso_em && (
                         <SelectItem value={atual.user_id}>
-                          {t('memberSuspended', { name: atual.full_name })}
+                          {t('memberSuspended', { name: nomeDe(atual) })}
                         </SelectItem>
                       )}
                       {chave?.membro_user_id && !atual && (
@@ -718,6 +769,17 @@ function KeyDialog({
                         <span className="text-foreground min-w-0 truncate text-sm">{f.name}</span>
                       </label>
                     ))}
+                    {funisApagados.map((id) => (
+                      <label key={id} className="flex cursor-pointer items-center gap-2.5">
+                        <Checkbox
+                          checked
+                          onCheckedChange={(checked) => toggleFunil(id, checked === true)}
+                        />
+                        <span className="text-muted-foreground min-w-0 truncate text-sm">
+                          {t('pipelineGone')}
+                        </span>
+                      </label>
+                    ))}
                   </div>
                 )}
                 <p className="text-muted-foreground text-xs">{t('pipelinesHint')}</p>
@@ -730,7 +792,7 @@ function KeyDialog({
                     {t('readOnly')}
                   </Button>
                 </div>
-                {recortada && (
+                {soLeitura && (
                   <p className="text-xs text-amber-700 dark:text-amber-300">
                     {t('writeDisabledHint')}
                   </p>
@@ -739,7 +801,7 @@ function KeyDialog({
                     rolagem só, em vez de uma caixa rolando dentro da outra). */}
                 <div className="border-border space-y-2 rounded-md border p-3">
                   {API_SCOPES.map((scope) => {
-                    const travado = recortada && !ehEscopoDeLeitura(scope);
+                    const travado = soLeitura && !ehEscopoDeLeitura(scope);
                     return (
                       <label
                         key={scope}
@@ -786,7 +848,7 @@ function KeyDialog({
               >
                 {t('cancel')}
               </Button>
-              <Button onClick={handleSubmit} disabled={submitting}>
+              <Button onClick={handleSubmit} disabled={submitting || (!editando && !opcoesProntas)}>
                 {submitting ? (
                   <>
                     <Loader2 className="size-4 animate-spin" />

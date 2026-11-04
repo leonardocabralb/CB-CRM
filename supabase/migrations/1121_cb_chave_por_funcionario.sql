@@ -1,5 +1,5 @@
 -- ============================================================
--- 1120 — Chave de API do FUNCIONÁRIO, recortada por FUNIL
+-- 1121 — Chave de API do FUNCIONÁRIO, recortada por FUNIL
 --
 -- Pedido do operador (04/11/2026, `docs/PLANO-chave-por-funcionario.md`):
 -- cada funcionário recebe a PRÓPRIA chave, só de leitura, para o Claude dele
@@ -45,9 +45,9 @@ ALTER TABLE public.api_keys
     CHECK (funis IS NULL OR cardinality(funis) > 0);
 
 COMMENT ON COLUMN public.api_keys.membro_user_id IS
-  '1120: funcionário dono da chave (nulo = chave da conta). Suspenso ou fora da conta = chave recusada (requireApiKey).';
+  '1121: funcionário dono da chave (nulo = chave da conta). Suspenso ou fora da conta = chave recusada (requireApiKey).';
 COMMENT ON COLUMN public.api_keys.funis IS
-  '1120: funis que a chave enxerga (nulo = todos; vazio recusado). Chave recortada só nas rotas que recortam.';
+  '1121: funis que a chave enxerga (nulo = todos; vazio recusado). Chave recortada só nas rotas que recortam.';
 
 -- ------------------------------------------------------------
 -- Conferência: as duas colunas, a FK em CASCADE (uma só) e o CHECK.
@@ -62,7 +62,7 @@ BEGIN
        AND attname = 'membro_user_id' AND NOT attisdropped
        AND atttypid = 'uuid'::regtype
   ) THEN
-    RAISE EXCEPTION '1120: api_keys.membro_user_id ausente ou com outro tipo';
+    RAISE EXCEPTION '1121: api_keys.membro_user_id ausente ou com outro tipo';
   END IF;
 
   IF NOT EXISTS (
@@ -71,7 +71,7 @@ BEGIN
        AND attname = 'funis' AND NOT attisdropped
        AND atttypid = 'uuid[]'::regtype
   ) THEN
-    RAISE EXCEPTION '1120: api_keys.funis ausente ou com outro tipo';
+    RAISE EXCEPTION '1121: api_keys.funis ausente ou com outro tipo';
   END IF;
 
   SELECT string_agg(c.confdeltype::text, ',' ORDER BY c.conname) INTO v_acoes
@@ -83,7 +83,7 @@ BEGIN
      AND a.attname = 'membro_user_id';
   -- 'c' = CASCADE. SET NULL ('n') abriria a chave para a conta inteira.
   IF v_acoes IS DISTINCT FROM 'c' THEN
-    RAISE EXCEPTION '1120: FK de api_keys.membro_user_id = % (esperado só CASCADE, "c")',
+    RAISE EXCEPTION '1121: FK de api_keys.membro_user_id = % (esperado só CASCADE, "c")',
       coalesce(v_acoes, 'nenhuma');
   END IF;
 
@@ -93,6 +93,6 @@ BEGIN
        AND conname = 'api_keys_funis_nao_vazio'
        AND contype = 'c'
   ) THEN
-    RAISE EXCEPTION '1120: CHECK api_keys_funis_nao_vazio ausente';
+    RAISE EXCEPTION '1121: CHECK api_keys_funis_nao_vazio ausente';
   END IF;
 END $$;

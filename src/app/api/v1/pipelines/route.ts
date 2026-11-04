@@ -21,7 +21,7 @@ export async function GET(request: Request) {
       .from('pipelines')
       .select('id, name, created_at, pipeline_stages(id, name, position, color)')
       .eq('account_id', ctx.accountId);
-    // NOSSO (1120): a chave recortada vê só os funis dela.
+    // NOSSO (1121): a chave recortada vê só os funis dela.
     const funis = funisDaChave(ctx);
     if (funis) query = query.in('id', funis);
 

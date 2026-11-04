@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest';
 import {
   OPCOES_DE_VALIDADE_DIAS,
   VALIDADE_MAXIMA_DIAS,
-  escritaNaChaveRecortada,
+  ehChaveSoDeLeitura,
+  escritaProibida,
   lerFunis,
   lerMembro,
   lerValidade,
+  validadeSugerida,
 } from './configuracao';
 import { API_SCOPES, ehEscopoDeLeitura } from './scopes';
 
@@ -34,8 +36,11 @@ describe('lerValidade', () => {
     }
   });
 
-  it('o padrão do formulário é 90 dias (decisão do operador)', () => {
-    expect(OPCOES_DE_VALIDADE_DIAS[0]).toBe(90);
+  it('sugere 90 dias com funcionário e "sem validade" na chave de integração', () => {
+    // Decisão do operador: a do n8n não pode parar sozinha em 90 dias.
+    expect(validadeSugerida(true)).toBe('90');
+    expect(validadeSugerida(false)).toBe('sem');
+    expect(OPCOES_DE_VALIDADE_DIAS).toContain(90);
   });
 });
 
@@ -67,16 +72,23 @@ describe('lerFunis', () => {
   });
 });
 
-describe('escritaNaChaveRecortada', () => {
-  it('chave recortada só lê: aponta o primeiro escopo de escrita', () => {
-    expect(escritaNaChaveRecortada([UUID_A], ['contacts:read', 'messages:send'])).toBe(
-      'messages:send'
-    );
-    expect(escritaNaChaveRecortada([UUID_A], ['contacts:read', 'messages:read'])).toBeNull();
+describe('escritaProibida (decisão do operador: chave de funcionário e recortada só leem)', () => {
+  it('recortada por funil: aponta o primeiro escopo de escrita', () => {
+    const recortada = { funis: [UUID_A], membroUserId: null };
+    expect(escritaProibida(recortada, ['contacts:read', 'messages:send'])).toBe('messages:send');
+    expect(escritaProibida(recortada, ['contacts:read', 'messages:read'])).toBeNull();
   });
 
-  it('sem recorte, escrita é permitida (a chave da conta de sempre)', () => {
-    expect(escritaNaChaveRecortada(null, ['messages:send', 'contacts:write'])).toBeNull();
+  it('de funcionário SEM funil também só lê (a escrita sairia como o dono)', () => {
+    const doFuncionario = { funis: null, membroUserId: UUID_B };
+    expect(ehChaveSoDeLeitura(doFuncionario)).toBe(true);
+    expect(escritaProibida(doFuncionario, ['contacts:write'])).toBe('contacts:write');
+  });
+
+  it('chave da conta (sem funcionário, sem recorte): escrita permitida, como sempre', () => {
+    const daConta = { funis: null, membroUserId: null };
+    expect(ehChaveSoDeLeitura(daConta)).toBe(false);
+    expect(escritaProibida(daConta, ['messages:send', 'contacts:write'])).toBeNull();
   });
 
   it('todo escopo é de leitura OU de escrita pelo sufixo (sem terceiro caso)', () => {

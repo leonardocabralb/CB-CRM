@@ -34,7 +34,7 @@ export async function GET(request: Request) {
     const status = url.searchParams.get('status');
     const contactId = url.searchParams.get('contact_id');
 
-    // NOSSO (1120): a chave recortada por funil lista só pelo CLIENTE, e só
+    // NOSSO (1121): a chave recortada por funil lista só pelo CLIENTE, e só
     // cliente do recorte (fora dele, a lista vazia de quem não tem conversa).
     // A conferência do UUID fica SÓ neste ramo: a chave sem recorte segue com
     // o contrato de sempre.

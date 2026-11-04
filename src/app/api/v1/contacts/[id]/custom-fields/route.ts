@@ -103,7 +103,7 @@ export async function GET(
 
     const dados = await carregar(ctx.supabase, ctx.accountId, id);
     if (!dados) return fail('not_found', 'Contact not found', 404);
-    // NOSSO (1120): fora do recorte por funil, o mesmo 404 de quem não existe
+    // NOSSO (1121): fora do recorte por funil, o mesmo 404 de quem não existe
     // (pela ficha que FICOU, como a leitura acima).
     if (!(await contatoNoRecorte(ctx, dados.contactId))) {
       return fail('not_found', 'Contact not found', 404);

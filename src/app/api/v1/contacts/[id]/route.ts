@@ -51,7 +51,7 @@ export async function GET(
     if (!ehUuid(id)) throw badRequest("'id' must be a UUID");
     // Id de ficha UNIDA a outra (1092) responde com a que ficou.
     const atual = await idAtualDaFicha(ctx.supabase, ctx.accountId, id);
-    // NOSSO (1120): o recorte vale para a ficha que FICOU, e fora dele é o
+    // NOSSO (1121): o recorte vale para a ficha que FICOU, e fora dele é o
     // mesmo 404 de quem não existe.
     if (atual && !(await contatoNoRecorte(ctx, atual))) {
       return fail('not_found', 'Contact not found', 404);

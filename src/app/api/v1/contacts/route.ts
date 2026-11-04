@@ -90,7 +90,7 @@ export async function GET(request: Request) {
     // bounded query (paged by limit+1) instead of pre-fetching an
     // unbounded id list into an `.in(...)`.
     //
-    // NOSSO (1120): a chave recortada por funil usa a MESMA forma para o
+    // NOSSO (1121): a chave recortada por funil usa a MESMA forma para o
     // recorte — um INNER join apelidado em `deals`, só para o WHERE (o pai
     // fica se ALGUM card dele está num funil da chave; o PostgREST não
     // repete o pai por card). Sem recorte, a consulta é a de sempre.

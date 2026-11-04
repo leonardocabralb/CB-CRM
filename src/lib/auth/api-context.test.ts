@@ -153,8 +153,8 @@ describe("requireApiKey", () => {
   });
 });
 
-// NOSSO (1120): a chave do FUNCIONÁRIO e o recorte por funil.
-describe("requireApiKey — chave do funcionário (1120)", () => {
+// NOSSO (1121): a chave do FUNCIONÁRIO e o recorte por funil.
+describe("requireApiKey — chave do funcionário (1121)", () => {
   it("a chave da CONTA (sem funcionário) não consulta o perfil: nada muda para o n8n", async () => {
     findActiveKeyByHash.mockResolvedValue(row());
     const ctx = await requireApiKey(reqWith(`Bearer ${KEY}`));
@@ -183,6 +183,28 @@ describe("requireApiKey — chave do funcionário (1120)", () => {
     findActiveKeyByHash.mockResolvedValue(row({ membro_user_id: "func-1" }));
     funcionarioAtivoNaConta.mockRejectedValue(new Error("API key member lookup failed"));
     await expectApiError(requireApiKey(reqWith(`Bearer ${KEY}`)), "internal", 500);
+  });
+
+  it("chave do funcionário só LÊ: rota de escrita é 403 mesmo com o escopo gravado", async () => {
+    // A 2ª defesa: as rotas de gestão recusam o escopo, mas uma corrida de
+    // dois PATCHs (ou SQL à mão) pode gravá-lo.
+    findActiveKeyByHash.mockResolvedValue(
+      row({ membro_user_id: "func-1", scopes: ["messages:send", "contacts:read"] }),
+    );
+    funcionarioAtivoNaConta.mockResolvedValue(true);
+    await expectApiError(
+      requireApiKey(reqWith(`Bearer ${KEY}`), "messages:send"),
+      "forbidden",
+      403,
+    );
+    const ctx = await requireApiKey(reqWith(`Bearer ${KEY}`), "contacts:read");
+    expect(ctx.membroUserId).toBe("func-1");
+  });
+
+  it("chave da conta com escopo de escrita continua escrevendo (n8n, Make)", async () => {
+    findActiveKeyByHash.mockResolvedValue(row({ scopes: ["messages:send"] }));
+    const ctx = await requireApiKey(reqWith(`Bearer ${KEY}`), "messages:send");
+    expect(ctx.accountId).toBe("acct-1");
   });
 
   it("chave recortada por funil numa rota que NÃO declara o recorte: 403 restricted_key", async () => {

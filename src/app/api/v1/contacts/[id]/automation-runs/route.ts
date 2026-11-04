@@ -1,6 +1,6 @@
 // ============================================================
 // GET /api/v1/contacts/{id}/automation-runs — o histórico de automações de
-// um cliente (scope: automations:read). NOSSO (1120).
+// um cliente (scope: automations:read). NOSSO (1121).
 //
 // Keyset-paginated, mais recente primeiro. Cada item é uma execução
 // (`automation_logs`): qual automação, o que disparou, como terminou

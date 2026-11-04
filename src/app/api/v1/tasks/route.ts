@@ -54,7 +54,7 @@ export async function GET(request: Request) {
       throw badRequest("'responsavel_user_id' must be a UUID");
     }
 
-    // NOSSO (1120): a chave recortada por funil lista só pelo CLIENTE, e só
+    // NOSSO (1121): a chave recortada por funil lista só pelo CLIENTE, e só
     // cliente do recorte (fora dele, a lista vazia de quem não tem tarefa).
     exigirFiltroDoCliente(ctx, Boolean(contactId));
     if (!(await contatoNoRecorte(ctx, contactId))) return okList([], null);
