@@ -157,7 +157,7 @@ Todos apontam para `82.25.76.63` e entram pelo `websecure`.
 | `postgres` | `postgres_postgres` | `postgres:14` | 1 |
 | `redis` | `redis_redis` | `redis:latest` | 1 |
 | `pgvector` | `pgvector_pgvector` | `pgvector/pgvector:pg16` | 1 |
-| `evolution` | `evolution_evolution` | `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao-foto-sessao` (por digest) | 1 |
+| `evolution` | `evolution_evolution` | `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao-foto-sessao-status` (por digest) | 1 |
 | `crm` | `crm_crm` | `ghcr.io/leonardocabralb/cb-crm:<sha>` | 1 |
 | `crm` | `crm_agendador` | `curlimages/curl:8.11.1` | 1 |
 | `n8n` | `n8n_n8n_editor` / `_webhook` / `_worker` | `n8nio/n8n:latest` | 1 / 1 / 1 |
@@ -165,18 +165,23 @@ Todos apontam para `82.25.76.63` e entram pelo `websecure`.
 | `portainer` | `portainer_portainer` / `_agent` | `portainer/*` | 1 / global |
 | `openclaw` | `openclaw_openclaw-gateway` | `ghcr.io/openclaw/openclaw:latest` | 1 |
 
-⚠️ **A Evolution é uma IMAGEM NOSSA**, não a oficial — desde **08/10/2026
-10:41 BRT**: `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao-foto-sessao@sha256:f73197c61fe2ea227df45d6117f101fddd1f2f367709b1817389dba6a3c43805`
+⚠️ **A Evolution é uma IMAGEM NOSSA**, não a oficial — desde **04/11/2026
+10:04 BRT**: `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao-foto-sessao-status@sha256:fdfa22fab01147d67f2b6b9d1752efa991b1c36f9b62e0c266f8151966b069ac`
 (Evolution **2.4.0** / Baileys **7.0.0-rc13**, construída pelo workflow
 `.github/workflows/evolution-cb.yml` a partir do commit `e273b904` do
-`develop` oficial, com TRÊS patches — a citação do cliente, a foto de perfil
-que travava a fila de entrada em 1 msg/min (`docs/PLANO-baileys-7.md`, 5.10) e
-a sessão única com a reconexão depois do logout e do 408 (§8, 06/10) — e o
-`prisma.config.ts` dentro — ver `docker/evolution-cb/README.md`). De 17/09
-12:39 a 08/10 10:41 rodou a `…-citacao-foto@sha256:a7d56788ba127de3c7f759e57addf97bb54c71fedb1e955ab60d672753924126`
-(os dois primeiros patches), que é o **rollback curto** de hoje: mesmo commit,
-mesmas migrations, `docker service update --image <ela> evolution_evolution`,
-sem mount — e devolve os defeitos de sessão da §8 (06/10). Um passo atrás, a
+`develop` oficial, com QUATRO patches — a citação do cliente, a foto de perfil
+que travava a fila de entrada em 1 msg/min (`docs/PLANO-baileys-7.md`, 5.10),
+a sessão única com a reconexão depois do logout e do 408 (§8, 06/10) e, na
+Baileys, o ack do stanza `<status>` (§8, 04/11) — e o `prisma.config.ts`
+dentro — ver `docker/evolution-cb/README.md`). De 08/10 10:41 a 04/11 10:04
+rodou a `…-citacao-foto-sessao@sha256:f73197c61fe2ea227df45d6117f101fddd1f2f367709b1817389dba6a3c43805`
+(os três primeiros), que é o **rollback curto** de hoje: mesmo commit, mesmas
+migrations, `docker service update --image <ela> evolution_evolution`, sem
+mount — e devolve a queda a cada 50 min na conta que recebe `<status>` (§8,
+04/11). Antes dela, de 17/09 12:39 a 08/10 10:41, a
+`…-citacao-foto@sha256:a7d56788ba127de3c7f759e57addf97bb54c71fedb1e955ab60d672753924126`
+(os dois primeiros patches) devolve também os defeitos de sessão da §8
+(06/10). Um passo atrás, a
 `…-citacao@sha256:dc0f4e8b12de706414609464131b4099de5f0dd29d16bd011b74206089ff1adf`
 (só o primeiro patch; 09/09 21:11 a 17/09 12:39) devolve também o teto de 1
 msg/min. ⚠️ Qualquer troca de imagem só com a
@@ -405,6 +410,62 @@ o `stack deploy` manual descrito no `DEPLOY-VPS.md`.
 
 ## 8. Histórico de incidentes
 
+### 2026-11-04 — o `<status>` sem ack: queda a cada 50 min e entrada 23 h atrasada
+
+**Sintoma.** Na Trabalhista e Previdenciário - Jurídico (`trabalhista-juridico-bf8a08`),
+o cabeçalho do CRM dizia "Entregando com 23 h de atraso" com a conexão
+"Funcionando". As mensagens de cliente chegavam em lotes de 1 a 8 a cada ~50 min
+(até 23 h de atraso), e os 73 envios da equipe de 03/11 10h BRT em diante ficaram
+em 1 ✓, sem recibo nem `SERVER_ACK`. As outras 3 conexões, no mesmo contêiner,
+entregavam em 0,5–1,8 s. A sentinela avisou "sem receber" às 10:05 BRT de 03/11.
+
+**Causa (medida).**
+- 19 das 22 quedas da instância no log (03/11 13:03 BRT → 04/11) eram
+  `stream:error` com `<ack class="status" type="media|text">`, que a Baileys
+  mapeia para 500 (`badSession`, porque `ack` não está no `CODE_MAP`). Em 15 delas
+  a sessão durou 49:59–50:11; as outras 3 eram 428/503 comuns. Nas outras
+  instâncias, nenhuma: só 428/503 (10 no período).
+- O WhatsApp passou a entregar o Status (stories) dos contatos a ESTA conta como
+  um stanza `<status>` de topo, e não como `<message from="status@broadcast">`.
+  É uma mudança gradual, conta por conta: WhiskeySockets/Baileys#2858, e a
+  whatsmeow o trata desde 20/07/2026. A Baileys 7.0.0-rc13 só registra
+  `message`, `call`, `receipt`, `notification` e `ack,class:message` (0
+  ocorrências de `CB:status` na Baileys e na Evolution do contêiner): o
+  `<status>` nunca recebia ack, e ~50 min depois o servidor encerrava o stream
+  cobrando-o.
+- Em TODAS as 22 sessões, a Evolution repassou eventos da instância só no 1º
+  minuto depois de abrir. Do 3º minuto até a queda não passou nenhum, nem
+  mensagem nem recibo: a entrega offline, em lotes (`offline_batch` de 100),
+  parava no lote com o `<status>` pendente, e cada reconexão andava um lote. As
+  6 primeiras sessões do log não trouxeram nenhuma mensagem. Uma sessão de
+  03/11 durou 4 h (18:23 → 22:25 UTC), também sem nada depois do 1º minuto.
+- Começo: as quedas de hora em hora aparecem na coleta da sentinela na janela
+  de 16:05–17:05 UTC de 02/11 (feriado, pouco movimento). No CRM, de 19/10 a
+  02/11 nenhuma mensagem dessa conexão passou de 5 min; a primeira atrasada tem
+  carimbo de 02/11 20:06 UTC.
+- Não adianta: reiniciar a instância (é o que a própria queda faz a cada 50
+  min), parear de novo pelo QR (a conta continua recebendo `<status>`) nem o
+  `readStatus` (o stanza não chega ao `handleMessage`) — os três medidos por
+  outras instalações em #2858.
+
+**Conserto (04/11, autorizado pelo operador).** Quarto patch da imagem, na
+Baileys compilada: `docker/evolution-cb/baileys+7.0.0-rc13.patch`, o do PR
+WhiskeySockets/Baileys#2866. `ws.on('CB:status')` responde pelo
+`sendMessageAck` sem código de erro. Teste local antes: com o patch, o
+`<status>` sai com `ack class=status` e o `type`; sem ele, nenhum ack. A imagem
+`…-citacao-foto-sessao-status@sha256:fdfa22fa…` (run 41833798488) entrou às
+10:04 BRT, com a fronteira da 1002 das outras 3 em 0,6–1,8 s e fora da janela
+de reconexão da Jurídico: 11 s de troca, as 4 `open` em 14 s, sem QR, sem
+migration pendente.
+- Backups em `/root/backups/*20261104T130147Z*`: o log (`.jsonl`, 26 MB), o
+  dump do banco `evolution`, a spec do serviço e a cópia da stack. No db 9, as
+  chaves `backup:evolution:instance:<id>:20261104T130147Z`.
+- `/root/evolution-stack.yml` foi atualizado para o digest novo.
+
+**Depois.** A fila represada começou a descer no 1º minuto e continuou passando
+do 3º, o que antes nunca acontecia: 30 mensagens em 3 min, avançando pelo
+acúmulo de 03/11.
+
 ### 2026-10-06 — sessão duplicada no pareamento, `isDeleting` preso e 408 que desfaz o pareamento
 
 Três defeitos da Evolution 2.4 (`e273b904`), vistos no mesmo dia.
@@ -543,11 +604,11 @@ Movido do `CLAUDE.md` em 24/09/2026 (a seção "Baileys 7 / Evolution 2.4"),
 sem reescrever. É estado que envelhece: confira com `docker service inspect`
 antes de agir. O que foi medido e decidido está em `docs/PLANO-baileys-7.md`.
 
-- Operação (estado em 08/10/2026 10:41 BRT): a imagem é a NOSSA,
-  `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao-foto-sessao@sha256:f73197c6…`
+- Operação (estado em 04/11/2026 10:04 BRT): a imagem é a NOSSA,
+  `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao-foto-sessao-status@sha256:fdfa22fa…`
   (commit `e273b904` do `develop` + patch da citação do cliente + patch da
-  foto de perfil + patch da sessão única + `prisma.config.ts` dentro —
-  `docker/evolution-cb/`), SEMPRE por digest; `TELEMETRY_ENABLED=false`;
+  foto de perfil + patch da sessão única + o ack do `<status>` na Baileys +
+  `prisma.config.ts` dentro — `docker/evolution-cb/`), SEMPRE por digest; `TELEMETRY_ENABLED=false`;
   a licença está ativa (tabela `RuntimeConfig` do banco `evolution`); a stack
   completa está em `ops/vps/evolution-stack.yml` (= `/root/evolution-stack.yml`,
   segredos em `/root/evolution.env`), e `docker stack deploy` da Evolution só
@@ -556,15 +617,18 @@ antes de agir. O que foi medido e decidido está em `docs/PLANO-baileys-7.md`.
   compartilhado com outros serviços); o log da Evolution morre no reinício do
   contêiner; o cron `docker image prune -af` apaga as imagens de rollback na
   madrugada seguinte (são públicas, voltam com `pull`).
-  ⚠️ **Desde 08/10/2026 10:41 BRT a imagem carrega TRÊS patches** (o da
+  ⚠️ **Desde 04/11/2026 10:04 BRT a imagem carrega QUATRO patches** (o da
   citação; o da foto de perfil que travava a fila de entrada — ver o
-  `docs/PLANO-baileys-7.md`, 5.10 e a seção 16; e o da sessão única com a
-  reconexão — §8, 06/10). Trocada por `docker service update --image
-  …@sha256:f73197c6…` (stop-first: 11 s de troca, as 4 conexões voltaram `open`
-  sozinhas, `prisma migrate deploy` sem pendência; a anterior, a `-foto`, entrou
-  em 17/09 do mesmo jeito, em 17 s). Rollback = o digest anterior,
-  `…citacao-foto@sha256:a7d56788…` (mesmo commit, mesmas migrations; devolve os
-  avisos sem o patch, abaixo). O `.yml` da stack acompanha o digest. ⚠️⚠️ **Trocar o
+  `docs/PLANO-baileys-7.md`, 5.10 e a seção 16; o da sessão única com a
+  reconexão — §8, 06/10; e o ack do `<status>`, aplicado na Baileys pelo
+  `patch-package` — §8, 04/11). Trocada por `docker service update --image
+  …@sha256:fdfa22fa…` (stop-first: 11 s de troca, as 4 conexões voltaram `open`
+  sozinhas em 14 s, sem QR, `prisma migrate deploy` sem pendência; a anterior,
+  a `-sessao`, entrou em 08/10 do mesmo jeito, em 11 s). Rollback = o digest
+  anterior, `…citacao-foto-sessao@sha256:f73197c6…` (mesmo commit, mesmas
+  migrations; devolve a queda de 50 min da §8, 04/11). Dois passos atrás, a
+  `…citacao-foto@sha256:a7d56788…` devolve também os avisos sem o patch da
+  sessão, abaixo. O `.yml` da stack acompanha o digest. ⚠️⚠️ **Trocar o
   contêiner com a fila de entrada represada PERDE a fila para o CRM** (a
   Baileys acka ao servidor ANTES do handler; medido em 17/09: os ~27 min
   represados da Bancário-Comercial ficaram só no celular). Reinício de
@@ -590,7 +654,7 @@ espere chegar uma mensagem nova.
   PALIATIVO do atraso de entrega: drena a fila (16 min em 1 min, medido em
   16/09), não tira a causa. Causa e conserto: `docs/PLANO-baileys-7.md`, 5.10.
 - ⚠️ **Na imagem SEM `sessao-unica-e-reconexao.patch`** (a de antes de 08/10/2026
-  10:41 BRT — o rollback curto acima — ou qualquer outra que o perca):
+  10:41 BRT — o rollback de dois passos acima — ou qualquer outra que o perca):
   - toda instância que passou por um logout (o "Reparear") desde a subida do
     contêiner fica com `isDeleting` ligado. Nela, queda nenhuma reconecta
     sozinha, e o `POST /instance/restart` a deixa FECHADA (o restart derruba o
@@ -615,7 +679,7 @@ espere chegar uma mensagem nova.
   logout SEMPRE apaga credencial e chaves, mesmo com o socket já morto — e aí o
   WhatsApp não é avisado: depois de um Reparear, conferir "Aparelhos conectados"
   no celular e remover o aparelho antigo (conta no limite de 4). ⚠️ A imagem de
-  rollback (`…-foto@sha256:a7d56788…`) ficou sem contêiner e o
+  rollback (`…-sessao@sha256:f73197c6…`, desde 04/11) ficou sem contêiner e o
   `docker image prune -af` da madrugada a apaga: rollback = `docker pull` antes
   (pública) — segurá-la com um contêiner parado é a P12, decisão do operador.
 - ⚠️ **Voltar de versão da imagem está DESCARTADO por decisão do operador**:
