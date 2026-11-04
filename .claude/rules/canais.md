@@ -123,3 +123,15 @@ duplica a sessão: `.claude/rules/whatsapp-evolution.md`, "Pareamento".
 - ⚠️ **`semReciboDesde` só vai junto do motivo** (a tela lê o `detail`). A sonda de antes do deploy não manda o campo, e a faixa sem o `desde` cala.
 - ⚠️ **O texto manda NÃO reenviar:** no incidente as mensagens tinham chegado, e reenviar mandaria em dobro (raiz, 8e).
 - O Meu dia fica como está (decisão do operador): `conexoesAtrasadas` só lê `lagging`.
+
+### Alarmes no sino: o (c) e o (b) com estado (04/11/2026, 1122)
+
+`alarmes-no-sino.ts` (régua pura) e `avisar-alarmes.ts` (o passo do ciclo, o PRIMEIRO do `rodarManutencaoDoCiclo`, laço lento), com o estado em `cb_alarmes_de_conexao`. Grava `whatsapp_alert` (1085) com título e corpo já escritos, no idioma da instalação, como a sentinela. Decisões D2, D5, D6 e P3b do plano.
+
+- ⚠️⚠️ **As regras da sentinela:** um aviso por episódio; "Continua" a cada 24 h; "Normalizou" só com PROVA (no (c), um envio confirmado depois do começo do episódio; no (b), medição FRESCA com até 5 min). "Não sei" (leitura que falhou, medição vencida, ninguém enviando) não encerra nada. A prova vista com o aviso recusado fica em `normalizou_em` e sai no ciclo seguinte.
+- ⚠️ **Horário útil só no (c)** (P3b): segunda a sexta, 8h–20h de Brasília (`FUSO_PADRAO` em toda instalação; feriado conta como útil). Aceso à noite, a linha fica guardada e o aviso sai na abertura SE ainda estiver aceso; o que acendeu e apagou fora do horário sai calado. O "Normalizou" de aviso já enviado vai a qualquer hora. O (b) acende com 30 min (`ATRASO_DO_SINO_SEG`), a qualquer hora.
+- ⚠️⚠️ **O aviso sai só para quem GANHA a escrita cercada do estado** (raiz, 8e): gravar o estado novo é a reivindicação, cercada pelo `avisado_em` e pelo `normalizou_em` lidos. O sino recusou → o estado volta, cercado pelo que o ciclo gravou, e o próximo ciclo tenta de novo.
+- **Quem recebe (D2):** owner/admin e os membros cujo perfil vê a conexão (`canalNoEscopo` sobre o perfil REAL); o suspenso fica fora já na leitura. Sem destinatário, o episódio fica guardado.
+- ⚠️ **O estado não mora em `cb_channels`**: todo UPDATE ali refaz a sonda de cada aba. A tabela é fechada ao navegador e fora da publicação, e a conexão apagada leva a linha (CASCADE).
+- **Toda leitura é cercada pela conta** (a service role não tem RLS), e a conexão vem pelo predicado (`ehEvolution`/`ehMeta`): o Instagram fica fora.
+- ⚠️ **A régua do (c) é a da sonda** (`semRecibo` + `lerEnviosRecentes`): mudar uma muda as duas. No nosso servidor, a sentinela avisa o mesmo incidente com outro texto: aceito (plano §6).

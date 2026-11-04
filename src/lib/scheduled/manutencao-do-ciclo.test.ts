@@ -1,14 +1,21 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { ordem, gerar, vencer, podar, drenar } = vi.hoisted(() => ({
+const { ordem, alarmes, gerar, vencer, podar, drenar } = vi.hoisted(() => ({
   ordem: [] as string[],
+  alarmes: vi.fn(),
   gerar: vi.fn(),
   vencer: vi.fn(),
   podar: vi.fn(),
   drenar: vi.fn(),
 }));
 
+vi.mock('@/lib/cb-channels/avisar-alarmes', () => ({
+  avisarAlarmesDeConexao: (...a: unknown[]) => {
+    ordem.push('alarmes');
+    return alarmes(...a);
+  },
+}));
 vi.mock('@/lib/tasks/gerar-recorrentes', () => ({
   gerarTarefasRecorrentes: (...a: unknown[]) => {
     ordem.push('tarefas');
@@ -41,6 +48,7 @@ const admin = {} as SupabaseClient;
 
 beforeEach(() => {
   ordem.length = 0;
+  alarmes.mockResolvedValue(undefined);
   gerar.mockResolvedValue({ geradas: 0, semAviso: 0, erro: null });
   vencer.mockResolvedValue({ excluidas: 0, arquivos: 0, erro: null });
   podar.mockResolvedValue({ limpos: 0, erro: null });
@@ -54,9 +62,10 @@ beforeEach(() => {
 });
 
 describe('a manutenção do ciclo das agendadas', () => {
-  it('roda os quatro passos EM SEQUÊNCIA: tarefas → vencimento → poda dos turnos da IA → fila (o vencimento enche a fila que a drenagem leva; a poda vem depois da exclusão definitiva)', async () => {
+  it('roda os cinco passos EM SEQUÊNCIA: alarmes → tarefas → vencimento → poda dos turnos da IA → fila (o aviso de conexão primeiro; o vencimento enche a fila que a drenagem leva; a poda vem depois da exclusão definitiva)', async () => {
     await rodarManutencaoDoCiclo(admin, 1_000);
-    expect(ordem).toEqual(['tarefas', 'vencer', 'podar', 'drenar']);
+    expect(ordem).toEqual(['alarmes', 'tarefas', 'vencer', 'podar', 'drenar']);
+    expect(alarmes).toHaveBeenCalledWith(admin, 1_000);
     expect(gerar).toHaveBeenCalledWith(admin);
   });
 
@@ -73,13 +82,14 @@ describe('a manutenção do ciclo das agendadas', () => {
   });
 
   it('cada passo é ISOLADO: o que lança (ou rejeita) não impede o seguinte, e nada sai para fora', async () => {
+    alarmes.mockRejectedValue(new Error('alarmes quebrou'));
     gerar.mockRejectedValue(new Error('tarefas quebrou'));
     vencer.mockImplementation(() => {
       throw new Error('vencimento quebrou');
     });
     podar.mockRejectedValue(new Error('poda quebrou'));
     await expect(rodarManutencaoDoCiclo(admin, 1_000)).resolves.toBeUndefined();
-    expect(ordem).toEqual(['tarefas', 'vencer', 'podar', 'drenar']);
+    expect(ordem).toEqual(['alarmes', 'tarefas', 'vencer', 'podar', 'drenar']);
     expect(podar).toHaveBeenCalledTimes(1);
     expect(drenar).toHaveBeenCalledTimes(1);
   });
