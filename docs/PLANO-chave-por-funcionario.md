@@ -24,9 +24,9 @@
 
 | Fase | Escopo | Estado | Migration | PR |
 | --- | --- | --- | --- | --- |
-| **1** | Chave: funcionário, funis, validade e "Só leitura" na tela; corte na suspensão; EDITAR a chave | 🟡 código pronto (04/11); 1121 aplicada; falta o e2e no preview | `1121` (aditiva) **APLICADA** 04/11 (`20261104223155`) | PR #459 |
-| **2** | Recorte por funil nas rotas de leitura (chave recortada = default-deny) | 🟡 código pronto; forma do `deals!inner` MEDIDA no PostgREST real (5.534 = SQL) | não | idem |
-| **3** | O que falta ler: nome do arquivo, transcrição do áudio, histórico de automações | 🟡 código pronto | não | idem |
+| **1** | Chave: funcionário, funis, validade e "Só leitura" na tela; corte na suspensão; EDITAR a chave | ✅ pronto; 1121 aplicada; e2e OK no preview (04/11) | `1121` (aditiva) **APLICADA** 04/11 (`20261104223155`) | PR #459 |
+| **2** | Recorte por funil nas rotas de leitura (chave recortada = default-deny) | ✅ pronto; `deals!inner` MEDIDO no PostgREST real (5.534 = SQL); e2e OK | não | idem |
+| **3** | O que falta ler: nome do arquivo, transcrição do áudio, histórico de automações | ✅ pronto; e2e OK (arquivo baixado sem chave) | não | idem |
 | **4** | Guia do Claude do funcionário (sem MCP) e o piloto com uma pessoa | ⬜ depois do merge | não | — |
 
 **Respostas do operador (04/11/2026):** D1 = 90 dias; D2 = aceita os dois
@@ -51,6 +51,43 @@ baixa; a doc diz).
 **Medido na execução:** replay completo local (243 migrations + verify-schema)
 verde; cenários da 1121 (reaplicar, lista vazia recusada, login apagado leva
 a chave) verdes; suíte inteira verde (12.887 testes, Node 22).
+
+**E2E no preview contra a produção (04/11/2026, com o "pode testar").** O
+"TESTE Funil Trabalhista" é de OUTRA conta do banco (a 67610825) e o servidor
+o recusaria. Com o operador, o teste foi feito no **Bancário - Comercial**,
+onde está o card do lead de teste. Foi uma chave de teste do operador, só
+leitura, com o segredo só na memória da página e só códigos e contagens
+voltando ao chat. Resultado:
+- **Formulário:**
+  - sem funcionário, sugere "Sem validade"; com funcionário, muda para 90
+    dias e avisa que é só leitura;
+  - mostra só os 5 funis da conta;
+  - "Só leitura" marca as 11 permissões de leitura e trava a escrita.
+- **Com o recorte:**
+  - `/me` diz o funil e o funcionário;
+  - o lead aparece por busca e por id (200);
+  - o cliente de outro funil dá 404 na ficha, nos campos, na conversa, nas
+    mensagens e nas automações, e lista vazia nas anotações, cartões e
+    conversas;
+  - as listas sem `contact_id` dão 400;
+  - `/channels` e a escrita (`POST /notes`) dão 403 `restricted_key`;
+  - os 100 cartões da página são do funil.
+- **Leitura:**
+  - 100 mensagens com os campos novos, 17 com arquivo e as 17 com nome, e 3
+    transcrições;
+  - 31 execuções de automação (29 concluídas, 2 barradas);
+  - um documento baixado do `media_url` sem chave: 57 KB, com o tipo e a
+    extensão certos.
+- **Tela:**
+  - a lista mostra "Funcionário: … · Funis: …" e a data de vencimento;
+  - "Nova chave" logo depois de criar abre o formulário vazio, sem o segredo.
+- **Edição:**
+  - tirar o funil manteve a validade, e o mesmo segredo continuou valendo;
+  - com isso, `/channels` e o cliente de fora passaram a 200, e a escrita
+    continuou 403 `forbidden` (só leitura de funcionário).
+- **Revogar:** a linha ficou com o selo e sem botões, e `/me` passou a 401.
+- **Banco depois:** a chave de teste revogada, as outras 17 intactas e
+  nenhuma anotação criada. O servidor não registrou nenhum erro.
 
 As fases 1 e 2 podem ir no MESMO PR: a chave recortada (Fase 1) sem a Fase 2
 seria uma chave que diz "só o Trabalhista" e lê a conta inteira. Se forem
