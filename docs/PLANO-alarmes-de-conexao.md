@@ -65,8 +65,10 @@ alarme. Depois a classe na sentinela (a) e o (b) como complemento.
   avisos do servidor (réplica, disco, memória…) seguem só para owner/admin.
 - **D3 (P3): a régua do (c) fica como proposta:** os 5 envios mais recentes
   com mais de 15 min, das últimas 3 h, em pelo menos 3 conversas, sem
-  recibo. ⚠️ Em aberto (P3b): o sino avisa 24 h por dia ou só em horário
-  útil? A faixa da tela vale sempre.
+  recibo. **P3b: o sino do (c) avisa só em horário útil**: segunda a sexta,
+  das 8h às 20h de Brasília, a mesma janela da sentinela. Aceso fora dela, a
+  faixa da tela mostra na hora, e o sino recebe na abertura do horário, se o
+  alarme ainda estiver aceso. O (b) não muda: a pergunta era só do (c).
 - **D4 (P4): o (c) aparece também no cabeçalho e na faixa da conversa** (o
   motivo novo na saúde da conexão), além do sino.
 - **D5 (P5, "siga sua orientação"): o (b) entra no sino** como complemento
@@ -85,7 +87,7 @@ alarme. Depois a classe na sentinela (a) e o (b) como complemento.
 |---|---|---|
 | 0 | Estudo e medição (este documento) | Feito em 04/11/2026 |
 | 1 | (c) no CRM: régua, índice e motivo novo na saúde da conexão (cabeçalho e faixa da conversa) | Decidida (D3, D4, D8); a implementar |
-| 2 | Avisos do próprio CRM no sino, com estado: (c) e (b) | Decidida (D2, D5, D6, D8); a implementar; falta a P3b |
+| 2 | Avisos do próprio CRM no sino, com estado: (c) e (b) | Decidida (D2, D3, D5, D6, D8); a implementar |
 | 3 | Faixa fixa no topo enquanto houver alarme (E1) | Decidida (D1, D2); a implementar |
 | 4 | Sentinela: instância e classe na coleta, aviso `quedas:` | Decidida (D2, D7); começa pela leitura do log do incidente |
 | 5 | Aviso no celular dos administradores (E3) | Fora (D1) |
@@ -356,8 +358,9 @@ sentinela (só a nossa VPS tem). Nascem ligados, sem chave para desligar (D8).
   deploy` à mão (`deploy.md`), e cada instalação teria de mudar a stack. O
   passo lê `cb_channels` de todas as contas com a service role, sempre
   cercado pela conta. O aviso sai só para quem ganha o UPDATE cercado do
-  estado (raiz, 8e). O "horário útil", se a P3b pedir, sai de
-  `agenda/fuso.ts`: o servidor roda em UTC.
+  estado (raiz, 8e). O horário útil do (c) (D3) sai de `agenda/fuso.ts`
+  (`diaNoFuso`/`paraInstante`): o servidor roda em UTC. Feriado em dia útil
+  não está no calendário, o mesmo limite da sentinela.
 - **Quem recebe (D2):** owner/admin e os membros cujo perfil vê a conexão,
   com o contexto REAL de cada um (o recorte das conexões do perfil,
   `.claude/rules/perfis.md`), nunca o do "Ver como".
@@ -374,8 +377,9 @@ sentinela (só a nossa VPS tem). Nascem ligados, sem chave para desligar (D8).
      tiveram recibo, e apagam no 1º recibo.
    - Testes da régua pura cobrem os casos medidos: a rajada para um cliente
      só, o recibo velho, o grupo, o Instagram e o celular.
-2. **Fase 2 — o sino, com estado.** O (c) e o (b) (D5), com as regras da
-   sentinela: um aviso por episódio, lembrete a cada 24 h (D6), "Normalizou"
+2. **Fase 2 — o sino, com estado.** O (c), só em horário útil (D3), e o (b)
+   (D5), com as regras da sentinela: um aviso por episódio, lembrete a cada
+   24 h (D6), "Normalizou"
    só com prova e "Aconteceu e já normalizou" quando o aviso não entrou a
    tempo. Recebem owner/admin e os membros cujo perfil vê a conexão (D2).
 3. **Fase 3 — a faixa E1**, para os mesmos destinatários. É ela que faz um
@@ -399,8 +403,8 @@ recibo foi medido numa hora só: a primeira semana no ar vale como conferência.
   conexões: nada aqui abre conexão própria, tudo passa pelo PostgREST.
 - **Falso positivo do (c) à noite:** quem envia à noite é o robô, para lead
   frio, e o celular desligado atrasa o recibo. O histórico não teve
-  sequência de 5, mas o risco é maior do que de dia. Saída, se a P3b pedir: o
-  sino só em horário útil; a faixa da tela vale sempre.
+  sequência de 5, mas o risco é maior do que de dia. Decidido (P3b): o sino
+  do (c) só em horário útil; a faixa da tela vale sempre.
 - **Aviso em dobro:** no nosso servidor, a sentinela e o CRM avisariam o mesmo
   incidente com textos diferentes (`sem_entrada` da sentinela e "não confirma
   entrega" do CRM). É aceitável, e com o E1 os dois ficam na mesma faixa.
@@ -420,7 +424,7 @@ recibo foi medido numa hora só: a primeira semana no ar vale como conferência.
   aviso. → **Incluir os membros** (D2).
 - **P3. A régua do (c)** (5 envios, 3 conversas, 15 min, janela de 3 h) está
   boa? → **Está boa** (D3). **P3b**, o sino avisa 24 h por dia ou só em
-  horário útil? → ⚠️ em aberto.
+  horário útil? → **Só em horário útil** (D3).
 - **P4. O (c) entra também na faixa da conversa e no cabeçalho** (Fase 1)
   ou só no sino? → **Também no cabeçalho e na faixa** (D4).
 - **P5. Ligar o (b) no sino** com X = 30 min e "expirar não normaliza"? →
