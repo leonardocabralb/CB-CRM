@@ -86,7 +86,7 @@ alarme. Depois a classe na sentinela (a) e o (b) como complemento.
 | Fase | O quê | Estado |
 |---|---|---|
 | 0 | Estudo e medição (este documento) | Feito em 04/11/2026 |
-| 1 | (c) no CRM: régua, índice e motivo novo na saúde da conexão (cabeçalho e faixa da conversa) | Decidida (D3, D4, D8); a implementar |
+| 1 | (c) no CRM: régua, índice e motivo novo na saúde da conexão (cabeçalho e faixa da conversa) | PR #458 aberto (04/11/2026); a 1120 espera a aplicação em produção, ANTES do merge |
 | 2 | Avisos do próprio CRM no sino, com estado: (c) e (b) | Decidida (D2, D3, D5, D6, D8); a implementar |
 | 3 | Faixa fixa no topo enquanto houver alarme (E1) | Decidida (D1, D2); a implementar |
 | 4 | Sentinela: instância e classe na coleta, aviso `quedas:` | Decidida (D2, D7); começa pela leitura do log do incidente |
