@@ -85,13 +85,40 @@ produção (`e273b904`, build de 14/07/2026), com estas diferenças:
    não mesclados para pedaços disso (#2560, #2655, #2656, #2732), nenhum com o
    filtro de geração.
 
+5. `baileys+7.0.0-rc13.patch` (04/11/2026) — **na Baileys compilada**, não no
+   fonte da Evolution: o WhatsApp passou a entregar o Status (stories) dos
+   contatos a ALGUMAS contas como um stanza `<status>` de topo, em vez de
+   `<message from="status@broadcast">`, e a Baileys só registra `message`,
+   `call`, `receipt`, `notification` e `ack,class:message` — o `<status>` nunca
+   recebia ack. ~50 min depois o servidor encerra o stream nomeando o ack que
+   faltou (`stream:error` com `<ack class="status" type="media|text">`, que a
+   Baileys mapeia para 500/`badSession`); na reconexão ele reentrega o mesmo
+   `<status>` e a fila de ENTRADA da conta (mensagens, recibos, acks dos nossos
+   envios) fica represada atrás dele, andando uns poucos itens a cada 50 min.
+   Medido em produção em 04/11/2026 na Trabalhista e Previdenciário - Jurídico:
+   22 quedas com 500 cravadas a cada ~50 min desde 03/11, entrada 23 h atrasada,
+   73 envios sem recibo; as outras 3 conexões, no mesmo contêiner, sem nada (a
+   mudança do servidor é gradual, por conta). Reiniciar a instância, parear de
+   novo pelo QR e o `readStatus` NÃO resolvem (o stanza nem chega ao
+   `handleMessage`). O patch é o do PR upstream WhiskeySockets/Baileys#2866
+   (issue #2858, abertos e não mesclados em 04/11/2026): `ws.on('CB:status')`
+   manda o ack pelo `sendMessageAck` que já existe (`class="status"`, com
+   `type` e `participant`), SEM código de erro (um NACK deixaria o stanza
+   pendente no servidor). O stanza não é decodificado — o CRM não lê Status.
+   Entra pelo `patch-package` que o Dockerfile do upstream já roda (`patches/`
+   copiado antes do `npm ci`); o nome do arquivo casa a versão instalada, e o
+   build falha se o handler não estiver no `messages-recv.js`. 7 linhas.
+
 Mesmo commit = mesmas migrations: trocar entre esta imagem e a `homolog` não
 mexe no banco. O rollback é só trocar a imagem de volta.
 
 A ordem de aplicação é a do workflow (`2708-citacao`, `foto-de-perfil` e
 depois `sessao-unica-e-reconexao`); cada um foi gerado sobre os anteriores, em
 regiões distintas de `whatsapp.baileys.service.ts` (o terceiro mexe também em
-`instance.controller.ts` e `monitor.service.ts`).
+`instance.controller.ts` e `monitor.service.ts`). O da Baileys não passa pelo
+`git apply`: vai para `patches/` e é aplicado na instalação das dependências.
+Quando a Evolution subir a Baileys, ele tem de ser refeito para a versão nova
+(ou sai, se ela já trouxer o `CB:status`).
 
 Quando o upstream mesclar o #2708, corrigir a foto de perfil E o ciclo de
 conexão (ou publicar uma `homolog` com tudo isso), esta imagem deixa de ser

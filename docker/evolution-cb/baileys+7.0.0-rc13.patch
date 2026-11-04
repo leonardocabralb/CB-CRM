@@ -1,0 +1,18 @@
+diff --git a/node_modules/baileys/lib/Socket/messages-recv.js b/node_modules/baileys/lib/Socket/messages-recv.js
+index f2003ac..c4abb54 100644
+--- a/node_modules/baileys/lib/Socket/messages-recv.js
++++ b/node_modules/baileys/lib/Socket/messages-recv.js
+@@ -1621,6 +1621,13 @@ export const makeMessagesRecvSocket = (config) => {
+     ws.on('CB:notification', async (node) => {
+         await processNode('notification', node, 'handling notification', handleNotification);
+     });
++    // Some accounts now get contacts' statuses as a top-level <status> stanza
++    // instead of <message from="status@broadcast">. It isn't decoded here, but it
++    // must be acked: the server ends the stream about 50 minutes later otherwise.
++    // WhiskeySockets/Baileys#2858 / #2866.
++    ws.on('CB:status', (node) => {
++        sendMessageAck(node).catch(error => onUnexpectedError(error, 'acking status'));
++    });
+     ws.on('CB:ack,class:message', (node) => {
+         handleBadAck(node).catch(error => onUnexpectedError(error, 'handling bad ack'));
+     });

@@ -3,7 +3,8 @@ name: evolution-cb
 # Constrói a nossa imagem da Evolution 2.4 (develop) a partir de um commit
 # fixo do upstream, com os patches de docker/evolution-cb/ (a citação do
 # cliente, a foto de perfil que travava a fila de entrada e a sessão única com
-# a reconexão depois do logout e do 408) e o prisma.config.ts dentro da imagem.
+# a reconexão depois do logout e do 408), o ack do <status> na Baileys (pelo
+# patch-package do próprio Dockerfile) e o prisma.config.ts dentro da imagem.
 # Ver docker/evolution-cb/README.md e docs/PLANO-baileys-7.md (P10, 5.10).
 
 on:
@@ -16,7 +17,7 @@ on:
       tag:
         description: 'Tag de saída'
         required: true
-        default: '2.4.0-e273b904-citacao-foto-sessao'
+        default: '2.4.0-e273b904-citacao-foto-sessao-status'
 
 env:
   IMAGE: ghcr.io/leonardocabralb/evolution-api-cb
@@ -79,6 +80,15 @@ jobs:
           ! grep -qF "instance.state === 'close'" src/api/controllers/instance.controller.ts || exit 1
           # A limpeza que apaga as creds (Session) apaga também as chaves Signal do Redis.
           awk 'index($0, "public async cleaningUp(instanceName") {f=1} f && index($0, "if (this.redis.REDIS.ENABLED) {") {ok=1; exit} f && index($0, "public async cleaningStoreData(") {exit} END {exit !ok}' src/api/services/monitor.service.ts
+          # Ack do <status> (WhiskeySockets/Baileys#2858): o patch é da BAILEYS compilada, não do
+          # fonte da Evolution. O Dockerfile do upstream copia patches/ antes do `npm ci` (cujo
+          # postinstall roda o patch-package) e roda `npx patch-package` de novo; o nome do
+          # arquivo tem de casar a versão instalada, e o build falha se o handler não estiver lá.
+          grep -qF '"baileys": "7.0.0-rc13"' package.json
+          test -d patches
+          cp '../docker/evolution-cb/baileys+7.0.0-rc13.patch' patches/
+          sed -i 's#^RUN npx patch-package$#RUN npx patch-package \&\& grep -qF "CB:status" node_modules/baileys/lib/Socket/messages-recv.js#' Dockerfile
+          grep -qF 'RUN npx patch-package && grep -qF "CB:status" node_modules/baileys/lib/Socket/messages-recv.js' Dockerfile
           echo "patches e Dockerfile ok"
 
       - name: Log in to GHCR
