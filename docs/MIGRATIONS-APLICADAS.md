@@ -1725,6 +1725,20 @@ nome da época em que foram aplicadas.
   sinal da Lixeira; uma `cb_ia_reservar_envio`, com a cerca, fechada ao
   navegador e aberta ao `service_role`; comentário novo; zero linhas da
   conferência (desfeita).
+- **1120_cb_indice_dos_envios_por_conexao** — índice
+  `messages_canal_e_data_idx` em `messages (channel_id, created_at desc)
+  WHERE channel_id IS NOT NULL`: a leitura dos últimos envios de cada conexão
+  pelo alarme "envios sem recibo" (`sem-recibo.ts`, PR #458).
+
+  ADITIVA, mas aplicar ANTES do deploy: sem ela, a leitura custou 973 ms
+  medidos (EXPLAIN ANALYZE na conexão mais movimentada). Autorização do
+  operador em 04/11/2026 ("aplique e siga", à pergunta de aplicar a 1120 em
+  produção antes do merge), aplicada em 04/11/2026 (histórico
+  `20261104215651`) depois do replay local verde (243 arquivos e o
+  `verify-schema`). Conferida: o índice existe nas colunas certas (5 MB), e a
+  mesma consulta caiu para 7,8 ms, por Index Scan nele, já na ordem. A 1119
+  está reservada pela branch `feat/recibos-de-grupo` (não aplicada): se ela
+  entrar no `main` depois do #458, vira 1121.
 
 ## Notas do histórico
 
