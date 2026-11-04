@@ -7,7 +7,13 @@
 // ============================================================
 
 import { requireApiKey } from '@/lib/auth/api-context';
-import { okList, fail, toApiErrorResponse } from '@/lib/api/v1/respond';
+import { okList, fail, badRequest, toApiErrorResponse } from '@/lib/api/v1/respond';
+import {
+  contatoNoRecorte,
+  exigirFiltroDoCliente,
+  funisDaChave,
+} from '@/lib/api/v1/recorte-por-funil';
+import { ehUuid } from '@/lib/tasks/validar';
 import {
   parseListParams,
   keysetFilter,
@@ -22,11 +28,21 @@ import type { Conversation } from '@/types';
 
 export async function GET(request: Request) {
   try {
-    const ctx = await requireApiKey(request, 'conversations:read');
+    const ctx = await requireApiKey(request, 'conversations:read', { aceitaRecorte: true });
     const { limit, cursor } = parseListParams(request);
     const url = new URL(request.url);
     const status = url.searchParams.get('status');
     const contactId = url.searchParams.get('contact_id');
+
+    // NOSSO (1121): a chave recortada por funil lista só pelo CLIENTE, e só
+    // cliente do recorte (fora dele, a lista vazia de quem não tem conversa).
+    // A conferência do UUID fica SÓ neste ramo: a chave sem recorte segue com
+    // o contrato de sempre.
+    if (funisDaChave(ctx)) {
+      exigirFiltroDoCliente(ctx, Boolean(contactId));
+      if (!ehUuid(contactId)) throw badRequest("'contact_id' must be a UUID");
+      if (!(await contatoNoRecorte(ctx, contactId))) return okList([], null);
+    }
 
     let query = ctx.supabase
       .from('conversations')

@@ -28,7 +28,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Copy, KeyRound, Loader2, Plus, RotateCw, Trash2 } from 'lucide-react';
+import { Copy, KeyRound, Loader2, Pencil, Plus, RotateCw, Trash2 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -44,13 +44,26 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { RequireRole } from '@/components/auth/require-role';
 import { useAuth } from '@/hooks/use-auth';
+import { useMembros } from '@/hooks/use-membros';
+import { OPCOES_DE_VALIDADE_DIAS, validadeSugerida } from '@/lib/api-keys/configuracao';
 import {
   API_SCOPES,
   SCOPE_DESCRIPTIONS,
+  ehEscopoDeLeitura,
+  isApiScope,
   type ApiScope,
 } from '@/lib/api-keys/scopes';
+import { createClient } from '@/lib/supabase/client';
+import type { AccountMember } from '@/types';
 import { useTranslations } from 'next-intl';
 import { FONTE_MONO } from './copiar';
 
@@ -63,6 +76,23 @@ interface ApiKey {
   expires_at: string | null;
   revoked_at: string | null;
   created_at: string;
+  /** NOSSO (1121): o funcionário dono (nulo = chave da conta). */
+  membro_user_id: string | null;
+  /** NOSSO (1121): os funis que a chave vê (nulo = todos). */
+  funis: string[] | null;
+}
+
+interface Funil {
+  id: string;
+  name: string;
+}
+
+/** Sentinela do "Nenhum (chave da conta)" no seletor: o Select não aceita ''. */
+const SEM_FUNCIONARIO = '__conta__';
+
+/** O nome do membro na tela: a rota devolve `full_name: ""` para quem não tem. */
+function nomeDe(m: AccountMember): string {
+  return m.full_name?.trim() || m.email || '—';
 }
 
 function fmtDate(iso: string): string {
@@ -80,16 +110,79 @@ function keyStatus(k: ApiKey): 'active' | 'revoked' | 'expired' {
   return 'active';
 }
 
+/** O que o diálogo da chave está fazendo: criar uma nova ou editar uma. */
+type Dialogo = { modo: 'criar' } | { modo: 'editar'; chave: ApiKey } | null;
+
 export function ApiKeysSettings() {
-  const { canEditSettings } = useAuth();
+  const { canEditSettings, accountId } = useAuth();
   const t = useTranslations('Settings.apiKeys');
   const tSecao = useTranslations('Settings.secaoApi');
 
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [loading, setLoading] = useState(true);
   const [falhou, setFalhou] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
+  const [dialogo, setDialogo] = useState<Dialogo>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
+
+  // NOSSO (1121): nomes para a lista e opções para o diálogo. `undefined` =
+  // ainda não chegou; `null` = falhou — nunca "a conta não tem funil".
+  const { membros, carregando: membrosCarregando, falhou: membrosFalhou } = useMembros();
+  const [funis, setFunis] = useState<Funil[] | null | undefined>(undefined);
+  useEffect(() => {
+    if (!accountId) return;
+    let cancelado = false;
+    void (async () => {
+      // ⚠️ `account_id` explícito: a RLS da 1032 devolve os funis de TODA conta
+      // da pessoa, e a chave só aceita funil desta (o servidor confere de novo).
+      const { data, error } = await createClient()
+        .from('pipelines')
+        .select('id, name')
+        .eq('account_id', accountId)
+        .order('name');
+      if (cancelado) return;
+      if (error) {
+        console.error('[ApiKeysSettings] pipelines load error:', error.message);
+        setFunis(null);
+        return;
+      }
+      setFunis((data ?? []) as Funil[]);
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [accountId]);
+
+  function nomesDosFunis(ids: string[]): string | null {
+    if (!funis) return null; // carregando ou falhou: não afirma nome nenhum
+    return ids
+      .map((id) => funis.find((f) => f.id === id)?.name ?? t('pipelineGone'))
+      .join(', ');
+  }
+
+  /**
+   * "Funcionário: Ana · Funis: Trabalhista - Comercial", ou nada para a chave
+   * da conta. ⚠️ Nome ou funil que não carregou NUNCA some da linha: a
+   * chave recortada pareceria a da conta inteira. Diz o que se sabe.
+   */
+  function resumoDoRecorte(k: ApiKey): string | null {
+    const partes: string[] = [];
+    if (k.membro_user_id) {
+      const m = membros.find((x) => x.user_id === k.membro_user_id);
+      if (membrosCarregando || membrosFalhou) partes.push(t('ofMemberUnknown'));
+      else if (!m) partes.push(t('memberGone'));
+      else if (m.suspenso_em) partes.push(t('ofMemberSuspended', { name: nomeDe(m) }));
+      else partes.push(t('ofMember', { name: nomeDe(m) }));
+    }
+    if (k.funis) {
+      const nomes = nomesDosFunis(k.funis);
+      partes.push(
+        nomes !== null
+          ? t('onlyPipelines', { names: nomes })
+          : t('onlyPipelinesCount', { count: k.funis.length })
+      );
+    }
+    return partes.length > 0 ? partes.join(' · ') : null;
+  }
 
   const load = useCallback(async () => {
     try {
@@ -152,7 +245,7 @@ export function ApiKeysSettings() {
           })}
         </p>
         <RequireRole min="admin">
-          <Button onClick={() => setCreateOpen(true)} className="shrink-0 self-start">
+          <Button onClick={() => setDialogo({ modo: 'criar' })} className="shrink-0 self-start">
             <Plus className="size-4" />
             {t('newApiKey')}
           </Button>
@@ -262,6 +355,15 @@ export function ApiKeysSettings() {
                           ))
                         )}
                       </div>
+                      {/* NOSSO (1121): de quem é a chave e o que ela vê. Sem
+                          funcionário nem funis, nada aparece (a chave de
+                          sempre). Nome que ainda não chegou fica de fora,
+                          nunca vira "fora da equipe". */}
+                      {resumoDoRecorte(k) && (
+                        <p className="text-muted-foreground mt-1.5 min-w-0 text-xs">
+                          {resumoDoRecorte(k)}
+                        </p>
+                      )}
                       <p className="text-muted-foreground mt-1.5 text-xs">
                         {t('created', { date: fmtDate(k.created_at) })}
                         {' · '}
@@ -276,20 +378,31 @@ export function ApiKeysSettings() {
 
                     {status === 'active' && (
                       <RequireRole min="admin">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleRevoke(k)}
-                          disabled={revoking === k.id}
-                          className="self-start border-red-500/40 bg-red-500/10 text-red-300 hover:border-red-500/60 hover:bg-red-500/20 hover:text-red-200 sm:self-auto"
-                        >
-                          {revoking === k.id ? (
-                            <Loader2 className="size-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="size-4" />
-                          )}
-                          {t('revoke')}
-                        </Button>
+                        <div className="flex shrink-0 gap-2 self-start sm:self-auto">
+                          {/* NOSSO (1121): o admin edita a chave sem gerar outra. */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setDialogo({ modo: 'editar', chave: k })}
+                          >
+                            <Pencil className="size-4" />
+                            {t('edit')}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleRevoke(k)}
+                            disabled={revoking === k.id}
+                            className="border-red-500/40 bg-red-500/10 text-red-300 hover:border-red-500/60 hover:bg-red-500/20 hover:text-red-200"
+                          >
+                            {revoking === k.id ? (
+                              <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="size-4" />
+                            )}
+                            {t('revoke')}
+                          </Button>
+                        </div>
                       </RequireRole>
                     )}
                   </li>
@@ -300,41 +413,88 @@ export function ApiKeysSettings() {
         </Card>
       )}
 
-      <CreateKeyDialog
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        onCreated={load}
+      {/* ⚠️ Montado SÓ enquanto aberto: o diálogo guarda rascunho e a chave
+          recém-criada (`createdKey`). Montado sempre, o "Nova chave" seguinte
+          reabria na tela "Copie sua chave" com o segredo da ANTERIOR (achado
+          da revisão do PR). O `key` recomeça o formulário ao trocar de chave. */}
+      {dialogo && (
+      <KeyDialog
+        key={dialogo.modo === 'editar' ? `editar:${dialogo.chave.id}` : 'criar'}
+        dialogo={dialogo}
+        onClose={() => setDialogo(null)}
+        onSaved={load}
+        membros={membros}
+        membrosCarregando={membrosCarregando}
+        membrosFalhou={membrosFalhou}
+        funis={funis}
       />
+      )}
     </div>
   );
 }
 
 // ------------------------------------------------------------
-// Create dialog — form → one-time plaintext reveal.
+// Diálogo da chave — criar (formulário → a chave inteira, UMA vez) ou
+// editar (NOSSO, 1121: o mesmo formulário sobre a chave existente; o
+// segredo não muda).
+//
+// NOSSO (1121): validade, funcionário dono e funis. Decisões do operador:
+// a validade SUGERIDA é 90 dias com funcionário e "sem validade" sem ele (a
+// chave do n8n não para sozinha); chave de funcionário ou com funis é SÓ DE
+// LEITURA: os escopos de escrita ficam desmarcados e travados (o servidor
+// recusa de novo, nas rotas de gestão e no caminho da chave).
 // ------------------------------------------------------------
 
-function CreateKeyDialog({
-  open,
-  onOpenChange,
-  onCreated,
+type Validade = 'manter' | 'sem' | `${(typeof OPCOES_DE_VALIDADE_DIAS)[number]}`;
+
+function mesmosItens(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((x) => b.includes(x));
+}
+
+function KeyDialog({
+  dialogo,
+  onClose,
+  onSaved,
+  membros,
+  membrosCarregando,
+  membrosFalhou,
+  funis,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onCreated: () => void;
+  dialogo: Dialogo;
+  onClose: () => void;
+  onSaved: () => void;
+  membros: AccountMember[];
+  membrosCarregando: boolean;
+  membrosFalhou: boolean;
+  /** Os funis da conta; `undefined` = carregando, `null` = a leitura falhou. */
+  funis: Funil[] | null | undefined;
 }) {
   const t = useTranslations('Settings.apiKeys');
-  const [name, setName] = useState('');
-  const [scopes, setScopes] = useState<ApiScope[]>([]);
+  const chave = dialogo?.modo === 'editar' ? dialogo.chave : null;
+  const editando = chave !== null;
+
+  // Semeado na MONTAGEM: o `key` do pai remonta o diálogo a cada chave.
+  const [name, setName] = useState(chave?.name ?? '');
+  const [scopes, setScopes] = useState<ApiScope[]>(
+    (chave?.scopes ?? []).filter((s): s is ApiScope => isApiScope(s))
+  );
+  const [validade, setValidade] = useState<Validade>(
+    editando ? 'manter' : validadeSugerida(false)
+  );
+  // A validade só acompanha o funcionário enquanto o admin não a escolheu.
+  const [validadeEscolhida, setValidadeEscolhida] = useState(false);
+  const [membro, setMembro] = useState<string>(chave?.membro_user_id ?? SEM_FUNCIONARIO);
+  const [funisEscolhidos, setFunisEscolhidos] = useState<string[]>(chave?.funis ?? []);
   const [submitting, setSubmitting] = useState(false);
   // Once set, we switch from the form to the reveal view.
   const [createdKey, setCreatedKey] = useState<string | null>(null);
 
-  function reset() {
-    setName('');
-    setScopes([]);
-    setSubmitting(false);
-    setCreatedKey(null);
-  }
+  const recortada = funisEscolhidos.length > 0;
+  const soLeitura = recortada || membro !== SEM_FUNCIONARIO;
+  // ⚠️ Criar sem saber os funis ou os membros criaria, sem querer, a chave
+  // da conta INTEIRA (falha aberta). Na edição, o que não carregou não é
+  // enviado e fica como está.
+  const opcoesProntas = funis != null && !membrosCarregando && !membrosFalhou;
 
   function toggleScope(scope: ApiScope, checked: boolean) {
     setScopes((prev) =>
@@ -342,28 +502,112 @@ function CreateKeyDialog({
     );
   }
 
-  async function handleCreate() {
+  function toggleFunil(id: string, checked: boolean) {
+    const proximos = checked
+      ? [...funisEscolhidos, id]
+      : funisEscolhidos.filter((f) => f !== id);
+    setFunisEscolhidos(proximos);
+    // Recortada só lê: ao recortar, a escrita sai junto (e a caixa trava).
+    if (proximos.length > 0) setScopes((s) => s.filter(ehEscopoDeLeitura));
+  }
+
+  function escolherMembro(proximo: string) {
+    setMembro(proximo);
+    const comFuncionario = proximo !== SEM_FUNCIONARIO;
+    // Chave de funcionário só lê: a escrita sai junto (e a caixa trava).
+    if (comFuncionario) setScopes((s) => s.filter(ehEscopoDeLeitura));
+    if (!editando && !validadeEscolhida) setValidade(validadeSugerida(comFuncionario));
+  }
+
+  // Funil gravado na chave que já não existe na conta: aparece para ser
+  // DESMARCADO (sem a linha, o salvar mandaria o id apagado e o servidor
+  // recusaria toda edição dos funis — achado da revisão do PR).
+  const funisApagados = funis ? funisEscolhidos.filter((id) => !funis.some((f) => f.id === id)) : [];
+
+  function marcarSoLeitura() {
+    setScopes(API_SCOPES.filter(ehEscopoDeLeitura));
+  }
+
+  // Membros que se pode ESCOLHER: os ativos. O atual (se suspenso ou fora da
+  // lista) fica visível como opção, para o seletor não mostrar vazio.
+  const opcoesDeMembro = membros.filter((m) => !m.suspenso_em);
+  const atual = chave?.membro_user_id
+    ? membros.find((m) => m.user_id === chave.membro_user_id)
+    : undefined;
+  const rotuloDoMembro = (userId: string): string => {
+    if (userId === SEM_FUNCIONARIO) return t('memberNone');
+    const m = membros.find((x) => x.user_id === userId);
+    if (!m) return t('memberGone');
+    return m.suspenso_em ? t('memberSuspended', { name: nomeDe(m) }) : nomeDe(m);
+  };
+
+  function rotuloDaValidade(v: Validade): string {
+    if (v === 'manter') {
+      return chave?.expires_at
+        ? t('validityKeepUntil', { date: fmtDate(chave.expires_at) })
+        : t('validityKeepNever');
+    }
+    if (v === 'sem') return t('validityNever');
+    return t('validityDays', { days: Number(v) });
+  }
+
+  async function handleSubmit() {
     const trimmed = name.trim();
     if (!trimmed) {
       toast.error(t('nameRequired'));
       return;
     }
-    setSubmitting(true);
-    try {
-      const res = await fetch('/api/account/api-keys', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: trimmed, scopes }),
-      });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error(payload.error || t('createError'));
+    if (!editando && !opcoesProntas) {
+      toast.error(t('optionsNotLoaded'));
+      return;
+    }
+    const membroUserId = membro === SEM_FUNCIONARIO ? null : membro;
+    const funisDaChave = recortada ? funisEscolhidos : null;
+    const expiresInDays = validade === 'sem' ? null : Number(validade);
+
+    // Na edição vai SÓ o que mudou: reenviar o funcionário de hoje, se ele
+    // estiver suspenso, faria o servidor recusar a edição inteira.
+    const corpo: Record<string, unknown> = {};
+    if (!chave) {
+      Object.assign(corpo, { name: trimmed, scopes, membroUserId, funis: funisDaChave, expiresInDays });
+    } else {
+      if (trimmed !== chave.name) corpo.name = trimmed;
+      if (!mesmosItens(scopes, chave.scopes)) corpo.scopes = scopes;
+      if (membroUserId !== chave.membro_user_id) corpo.membroUserId = membroUserId;
+      if (!mesmosItens(funisDaChave ?? [], chave.funis ?? []) || (funisDaChave === null) !== (chave.funis === null)) {
+        corpo.funis = funisDaChave;
+      }
+      if (validade !== 'manter') corpo.expiresInDays = expiresInDays;
+      if (Object.keys(corpo).length === 0) {
+        onClose();
         return;
       }
-      setCreatedKey(payload.plaintext as string);
-      onCreated();
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await fetch(
+        chave ? `/api/account/api-keys/${chave.id}` : '/api/account/api-keys',
+        {
+          method: chave ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(corpo),
+        }
+      );
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(payload.error || (chave ? t('editError') : t('createError')));
+        return;
+      }
+      onSaved();
+      if (chave) {
+        toast.success(t('editSuccess', { name: trimmed }));
+        onClose();
+      } else {
+        setCreatedKey(payload.plaintext as string);
+      }
     } catch (err) {
-      console.error('[CreateKeyDialog] create error:', err);
+      console.error('[KeyDialog] save error:', err);
       toast.error(t('networkError'));
     } finally {
       setSubmitting(false);
@@ -382,13 +626,12 @@ function CreateKeyDialog({
 
   return (
     <Dialog
-      open={open}
+      open={dialogo !== null}
       onOpenChange={(next) => {
-        if (!next) reset();
-        onOpenChange(next);
+        if (!next) onClose();
       }}
     >
-      <DialogContent className="border-border bg-popover sm:max-w-md">
+      <DialogContent className="border-border bg-popover sm:max-w-lg">
         {createdKey ? (
           <>
             <DialogHeader>
@@ -400,13 +643,14 @@ function CreateKeyDialog({
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-1.5">
+            <div className="min-w-0 space-y-1.5">
               <Label className="text-muted-foreground">{t('apiKeyLabel')}</Label>
               <div className="flex gap-2">
                 <Input
                   readOnly
                   value={createdKey}
-                  className="font-mono text-xs"
+                  className="min-w-0 text-xs"
+                  style={{ fontFamily: FONTE_MONO }}
                   onFocus={(e) => e.currentTarget.select()}
                 />
                 <Button type="button" variant="outline" onClick={copyKey}>
@@ -417,28 +661,23 @@ function CreateKeyDialog({
             </div>
 
             <DialogFooter>
-              <Button
-                onClick={() => {
-                  reset();
-                  onOpenChange(false);
-                }}
-              >
-                {t('done')}
-              </Button>
+              <Button onClick={onClose}>{t('done')}</Button>
             </DialogFooter>
           </>
         ) : (
           <>
             <DialogHeader>
               <DialogTitle className="text-popover-foreground">
-                {t('newKeyTitle')}
+                {editando ? t('editKeyTitle') : t('newKeyTitle')}
               </DialogTitle>
               <DialogDescription className="text-muted-foreground">
-                {t('newKeyDesc')}
+                {editando ? t('editKeyDesc') : t('newKeyDesc')}
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4">
+            {/* Teto com rolagem: com funis e permissões, o formulário passa da
+                altura de uma tela de notebook. */}
+            <div className="min-w-0 max-h-[60vh] space-y-4 overflow-y-auto pr-1">
               <div className="space-y-1.5">
                 <Label htmlFor="api-key-name" className="text-muted-foreground">
                   {t('nameLabel')}
@@ -452,33 +691,144 @@ function CreateKeyDialog({
                 />
               </div>
 
+              <div className="space-y-1.5">
+                <Label className="text-muted-foreground">{t('validityLabel')}</Label>
+                <Select
+                  value={validade}
+                  onValueChange={(v) => {
+                    if (!v) return;
+                    setValidade(v as Validade);
+                    setValidadeEscolhida(true);
+                  }}
+                >
+                  <SelectTrigger className="bg-muted border-border text-foreground w-full">
+                    <SelectValue>{rotuloDaValidade(validade)}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {editando && (
+                      <SelectItem value="manter">{rotuloDaValidade('manter')}</SelectItem>
+                    )}
+                    {OPCOES_DE_VALIDADE_DIAS.map((d) => (
+                      <SelectItem key={d} value={String(d)}>
+                        {rotuloDaValidade(String(d) as Validade)}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="sem">{t('validityNever')}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-muted-foreground text-xs">{t('validityHint')}</p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-muted-foreground">{t('memberLabel')}</Label>
+                {membrosCarregando ? (
+                  <p className="text-muted-foreground text-xs">{t('loadingOptions')}</p>
+                ) : !membrosFalhou ? (
+                  <Select value={membro} onValueChange={(v) => v && escolherMembro(v)}>
+                    <SelectTrigger className="bg-muted border-border text-foreground w-full">
+                      <SelectValue>{rotuloDoMembro(membro)}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={SEM_FUNCIONARIO}>{t('memberNone')}</SelectItem>
+                      {opcoesDeMembro.map((m) => (
+                        <SelectItem key={m.user_id} value={m.user_id}>
+                          {nomeDe(m)}
+                        </SelectItem>
+                      ))}
+                      {/* O atual que não se pode escolher de novo (suspenso). */}
+                      {atual?.suspenso_em && (
+                        <SelectItem value={atual.user_id}>
+                          {t('memberSuspended', { name: nomeDe(atual) })}
+                        </SelectItem>
+                      )}
+                      {chave?.membro_user_id && !atual && (
+                        <SelectItem value={chave.membro_user_id}>{t('memberGone')}</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <p className="text-muted-foreground text-xs">{t('memberLoadFailed')}</p>
+                )}
+                <p className="text-muted-foreground text-xs">{t('memberHint')}</p>
+              </div>
+
               <div className="space-y-2">
-                <Label className="text-muted-foreground">{t('scopesLabel')}</Label>
-                {/* 18 escopos desde a leva de recursos do fork — sem o teto
-                    com rolagem o diálogo estoura a altura da janela. */}
-                <div className="border-border max-h-64 space-y-2 overflow-y-auto rounded-md border p-3">
-                  {API_SCOPES.map((scope) => (
-                    <label
-                      key={scope}
-                      className="flex cursor-pointer items-start gap-2.5"
-                    >
-                      <Checkbox
-                        checked={scopes.includes(scope)}
-                        onCheckedChange={(checked) =>
-                          toggleScope(scope, checked === true)
-                        }
-                        className="mt-0.5"
-                      />
-                      <span className="min-w-0">
-                        <span className="text-foreground block font-mono text-xs">
-                          {scope}
+                <Label className="text-muted-foreground">{t('pipelinesLabel')}</Label>
+                {funis === undefined ? (
+                  <p className="text-muted-foreground text-xs">{t('loadingOptions')}</p>
+                ) : funis === null ? (
+                  <p className="text-muted-foreground text-xs">{t('pipelinesLoadFailed')}</p>
+                ) : (
+                  <div className="border-border max-h-40 space-y-2 overflow-y-auto rounded-md border p-3">
+                    {funis.map((f) => (
+                      <label key={f.id} className="flex cursor-pointer items-center gap-2.5">
+                        <Checkbox
+                          checked={funisEscolhidos.includes(f.id)}
+                          onCheckedChange={(checked) => toggleFunil(f.id, checked === true)}
+                        />
+                        <span className="text-foreground min-w-0 truncate text-sm">{f.name}</span>
+                      </label>
+                    ))}
+                    {funisApagados.map((id) => (
+                      <label key={id} className="flex cursor-pointer items-center gap-2.5">
+                        <Checkbox
+                          checked
+                          onCheckedChange={(checked) => toggleFunil(id, checked === true)}
+                        />
+                        <span className="text-muted-foreground min-w-0 truncate text-sm">
+                          {t('pipelineGone')}
                         </span>
-                        <span className="text-muted-foreground block text-xs">
-                          {SCOPE_DESCRIPTIONS[scope]}
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <p className="text-muted-foreground text-xs">{t('pipelinesHint')}</p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-muted-foreground">{t('scopesLabel')}</Label>
+                  <Button type="button" variant="outline" size="sm" onClick={marcarSoLeitura}>
+                    {t('readOnly')}
+                  </Button>
+                </div>
+                {soLeitura && (
+                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                    {t('writeDisabledHint')}
+                  </p>
+                )}
+                {/* Sem teto próprio: quem rola é o formulário inteiro (uma
+                    rolagem só, em vez de uma caixa rolando dentro da outra). */}
+                <div className="border-border space-y-2 rounded-md border p-3">
+                  {API_SCOPES.map((scope) => {
+                    const travado = soLeitura && !ehEscopoDeLeitura(scope);
+                    return (
+                      <label
+                        key={scope}
+                        className={`flex items-start gap-2.5 ${
+                          travado ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+                        }`}
+                      >
+                        <Checkbox
+                          checked={scopes.includes(scope)}
+                          disabled={travado}
+                          onCheckedChange={(checked) => toggleScope(scope, checked === true)}
+                          className="mt-0.5"
+                        />
+                        <span className="min-w-0">
+                          <span
+                            className="text-foreground block text-xs"
+                            style={{ fontFamily: FONTE_MONO }}
+                          >
+                            {scope}
+                          </span>
+                          <span className="text-muted-foreground block text-xs">
+                            {SCOPE_DESCRIPTIONS[scope]}
+                          </span>
                         </span>
-                      </span>
-                    </label>
-                  ))}
+                      </label>
+                    );
+                  })}
                 </div>
                 <p className="text-muted-foreground text-xs">
                   {t.rich('scopesHint', {
@@ -493,20 +843,19 @@ function CreateKeyDialog({
             <DialogFooter>
               <Button
                 variant="outline"
-                onClick={() => {
-                  reset();
-                  onOpenChange(false);
-                }}
+                onClick={onClose}
                 className="border-border text-muted-foreground hover:bg-muted"
               >
                 {t('cancel')}
               </Button>
-              <Button onClick={handleCreate} disabled={submitting}>
+              <Button onClick={handleSubmit} disabled={submitting || (!editando && !opcoesProntas)}>
                 {submitting ? (
                   <>
                     <Loader2 className="size-4 animate-spin" />
-                    {t('creating')}
+                    {editando ? t('saving') : t('creating')}
                   </>
+                ) : editando ? (
+                  t('saveKey')
                 ) : (
                   t('createKey')
                 )}

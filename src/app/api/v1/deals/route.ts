@@ -42,13 +42,14 @@ import {
 } from '@/lib/api/v1/pagination';
 import { resolveAuditUserId } from '@/lib/api/v1/contacts';
 import { DEAL_STATUSES, serializeDeal } from '@/lib/api/v1/deals';
+import { funisDaChave } from '@/lib/api/v1/recorte-por-funil';
 import { drenarEventosDeFunil } from '@/lib/automations/drain-events';
 import { createDeal } from '@/lib/deals/create-deal';
 import { ehUuid } from '@/lib/tasks/validar';
 
 export async function GET(request: Request) {
   try {
-    const ctx = await requireApiKey(request, 'deals:read');
+    const ctx = await requireApiKey(request, 'deals:read', { aceitaRecorte: true });
     const { limit, cursor } = parseListParams(request);
     const url = new URL(request.url);
     const pipelineId = url.searchParams.get('pipeline_id');
@@ -73,6 +74,10 @@ export async function GET(request: Request) {
       .eq('account_id', ctx.accountId);
 
     if (pipelineId) query = query.eq('pipeline_id', pipelineId);
+    // NOSSO (1121): a chave recortada vê só os cards dos funis dela (um
+    // `pipeline_id` de fora devolve a lista vazia, como um funil sem card).
+    const funis = funisDaChave(ctx);
+    if (funis) query = query.in('pipeline_id', funis);
     if (stageId) query = query.eq('stage_id', stageId);
     if (contactId) query = query.eq('contact_id', contactId);
     if (status) query = query.eq('status', status);

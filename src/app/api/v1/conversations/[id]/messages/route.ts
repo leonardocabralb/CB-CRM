@@ -15,6 +15,7 @@ import {
   buildPage,
 } from '@/lib/api/v1/pagination';
 import { serializeMessage } from '@/lib/api/v1/conversations';
+import { contatoNoRecorte } from '@/lib/api/v1/recorte-por-funil';
 import type { Message } from '@/types';
 
 export async function GET(
@@ -22,7 +23,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const ctx = await requireApiKey(request, 'messages:read');
+    const ctx = await requireApiKey(request, 'messages:read', { aceitaRecorte: true });
     const { id } = await params;
     // NOSSO: id malformado é 400 aqui, e não o 22P02 do PostgREST — é o que
     // deixa o erro da consulta abaixo significar só falha do banco.
@@ -32,7 +33,7 @@ export async function GET(
     // Gate on account ownership of the conversation first.
     const { data: conv, error: convErr } = await ctx.supabase
       .from('conversations')
-      .select('id')
+      .select('id, contact_id')
       .eq('id', id)
       .eq('account_id', ctx.accountId)
       // Mesmo motivo do GET da conversa: grupo não existe para a v1, então o
@@ -46,6 +47,10 @@ export async function GET(
       return fail('internal', 'Failed to read conversation', 500);
     }
     if (!conv) return fail('not_found', 'Conversation not found', 404);
+    // NOSSO (1121): fora do recorte por funil, o mesmo 404 de quem não existe.
+    if (!(await contatoNoRecorte(ctx, conv.contact_id as string | null))) {
+      return fail('not_found', 'Conversation not found', 404);
+    }
 
     let query = ctx.supabase
       .from('messages')
