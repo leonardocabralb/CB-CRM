@@ -244,12 +244,12 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   `DELIVERY_ACK`; a Meta manda `sent` e `delivered` em POSTs separados).
 - ⚠️ **Da falha, só o `read` tira a mensagem**. A falha vale só
   antes da entrega (`ACEITA_FALHA`). Medido em 24–25/09 na Evolution: o ERROR
-  chegou junto com os outros recibos e gravou primeiro, e o READ de segundos
+  chegou junto com os outros recibos e gravou primeiro, e o READ segundos
   depois era recusado. A bolha pedia "envie de novo" sobre mensagem lida. O
   `sent` e o `delivered` NÃO tiram da falha: dizem que o servidor ou o
   aparelho recebeu, não que conseguiu mostrar (o ERROR dos links em Android
   era isso). Na Evolution, o ERROR de REENVIO a aparelho secundário
-  (`remoteJid` sem "@") nem vira falha: `whatsapp-evolution.md`.
+  (`remoteJid` sem "@") e o de GRUPO nem viram falha: `whatsapp-evolution.md`.
 - ⚠️ **Espera da linha**: o recibo pode chegar ANTES da mensagem gravada
   (`aplicarReciboQuandoAMensagemExistir`). Evolution espera até ~30 s; Meta, 7 s
   (`pausasDoReciboDaMeta`), e `sent` e recibo de DISPARO não esperam. Recibo de
