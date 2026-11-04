@@ -462,9 +462,25 @@ migration pendente.
   chaves `backup:evolution:instance:<id>:20261104T130147Z`.
 - `/root/evolution-stack.yml` foi atualizado para o digest novo.
 
-**Depois.** A fila represada começou a descer no 1º minuto e continuou passando
-do 3º, o que antes nunca acontecia: 30 mensagens em 3 min, avançando pelo
-acúmulo de 03/11.
+**Depois.**
+- **A fila andou em todos os minutos desde a troca.** Antes, ela parava depois
+  do 1º minuto de cada sessão. Ritmo de ~12 mensagens por minuto, uma a cada
+  ~5 s: o teto da foto de perfil do 2º patch, porque, durante a reentrega, o
+  WhatsApp não respondia à consulta da foto.
+- **Alcançou o tempo real às 10:34 BRT**, com a fronteira da 1002 em 1,5 s.
+  Até então, nenhuma queda nem `stream:error`.
+- **Recibos.** Dos 75 envios da equipe desde 03/11 10h, 62 viraram entregue ou
+  lido: as mensagens tinham chegado aos clientes, e o recibo é que estava preso.
+- **Efeito no CRM.** 31 conversas reabertas com mensagens do acúmulo e nenhuma
+  execução de automação ligada à conexão. O LID foi casado em 197 de 197, sem
+  nenhuma retida.
+- ⚠️ **Em aberto: 143 mensagens chegaram com carimbo de 10:04–10:10 BRT** (59
+  de clientes e 84 enviadas pelo celular; as 84 com 2 a 3 por segundo, de
+  10:08:30 a 10:09:06). Nenhum desses ids existia antes no banco `evolution` ou
+  no CRM, e só 1 aparece no log do contêiner antigo, numa falha ao decifrar.
+  São mensagens que o CRM nunca tinha recebido. O horário real em que foram
+  escritas NÃO é conhecido: o ritmo indica reentrega em lote do que falhou
+  durante a queda, e elas aparecem no fio às 10:04–10:10.
 
 ### 2026-10-06 — sessão duplicada no pareamento, `isDeleting` preso e 408 que desfaz o pareamento
 
