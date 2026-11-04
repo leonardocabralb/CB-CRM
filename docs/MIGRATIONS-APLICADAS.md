@@ -1725,6 +1725,29 @@ nome da época em que foram aplicadas.
   sinal da Lixeira; uma `cb_ia_reservar_envio`, com a cerca, fechada ao
   navegador e aberta ao `service_role`; comentário novo; zero linhas da
   conferência (desfeita).
+- **1119_cb_recibos_do_grupo** — `cb_recibos_do_grupo` (o recibo de entrega
+  e de leitura de cada participante de fora da conta numa mensagem NOSSA de
+  grupo: o participante como chegou, a ficha sem FK, nunca o telefone; PK
+  conta + mensagem + participante; FK composta com CASCADE para `cb_groups`;
+  leitura na forma da 1032, escrita só do servidor),
+  `cb_groups.participantes_de_fora` (o denominador, CHECK ≥ 0) e a função
+  `cb_registrar_recibo_do_grupo` (grava só avançando, trava por mensagem e
+  devolve a contagem; EXECUTE só do `service_role`). A bolha de grupo vira
+  ✓✓/azul quando todos os de fora receberam/leram, com o 5º patch da imagem
+  da Evolution (que vem depois).
+
+  ADITIVA, ANTES do deploy. Autorização do operador em 04/11/2026 ("Aplique a
+  1119 em produção", à pergunta de aplicar a 1119 quando o Codex e o CI
+  fechassem verdes), aplicada em 04/11/2026 (histórico `20261104220009`)
+  depois do replay verde do CI e da revisão limpa do Codex no commit
+  `682344d2` do PR #457. Aplicada DEPOIS da 1120 (histórico
+  `20261104215651`, PR #458): na nossa produção a ordem não importa (o
+  histórico é por timestamp), e no `main` o #457 entra antes do #458
+  (combinado), com a numeração em ordem. Conferida: coluna e CHECK; tabela
+  sem coluna de telefone, com RLS e só a policy de leitura; `anon` sem
+  leitura, `authenticated` lê e não escreve nem chama a função,
+  `service_role` chama; zero recibos e zero grupos com denominador depois da
+  prova (desfeita).
 - **1120_cb_indice_dos_envios_por_conexao** — índice
   `messages_canal_e_data_idx` em `messages (channel_id, created_at desc)
   WHERE channel_id IS NOT NULL`: a leitura dos últimos envios de cada conexão
@@ -1737,8 +1760,9 @@ nome da época em que foram aplicadas.
   `20261104215651`) depois do replay local verde (243 arquivos e o
   `verify-schema`). Conferida: o índice existe nas colunas certas (5 MB), e a
   mesma consulta caiu para 7,8 ms, por Index Scan nele, já na ordem. A 1119
-  está reservada pela branch `feat/recibos-de-grupo` (não aplicada): se ela
-  entrar no `main` depois do #458, vira 1121.
+  (PR #457) entrou no `main` antes do #458, como combinado, e foi aplicada
+  depois desta (histórico `20261104220009`): na nossa produção a ordem não
+  importa, porque o histórico é por timestamp.
 
 ## Notas do histórico
 

@@ -65,6 +65,8 @@ interface GrupoAchado {
   participant_count: number | null;
   /** Ausente sem a 1117 aplicada (ver `COLUNAS_DO_GRUPO`). */
   participantes_conferidos_em?: string | null;
+  /** O denominador do ✓✓ de grupo (1119); ausente sem a 1119 aplicada. */
+  participantes_de_fora?: number | null;
 }
 
 /**
@@ -133,10 +135,20 @@ export async function findOrCreateGroup(
  * ⚠️ A conexão tem de ser a do GRUPO: com dois números nossos no mesmo grupo,
  * o "somos admin?" do outro número seria gravado, e o renomear (que sai pela
  * `channel_id` do grupo) seria liberado ou travado pelo número errado.
+ *
+ * E (1119) o denominador do ✓✓ NULO também pede a conferência — com a 1119 já
+ * aplicada (a coluna presente): o grupo conferido nas 24 h antes do deploy, ou
+ * pelo CRM de antes dele, ficaria sem ✓✓ até a conferência vencer. O freio de
+ * 15 min da chegada vale aqui também; o grupo cuja lista não diz quem é quem
+ * (denominador que continua nulo) é conferido no máximo uma vez a cada 15 min.
  */
 function paraDetalhar(grupo: GrupoAchado, channelId: string | null): boolean {
   if (channelId == null || grupo.channel_id !== channelId) return false;
-  return grupo.participant_count == null || conferenciaVencida(grupo.participantes_conferidos_em, Date.now());
+  return (
+    grupo.participant_count == null ||
+    conferenciaVencida(grupo.participantes_conferidos_em, Date.now()) ||
+    grupo.participantes_de_fora === null
+  );
 }
 
 /**

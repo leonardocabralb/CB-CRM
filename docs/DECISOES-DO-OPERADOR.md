@@ -28,6 +28,15 @@ qualquer uma é pergunta ao operador.
   Em 30/10/2026: o participante com conversa no CRM abre a conversa pelo
   grupo, e o grupo aparece (e abre) na ficha do cliente que está nele, com a
   faixa de volta; guarda-se só o vínculo com a FICHA (`grupos.md`, 1117).
+- "Não entregue" da Evolution: o ERROR de reenvio a aparelho secundário do
+  cliente (05/10/2026) e o ERROR de mensagem de GRUPO (04/11/2026) não pintam
+  a bolha de vermelho; custo aceito, a falha real de grupo fica em ✓
+  (`whatsapp-evolution.md`, Recibos).
+- Recibo de grupo (04/11/2026): ✓✓ e azul só quando TODOS os participantes
+  de fora da conta receberam e leram, como o WhatsApp (nunca "alguém": o azul
+  poderia ser de um colega); "Dados da mensagem" mostra quem recebeu e quem
+  leu, do banco, sem ler o grupo ao vivo; o `message.status_updated` passa a
+  sair para mensagem de grupo; sem teto para grupo grande (`grupos.md`).
 - Card: título = nome da pessoa, sem prefixo de conexão; o Calendly renomeia
   até título escrito à mão e fixa o nome da ficha.
 - Reuniões: "Data e Hora Reunião" mais nova que todo agendamento remarca a

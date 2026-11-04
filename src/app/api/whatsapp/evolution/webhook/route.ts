@@ -38,6 +38,15 @@ import {
 } from '@/lib/cb-groups/persist';
 import { detalharGruposDaChegada } from '@/lib/cb-groups/detalhar-na-chegada';
 import {
+  ehNumeroDaConta,
+  fichaDoRecibo,
+  gravarReciboDoGrupo,
+  lerReciboDoGrupo,
+  statusDoGrupo,
+  type NumeroDaConta,
+  type ReciboDoGrupo,
+} from '@/lib/cb-groups/recibos-do-grupo';
+import {
   descreverParticipantes,
   nomesConhecidos,
   parseGroupsUpsert,
@@ -143,6 +152,164 @@ function ehErroDeAparelhoSecundario(remoteJid: unknown): boolean {
   if (typeof remoteJid !== 'string' || remoteJid === '') return false;
   return !remoteJid.includes('@') || remoteJid.includes(':');
 }
+
+// ⚠️ Em GRUPO, o ERROR também não vira falha (decisão do operador,
+// 04/11/2026). A Baileys monta a chave do ack de erro só com o `from` do ack
+// (`handleBadAck`), e num grupo ele é o JID do GRUPO: o aviso chega com "@" e
+// sem participante. Não dá para separar o reenvio recusado a um aparelho de
+// alguém do grupo de uma falha do envio inteiro. Medido no log da Evolution em
+// 04/11/2026: 16 envios a grupo, só 2 recibos, os dois ERROR `479` — e num
+// deles a mensagem já tinha chegado a um participante quase 1 s antes do erro.
+// Nos 30 dias anteriores, 10 de 93 mensagens de grupo ficaram "não entregue"
+// assim, e as conferidas pelo operador tinham chegado. Custo aceito: uma falha
+// real de grupo fica em ✓, sem aviso.
+//
+// O 5º patch da imagem manda também o CÓDIGO (`messageStubParameters`): com
+// ele, só o `479` é ignorado, e outro código em grupo (conta restrita, por
+// exemplo) volta a marcar a falha. Sem o código (a imagem de antes do patch),
+// todo ERROR de grupo é ignorado. `docs/PLANO-recibos-de-grupo.md`.
+function ehErroDeGrupo(remoteJid: unknown, codigos: unknown): boolean {
+  if (typeof remoteJid !== 'string' || !isGroupJid(remoteJid)) return false;
+  if (!Array.isArray(codigos) || codigos.length === 0) return true;
+  return codigos.every((c) => String(c) === '479');
+}
+
+type StatusDoRecibo = NonNullable<ReturnType<typeof ackToStatus>>;
+
+/**
+ * Leva o status de um recibo à mensagem NOSSA de saída (`message_id` =
+ * `keyId`), pela escada e com a espera da linha (`pausas`; vazia = não
+ * espera), e só então avisa quem integra.
+ */
+async function aplicarStatusDoRecibo(
+  keyId: string,
+  status: StatusDoRecibo,
+  pausas: readonly number[],
+): Promise<void> {
+  // Só toca nossas mensagens de saída (message_id === keyId). NÃO
+  // escopamos por channel_id: o keyId da Baileys é único por mensagem,
+  // então já mira exatamente a mensagem certa mesmo com vários canais —
+  // e escopar por canal congelaria o ✓✓ das mensagens antigas
+  // (channel_id NULL, anteriores à Fase 3).
+  //
+  // 'agent' é o envio manual do inbox; 'bot' é o que IA, flows e
+  // automações gravam. Filtrar só por 'agent' deixava toda resposta
+  // automática presa em "enviado", sem nunca virar entregue/lido.
+  const tentar = async (): Promise<Tentativa> => {
+    let q = supabaseAdmin()
+      .from('messages')
+      .update({ status })
+      .eq('message_id', keyId)
+      .in('sender_type', ['agent', 'bot']);
+    // Só marca falha o que ainda não passou de "enviado" (`ACEITA_FALHA`,
+    // em `escada-de-status.ts`: um ERROR que chegue depois da entrega é
+    // ruído da Baileys). ⚠️ O resto da escada TAMBÉM tem guarda desde
+    // 09/09/2026: a Evolution 2.4 (Baileys 7) emite SERVER_ACK DEPOIS do
+    // DELIVERY_ACK da mesma mensagem (medido: 5 recibos em 9 s, o último
+    // rebaixando), e sem a guarda a bolha voltava a um ✓ com a mensagem
+    // entregue. Uma versão deste comentário dizia que a escada "já era
+    // monotônica na prática" — era, na 6.7.19. A rota da Meta usa a
+    // mesma regra desde 23/09/2026. E o READ tira da falha (29/09/2026):
+    // o ERROR às vezes chega junto com os outros recibos e grava
+    // primeiro, e a mensagem que o cliente leu ficava "não entregue".
+    q = q.in('status', aceitamORecibo(status));
+    const { data: atualizadas, error } = await q.select('id');
+    if (error) {
+      console.error('[evolution/webhook] status update failed:', error);
+      return 'erro';
+    }
+    return atualizadas && atualizadas.length > 0 ? 'avancou' : 'nada';
+  };
+  // ⚠️ O recibo costuma chegar ANTES da mensagem que ele confirma: a
+  // Evolution despacha os dois no mesmo segundo, e a mensagem do celular
+  // só é gravada depois dos 2 s de `jaGravada` (acima). Sem linha, espera
+  // por ela; linha que existe e não avança é recibo atrasado ou repetido.
+  // Ver `recibo-antes-da-mensagem.ts`. O recibo de GRUPO também espera: o
+  // primeiro chega ~0,4 s depois do envio, antes de o CRM gravar a linha.
+  const avancou = await aplicarReciboQuandoAMensagemExistir({
+    tentar,
+    existe: async () => {
+      const { data, error } = await supabaseAdmin()
+        .from('messages')
+        .select('id')
+        .eq('message_id', keyId)
+        .in('sender_type', ['agent', 'bot'])
+        .limit(1);
+      // Leitura que falhou vale "ainda não": a espera tem fim.
+      return !error && (data?.length ?? 0) > 0;
+    },
+    esperar: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    pausas,
+  });
+  // Recibo atrasado ou repetido: nenhuma linha avançou, nada a anunciar
+  // — sem isto o fan-out abaixo contaria ao integrador um "sent" sobre
+  // mensagem já entregue.
+  if (!avancou) return;
+
+  // Fan-out do webhook público. O lado Meta já emite
+  // message.status_updated; sem isto, quem integra recebe o ✓✓ dos
+  // números oficiais e silêncio dos não-oficiais. Best-effort: uma
+  // falha aqui não pode desfazer o UPDATE acima.
+  const { data: msgRow } = await supabaseAdmin()
+    .from('messages')
+    .select('conversation_id, channel_id, conversations(account_id)')
+    .eq('message_id', keyId)
+    .in('sender_type', ['agent', 'bot'])
+    .limit(1)
+    .maybeSingle();
+
+  const accountId = (
+    msgRow?.conversations as { account_id: string } | null
+  )?.account_id;
+  if (msgRow && accountId) {
+    await dispatchWebhookEvent(
+      supabaseAdmin(),
+      accountId,
+      'message.status_updated',
+      {
+        whatsapp_message_id: keyId,
+        conversation_id: msgRow.conversation_id,
+        status,
+        channel_id: msgRow.channel_id ?? null,
+      },
+    );
+  }
+}
+
+/**
+ * Recibo de GRUPO de um participante (1119): descarta o de número da conta,
+ * grava (só avança), conta os da mensagem e, quando todos os de fora
+ * receberam ou leram, leva o status à bolha pelo caminho de sempre. Nunca
+ * lança: falha vira log.
+ */
+async function aplicarReciboDoGrupo(accountId: string, recibo: ReciboDoGrupo): Promise<void> {
+  const db = supabaseAdmin();
+  // Sem saber quais números são da conta, não grava: o recibo da outra
+  // conexão no mesmo grupo anteciparia o ✓✓ sobre o cliente.
+  const { data: conexoes, error } = await db
+    .from('cb_channels')
+    .select('own_lid, display_phone')
+    .eq('account_id', accountId);
+  if (error) {
+    console.error('[evolution/webhook] ler as conexões para o recibo de grupo falhou:', error.message);
+    return;
+  }
+  if (ehNumeroDaConta(recibo, (conexoes ?? []) as NumeroDaConta[])) return;
+  // A ficha, nunca o telefone (decisão do operador de 29/10/2026).
+  const contatoId = await fichaDoRecibo(db, accountId, recibo);
+  const contagem = await gravarReciboDoGrupo(db, accountId, recibo, contatoId);
+  if (!contagem) return;
+  const status = statusDoGrupo(contagem);
+  if (status) await aplicarStatusDoRecibo(recibo.keyId, status, PAUSAS_DO_RECIBO_DE_GRUPO_MS);
+}
+
+// O recibo de grupo espera MENOS pela linha (7 s, contra ~30 s do de sempre):
+// o que fecha a conta chega segundos depois do envio, quando a linha do CRM já
+// existe; e a mensagem que nunca terá linha `agent` (a do celular de outra
+// conexão no mesmo grupo, gravada como fala de quem está nele) não pode custar
+// 30 s de consultas a cada recibo depois da conta fechada. O recibo seguinte
+// tenta de novo.
+const PAUSAS_DO_RECIBO_DE_GRUPO_MS: readonly number[] = [1_000, 2_000, 4_000];
 
 interface EvolutionWebhookBody {
   event?: string;
@@ -674,11 +841,24 @@ export async function POST(request: Request) {
   }
 
   if (event === 'messages.update') {
+    // Recibo de GRUPO, um por participante (5º patch da imagem, 1119): chega
+    // como `messages.update` com `reciboDoGrupo` e SEM `status`, e tem
+    // caminho próprio — gravar por participante e só então decidir a bolha.
+    const reciboDoGrupo = lerReciboDoGrupo(body.data);
+    if (reciboDoGrupo) {
+      // Conexão com grupos DESLIGADOS não grava nada de grupo — nem recibo
+      // (o mesmo interruptor do upsert de grupo, abaixo). Custo aceito: o envio
+      // a um grupo por uma conexão assim (configuração incoerente) fica em ✓.
+      if (route.groupsEnabled) after(() => aplicarReciboDoGrupo(route.accountId, reciboDoGrupo));
+      return NextResponse.json({ ok: true });
+    }
+
     const d = (body.data ?? {}) as {
       keyId?: string;
       status?: unknown;
       fromMe?: unknown;
       remoteJid?: unknown;
+      messageStubParameters?: unknown;
     };
     const status = ackToStatus(d.status);
     const keyId = d.keyId;
@@ -686,99 +866,15 @@ export async function POST(request: Request) {
       console.info(`[evolution/webhook] ERROR de aparelho secundário ignorado: ${keyId}`);
       return NextResponse.json({ ok: true });
     }
+    if (status === 'failed' && ehErroDeGrupo(d.remoteJid, d.messageStubParameters)) {
+      console.info(`[evolution/webhook] ERROR de grupo ignorado: ${keyId}`);
+      return NextResponse.json({ ok: true });
+    }
     if (keyId && status) {
-      after(async () => {
-        // Só toca nossas mensagens de saída (message_id === keyId). NÃO
-        // escopamos por channel_id: o keyId da Baileys é único por mensagem,
-        // então já mira exatamente a mensagem certa mesmo com vários canais —
-        // e escopar por canal congelaria o ✓✓ das mensagens antigas
-        // (channel_id NULL, anteriores à Fase 3).
-        //
-        // 'agent' é o envio manual do inbox; 'bot' é o que IA, flows e
-        // automações gravam. Filtrar só por 'agent' deixava toda resposta
-        // automática presa em "enviado", sem nunca virar entregue/lido.
-        const tentar = async (): Promise<Tentativa> => {
-          let q = supabaseAdmin()
-            .from('messages')
-            .update({ status })
-            .eq('message_id', keyId)
-            .in('sender_type', ['agent', 'bot']);
-          // Só marca falha o que ainda não passou de "enviado" (`ACEITA_FALHA`,
-          // em `escada-de-status.ts`: um ERROR que chegue depois da entrega é
-          // ruído da Baileys). ⚠️ O resto da escada TAMBÉM tem guarda desde
-          // 09/09/2026: a Evolution 2.4 (Baileys 7) emite SERVER_ACK DEPOIS do
-          // DELIVERY_ACK da mesma mensagem (medido: 5 recibos em 9 s, o último
-          // rebaixando), e sem a guarda a bolha voltava a um ✓ com a mensagem
-          // entregue. Uma versão deste comentário dizia que a escada "já era
-          // monotônica na prática" — era, na 6.7.19. A rota da Meta usa a
-          // mesma regra desde 23/09/2026. E o READ tira da falha (29/09/2026):
-          // o ERROR às vezes chega junto com os outros recibos e grava
-          // primeiro, e a mensagem que o cliente leu ficava "não entregue".
-          q = q.in('status', aceitamORecibo(status));
-          const { data: atualizadas, error } = await q.select('id');
-          if (error) {
-            console.error('[evolution/webhook] status update failed:', error);
-            return 'erro';
-          }
-          return atualizadas && atualizadas.length > 0 ? 'avancou' : 'nada';
-        };
-        // ⚠️ O recibo costuma chegar ANTES da mensagem que ele confirma: a
-        // Evolution despacha os dois no mesmo segundo, e a mensagem do celular
-        // só é gravada depois dos 2 s de `jaGravada` (acima). Sem linha, espera
-        // por ela; linha que existe e não avança é recibo atrasado ou repetido.
-        // Ver `recibo-antes-da-mensagem.ts`.
-        const avancou = await aplicarReciboQuandoAMensagemExistir({
-          tentar,
-          existe: async () => {
-            const { data, error } = await supabaseAdmin()
-              .from('messages')
-              .select('id')
-              .eq('message_id', keyId)
-              .in('sender_type', ['agent', 'bot'])
-              .limit(1);
-            // Leitura que falhou vale "ainda não": a espera tem fim.
-            return !error && (data?.length ?? 0) > 0;
-          },
-          esperar: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-          // Recibo de mensagem RECEBIDA (`fromMe` false: o "lido" que a equipe
-          // dá no celular) nunca acha linha de agent/bot — esperar por ela
-          // seriam ~30 s de consultas a cada mensagem lida.
-          pausas: d.fromMe === false ? [] : PAUSAS_DO_RECIBO_MS,
-        });
-        // Recibo atrasado ou repetido: nenhuma linha avançou, nada a anunciar
-        // — sem isto o fan-out abaixo contaria ao integrador um "sent" sobre
-        // mensagem já entregue.
-        if (!avancou) return;
-
-        // Fan-out do webhook público. O lado Meta já emite
-        // message.status_updated; sem isto, quem integra recebe o ✓✓ dos
-        // números oficiais e silêncio dos não-oficiais. Best-effort: uma
-        // falha aqui não pode desfazer o UPDATE acima.
-        const { data: msgRow } = await supabaseAdmin()
-          .from('messages')
-          .select('conversation_id, channel_id, conversations(account_id)')
-          .eq('message_id', keyId)
-          .in('sender_type', ['agent', 'bot'])
-          .limit(1)
-          .maybeSingle();
-
-        const accountId = (
-          msgRow?.conversations as { account_id: string } | null
-        )?.account_id;
-        if (msgRow && accountId) {
-          await dispatchWebhookEvent(
-            supabaseAdmin(),
-            accountId,
-            'message.status_updated',
-            {
-              whatsapp_message_id: keyId,
-              conversation_id: msgRow.conversation_id,
-              status,
-              channel_id: msgRow.channel_id ?? null,
-            },
-          );
-        }
-      });
+      // Recibo de mensagem RECEBIDA (`fromMe` false: o "lido" que a equipe dá
+      // no celular) nunca acha linha de agent/bot — esperar por ela seriam
+      // ~30 s de consultas a cada mensagem lida.
+      after(() => aplicarStatusDoRecibo(keyId, status, d.fromMe === false ? [] : PAUSAS_DO_RECIBO_MS));
     }
     return NextResponse.json({ ok: true });
   }
