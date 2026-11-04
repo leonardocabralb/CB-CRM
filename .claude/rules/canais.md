@@ -114,7 +114,7 @@ duplica a sessão: `.claude/rules/whatsapp-evolution.md`, "Pareamento".
 
 - ⚠️⚠️ **A régua (decisão do operador, 04/11/2026):** os 5 envios mais recentes com mais de 15 min, das últimas 3 h, em pelo menos 3 conversas, sem recibo de entrega ou leitura. APAGA no 1º recibo: a sequência é a dos envios depois do último confirmado, inclusive os novos. Medido: de 17/09 a 02/11, a maior sequência sem recibo foi de 4 envios em 2 conversas; numa hora normal, 83 de 85 envios com recibo em até 5 min.
 - ⚠️ **Fora, de propósito:** Instagram (sem recibo de entrega), grupo (não passa de ✓), envio pelo CELULAR (chega pela mesma fila parada), `failed` e `nao_saiu` (não saíram).
-- ⚠️ **O grupo sai em JS**, pelo embutido LEFT `conversations(contact_id)`. Filtro no embutido com `!inner` seria forma nova, a medir contra o PostgREST.
+- ⚠️⚠️ **Duas leituras, e o teto só nos MADUROS** (Codex, #458): o envio confirmado mais novo dos últimos 15 min (sozinho, ele apaga o alarme) e os envios com mais de 15 min das 24 h, com teto de 100. Numa leitura só, uma rajada recente ou de envios a grupo ocupava o teto, e o alarme deixava de acender ou apagava com os recibos parados. O grupo sai NA CONSULTA (`conversations!inner` com `contact_id` não nulo, o embutido com filtro que o webhook da Evolution já usa).
 - ⚠️ **Leitura que falha é `null` ("não sei") e nunca acende**; `lerEnviosRecentes` nunca lança, porque a sonda inteira depende dela.
 - **Cache por CONTA, 1 min** (`TTL_SEM_RECIBO_MS`): a RLS de `messages` é por conta, e a régua conta envios com mais de 15 min.
 - ⚠️⚠️ **O índice `messages_canal_e_data_idx` (1120) entra ANTES do deploy.** Sem ele, cada leitura custou 973 ms medidos (Trabalhista - Comercial), uma por conexão por minuto por conta.

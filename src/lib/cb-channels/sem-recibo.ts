@@ -58,9 +58,10 @@ export const CONVERSAS_SEM_RECIBO_MINIMAS = 3;
 export const JANELA_DA_LEITURA_MS = 24 * 60 * 60_000;
 
 /**
- * Teto da leitura por conexão. No incidente foram ~90 envios num dia; com o
- * teto, o `desde` de uma sequência mais longa sai mais novo que o real (nunca
- * mais velho).
+ * Teto da leitura dos envios MADUROS (com mais de 15 min) por conexão. A
+ * régua só olha os 5 mais recentes; o teto limita o `desde`: no incidente
+ * foram ~90 envios num dia, e numa sequência mais longa o `desde` sai mais
+ * novo que o real (nunca mais velho).
  */
 export const ENVIOS_LIDOS_POR_CONEXAO = 100;
 
@@ -117,49 +118,65 @@ interface LinhaDoEnvio {
   created_at: string;
   status: string | null;
   conversation_id: string;
-  conversations: { contact_id: string | null } | { contact_id: string | null }[] | null;
-}
-
-/** Conversa de grupo não tem contato (`conversations.contact_id` nulo). */
-function ehUmParaUm(linha: LinhaDoEnvio): boolean {
-  const conversa = Array.isArray(linha.conversations) ? linha.conversations[0] : linha.conversations;
-  return !!conversa?.contact_id;
 }
 
 /**
- * Os envios do CRM desta conexão nas últimas 24 h, do mais novo para trás.
+ * Os envios do CRM desta conexão que a régua precisa, do mais novo para trás.
  * `null` = a leitura falhou: "não sei", que nunca acusa.
  *
- * ⚠️ O grupo sai em JS, pelo embutido LEFT, e não por `!inner`: é a forma de
- * embed que o código já usa contra o PostgREST (o filtro no embutido seria
- * forma nova, a medir). O teto se aplica antes, então um grupo muito ativo
- * encurta a leitura — só o `desde` perde precisão.
+ * São DUAS leituras, e o teto vale só na segunda (Codex, PR #458):
+ *  1. o envio CONFIRMADO mais novo dos últimos 15 min, se houver — sozinho
+ *     ele já encerra a sequência ("apaga no 1º recibo");
+ *  2. os envios MADUROS (24 h, com mais de 15 min), com teto de 100.
+ * Numa leitura só, uma rajada de envios recentes ou de envios a grupo
+ * ocupava o teto, os maduros de 1:1 ficavam de fora, e o alarme deixava de
+ * acender — ou apagava com os recibos ainda parados. O envio recente sem
+ * recibo não muda a resposta (não é maduro nem confirmado), então nem é lido.
  *
- * O índice `messages_canal_e_data_idx` (1120) serve esta consulta: sem ele,
- * a busca varre todas as mensagens da conexão.
+ * ⚠️ O grupo sai NA CONSULTA: `conversations!inner` com `contact_id` não
+ * nulo (conversa de grupo não tem contato), o mesmo embutido com filtro que
+ * o webhook da Evolution usa (`conversations.account_id`). Com o embutido
+ * LEFT e o filtro em JS, o grupo ocupava o teto.
+ *
+ * O índice `messages_canal_e_data_idx` (1120) serve as duas: sem ele, a busca
+ * varre todas as mensagens da conexão (973 ms medidos).
  */
 export async function lerEnviosRecentes(
   db: SupabaseClient,
   channelId: string,
   agoraMs: number,
 ): Promise<EnvioRecente[] | null> {
-  try {
-    const { data, error } = await db
+  const corteDoMaduro = new Date(agoraMs - IDADE_MINIMA_DO_ENVIO_MS).toISOString();
+  const envios = () =>
+    db
       .from('messages')
-      .select('created_at, status, conversation_id, conversations(contact_id)')
+      .select('created_at, status, conversation_id, conversations!inner(contact_id)')
       .eq('channel_id', channelId)
       .in('sender_type', ['agent', 'bot'])
       .eq('from_device', false)
       .eq('nao_saiu', false)
       .neq('status', 'failed')
-      .gte('created_at', new Date(agoraMs - JANELA_DA_LEITURA_MS).toISOString())
-      .order('created_at', { ascending: false })
-      .limit(ENVIOS_LIDOS_POR_CONEXAO);
-    if (error) {
-      console.warn('[sem-recibo] não leu os envios:', error.message);
+      .not('conversations.contact_id', 'is', null);
+  try {
+    const [novo, maduros] = await Promise.all([
+      envios()
+        .gte('created_at', corteDoMaduro)
+        .in('status', ['delivered', 'read'])
+        .order('created_at', { ascending: false })
+        .limit(1),
+      envios()
+        .gte('created_at', new Date(agoraMs - JANELA_DA_LEITURA_MS).toISOString())
+        .lt('created_at', corteDoMaduro)
+        .order('created_at', { ascending: false })
+        .limit(ENVIOS_LIDOS_POR_CONEXAO),
+    ]);
+    const falha = novo.error ?? maduros.error;
+    if (falha) {
+      console.warn('[sem-recibo] não leu os envios:', falha.message);
       return null;
     }
-    return ((data ?? []) as unknown as LinhaDoEnvio[]).filter(ehUmParaUm).map((linha) => ({
+    const linhas = [...(novo.data ?? []), ...(maduros.data ?? [])] as unknown as LinhaDoEnvio[];
+    return linhas.map((linha) => ({
       criadoEm: linha.created_at,
       status: linha.status ?? '',
       conversaId: linha.conversation_id,

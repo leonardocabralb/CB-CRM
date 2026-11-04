@@ -142,57 +142,98 @@ describe('semRecibo — a régua (decisão do operador, 04/11/2026)', () => {
   });
 });
 
-/** Um banco falso que registra a consulta e devolve as linhas dadas. */
-function bancoFalso(resposta: { data: unknown; error: { message: string } | null }) {
-  const chamadas: [string, unknown[]][] = [];
-  const consulta: Record<string, unknown> = {};
-  for (const metodo of ['select', 'eq', 'in', 'neq', 'gte', 'order']) {
-    consulta[metodo] = (...args: unknown[]) => {
-      chamadas.push([metodo, args]);
+type Resposta = { data: unknown; error: { message: string } | null };
+
+/**
+ * Um banco falso: cada `from()` abre uma consulta própria, que registra as
+ * chamadas; o `limit` de cada uma devolve a próxima resposta da fila.
+ */
+function bancoFalso(...respostas: Resposta[]) {
+  const consultas: [string, unknown[]][][] = [];
+  const db = {
+    from: (tabela: string) => {
+      const chamadas: [string, unknown[]][] = [['from', [tabela]]];
+      consultas.push(chamadas);
+      const consulta: Record<string, unknown> = {};
+      for (const metodo of ['select', 'eq', 'in', 'neq', 'not', 'gte', 'lt', 'order']) {
+        consulta[metodo] = (...args: unknown[]) => {
+          chamadas.push([metodo, args]);
+          return consulta;
+        };
+      }
+      consulta.limit = (...args: unknown[]) => {
+        chamadas.push(['limit', args]);
+        return Promise.resolve(respostas.shift() ?? { data: [], error: null });
+      };
       return consulta;
-    };
-  }
-  consulta.limit = (...args: unknown[]) => {
-    chamadas.push(['limit', args]);
-    return Promise.resolve(resposta);
+    },
   };
-  const db = { from: (tabela: string) => (chamadas.push(['from', [tabela]]), consulta) };
-  return { db: db as never, chamadas };
+  return { db: db as never, consultas };
 }
 
-describe('lerEnviosRecentes — o que a leitura deixa de fora', () => {
-  it('só envios do CRM pela conexão, sem celular, sem falha, sem tentativa que não saiu', async () => {
-    const { db, chamadas } = bancoFalso({ data: [], error: null });
+const CORTE_DO_MADURO = new Date(AGORA - IDADE_MINIMA_DO_ENVIO_MS).toISOString();
+
+describe('lerEnviosRecentes — duas leituras, e o teto só nos maduros (Codex, #458)', () => {
+  it('as duas: só envio do CRM, 1:1 NA CONSULTA, sem celular, falha nem tentativa que não saiu', async () => {
+    const { db, consultas } = bancoFalso();
     await lerEnviosRecentes(db, 'canal-1', AGORA);
-    expect(chamadas).toContainEqual(['from', ['messages']]);
-    expect(chamadas).toContainEqual(['eq', ['channel_id', 'canal-1']]);
-    expect(chamadas).toContainEqual(['in', ['sender_type', ['agent', 'bot']]]);
-    expect(chamadas).toContainEqual(['eq', ['from_device', false]]);
-    expect(chamadas).toContainEqual(['eq', ['nao_saiu', false]]);
-    expect(chamadas).toContainEqual(['neq', ['status', 'failed']]);
-    expect(chamadas).toContainEqual(['order', ['created_at', { ascending: false }]]);
-    expect(chamadas).toContainEqual(['limit', [ENVIOS_LIDOS_POR_CONEXAO]]);
+    expect(consultas).toHaveLength(2);
+    for (const chamadas of consultas) {
+      expect(chamadas).toContainEqual(['from', ['messages']]);
+      expect(chamadas).toContainEqual([
+        'select',
+        ['created_at, status, conversation_id, conversations!inner(contact_id)'],
+      ]);
+      expect(chamadas).toContainEqual(['not', ['conversations.contact_id', 'is', null]]);
+      expect(chamadas).toContainEqual(['eq', ['channel_id', 'canal-1']]);
+      expect(chamadas).toContainEqual(['in', ['sender_type', ['agent', 'bot']]]);
+      expect(chamadas).toContainEqual(['eq', ['from_device', false]]);
+      expect(chamadas).toContainEqual(['eq', ['nao_saiu', false]]);
+      expect(chamadas).toContainEqual(['neq', ['status', 'failed']]);
+      expect(chamadas).toContainEqual(['order', ['created_at', { ascending: false }]]);
+    }
   });
 
-  it('grupo (conversa sem contato) sai; o embutido vem como objeto ou lista', async () => {
-    const { db } = bancoFalso({
-      data: [
-        { created_at: '2026-11-03T13:00:00.000Z', status: 'sent', conversation_id: 'c1', conversations: { contact_id: 'k1' } },
-        { created_at: '2026-11-03T12:59:00.000Z', status: 'sent', conversation_id: 'g1', conversations: { contact_id: null } },
-        { created_at: '2026-11-03T12:58:00.000Z', status: 'read', conversation_id: 'c2', conversations: [{ contact_id: 'k2' }] },
-        { created_at: '2026-11-03T12:57:00.000Z', status: 'sent', conversation_id: 'c3', conversations: null },
-      ],
-      error: null,
-    });
-    expect(await lerEnviosRecentes(db, 'canal-1', AGORA)).toEqual([
-      { criadoEm: '2026-11-03T13:00:00.000Z', status: 'sent', conversaId: 'c1' },
-      { criadoEm: '2026-11-03T12:58:00.000Z', status: 'read', conversaId: 'c2' },
-    ]);
+  it('a 1ª busca só o envio CONFIRMADO mais novo dos últimos 15 min', async () => {
+    const { db, consultas } = bancoFalso();
+    await lerEnviosRecentes(db, 'canal-1', AGORA);
+    expect(consultas[0]).toContainEqual(['gte', ['created_at', CORTE_DO_MADURO]]);
+    expect(consultas[0]).toContainEqual(['in', ['status', ['delivered', 'read']]]);
+    expect(consultas[0]).toContainEqual(['limit', [1]]);
   });
 
-  it('leitura que falha é "não sei" (null), nunca lista vazia', async () => {
-    const { db } = bancoFalso({ data: null, error: { message: 'boom' } });
-    expect(await lerEnviosRecentes(db, 'canal-1', AGORA)).toBeNull();
+  it('a 2ª busca só os MADUROS das 24 h: rajada recente não ocupa o teto', async () => {
+    const { db, consultas } = bancoFalso();
+    await lerEnviosRecentes(db, 'canal-1', AGORA);
+    expect(consultas[1]).toContainEqual(['lt', ['created_at', CORTE_DO_MADURO]]);
+    expect(consultas[1]).toContainEqual(['limit', [ENVIOS_LIDOS_POR_CONEXAO]]);
+  });
+
+  it('junta as duas, o confirmado novo na frente: ele apaga o alarme', async () => {
+    const maduros = [envio(20, 'a'), envio(25, 'b'), envio(30, 'c'), envio(35, 'a'), envio(40, 'b')];
+    const linha = (e: EnvioRecente) => ({ created_at: e.criadoEm, status: e.status, conversation_id: e.conversaId });
+    const { db } = bancoFalso(
+      { data: [linha(envio(3, 'z', 'delivered'))], error: null },
+      { data: maduros.map(linha), error: null },
+    );
+    const lidos = await lerEnviosRecentes(db, 'canal-1', AGORA);
+    expect(lidos?.map((e) => e.conversaId)).toEqual(['z', 'a', 'b', 'c', 'a', 'b']);
+    expect(semRecibo(lidos!, AGORA)).toBeNull();
+    // Sem o confirmado novo, os mesmos maduros acendem.
+    expect(semRecibo(lidos!.slice(1), AGORA)).not.toBeNull();
+  });
+
+  it('leitura que falha é "não sei" (null), nunca lista vazia — em qualquer das duas', async () => {
+    expect(
+      await lerEnviosRecentes(bancoFalso({ data: null, error: { message: 'boom' } }).db, 'canal-1', AGORA),
+    ).toBeNull();
+    expect(
+      await lerEnviosRecentes(
+        bancoFalso({ data: [], error: null }, { data: null, error: { message: 'boom' } }).db,
+        'canal-1',
+        AGORA,
+      ),
+    ).toBeNull();
   });
 
   it('o que o supabase-js LANÇA também vira null', async () => {
