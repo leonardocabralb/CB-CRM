@@ -111,7 +111,11 @@ qualquer uma é pergunta ao operador.
   entrada (21/09/2026) e passo de envio da automação para ficha sem conversa
   (27/09/2026). Calendly e `send_to_number` a criam aberta.
 - Evolution: voltar de versão da imagem está descartado. Trocar o chip é
-  "Reparear" a conexão, nunca remover e recriar (03/10/2026).
+  "Reparear" a conexão, nunca remover e recriar (03/10/2026). O guia de
+  instalação recomenda a versão da nossa imagem (2.4 `e273b904` com os
+  patches de `docker/evolution-cb/`), com o porquê no guia e junto do código,
+  e quem instala MONTA a própria pelo workflow: o guia nunca aponta para a
+  nossa imagem pública (04/11/2026; `deploy.md`).
 - Celular: no toque o Enter pula linha; o app instalado abre em `/inbox`.
 - "Sair" do menu sai só deste aparelho; 4 h inativo reabre o Meu dia, sem
   senha.
