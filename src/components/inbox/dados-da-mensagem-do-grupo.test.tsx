@@ -96,6 +96,25 @@ describe('o balão "Dados da mensagem"', () => {
     expect(html).not.toContain('Recebida por');
   });
 
+  it('⚠️ grupo grande: só a lista rola, com teto de altura pela tela (Codex, PR 457)', () => {
+    const muitos = Array.from({ length: 40 }, (_, i) => ({
+      participante: `${1000 + i}@lid`,
+      nome: `Participante ${i}`,
+      telefone: null,
+      entregueEm: '2026-11-04T18:54:24Z',
+      lidaEm: null,
+    }));
+    const html = balao({ de: 'x', situacao: 'pronto', total: 40, participantesDeFora: 40, recibos: muitos });
+    // A raiz tem teto (o espaço medido pelo base-ui, com piso) e é coluna flex.
+    expect(html).toContain('max-h-[max(12rem,min(24rem,calc(var(--available-height,25rem)_-_1rem)))]');
+    // A lista é o que rola, e a cadeia de flex tem `min-h-0` (senão cresce).
+    const lista = html.match(/<div data-lista-de-recibos="[^"]*" class="([^"]+)"/)?.[1] ?? '';
+    expect(lista.split(' ')).toEqual(expect.arrayContaining(['min-h-0', 'overflow-y-auto']));
+    expect(html).toContain('class="flex min-h-0 flex-col gap-2"');
+    // O resumo fica FORA da parte que rola.
+    expect(html.indexOf('Recebida por 40 de 40')).toBeLessThan(html.indexOf('data-lista-de-recibos'));
+  });
+
   it('⚠️ lista cortada pelo teto da leitura: avisa quantos mostra e não afirma o resumo', () => {
     const html = balao({ de: 'x', situacao: 'pronto', total: 1500, participantesDeFora: 1600, recibos: dois });
     expect(html).toContain('A lista mostra os primeiros 2 recibos.');

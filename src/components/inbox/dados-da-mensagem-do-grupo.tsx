@@ -109,9 +109,13 @@ export function ConteudoDosDados({
   aoTentarDeNovo: () => void;
 }) {
   const t = useTranslations("Inbox.messageInfo");
+  // ⚠️ Teto de altura pelo espaço que o base-ui mede na tela
+  // (`--available-height`, menos o `p-2` do popup), com piso de 12rem: no app
+  // instalado no iPhone a medida pode vir errada (`ui.md`). Sem o teto, a lista
+  // de um grupo grande passava da tela sem rolar (Codex, PR 457).
   return (
-    <div className="w-72 max-w-[calc(100vw-2rem)] space-y-2 p-1 text-sm">
-      <p className="text-foreground font-medium">{t("title")}</p>
+    <div className="flex max-h-[max(12rem,min(24rem,calc(var(--available-height,25rem)_-_1rem)))] w-72 max-w-[calc(100vw-2rem)] flex-col gap-2 p-1 text-sm">
+      <p className="text-foreground shrink-0 font-medium">{t("title")}</p>
       {!atual ? (
         <p className="text-muted-foreground flex items-center gap-2">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -161,9 +165,11 @@ function ListaDeRecibos({
   const resumoValido =
     !cortada && participantesDeFora != null && participantesDeFora > 0 && recibos.length <= participantesDeFora;
   return (
-    <div className="space-y-2">
+    // `min-h-0` em toda a cadeia de flex: sem ele o filho cresce em vez de
+    // rolar (`ui.md`). Só a lista rola; o título e o resumo ficam à vista.
+    <div className="flex min-h-0 flex-col gap-2">
       {resumoValido && (
-        <p className="text-muted-foreground text-xs">
+        <p className="text-muted-foreground shrink-0 text-xs">
           {t("summary", {
             entregues: recibos.length,
             lidas: lidas.length,
@@ -172,14 +178,18 @@ function ListaDeRecibos({
         </p>
       )}
       {cortada && (
-        <p className="text-muted-foreground text-xs">{t("truncated", { n: recibos.length })}</p>
+        <p className="text-muted-foreground shrink-0 text-xs">
+          {t("truncated", { n: recibos.length })}
+        </p>
       )}
-      {lidas.length > 0 && (
-        <Secao titulo={t("readBy")} itens={lidas} quando={(r) => r.lidaEm ?? r.entregueEm} t={t} />
-      )}
-      {soEntregues.length > 0 && (
-        <Secao titulo={t("deliveredTo")} itens={soEntregues} quando={(r) => r.entregueEm} t={t} />
-      )}
+      <div data-lista-de-recibos className="min-h-0 space-y-2 overflow-y-auto overscroll-contain pr-1">
+        {lidas.length > 0 && (
+          <Secao titulo={t("readBy")} itens={lidas} quando={(r) => r.lidaEm ?? r.entregueEm} t={t} />
+        )}
+        {soEntregues.length > 0 && (
+          <Secao titulo={t("deliveredTo")} itens={soEntregues} quando={(r) => r.entregueEm} t={t} />
+        )}
+      </div>
     </div>
   );
 }

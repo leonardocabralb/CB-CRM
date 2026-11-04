@@ -151,6 +151,15 @@ leram, e "Dados da mensagem" diz quem recebeu e quem leu, com hora.
   ORIGINAL ainda sem receber (a tela esconde o "N de M" quando N passa de M).
   Quem saiu conta, e a bolha fica em ✓ até a conferência seguinte. O detalhe
   nunca afirma nada de quem não mandou recibo.
+- **Recibo que chega antes da primeira conferência (Codex, PR 457, aceito):**
+  gravado com o denominador nulo, ele não é reavaliado quando a conferência
+  grava o número; a bolha fica em ✓ até o próximo recibo da MESMA mensagem
+  (em geral a leitura), que recalcula tudo. Lado seguro: ✓ é o comportamento
+  de antes. Como o CRM (com a 1119) entra antes da imagem nova, os grupos
+  ativos ganham o denominador nesse intervalo; sobra o grupo parado cuja
+  primeira mensagem depois da troca é nossa. Reavaliar na conferência exigiria
+  tirar a aplicação do status da rota do webhook: só se aparecer no grupo de
+  teste.
 - **Duas conferências juntas (revisão, B5b, aceito):** o denominador é
   gravado depois da `cb_gravar_fichas_do_grupo`, fora da trava do grupo. O
   painel e a chegada conferindo ao mesmo tempo podem deixar o número da
@@ -259,6 +268,10 @@ leram, e "Dados da mensagem" diz quem recebeu e quem leu, com hora.
   corpo que o supabase-js manda, pelo `json_to_recordset` com os tipos da
   função (a forma do PostgREST), grava e devolve a contagem; a suíte inteira
   no Node 22 verde.
+- **Codex (PR 457, 1ª rodada, dois P2):** a lista do "Dados da mensagem"
+  passou a rolar dentro de um teto pela altura medida na tela
+  (`--available-height` do base-ui, piso de 12rem); a reavaliação do recibo
+  que chega antes do denominador ficou como limite (acima).
 
 ## Conferência no grupo de TESTE (depois da troca na VPS)
 
