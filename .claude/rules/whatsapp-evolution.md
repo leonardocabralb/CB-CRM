@@ -258,6 +258,12 @@ Live Photo e edições cifradas de antes do descarte).
   fila VAZIA, acima, é para o CONTÊINER e a imagem, não para este restart de
   instância — que é justamente o que se usa com a fila represada. Receita em
   `docs/INFRA-VPS.md`, §9.
+- ⚠️⚠️ **Queda a cada 50 min com `ack class="status"` = o `<status>` sem
+  ack** (04/11/2026; Baileys#2858): a conta recebe o Status dos contatos num
+  stanza novo, sem handler na rc13, e a entrada congela depois do 1º lote de
+  cada sessão. Restart, QR novo e `readStatus` NÃO resolvem; o conserto é o
+  `docker/evolution-cb/baileys+7.0.0-rc13.patch`. Subir a Baileys exige
+  refazê-lo. Diagnóstico: `docs/INFRA-VPS.md` §8.
 - Medir por `messages.gravada_em − created_at` (1003), mensagem a mensagem,
   EXCLUINDO `cb_mensagens_sem_telefone.message_id`: a recuperada é gravada
   tarde de verdade. O alarme de atraso por conexão (1002) está em
