@@ -30,7 +30,10 @@
 // ⚠️ FICAM DE FORA, de propósito:
 //  · o Instagram: o Direct não manda recibo de entrega, e o aviso de leitura
 //    o CRM não grava (`instagram/persistir.ts`) — todo envio fica em `sent`;
-//  · o grupo: lá o recibo não passa de ✓;
+//  · o grupo: o ✓✓ só vem quando TODOS os participantes de fora receberam
+//    (`cb-groups/recibos-do-grupo.ts`, 1119), e sem o 5º patch da imagem da
+//    Evolution nem vem. Um participante com o celular desligado o segura, então
+//    ele não mede a conexão;
 //  · o envio pelo CELULAR (`from_device`): ele chega ao CRM pela mesma fila
 //    parada, e no incidente nenhum chegou;
 //  · o envio que falhou (`failed`) e a tentativa que não saiu (`nao_saiu`):
