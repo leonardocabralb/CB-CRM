@@ -594,7 +594,21 @@
       "cancel": "Cancel",
       "deleteRequested": "Deletion requested",
       "download": "Download",
-      "downloadFailed": "Couldn't download the file"
+      "downloadFailed": "Couldn't download the file",
+      "messageInfo": "Message info"
+    },
+    "messageInfo": {
+      "title": "Message info",
+      "loading": "Loading…",
+      "failed": "Couldn't load the receipts.",
+      "retry": "Try again",
+      "none": "No receipts recorded for this message.",
+      "noneHint": "Group receipts depend on the WhatsApp connection update: without it, or for messages sent before it, nothing is recorded.",
+      "summary": "Received by {entregues} of {total} · read by {lidas}",
+      "truncated": "The list shows the first {n} receipts.",
+      "readBy": "Read by",
+      "deliveredTo": "Delivered to",
+      "hiddenNumber": "Hidden number"
     },
     "replyQuote": {
       "photo": "[Photo]",

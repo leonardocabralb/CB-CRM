@@ -18,7 +18,38 @@ const h = vi.hoisted(() => {
     /** Linhas que cada UPDATE em `messages` alcançou, em ordem. */
     updates: [] as number[],
     disparos: [] as Linha[],
+    /** `cb_recibos_do_grupo` em memória: (conta|mensagem|participante) → leitura? */
+    recibos: new Map<string, boolean>(),
+    /** Chamadas à função do banco, e se ela deve falhar (banco sem a 1119). */
+    rpcs: [] as { nome: string; args: Linha }[],
+    rpcFalha: false,
   };
+
+  /** A `cb_registrar_recibo_do_grupo` (1119) em memória: grava e conta. */
+  function rpc(nome: string, args: Linha) {
+    estado.rpcs.push({ nome, args });
+    if (estado.rpcFalha) return { data: null, error: { message: 'function does not exist' } };
+    const grupo = (estado.tabelas.cb_groups ?? []).find(
+      (g) => g.account_id === args.p_account_id && g.jid === args.p_group_jid,
+    );
+    if (grupo) {
+      const chave = `${args.p_account_id}|${args.p_message_id}|${args.p_participante}`;
+      estado.recibos.set(chave, estado.recibos.get(chave) === true || args.p_lida === true);
+    }
+    const daMensagem = [...estado.recibos.entries()].filter(([k]) =>
+      k.startsWith(`${args.p_account_id}|${args.p_message_id}|`),
+    );
+    return {
+      data: [
+        {
+          entregues: daMensagem.length,
+          lidas: daMensagem.filter(([, lida]) => lida).length,
+          participantes_de_fora: (grupo?.participantes_de_fora as number | null | undefined) ?? null,
+        },
+      ],
+      error: null,
+    };
+  }
 
   /** O pedaço do query builder do supabase-js que a rota usa. */
   function consulta(tabela: string) {
@@ -66,7 +97,7 @@ const h = vi.hoisted(() => {
     };
     return q;
   }
-  return { estado, consulta };
+  return { estado, consulta, rpc };
 });
 
 vi.mock('next/server', () => ({
@@ -79,7 +110,10 @@ vi.mock('next/server', () => ({
 }));
 
 vi.mock('@supabase/supabase-js', () => ({
-  createClient: () => ({ from: (tabela: string) => h.consulta(tabela) }),
+  createClient: () => ({
+    from: (tabela: string) => h.consulta(tabela),
+    rpc: (nome: string, args: Record<string, unknown>) => Promise.resolve(h.rpc(nome, args)),
+  }),
 }));
 
 vi.mock('@/lib/whatsapp/inbound-store', () => ({
@@ -189,10 +223,14 @@ beforeEach(() => {
       },
     ],
     messages: [],
+    cb_groups: [],
   };
   h.estado.after = [];
   h.estado.updates = [];
   h.estado.disparos = [];
+  h.estado.recibos = new Map();
+  h.estado.rpcs = [];
+  h.estado.rpcFalha = false;
 });
 
 afterEach(() => {
@@ -415,5 +453,164 @@ describe('o ERROR de mensagem de GRUPO (04/11/2026)', () => {
     await (await receber(recibo('ERROR', true, '5583900000000@s.whatsapp.net')))();
     expect(situacao()).toBe('failed');
     expect(anunciados()).toEqual(['failed']);
+  });
+
+  // O 5º patch manda o código do erro (`messageStubParameters`).
+  const erroComCodigo = (codigos: unknown) => ({
+    event: 'messages.update',
+    instance: INSTANCIA,
+    data: { keyId: KEY_ID, remoteJid: GRUPO, fromMe: true, status: 'ERROR', messageStubParameters: codigos },
+  });
+
+  it('com o código, só o 479 (reenvio recusado) é ignorado', async () => {
+    expect(await trabalhosDeixados(erroComCodigo(['479']))).toBe(0);
+    expect(await trabalhosDeixados(erroComCodigo([]))).toBe(0);
+    expect(situacao()).toBe('sent');
+  });
+
+  it('⚠️ outro código em grupo (conta restrita, por exemplo) volta a marcar a falha', async () => {
+    await (await receber(erroComCodigo(['463'])))();
+    expect(situacao()).toBe('failed');
+    expect(anunciados()).toEqual(['failed']);
+  });
+});
+
+describe('o recibo de GRUPO por participante (5º patch, 1119)', () => {
+  const GRUPO = '120363000000000000@g.us';
+
+  const linhaDaMensagem = () => ({
+    id: 'msg-1',
+    conversation_id: 'conv-1',
+    message_id: KEY_ID,
+    sender_type: 'agent',
+    status: 'sent',
+    conversations: { account_id: 'conta-1' },
+  });
+
+  beforeEach(() => {
+    // A conexão do recibo com grupos LIGADOS (o fixture de cima nasce desligado).
+    h.estado.tabelas.cb_channels[0].groups_enabled = true;
+    h.estado.tabelas.messages.push(linhaDaMensagem());
+    h.estado.tabelas.cb_groups.push({
+      id: 'grupo-1',
+      account_id: 'conta-1',
+      jid: GRUPO,
+      participantes_de_fora: 2,
+    });
+  });
+
+  /** O aviso do patch: `reciboDoGrupo` e SEM `status`. */
+  const reciboDeGrupo = (
+    participante: string,
+    tipo: 'DELIVERY_ACK' | 'READ',
+    participantAlt?: string,
+  ) => ({
+    event: 'messages.update',
+    instance: INSTANCIA,
+    data: {
+      keyId: KEY_ID,
+      remoteJid: GRUPO,
+      fromMe: true,
+      participant: participante,
+      participantAlt,
+      reciboDoGrupo: tipo,
+      instante: 1793818464,
+      instanceId: 'instancia-de-teste',
+    },
+  });
+
+  const situacao = () => h.estado.tabelas.messages[0].status;
+  const anunciados = () => h.estado.disparos.map((d) => d.status);
+
+  it('⚠️ a bolha vira ✓✓ só quando TODOS os de fora receberam, e azul quando todos leram', async () => {
+    await (await receber(reciboDeGrupo('100000000000001@lid', 'DELIVERY_ACK')))();
+    expect(situacao()).toBe('sent');
+    await (await receber(reciboDeGrupo('100000000000002@lid', 'DELIVERY_ACK')))();
+    expect(situacao()).toBe('delivered');
+
+    await (await receber(reciboDeGrupo('100000000000001@lid', 'READ')))();
+    expect(situacao()).toBe('delivered');
+    await (await receber(reciboDeGrupo('100000000000002@lid', 'READ')))();
+    expect(situacao()).toBe('read');
+
+    // Quem integra recebe o aviso só quando a bolha mudou.
+    expect(anunciados()).toEqual(['delivered', 'read']);
+  });
+
+  it('recibo repetido (um por aparelho da mesma pessoa) não conta duas vezes', async () => {
+    await (await receber(reciboDeGrupo('100000000000001@lid', 'DELIVERY_ACK')))();
+    await (await receber(reciboDeGrupo('100000000000001:3@lid', 'DELIVERY_ACK')))();
+    expect(situacao()).toBe('sent');
+  });
+
+  it('⚠️ o recibo da OUTRA conexão da conta no mesmo grupo nem é gravado (anteciparia o ✓✓)', async () => {
+    h.estado.tabelas.cb_channels.push({
+      id: 'canal-2',
+      account_id: 'conta-1',
+      own_lid: null,
+      display_phone: '5583999990002',
+      instance_name: 'outra-instancia',
+      kind: 'evolution',
+    });
+    await (
+      await receber(reciboDeGrupo('100000000000009@lid', 'DELIVERY_ACK', '5583999990002@s.whatsapp.net'))
+    )();
+    expect(h.estado.rpcs).toEqual([]);
+
+    await (await receber(reciboDeGrupo('100000000000001@lid', 'DELIVERY_ACK')))();
+    expect(situacao()).toBe('sent');
+  });
+
+  it('grupo nunca conferido (sem denominador): o recibo é gravado, a bolha fica em ✓', async () => {
+    h.estado.tabelas.cb_groups[0].participantes_de_fora = null;
+    await (await receber(reciboDeGrupo('100000000000001@lid', 'READ')))();
+    await (await receber(reciboDeGrupo('100000000000002@lid', 'READ')))();
+    expect(h.estado.rpcs).toHaveLength(2);
+    expect(situacao()).toBe('sent');
+    expect(anunciados()).toEqual([]);
+  });
+
+  it('o recibo que chega ANTES de o CRM gravar a mensagem espera por ela', async () => {
+    h.estado.tabelas.messages = [];
+    const primeiro = await receber(reciboDeGrupo('100000000000001@lid', 'DELIVERY_ACK'));
+    const segundo = await receber(reciboDeGrupo('100000000000002@lid', 'DELIVERY_ACK'));
+    setTimeout(() => h.estado.tabelas.messages.push(linhaDaMensagem()), 1_500);
+
+    const fim = Promise.all([primeiro(), segundo()]);
+    await vi.advanceTimersByTimeAsync(40_000);
+    await fim;
+
+    expect(situacao()).toBe('delivered');
+    expect(anunciados()).toEqual(['delivered']);
+  });
+
+  it('⚠️ conexão com grupos DESLIGADOS: o recibo de grupo nem chega ao banco', async () => {
+    h.estado.tabelas.cb_channels[0].groups_enabled = false;
+    expect(await trabalhosDeixados(reciboDeGrupo('100000000000001@lid', 'DELIVERY_ACK'))).toBe(0);
+    expect(await trabalhosDeixados(reciboDeGrupo('100000000000002@lid', 'DELIVERY_ACK'))).toBe(0);
+    expect(h.estado.rpcs).toEqual([]);
+    expect(situacao()).toBe('sent');
+  });
+
+  it('⚠️ grava a ficha do cliente (achada pelo telefone), nunca o telefone', async () => {
+    h.estado.tabelas.contacts = [
+      { id: 'ficha-1', account_id: 'conta-1', name: 'Cliente de Teste', telefone_canonico: '5583999990001' },
+    ];
+    await (
+      await receber(reciboDeGrupo('100000000000001@lid', 'DELIVERY_ACK', '5583999990001@s.whatsapp.net'))
+    )();
+    expect(h.estado.rpcs).toHaveLength(1);
+    expect(h.estado.rpcs[0].args.p_contact_id).toBe('ficha-1');
+    expect(JSON.stringify(h.estado.rpcs[0].args)).not.toContain('5583999990001');
+  });
+
+  it('banco sem a 1119 (a função não existe): só log, nada muda', async () => {
+    h.estado.rpcFalha = true;
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await (await receber(reciboDeGrupo('100000000000001@lid', 'DELIVERY_ACK')))();
+    await (await receber(reciboDeGrupo('100000000000002@lid', 'DELIVERY_ACK')))();
+    expect(situacao()).toBe('sent');
+    expect(anunciados()).toEqual([]);
+    erro.mockRestore();
   });
 });

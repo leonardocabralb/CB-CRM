@@ -3596,6 +3596,7 @@ export function MessageThread({
                         channelKind={activeChannel?.kind ?? null}
                         onDelete={() => void apagarMensagem(msg)}
                         onEdit={() => setEditando(msg)}
+                        grupoId={conversation?.group_id ?? null}
                       >
                         <MessageBubble
                           message={msg}
