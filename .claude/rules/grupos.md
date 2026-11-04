@@ -25,6 +25,10 @@ medições: `docs/PLANO-participantes-do-grupo.md`.
 - ⚠️ **A regra do `@lid` do 1:1 NÃO vale em grupo.** O remetente vai
   desnormalizado em `messages.group_sender_*`, sem FK e sem criar contato.
   Quase todo participante chega em `@lid`: a regra do 1:1 esvaziaria o recurso.
+- ⚠️ **Recibo de grupo** (04/11/2026): o ERROR não vira "não entregue", e a
+  bolha não passa de ✓ — entrega e leitura são por participante, e a
+  Evolution não as repassa. Regra em `whatsapp-evolution.md` (Recibos);
+  plano para o ✓✓ em `docs/PLANO-recibos-de-grupo.md`.
 - **Grupo não dispara automação, fluxo nem IA**: `cb-groups/persist.ts` não
   importa os motores, e um teste lê o fonte. Grupo nas automações = import
   visível ali, nunca uma flag. `persist.ts` também não chama a Evolution:

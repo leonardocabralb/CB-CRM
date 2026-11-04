@@ -165,6 +165,13 @@ async function receber(corpo: unknown) {
   return novos[0];
 }
 
+/** Entrega o webhook e devolve quantos trabalhos ele deixou no `after()`. */
+async function trabalhosDeixados(corpo: unknown) {
+  const antes = h.estado.after.length;
+  await postar(corpo);
+  return h.estado.after.length - antes;
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   process.env.EVOLUTION_WEBHOOK_SECRET = SEGREDO;
@@ -325,13 +332,6 @@ describe('o ERROR de reenvio a um aparelho secundário do cliente (05/10/2026)',
   const situacao = () => h.estado.tabelas.messages[0].status;
   const anunciados = () => h.estado.disparos.map((d) => d.status);
 
-  /** Entrega o webhook e devolve quantos trabalhos ele deixou no `after()`. */
-  async function trabalhosDeixados(corpo: unknown) {
-    const antes = h.estado.after.length;
-    await postar(corpo);
-    return h.estado.after.length - antes;
-  }
-
   it('⚠️ o medido em 05/10: o ERROR do aparelho chega antes do DELIVERY_ACK e não pinta de vermelho', async () => {
     expect(await trabalhosDeixados(recibo('ERROR', true, DO_APARELHO))).toBe(0);
     expect(situacao()).toBe('sent');
@@ -369,5 +369,51 @@ describe('o ERROR de reenvio a um aparelho secundário do cliente (05/10/2026)',
       })
     )();
     expect(situacao()).toBe('failed');
+  });
+});
+
+describe('o ERROR de mensagem de GRUPO (04/11/2026)', () => {
+  // A Baileys monta a chave do ack de erro só com o `from` do ack, que num
+  // grupo é o JID do GRUPO: o aviso chega com "@", sem participante e sem o
+  // código — não diz se foi o reenvio a um aparelho de alguém do grupo.
+  const GRUPO = '120363000000000000@g.us';
+
+  beforeEach(() => {
+    h.estado.tabelas.messages.push({
+      id: 'msg-1',
+      conversation_id: 'conv-1',
+      message_id: KEY_ID,
+      sender_type: 'agent',
+      status: 'sent',
+      conversations: { account_id: 'conta-1' },
+    });
+  });
+
+  const situacao = () => h.estado.tabelas.messages[0].status;
+  const anunciados = () => h.estado.disparos.map((d) => d.status);
+
+  it('⚠️ o medido em 04/11: o ERROR com o endereço do grupo não pinta de vermelho nem avisa o integrador', async () => {
+    expect(await trabalhosDeixados(recibo('ERROR', true, GRUPO))).toBe(0);
+    expect(situacao()).toBe('sent');
+    expect(h.estado.updates).toEqual([]);
+    expect(anunciados()).toEqual([]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('o ERROR que chega como número (0) também é ignorado em grupo', async () => {
+    expect(await trabalhosDeixados(recibo('0', true, GRUPO))).toBe(0);
+    expect(situacao()).toBe('sent');
+  });
+
+  it('o recibo de grupo que NÃO é erro segue o caminho de sempre', async () => {
+    await (await receber(recibo('READ', true, GRUPO)))();
+    expect(situacao()).toBe('read');
+    expect(anunciados()).toEqual(['read']);
+  });
+
+  it('o recorte é só o grupo: o ERROR do envio principal de 1:1 segue marcando a falha', async () => {
+    await (await receber(recibo('ERROR', true, '5583900000000@s.whatsapp.net')))();
+    expect(situacao()).toBe('failed');
+    expect(anunciados()).toEqual(['failed']);
   });
 });

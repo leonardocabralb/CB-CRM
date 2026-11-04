@@ -144,6 +144,23 @@ function ehErroDeAparelhoSecundario(remoteJid: unknown): boolean {
   return !remoteJid.includes('@') || remoteJid.includes(':');
 }
 
+// ⚠️ Em GRUPO, o ERROR também não vira falha (decisão do operador,
+// 04/11/2026). A Baileys monta a chave do ack de erro só com o `from` do ack
+// (`handleBadAck`), e num grupo ele é o JID do GRUPO: o aviso chega com "@",
+// sem participante e sem o código (a Evolution não repassa o
+// `messageStubParameters`). Não dá para separar o reenvio recusado a um
+// aparelho de alguém do grupo de uma falha do envio inteiro. Medido no log da
+// Evolution em 04/11/2026: 16 envios a grupo, só 2 recibos, os dois ERROR
+// `479` — e num deles a mensagem já tinha chegado a um participante quase 1 s
+// antes do erro. Nos 30 dias anteriores, 10 de 93 mensagens de grupo ficaram
+// "não entregue" assim, e as conferidas pelo operador tinham chegado. Custo
+// aceito: uma falha real de grupo fica em ✓, sem aviso. O ✓✓ de grupo não
+// existe hoje (o recibo de grupo é por participante e a Evolution não o
+// repassa): `docs/PLANO-recibos-de-grupo.md`.
+function ehErroDeGrupo(remoteJid: unknown): boolean {
+  return typeof remoteJid === 'string' && isGroupJid(remoteJid);
+}
+
 interface EvolutionWebhookBody {
   event?: string;
   instance?: string;
@@ -684,6 +701,10 @@ export async function POST(request: Request) {
     const keyId = d.keyId;
     if (status === 'failed' && ehErroDeAparelhoSecundario(d.remoteJid)) {
       console.info(`[evolution/webhook] ERROR de aparelho secundário ignorado: ${keyId}`);
+      return NextResponse.json({ ok: true });
+    }
+    if (status === 'failed' && ehErroDeGrupo(d.remoteJid)) {
+      console.info(`[evolution/webhook] ERROR de grupo ignorado: ${keyId}`);
       return NextResponse.json({ ok: true });
     }
     if (keyId && status) {

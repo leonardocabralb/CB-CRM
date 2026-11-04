@@ -220,6 +220,14 @@ Live Photo e edições cifradas de antes do descarte).
   entregue" — nunca uma falha real escondida. Pino: `route.recibo.test.ts`.
   Medir: log da Evolution (`Update messages`, `messageStubParameters`) e
   `MessageUpdate.remoteJid` sem "@" no banco dela.
+- ⚠️⚠️ **Em GRUPO, o ERROR também não é falha** (decisão do operador,
+  04/11/2026). A Baileys monta a chave do ack de erro só com o `from`
+  (`handleBadAck`), o JID do grupo: o aviso chega com "@", sem participante
+  nem código. `ehErroDeGrupo` (rota) o descarta. No log de 04/11, 2 de 2
+  eram `479`, um quase 1 s DEPOIS de a mensagem chegar a um participante.
+  Custo aceito: a falha real de grupo fica em ✓. E o grupo nunca passa de ✓:
+  o recibo de grupo é por participante (`message-receipt.update`) e a
+  Evolution não o repassa (`docs/PLANO-recibos-de-grupo.md`).
 - **A rota da META tem a mesma escada e a mesma espera** (`recibo-da-meta.ts`),
   com três diferenças de propósito: espera de 7 s
   (`PAUSAS_DO_RECIBO_DA_META_MS`), porque a maioria dos recibos que chegam lá
