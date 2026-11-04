@@ -1,9 +1,10 @@
 # Plano — alarmes de conexão: ver a conexão travada em minutos
 
-Documento INTERNO (não vai para quem instala). Estudo e plano, sem código:
-cada alarme novo é decisão do operador (perguntas na seção 7). Medido em
-04/11/2026, só leitura: o conector de leitura do Supabase (banco e logs da
-plataforma) e os relatórios semanais da sentinela. A VPS não foi lida.
+Documento INTERNO (não vai para quem instala). Estudo e plano, sem código.
+As decisões do operador (04/11/2026) estão logo depois do resumo; as
+perguntas que as pediram, na seção 7. Medido em 04/11/2026, só leitura: o
+conector de leitura do Supabase (banco e logs da plataforma) e os relatórios
+semanais da sentinela. A VPS não foi lida.
 
 Legenda: B-Com = Bancário - Comercial, B-Jur = Bancário - Jurídico, T-Com =
 Trabalhista - Comercial, T-Jur = Trabalhista e Previdenciário - Jurídico.
@@ -14,8 +15,7 @@ Horários em Brasília.
 De 02/11 13h a 04/11 10:04, a T-Jur (Evolution 2.4) caiu a cada ~50 min e a
 entrada congelou. O WhatsApp passou a mandar a essa conta o Status dos
 contatos num stanza `<status>` que a Baileys não confirmava. Causa e conserto:
-`docs/INFRA-VPS.md` §8, 04/11, na branch `fix/evolution-ack-do-status`. A
-entrada chegou a 24 h de atraso. Os envios do CRM ficaram em 1 ✓: as mensagens
+`docs/INFRA-VPS.md` §8 (04/11). A entrada chegou a 24 h de atraso. Os envios do CRM ficaram em 1 ✓: as mensagens
 tinham chegado aos clientes, mas o recibo estava preso na mesma fila.
 
 Os sinais existiam: a sentinela avisou "WhatsApp sem receber" em 03/11 10:05,
@@ -51,20 +51,44 @@ aparecer para ser visto.
    menos de 30 min. No incidente, acenderia às ~03:30 de 03/11, de madrugada.
    Só serve se ficar aceso até haver prova de que normalizou.
 
-**Recomendação:** primeiro o (c), como eixo da saúde (cabeçalho, faixa da
-conversa e Meu dia) e com aviso no sino, mais uma faixa persistente para
-owner/admin. Depois a classe na sentinela (a) e o (b) como complemento.
+**Recomendação:** primeiro o (c), como eixo da saúde (cabeçalho e faixa da
+conversa) e com aviso no sino, mais uma faixa persistente enquanto houver
+alarme. Depois a classe na sentinela (a) e o (b) como complemento.
+
+## Decisões do operador (04/11/2026)
+
+- **D1 (P1): o aviso aparece na faixa fixa do topo (E1) e na faixa da
+  conversa (E2)**, além do sino. O Meu dia (E5) e o celular dos
+  administradores (E3) ficam de fora.
+- **D2 (P2): recebem os owner/admin E os membros cujo perfil vê a conexão.**
+  Vale para os avisos de UMA conexão, do CRM e da sentinela (Fase 4). Os
+  avisos do servidor (réplica, disco, memória…) seguem só para owner/admin.
+- **D3 (P3): a régua do (c) fica como proposta:** os 5 envios mais recentes
+  com mais de 15 min, das últimas 3 h, em pelo menos 3 conversas, sem
+  recibo. ⚠️ Em aberto (P3b): o sino avisa 24 h por dia ou só em horário
+  útil? A faixa da tela vale sempre.
+- **D4 (P4): o (c) aparece também no cabeçalho e na faixa da conversa** (o
+  motivo novo na saúde da conexão), além do sino.
+- **D5 (P5, "siga sua orientação"): o (b) entra no sino** como complemento
+  do (c), com 30 min e "expirar não normaliza".
+- **D6 (P6): lembrete a cada 24 h, sem modo sombra:** os alarmes ligam
+  direto.
+- **D7 (P7): autorizada a leitura, só leitura, do log guardado do incidente
+  na VPS**, para conferir o formato da linha. Depois, a1 + a2. O a3 e o a4
+  ficam para depois de 2 semanas da coleta nova.
+- **D8 (P8): os alarmes do CRM nascem ligados em toda instalação**, sem
+  chave para desligar.
 
 ## Estado
 
 | Fase | O quê | Estado |
 |---|---|---|
 | 0 | Estudo e medição (este documento) | Feito em 04/11/2026 |
-| 1 | (c) no CRM: régua, índice e motivo novo na saúde da conexão | Espera P1, P3, P4 e P8 |
-| 2 | Avisos do próprio CRM no sino, com estado: (c) e, se P5, (b) | Espera P1 a P6 e P8 |
-| 3 | Faixa persistente para owner/admin enquanto houver alarme | Espera P1 |
-| 4 | Sentinela: instância e classe na coleta, aviso `quedas:` | Espera P7 |
-| 5 | Aviso no celular dos administradores | Só com desenho próprio (P1) |
+| 1 | (c) no CRM: régua, índice e motivo novo na saúde da conexão (cabeçalho e faixa da conversa) | Decidida (D3, D4, D8); a implementar |
+| 2 | Avisos do próprio CRM no sino, com estado: (c) e (b) | Decidida (D2, D5, D6, D8); a implementar; falta a P3b |
+| 3 | Faixa fixa no topo enquanto houver alarme (E1) | Decidida (D1, D2); a implementar |
+| 4 | Sentinela: instância e classe na coleta, aviso `quedas:` | Decidida (D2, D7); começa pela leitura do log do incidente |
+| 5 | Aviso no celular dos administradores (E3) | Fora (D1) |
 
 ## 1. A linha do tempo, sinal por sinal
 
@@ -274,10 +298,10 @@ leitura.
   nascer, como a 1006 já fez.
 - **A mesma régua em dois lugares.** Na SONDA da saúde (`probeChannels`, ao
   vivo, com cache), vira um motivo novo do `toneFor` (`sem_recibo`). Assim o
-  cabeçalho, a faixa âmbar da conversa (`aviso-da-conexao.ts`) e o Meu dia
-  (fonte separada, como `conexoesAtrasadas`) mostram o alarme sem tela nova, e
-  ele apaga no 1º recibo. No CRON, alimenta o sino. Uma função pura, dois
-  chamadores.
+  cabeçalho e a faixa âmbar da conversa (`aviso-da-conexao.ts`) mostram o
+  alarme sem tela nova, e ele apaga no 1º recibo. O Meu dia fica como está
+  (D1): `conexoesAtrasadas` só lê `lagging`. No CRON, a régua alimenta o
+  sino. Uma função pura, dois chamadores.
 - **Amarelo novo decide de que lado fica** (`canais.md`): `sem_recibo` fala
   da ENTRADA e entra em `ENVIA_MESMO_EM_AMARELO` (`viva-para-enviar.ts`).
   Senão uma fila de recibos parada adiaria as cobranças do Asaas e a troca de
@@ -295,7 +319,7 @@ A medição da seção 2 decide aqui: aviso que só entra no sino não é visto.
 
 | | O quê | Quem vê | Custo |
 |---|---|---|---|
-| E1 | Faixa no topo do CRM, em toda tela, enquanto houver alarme ativo de conexão (do CRM ou da sentinela), com o que se sabe e desde quando | owner/admin (P2: também quem atende a conexão) | Tela nova na casca; lê o estado pela sonda da saúde, sem realtime novo |
+| E1 | Faixa no topo do CRM, em toda tela, enquanto houver alarme ativo de conexão (do CRM ou da sentinela), com o que se sabe e desde quando | owner/admin e os membros cujo perfil vê a conexão (D2) | Tela nova na casca; lê o estado pela sonda da saúde, sem realtime novo |
 | E2 | Faixa âmbar na conversa da conexão afetada | Quem atende | Quase zero com o (c) no `toneFor`: a faixa já existe |
 | E3 | Mensagem de WhatsApp no celular dos administradores (1046), por OUTRA conexão sadia | owner/admin, fora do CRM, no feriado e à noite | Desenho próprio: todo caminho de envio grava a conversa, e o núcleo abre card (`routeContactToPipeline`). O número do administrador viraria "cliente" no funil |
 | E4 | Pop-up do navegador para o aviso do sino | Quem está com o CRM aberto e deu permissão | Já existe (#425); a leitura medida mostra que não basta |
@@ -306,10 +330,13 @@ de 03/11, e o (c) com E2 chegaria à equipe da T-Jur por volta de 09:30, na
 conversa em que ela digitava. Com o sino de hoje, os dois teriam o destino do
 aviso das 10:05.
 
+**Decidido (D1 e D2):** E1 e E2. A faixa do topo aparece para os owner/admin
+e para os membros cujo perfil vê a conexão. O E3 e o E5 ficam de fora.
+
 ## 4. O que viaja para quem instala (Atlas CRM)
 
-(b), (c), E1, E2 e E5 moram no CRM e chegam a toda instalação, que não tem a
-sentinela (só a nossa VPS tem).
+(b), (c), E1 e E2 moram no CRM e chegam a toda instalação, que não tem a
+sentinela (só a nossa VPS tem). Nascem ligados, sem chave para desligar (D8).
 - **Textos** nos dois dicionários (en e pt-BR), sem nome de produto (o
   `{appName}`) e sem a nossa infraestrutura. Falam de "conexão" e
   "confirmação de entrega", nunca de Evolution, Baileys ou VPS.
@@ -329,8 +356,11 @@ sentinela (só a nossa VPS tem).
   deploy` à mão (`deploy.md`), e cada instalação teria de mudar a stack. O
   passo lê `cb_channels` de todas as contas com a service role, sempre
   cercado pela conta. O aviso sai só para quem ganha o UPDATE cercado do
-  estado (raiz, 8e). O "horário útil", se o P3 pedir, sai de
+  estado (raiz, 8e). O "horário útil", se a P3b pedir, sai de
   `agenda/fuso.ts`: o servidor roda em UTC.
+- **Quem recebe (D2):** owner/admin e os membros cujo perfil vê a conexão,
+  com o contexto REAL de cada um (o recorte das conexões do perfil,
+  `.claude/rules/perfis.md`), nunca o do "Ver como".
 - **Uma decisão nova por alarme** em `DECISOES-DO-OPERADOR.md`, com o
   detalhe em `canais.md`, no PR de cada fase.
 
@@ -339,25 +369,27 @@ sentinela (só a nossa VPS tem).
 1. **Fase 1 — (c) na saúde da conexão.** Dos alarmes propostos, é o único
    que acenderia no horário de trabalho, o único que chega a quem estava
    enviando e um dos que viajam para toda instalação.
-   - Pronto quando: o cabeçalho, a faixa da conversa e o Meu dia mostram "não
-     confirma entrega" na conexão em que os 5 últimos envios com mais de
-     15 min não tiveram recibo, e apagam no 1º recibo.
+   - Pronto quando: o cabeçalho e a faixa da conversa mostram "não confirma
+     entrega" na conexão em que os 5 últimos envios com mais de 15 min não
+     tiveram recibo, e apagam no 1º recibo.
    - Testes da régua pura cobrem os casos medidos: a rajada para um cliente
      só, o recibo velho, o grupo, o Instagram e o celular.
-2. **Fase 2 — o sino, com estado.** O (c) e, se o P5 pedir, o (b), com as
-   regras da sentinela: um aviso por episódio, lembrete, "Normalizou" só com
-   prova e "Aconteceu e já normalizou" quando o aviso não entrou a tempo.
-3. **Fase 3 — a faixa E1.** É ela que faz um aviso de madrugada ser visto às
-   8h.
-4. **Fase 4 — a sentinela (a1 + a2).** Primeiro conferir o formato da linha
-   no log do incidente. Depois a coleta com instância e classe, e então o
-   aviso `quedas:`. O a3 e o a4 ficam para depois de 2 semanas da coleta nova.
-5. **Fase 5 — E3 (celular)**, só com um plano próprio que resolva a conversa e
-   o card do número do administrador.
+2. **Fase 2 — o sino, com estado.** O (c) e o (b) (D5), com as regras da
+   sentinela: um aviso por episódio, lembrete a cada 24 h (D6), "Normalizou"
+   só com prova e "Aconteceu e já normalizou" quando o aviso não entrou a
+   tempo. Recebem owner/admin e os membros cujo perfil vê a conexão (D2).
+3. **Fase 3 — a faixa E1**, para os mesmos destinatários. É ela que faz um
+   aviso de madrugada ser visto às 8h.
+4. **Fase 4 — a sentinela (a1 + a2, D7).** Primeiro conferir o formato da
+   linha no log do incidente. Depois a coleta com instância e classe, e então
+   o aviso `quedas:`. Os avisos de conexão passam a ir também aos membros
+   (D2), e a tabela da §12 muda junto. O a3 e o a4 ficam para depois de
+   2 semanas da coleta nova.
+5. **Fase 5 — E3 (celular): fora** (D1).
 
-Modo sombra (P6): o histórico não mostrou falso positivo para o (b) nem para o
-(c) com estes limiares. O tempo até o recibo, porém, foi medido numa hora só.
-Uma semana calculando e registrando, sem avisar, custa pouco.
+Sem modo sombra (D6): os alarmes ligam direto. O histórico não mostrou falso
+positivo para o (b) nem para o (c) com estes limiares, mas o tempo até o
+recibo foi medido numa hora só: a primeira semana no ar vale como conferência.
 
 ## 6. Custos e riscos
 
@@ -367,7 +399,7 @@ Uma semana calculando e registrando, sem avisar, custa pouco.
   conexões: nada aqui abre conexão própria, tudo passa pelo PostgREST.
 - **Falso positivo do (c) à noite:** quem envia à noite é o robô, para lead
   frio, e o celular desligado atrasa o recibo. O histórico não teve
-  sequência de 5, mas o risco é maior do que de dia. Saída, se o P3 pedir: o
+  sequência de 5, mas o risco é maior do que de dia. Saída, se a P3b pedir: o
   sino só em horário útil; a faixa da tela vale sempre.
 - **Aviso em dobro:** no nosso servidor, a sentinela e o CRM avisariam o mesmo
   incidente com textos diferentes (`sem_entrada` da sentinela e "não confirma
@@ -379,26 +411,28 @@ Uma semana calculando e registrando, sem avisar, custa pouco.
   `statusReason` no corpo do aviso está a confirmar num aviso real, porque o
   CRM ainda não lê o campo.
 
-## 7. Perguntas ao operador
+## 7. Perguntas ao operador (respondidas em 04/11/2026)
 
-- **P1. Onde o aviso aparece?** Recomendo E1 + E2 + E5 agora e E3 só com
-  plano próprio. O sino segue recebendo.
+- **P1. Onde o aviso aparece?** Recomendado: E1 + E2 + E5 agora e E3 só com
+  plano próprio. → **E1 e E2** (D1).
 - **P2. Quem recebe?** Hoje só owner/admin (2 pessoas). Incluir os membros
   cujo perfil vê a conexão: eles viram os 90 envios sem ✓✓ e não tinham
-  aviso.
+  aviso. → **Incluir os membros** (D2).
 - **P3. A régua do (c)** (5 envios, 3 conversas, 15 min, janela de 3 h) está
-  boa? O sino avisa 24 h por dia ou só em horário útil?
+  boa? → **Está boa** (D3). **P3b**, o sino avisa 24 h por dia ou só em
+  horário útil? → ⚠️ em aberto.
 - **P4. O (c) entra também na faixa da conversa e no cabeçalho** (Fase 1)
-  ou só no sino?
-- **P5. Ligar o (b) no sino** com X = 30 min e "expirar não normaliza"?
+  ou só no sino? → **Também no cabeçalho e na faixa** (D4).
+- **P5. Ligar o (b) no sino** com X = 30 min e "expirar não normaliza"? →
+  **"Siga sua orientação"**: ligar, como complemento (D5).
 - **P6. Lembrete e modo sombra:** lembrete a cada 24 h, como a sentinela, ou
   mais curto em horário útil (ex.: 4 h)? Uma semana em modo sombra antes de
-  avisar, ou ligar direto?
+  avisar, ou ligar direto? → **A cada 24 h; ligam direto** (D6).
 - **P7. Sentinela:** autoriza a leitura (só leitura) do log guardado do
   incidente para conferir o formato da linha, e então a1 + a2? O a3 e o a4
-  depois de 2 semanas?
+  depois de 2 semanas? → **Sim, leitura autorizada** (D7).
 - **P8. Atlas CRM:** os alarmes do CRM nascem ligados em toda instalação, sem
-  chave para desligar?
+  chave para desligar? → **Sim, já vêm ligados** (D8).
 
 ## 8. Como foi medido
 
