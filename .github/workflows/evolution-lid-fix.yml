@@ -1,9 +1,15 @@
 # ============================================================
-# Constrói a imagem da Evolution com o conserto do eco do celular (@lid).
+# Constrói a imagem derivada da Evolution 2.3.x com os dois consertos de
+# docker/evolution-lid-fix/Dockerfile na Baileys 6.7.19: o eco do celular
+# (@lid) e o ack do stanza <status> (a queda a cada ~50 min). As travas que
+# fazem o build falhar quando a base não é a esperada moram no Dockerfile.
+#
+# ⚠️ A versão recomendada é a 2.4 de docker/evolution-cb/ (workflow
+# evolution-cb.yml); esta imagem é só para quem ainda está na 2.3.x.
 #
 # NÃO roda sozinho. É `workflow_dispatch` de propósito: mexe no transporte de
-# WhatsApp do escritório, e a imagem base tem de ser a que está REALMENTE
-# rodando na VPS — coisa que só se sabe consultando a VPS.
+# WhatsApp do escritório, e a imagem base tem de ser a OFICIAL da 2.3.x, por
+# digest — nunca a -lidfix em execução (o build recusa base já patcheada).
 #
 # Este workflow só CONSTRÓI e PUBLICA. Ele não faz rollout: quem troca a
 # imagem do serviço é um comando na VPS, feito por gente, com a saída deste
@@ -20,15 +26,18 @@ on:
     inputs:
       base_image:
         description: >-
-          Imagem da Evolution que está rodando na VPS. Pegue com:
-          docker service inspect evolution_evolution
-          --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'
-          — inclua o digest (@sha256:...) se aparecer.
+          Imagem OFICIAL da Evolution 2.3.x, com o digest — por exemplo
+          evoapicloud/evolution-api:v2.3.2@sha256:c9cfcc5340d7e872062fe853e7ca8236883654d6dd06e8fe820ad8b95d3c376b.
+          Nunca uma -lidfix que já esteja rodando: o build recusa base já
+          patcheada.
         required: true
+      # -status: a imagem com o ack do <status>. A tag antiga (2.3.2-lidfix)
+      # é a de antes dele; não a reaproveite, senão ela passa a apontar
+      # para outra imagem.
       tag:
-        description: 'Tag de saída (ex.: 2.3.2-lidfix)'
+        description: 'Tag de saída (ex.: 2.3.2-lidfix-status)'
         required: true
-        default: '2.3.2-lidfix'
+        default: '2.3.2-lidfix-status'
 
 env:
   IMAGE: ghcr.io/leonardocabralb/evolution-api-lidfix
@@ -84,10 +93,10 @@ jobs:
             echo 'docker service update --image ${{ env.IMAGE }}:${{ inputs.tag }}@${{ steps.build.outputs.digest }} evolution_evolution'
             echo '```'
             echo
-            echo 'Para voltar atrás:'
+            echo 'Para voltar atrás: ANTES de aplicar, anote a imagem que está no serviço; voltar é trocar de volta para ela. A base deste build não tem nenhum dos dois consertos.'
             echo
             echo '```bash'
-            echo 'docker service update --image ${{ inputs.base_image }} evolution_evolution'
+            echo "docker service inspect evolution_evolution --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'"
             echo '```'
             echo
             echo 'Procedimento completo e como verificar: `docs/EVOLUTION-LID-FIX.md`.'

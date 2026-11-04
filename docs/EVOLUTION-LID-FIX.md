@@ -6,7 +6,9 @@
 > substitui esta doc: `docs/PLANO-baileys-7.md` (diagnóstico, decisões,
 > roteiro, rollback) e `docs/INFRA-VPS.md` §4/§6 (o que está no ar e como
 > recriar). O workflow `evolution-lid-fix.yml` continua no repositório só para
-> quem ainda estiver na 2.3.x. As medições abaixo ficam como histórico.
+> quem ainda estiver na 2.3.x; desde 04/11/2026 a imagem derivada também
+> confirma o stanza `<status>` (a queda a cada ~50 min; `docs/INSTALACAO.md`,
+> passo 3.1). As medições abaixo ficam como histórico.
 
 Procedimento para aplicar o conserto na Evolution da VPS.
 

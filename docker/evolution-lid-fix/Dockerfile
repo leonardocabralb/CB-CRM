@@ -1,7 +1,16 @@
 # ============================================================
-# Evolution API + o conserto de uma linha do eco do celular (@lid).
+# Evolution API 2.3.x + dois consertos na Baileys 6.7.19 que ela embarca: o
+# do eco do celular (@lid, uma linha, logo abaixo) e o ack do stanza
+# <status> (o segundo RUN, mais abaixo).
 #
-# ── O problema ──────────────────────────────────────────────
+# ⚠️ Esta NÃO é a versão recomendada. A recomendada é a imagem 2.4 de
+# `docker/evolution-cb/` (o porquê está no README de lá). Esta só serve a
+# quem ainda roda a 2.3.x e não pode trocar agora, e não resolve o
+# "Aguardando mensagem" do cliente: a Baileys 6 não conhece o LID e mantém
+# duas sessões de criptografia por aparelho, o que a Baileys 7 resolve (sem
+# o 463, só a partir da 7.0.0-rc13).
+#
+# ── O problema (o eco do celular) ───────────────────────────
 # O WhatsApp migrou o endereçamento das conversas de telefone
 # (`5511999999999@s.whatsapp.net`) para um identificador interno
 # (`100000000000102@lid`). Medido na instância do escritório em 27/07/2026:
@@ -40,11 +49,14 @@
 # baileys no bundle — ela fica em `node_modules/`, carregada em runtime.
 #
 # ── Como construir ──────────────────────────────────────────
-# Descubra a imagem em execução na VPS:
+# Passe como BASE_IMAGE a imagem OFICIAL da 2.3.x, com o digest — por
+# exemplo
+#   evoapicloud/evolution-api:v2.3.2@sha256:c9cfcc5340d7e872062fe853e7ca8236883654d6dd06e8fe820ad8b95d3c376b
+# (o workflow evolution-lid-fix.yml faz isso). Nunca uma -lidfix que já
+# esteja rodando: o build recusa base já patcheada. Se o serviço ainda roda
+# a oficial, ela é a que sai de:
 #   docker service inspect evolution_evolution \
 #     --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'
-#
-# E passe como BASE_IMAGE (o workflow evolution-lid-fix.yml faz isso).
 # Ver docs/EVOLUTION-LID-FIX.md para o procedimento completo.
 # ============================================================
 
@@ -66,7 +78,7 @@ FROM ${BASE_IMAGE}
 #
 # ⚠️ A tag `:latest` JÁ ANDOU: em 28/07/2026 ela apontava para
 # sha256:966625…, diferente do digest acima. Por isso o `BASE_IMAGE` deve vir
-# sempre COM digest, lido do serviço em execução — nunca `:latest` solto.
+# sempre COM digest, e da imagem OFICIAL — nunca `:latest` solto.
 
 # ⚠️ CADA `grep` ABAIXO É UMA TRAVA, NÃO ENFEITE.
 #
@@ -93,12 +105,12 @@ RUN set -eu; \
     n=0; \
     for f in $alvos; do \
       echo "alvo: $f"; \
-      if ! grep -q 'senderPn: stanza?.attrs?.sender_pn,' "$f"; then \
-        echo "ERRO: linha original ausente em $f — versão inesperada da baileys."; \
+      if grep -q 'peer_recipient_pn' "$f"; then \
+        echo "ERRO: $f já contém peer_recipient_pn — base já patcheada (uma -lidfix? use a imagem OFICIAL como BASE_IMAGE), ou já é linha 7.x."; \
         exit 1; \
       fi; \
-      if grep -q 'peer_recipient_pn' "$f"; then \
-        echo "ERRO: $f já contém peer_recipient_pn — base já patcheada, ou já é linha 7.x."; \
+      if ! grep -q 'senderPn: stanza?.attrs?.sender_pn,' "$f"; then \
+        echo "ERRO: linha original ausente em $f — versão inesperada da baileys."; \
         exit 1; \
       fi; \
       sed -i 's|senderPn: stanza?\.attrs?\.sender_pn,|senderPn: stanza?.attrs?.sender_pn \|\| stanza?.attrs?.peer_recipient_pn,|' "$f"; \
@@ -114,7 +126,81 @@ RUN set -eu; \
     done; \
     echo "patch aplicado e verificado em $n arquivo(s)."
 
+# ── O segundo conserto: o ack do stanza <status> (04/11/2026) ─
+#
+# O WhatsApp passou a entregar o Status (stories) dos contatos a ALGUMAS
+# contas como um stanza `<status>` de topo, em vez de
+# `<message from="status@broadcast">`: mudança gradual, conta por conta
+# (WhiskeySockets/Baileys#2858). A Baileys 6.7.19 só registra handler para
+# `message`, `call`, `receipt`, `notification` e `ack,class:message`, então o
+# `<status>` nunca recebe ack, e ~50 min depois o servidor encerra o stream
+# cobrando-o (`stream:error` com `<ack class="status" type="media|text">`, que
+# a Baileys mapeia para 500). Na reconexão ele reentrega o mesmo `<status>`,
+# e a entrada da conta fica represada atrás dele. Reiniciar a instância,
+# parear de novo pelo QR e o `readStatus` não resolvem.
+#
+# O conserto é o do PR WhiskeySockets/Baileys#2866, o mesmo da imagem 2.4
+# (`docker/evolution-cb/baileys+7.0.0-rc13.patch`): confirmar o stanza pelo
+# `sendMessageAck` que já existe, SEM código de erro (um NACK o deixaria
+# pendente no servidor). O stanza não é decodificado: o CRM não lê Status.
+#
+# Na 6.7.19, `lib/Socket/messages-recv.js` é o mesmo arquivo, byte a byte, na
+# variante amd64 da imagem base medida acima, na da tag oficial `v2.3.2`
+# (sha256:c9cfcc53…) e no tarball do npm (SHA-256 3b741db7…, conferido em
+# 04/11/2026). Nele, `sendMessageAck` (linha 35) e
+# `onUnexpectedError` (tirado do socket na linha 16) estão no escopo dos
+# `ws.on('CB:…')` (linhas 1023–1037). O handler entra na MESMA linha da
+# âncora, antes dela: assim o texto novo não precisa de quebra de linha (o
+# `\n` na substituição não se comporta igual em todo `sed`), e a ordem de
+# registro não importa, porque cada handler é de um evento.
+#
+# As travas: a âncora está lá UMA vez; `CB:status` não existe antes (base já
+# patcheada, ou Baileys que já confirma o `<status>`); as duas funções que o
+# handler chama estão no arquivo (sem elas, o primeiro `<status>` lançaria
+# ReferenceError dentro do listener); depois, o handler está lá UMA vez, colado
+# na âncora, e o arquivo parseia.
+RUN set -eu; \
+    alvos="$(find / -type f -path '*/node_modules/baileys/lib/Socket/messages-recv.js' 2>/dev/null || true)"; \
+    if [ -z "$alvos" ]; then \
+      echo 'ERRO: não achei messages-recv.js da baileys na imagem base.'; \
+      exit 1; \
+    fi; \
+    n=0; \
+    for f in $alvos; do \
+      echo "alvo: $f"; \
+      if [ "$(grep -c -F "ws.on('CB:notification', async (node) => {" "$f")" != 1 ]; then \
+        echo "ERRO: a âncora ws.on('CB:notification' não está UMA vez em $f — versão inesperada da baileys."; \
+        exit 1; \
+      fi; \
+      if grep -q -F 'CB:status' "$f"; then \
+        echo "ERRO: $f já tem CB:status — base já patcheada, ou Baileys que já confirma o <status>."; \
+        exit 1; \
+      fi; \
+      if ! grep -q -F 'const sendMessageAck = async ({ tag, attrs, content }, errorCode) => {' "$f"; then \
+        echo "ERRO: sendMessageAck ausente em $f — versão inesperada da baileys."; \
+        exit 1; \
+      fi; \
+      if ! grep -q -F ' onUnexpectedError, ' "$f"; then \
+        echo "ERRO: onUnexpectedError ausente em $f — versão inesperada da baileys."; \
+        exit 1; \
+      fi; \
+      sed -i "s|ws\.on('CB:notification', async (node) => {|ws.on('CB:status', (node) => { sendMessageAck(node).catch(error => onUnexpectedError(error, 'acking status')); }); &|" "$f"; \
+      if [ "$(grep -c -F "ws.on('CB:status', (node) => { sendMessageAck(node).catch(error => onUnexpectedError(error, 'acking status')); }); ws.on('CB:notification', async (node) => {" "$f")" != 1 ]; then \
+        echo "ERRO: o handler do <status> não entrou em $f."; \
+        exit 1; \
+      fi; \
+      if ! node --check "$f"; then \
+        echo "ERRO: $f não parseia depois do patch."; \
+        exit 1; \
+      fi; \
+      n=$((n+1)); \
+    done; \
+    echo "ack do <status> aplicado e verificado em $n arquivo(s)."
+
 # Marca de origem: sem isto não há como saber, olhando a imagem em execução,
-# se ela é a original ou a patcheada.
+# se ela é a original ou a patcheada. O ARG declarado antes do FROM não vale
+# dentro do estágio: sem repeti-lo aqui, o rótulo da base saía vazio.
+ARG BASE_IMAGE
 LABEL br.com.cbadvogados.lid-fix="baileys PR#1654 (sender_pn || peer_recipient_pn)"
+LABEL br.com.cbadvogados.status-ack="baileys PR#2866 (ack do <status>, issue #2858)"
 LABEL br.com.cbadvogados.lid-fix.base="${BASE_IMAGE}"

@@ -156,6 +156,26 @@ de webhook, e a de produção **não é tocada**.
 
 ## Passos
 
+Antes de subir, diga ao compose qual imagem usar: a NOSSA da Evolution 2.4,
+a mesma da produção (o porquê da versão está em `docker/evolution-cb/README.md`).
+O valor é o `image:` de `ops/vps/evolution-stack.yml`, que acompanha cada troca
+de imagem (o pacote no GHCR é público):
+
+```bash
+grep -m1 'image:' ops/vps/evolution-stack.yml
+```
+
+Copie o valor, com o `@sha256:…`, para `EVOLUTION_IMAGE=` num `.env` ao lado do
+compose, que o `.gitignore` deixa fora do git. Sem ela, todo
+`docker compose -f docker-compose.evolution.yml …` recusa rodar, inclusive
+`logs` e `down`. A imagem é só amd64: num Mac com Apple Silicon ela roda
+emulada.
+
+> ⚠️ Quem já subiu este compose quando ele usava o `:latest` (a 2.3.7) tem o
+> volume `evolution_pgdata` daquela versão, e a 2.4 o migra no primeiro `up`.
+> Esse caminho não foi medido: se a Evolution não subir, `down -v` e comece do
+> zero (perde a sessão pareada).
+
 ```bash
 docker compose -f docker-compose.evolution.yml up -d
 ```
@@ -163,6 +183,11 @@ docker compose -f docker-compose.evolution.yml up -d
 ```bash
 curl http://localhost:8088/
 ```
+
+A 2.4 exige a licença gratuita antes de a API responder: abra
+`http://localhost:8088/manager`, entre com a `AUTHENTICATION_API_KEY` do compose
+e faça o cadastro (e-mail e telefone). Até lá, a API responde
+`503 LICENSE_REQUIRED`, e o CRM não cria o canal.
 
 No `.env.local`, troque as três da Evolution e a URL do site:
 
@@ -204,7 +229,8 @@ configurado assim.
 docker compose -f docker-compose.evolution.yml down
 ```
 
-`down -v` apaga também o volume do Postgres, e com ele a sessão pareada.
+`down -v` apaga também o volume do Postgres, e com ele a sessão pareada e a
+ativação da licença (no próximo `up`, cadastrar de novo).
 
 No `.env.local`, devolva `EVOLUTION_BASE_URL`, `EVOLUTION_GLOBAL_API_KEY`,
 `EVOLUTION_WEBHOOK_SECRET` e `NEXT_PUBLIC_SITE_URL` aos valores do modo padrão.
@@ -221,7 +247,9 @@ removido em Configurações → Conexões.
 | Produção parou de receber depois que rodei local | `NEXT_PUBLIC_SITE_URL` estava como `localhost`/`host.docker.internal` e alguém clicou em **Ressincronizar** no canal de produção. Corrija a env e clique de novo. |
 | Ressincronizar recusa com aviso de URL local | É a guarda funcionando. Ajuste `NEXT_PUBLIC_SITE_URL` para a URL pública. |
 | App em inglês | `NEXT_PUBLIC_APP_LOCALE` — produção builda com `pt-BR`. |
-| `Bind for 0.0.0.0:8080 failed` | Porta ocupada. Troque `8088:8080` no compose e ajuste `EVOLUTION_BASE_URL`. |
+| `Bind for 0.0.0.0:8088 failed` | Porta ocupada. Troque `8088:8080` no compose e ajuste `EVOLUTION_BASE_URL`. |
+| `required variable EVOLUTION_IMAGE is missing a value` | Falta o `.env` com a `EVOLUTION_IMAGE` ao lado do compose (passos do modo isolado). |
+| API local responde `503 LICENSE_REQUIRED` | A licença da 2.4 não foi ativada no `http://localhost:8088/manager`. |
 | Modo isolado envia mas não recebe | `NEXT_PUBLIC_SITE_URL` não está como `host.docker.internal:3000`. Ajuste e recrie o canal `Dev local`. |
 | `401` no webhook do canal **local** | `EVOLUTION_WEBHOOK_SECRET` diferente do registrado na instância. Ressincronize — a guarda não barra, porque a URL registrada é local. |
 | `401` no webhook de **produção** | Só acontece se o segredo do `crm.env` da VPS divergir do registrado. O conserto é ressincronizar **a partir de `crm.cbadvogados.com`**, nunca do local: a guarda só libera a troca de segredo para o próprio host que recebe os eventos. |

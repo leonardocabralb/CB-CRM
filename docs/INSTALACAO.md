@@ -42,9 +42,10 @@ nada de modelos, nada de janela de 24 horas, e o número continua no
 celular. O custo é o risco: é um cliente não oficial, e o WhatsApp pode
 bloquear o número.
 
-Se você não tem certeza, comece pela Evolution: ela sobe em quinze
-minutos e não depende de aprovação de ninguém. Trocar depois é
-acrescentar uma conexão, não refazer a instalação.
+Se você não tem certeza, comece pela Evolution: ela sobe em menos de uma
+hora, contando os dez minutos do GitHub montando a imagem e o cadastro da
+licença (passo 3.1), e não depende de aprovação de ninguém. Trocar depois é acrescentar uma conexão,
+não refazer a instalação.
 
 ### 0.1 Preparar o servidor
 
@@ -191,15 +192,53 @@ Faça **um** dos dois caminhos. Você pode voltar e fazer o outro depois.
 ### 3.1 Caminho A — Evolution API
 
 O gateway roda no mesmo servidor do CRM, **como serviço do Swarm e na
-mesma rede overlay que ele**. O repositório traz um
-`docker-compose.evolution.yml` pronto para desenvolvimento local; para o
-servidor, o essencial é:
+mesma rede overlay que ele**.
+
+**A versão é escolhida, não a mais nova.** O CRM foi medido e corrigido
+contra uma Evolution específica: a **2.4 no commit `e273b904`**, que traz a
+Baileys **7.0.0-rc13**, com os patches de `docker/evolution-cb/` e o
+`prisma.config.ts` dentro. Ela não existe pronta no Docker Hub: você a monta
+pelo workflow `.github/workflows/evolution-cb.yml` da sua cópia deste
+repositório.
+
+1. No `.github/workflows/evolution-cb.yml`, ajuste `IMAGE` para o seu
+   usuário do GitHub, em minúsculas (o GHCR recusa nome com maiúscula), como
+   no passo 5.1 para o CRM.
+2. No GitHub, *Actions → evolution-cb → Run workflow*, com os valores
+   padrão: o commit e a tag já são os desta escolha. Leva uns dez minutos.
+3. O resumo do run mostra a imagem com o digest
+   (`ghcr.io/<seu-usuário>/evolution-api-cb:<tag>@sha256:…`). É ela, com o
+   digest, que vai no `image:` abaixo: a tag pode mudar, o digest não.
+
+**Por que esta, e não outra:**
+
+| Evolution | Baileys | O que acontece |
+|---|---|---|
+| 2.3.2 | 6.7.19 | Não conhece o endereçamento LID que o WhatsApp adotou e mantém duas sessões de criptografia para o mesmo aparelho, uma pelo telefone e outra pelo LID. Quando o envio cai na que o aparelho já descartou, o cliente vê "Aguardando mensagem". |
+| 2.3.7 e 2.4.0-rc2 | 7.0.0-rc.9 | Resolve o "Aguardando", mas não manda o carimbo que o WhatsApp exige: toda mensagem conta como abordagem a desconhecido, o limite estoura em dias, as mensagens ficam pendentes para sempre (erro 463) e o número entra numa quarentena de dias. É o risco de restrição do número. A 2.3.7 ainda perde o LID no que manda ao CRM. |
+| **2.4 `e273b904`** | **7.0.0-rc13** | Trata o LID de forma nativa (cria e migra as sessões no formato novo, recria sessão quebrada) e manda o carimbo. É um commit do `develop`, sem release: por isso vai fixado pelo commit e pelo digest. |
+
+- A tag `latest` do Docker Hub não segue esta escolha (em novembro de 2026
+  apontava para a 2.3.7, com a rc.9). Nunca use `:latest`.
+- A imagem oficial `homolog` era, em novembro de 2026, o mesmo commit (é uma
+  tag que pode andar), mas sem os patches e sem o `prisma.config.ts`, que o
+  Prisma 7 exige para migrar (sem ele o serviço entra em laço ao subir).
+- Cada patch conserta um defeito medido em produção: a resposta do cliente
+  que cita uma mensagem chegava sem a citação; a consulta da foto de perfil
+  pelo LID travava a entrada em uma mensagem por minuto por conexão; dois
+  sockets da mesma instância se derrubavam em laço, e uma queda de rede
+  (408) desfazia o pareamento; e o ack do `<status>` (mais abaixo).
+  Detalhes em `docker/evolution-cb/README.md`.
+
+O repositório traz um `docker-compose.evolution.yml` para desenvolvimento
+local, com a mesma imagem. Para o servidor, o essencial é:
 
 ```yaml
 # evolution-stack.yml
 services:
   evolution:
-    image: evoapicloud/evolution-api:2.3.2
+    # A imagem do passo 3 acima, COM o digest.
+    image: ghcr.io/<seu-usuário>/evolution-api-cb:2.4.0-e273b904-citacao-foto-sessao-status@sha256:<digest>
     environment:
       SERVER_URL: https://api.seudominio.com
       AUTHENTICATION_API_KEY: <a-sua-chave-global>   # invente uma longa
@@ -207,6 +246,8 @@ services:
       DATABASE_PROVIDER: postgresql
       DATABASE_CONNECTION_URI: postgresql://evolution:<senha>@postgres:5432/evolution?schema=public
       DEL_INSTANCE: 'false'
+      # A 2.4 manda telemetria por padrão (nome do evento e versão).
+      TELEMETRY_ENABLED: 'false'
     networks:
       - crmnet
     deploy:
@@ -220,8 +261,11 @@ networks:
 ```
 
 ```bash
-# A rede `crmnet` já existe desde o passo 0.1.
-docker stack deploy -c evolution-stack.yml evolution
+# A rede `crmnet` já existe desde o passo 0.1. Pacote PRIVADO no GHCR (o
+# padrão de pacote criado a partir de repositório privado): faça antes o
+# `docker login ghcr.io -u <seu-usuário>`; o `--with-registry-auth` repassa
+# esse login ao Swarm, como no passo 5.3.
+docker stack deploy -c evolution-stack.yml --with-registry-auth evolution
 docker service logs -f evolution_evolution
 ```
 
@@ -240,35 +284,100 @@ docker service logs -f evolution_evolution
 >
 > O que o `127.0.0.1` tentava proteger continua protegido, e melhor: sem
 > `ports:`, a Evolution **não** fica publicada em porta nenhuma do
-> servidor. Só quem está na mesma rede overlay a alcança. Se você quiser o
-> painel dela (`/manager`) pelo navegador, exponha-o pelo mesmo proxy que
-> serve o CRM, com TLS, e nunca a porta 8080 crua.
+> servidor. Só quem está na mesma rede overlay a alcança. O painel dela
+> (`/manager`, onde se ativa a licença) abre pelo túnel do tópico seguinte.
+> Se você o quiser sempre à mão, exponha-o pelo mesmo proxy que serve o
+> CRM, com TLS — o que publica a API inteira na internet, protegida só pela
+> chave global —, e nunca pela porta 8080 crua.
 
-**O conserto do eco do celular.** Quando alguém da equipe responde pelo
-**celular pareado**, o WhatsApp entrega esse eco ao gateway endereçado por
-um identificador interno (`@lid`) e sem o telefone da outra ponta. A
-versão da biblioteca Baileys embarcada na Evolution 2.3.2 ignora o campo
-que traz esse telefone, e o CRM não consegue saber de qual conversa é a
-mensagem: ela é descartada. Na instalação onde isso foi medido, 119 de
-143 ecos se perderam em cerca de 29 horas.
+**Ative a licença logo depois de subir.** A 2.4 exige um cadastro gratuito
+(licença *community*, sem limite de mensagens nem de instâncias), feito uma
+vez pelo painel `/manager`, com e-mail e telefone. Até a ativação, as
+instâncias conectam e os webhooks chegam, mas toda rota de negócio da API
+responde `503 LICENSE_REQUIRED`: numa instalação nova, **criar a conexão no
+CRM falha**, e uma conexão que já existia não envia nem baixa mídia. E, a
+cada início antes da ativação, a Evolution apresenta a sua
+`AUTHENTICATION_API_KEY` ao servidor de licenças da fundação (sobre TLS) como
+candidata a chave de licença. A ativação fica guardada no banco da
+Evolution: banco novo pede cadastro novo.
 
-Há dois caminhos. **Na 2.3.x**, o repositório traz o conserto, de uma linha,
-como imagem derivada (`docker/evolution-lid-fix/`) e um workflow que a
-constrói (`.github/workflows/evolution-lid-fix.yml`): rode-o informando a
-imagem base e a tag de saída, depois aponte o serviço para a imagem
-resultante. **Na 2.4 (Baileys 7)** o LID é nativo e o eco do celular chega
-certo sem patch — é o que a instalação de referência roda desde 09/09/2026 —,
-mas ela pede um cadastro gratuito de licença no `/manager` antes de a API
-responder, e a imagem oficial `homolog` não traz o `prisma.config.ts` que o
-Prisma 7 exige para migrar (monte o arquivo do repositório da Evolution em
-`/evolution/prisma.config.ts`, ou construa a imagem com ele dentro pelo
-`docker/evolution-cb/README.md`). O CRM lê os dois formatos de payload.
+Como a Evolution não fica publicada, abra o painel por um túnel, só para
+ativar:
 
-> Antes de fazer isso, vale medir: mande uma mensagem pelo celular
-> pareado e veja se ela aparece na conversa certa no CRM. Se aparecer, a
-> versão que você subiu já traz o campo e você não precisa da imagem
-> derivada. O conserto foi aceito na Baileys em setembro de 2025 e pode
-> já ter chegado à Evolution que você instalou.
+```bash
+# No servidor: um encaminhador temporário na rede do CRM, preso ao
+# 127.0.0.1 do servidor (a `crmnet` aceita contêiner avulso, passo 0.1).
+docker run -d --rm --name evolution-licenca --network crmnet \
+  -p 127.0.0.1:8080:8080 alpine/socat \
+  tcp-listen:8080,fork,reuseaddr tcp-connect:evolution_evolution:8080
+
+# Na sua máquina, num terminal que fica aberto enquanto você ativa:
+ssh -N -L 8080:127.0.0.1:8080 <usuário>@<servidor>
+```
+
+Abra `http://localhost:8080/manager` no navegador, entre com a
+`AUTHENTICATION_API_KEY` (se o painel pedir o endereço do servidor, é
+`http://localhost:8080`) e faça o cadastro. Confira com
+`curl -s http://localhost:8080/license/status`, que tem de dizer que a
+licença está ativa; depois feche o túnel e apague o encaminhador no
+servidor: `docker rm -f evolution-licenca`.
+
+**A conexão cai a cada ~50 minutos e a entrada congela.** O WhatsApp passou
+a entregar o Status (os stories) dos contatos a algumas contas como um tipo
+de mensagem novo, `<status>`, que a Baileys sem o patch não confirma. Uns 50
+minutos depois, o servidor encerra a conexão cobrando a confirmação que
+faltou; na reconexão entrega o mesmo `<status>`, e tudo o que chega para a
+conta (mensagens, recibos dos envios) fica represado atrás dele, andando um
+lote por sessão. No CRM, a conexão aparece funcionando (quando muito, o
+cabeçalho diz "Entregando com … de atraso"), as mensagens chegam em lotes a
+cada ~50 minutos, com horas de atraso, e os envios ficam sem recibo. A
+mudança é gradual, conta por conta: uma instalação pode passar semanas sem
+nada e começar num dia qualquer (WhiskeySockets/Baileys#2858).
+
+Para confirmar, procure no log da Evolution a queda que cobra o ack (vale
+para a 2.4 e para a 2.3.x):
+
+```bash
+docker service logs --since 3h evolution_evolution 2>&1 \
+  | grep -F 'stream errored out' | grep -F 'class":"status"'
+```
+
+Cada queda dessas deixa uma linha `stream errored out` com o nó `ack` de
+`class` `status` e `type` `media` ou `text` (na 2.4, dentro do `reasonNode`);
+nas outras quedas (rede, reinício) ela não aparece. **Não resolvem:**
+reiniciar a instância (é o que a própria queda faz a cada 50 minutos),
+parear de novo pelo QR (a conta continua recebendo `<status>`) e o
+`readStatus` (o stanza nem chega ao tratamento de mensagens). O conserto é
+confirmar o stanza dentro da Baileys: a imagem 2.4 de `docker/evolution-cb/`
+já traz o patch (`baileys+7.0.0-rc13.patch`); na 2.3.x, use a imagem
+derivada do tópico seguinte. Troque a imagem quando as outras conexões
+estiverem em dia (sem o aviso "conectada, mas entregando com atraso"): o que
+a Evolution já confirmou ao WhatsApp e ainda não repassou ao CRM se perde com
+o contêiner.
+
+**Se você ainda roda a 2.3.x.** A imagem derivada `docker/evolution-lid-fix/`
+(workflow `.github/workflows/evolution-lid-fix.yml`) põe dois consertos na
+Baileys 6.7.19 da Evolution 2.3.2: o ack do `<status>` e o do eco do
+celular. O eco: quando alguém da equipe responde pelo **celular pareado**, o
+WhatsApp entrega esse eco ao gateway endereçado por um identificador interno
+(`@lid`) e sem o telefone da outra ponta; a 6.7.19 ignora o campo que traz
+esse telefone, e o CRM, sem saber de qual conversa é a mensagem, a descarta
+(na instalação onde isso foi medido, 119 de 143 ecos em cerca de 29 horas).
+Na 2.4 o eco chega certo sem patch, e o CRM lê os dois formatos de payload.
+
+Ajuste `IMAGE` também nesse workflow para o seu usuário, em minúsculas, e
+rode-o com a imagem OFICIAL como base, com o digest
+(`evoapicloud/evolution-api:v2.3.2@sha256:c9cfcc5340d7e872062fe853e7ca8236883654d6dd06e8fe820ad8b95d3c376b`,
+conferida para os dois consertos), nunca com uma `-lidfix` que já esteja
+rodando; depois aponte o serviço para a imagem resultante. Com uma base cujas
+linhas não sejam as esperadas (conferidas na 6.7.19), ou já patcheada, o
+build falha em vez de publicar uma imagem que ninguém sabe o que é. A 2.3.2
+não fixa a versão da Baileys: uma 2.3.x montada do fonte em outra data traz
+outra, e reconstruir sobre a oficial troca também a Baileys. A imagem
+derivada **não** resolve o "Aguardando mensagem" (a tabela acima): serve de
+ponte, não de destino.
+Trocar a 2.3.x pela 2.4 aplica migrations no banco da Evolution, e voltar
+depois exige o backup dele: faça-o antes.
 
 ### 3.2 Caminho B — Meta Cloud API
 
@@ -570,6 +679,9 @@ sozinha: é o teste do agendador.
 | Link do e-mail de senha dá erro | Falta `/auth/callback` na lista de redirects do Supabase (passo 1.4) |
 | Convite devolve erro 500 citando `NEXT_PUBLIC_SITE_URL` | A instalação não sabe o próprio endereço. Defina a variável e reconstrua |
 | Eco do celular pareado não aparece | O conserto do `@lid` na Evolution. Veja o passo 3.1 |
+| Cliente vê "Aguardando mensagem" no que o CRM enviou | Evolution 2.3.x (Baileys 6), que não conhece o LID. Veja a versão no passo 3.1 |
+| Conexão "funcionando", mas as mensagens chegam em lotes a cada ~50 min, com horas de atraso | O `<status>` sem ack. Veja o passo 3.1 |
+| Criar a conexão Evolution falha, e a API dela responde `503 LICENSE_REQUIRED` | Falta ativar a licença da 2.4 no `/manager` (passo 3.1) |
 | Tela em inglês depois de mudar o idioma | Idioma é fixado no build. Reconstrua a imagem |
 | *Configurações → Marca* não deixa gravar | Só um administrador da conta mais antiga da instalação troca a marca. Veja o passo 6.1 |
 | Nome ou ícone antigo no app instalado no celular | O iPhone guarda os dois na instalação. Apague o ícone e adicione de novo (passo 6.1) |

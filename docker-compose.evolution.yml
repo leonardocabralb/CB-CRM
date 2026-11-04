@@ -3,20 +3,40 @@
 # produção. Espelha a config da VPS (v2), mas com Postgres local e cache
 # local (sem Redis, para ficar leve).
 #
+# ⚠️ A IMAGEM É ESCOLHIDA, NÃO A MAIS NOVA: a Evolution 2.4 no commit
+# e273b904 (Baileys 7.0.0-rc13) com os patches de docker/evolution-cb/,
+# montada pelo workflow .github/workflows/evolution-cb.yml. Por quê (o
+# detalhe e as fontes: docker/evolution-cb/README.md):
+#   - 2.3.2 / Baileys 6.7.19: não conhece o LID e mantém duas sessões de
+#     criptografia por aparelho — o cliente vê "Aguardando mensagem";
+#   - 2.3.7 e 2.4.0-rc2 / Baileys 7.0.0-rc.9: "PENDING para sempre" (463),
+#     o risco de restrição do número;
+#   - evoapicloud/evolution-api:latest: em 04/11/2026 era a 2.3.7 com a
+#     rc.9. Nunca use.
+# Por isso não há valor padrão: sem EVOLUTION_IMAGE, o compose recusa subir.
+# A imagem é só linux/amd64 (o workflow só monta essa); num Mac com Apple
+# Silicon ela roda emulada. A 2.4 exige ativar a licença gratuita no
+# /manager antes de a API responder (docs/INSTALACAO.md, passo 3.1).
+#
+# Antes:   EVOLUTION_IMAGE=<a imagem do workflow, com @sha256:…> num .env ao
+#          lado deste arquivo (o .gitignore já o deixa fora do git). Sem ela,
+#          todo comando abaixo recusa rodar, inclusive `logs` e `down`.
 # Subir:   docker compose -f docker-compose.evolution.yml up -d
 # Logs:    docker compose -f docker-compose.evolution.yml logs -f evolution
 # Parar:   docker compose -f docker-compose.evolution.yml down
-# Manager: http://localhost:8080/manager  (login com a API key abaixo)
+# Manager: http://localhost:8088/manager  (login com a API key abaixo)
 #
 # Depois, no .env.local do CRM:
-#   EVOLUTION_BASE_URL=http://localhost:8080
+#   EVOLUTION_BASE_URL=http://localhost:8088
 #   EVOLUTION_GLOBAL_API_KEY=localdev-evolution-key-troque-me
 #   NEXT_PUBLIC_SITE_URL=http://host.docker.internal:3000   # ver "pegadinha" abaixo
 # ============================================================
 
 services:
   evolution:
-    image: evoapicloud/evolution-api:latest
+    # A imagem do workflow evolution-cb.yml, por digest (o porquê: no topo).
+    image: "${EVOLUTION_IMAGE:?defina EVOLUTION_IMAGE com a imagem do workflow evolution-cb.yml, por digest (ver o topo deste arquivo)}"
+    platform: linux/amd64
     restart: unless-stopped
     ports:
       - '8088:8080'
@@ -41,6 +61,8 @@ services:
       # Identidade da sessão (aparece no WhatsApp > Aparelhos conectados).
       CONFIG_SESSION_PHONE_CLIENT: CBCRM-Dev
       CONFIG_SESSION_PHONE_NAME: Chrome
+      # A 2.4 manda telemetria por padrão; a produção também a desliga.
+      TELEMETRY_ENABLED: 'false'
     depends_on:
       postgres:
         condition: service_healthy

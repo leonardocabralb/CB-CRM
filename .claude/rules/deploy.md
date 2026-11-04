@@ -133,6 +133,14 @@ passou na máquina). Por isso:
   todas as conexões.
 - Voltar de versão da imagem está DESCARTADO (decisão do operador): a atual
   resolveu o "Aguardando mensagem".
+- ⚠️ O guia entregue (`docs/INSTALACAO.md` §3.1) e o
+  `docker-compose.evolution.yml` recomendam ESTA imagem e dizem por quê
+  (decisão do operador): trocar o commit, a Baileys ou um patch de
+  `docker/evolution-cb/` muda os dois no mesmo PR. Nunca `:latest`, que anda
+  sozinho (o que ele era: o README de lá). A 2.3.x só pela ponte
+  `docker/evolution-lid-fix/` (eco do `@lid` e ack do `<status>`), sobre a
+  imagem OFICIAL por digest: as travas conferem o texto das linhas (medidas na
+  6.7.19) e derrubam o build em base diferente ou já patcheada.
 - O cron `docker image prune -af` apaga as imagens de rollback na madrugada
   (voltam por `pull`). O log da Evolution morre no reinício do contêiner. O
   Redis é compartilhado com outros serviços: backup só do banco da Evolution.

@@ -1,5 +1,42 @@
 # Imagem `evolution-api-cb` — Evolution 2.4 (develop) com os nossos patches
 
+## Por que esta versão, e não a mais nova
+
+A versão é ESCOLHIDA, medida em produção, para acabar com o "Aguardando
+mensagem" sem trocar um defeito por outro pior. Decisão do operador de
+09/09/2026; voltar de versão está descartado (`docs/DECISOES-DO-OPERADOR.md`).
+
+- **Evolution 2.3.2 / Baileys 6.7.19** (a de antes): não conhece o LID e
+  mantém DUAS sessões de criptografia por aparelho, uma pelo telefone e outra
+  pelo LID (medido no Redis em 09/09/2026: 4 sessões para 2 aparelhos, zero
+  `lid-mapping`). Quando o envio cai na sessão que o aparelho descartou, o
+  cliente vê "Aguardando mensagem". Atualizar só a Baileys não sobe: a 2.3.2
+  importa `isJidUser`, que a 7.x removeu.
+- **2.3.7 e 2.4.0-rc2 / Baileys 7.0.0-rc.9**: resolvem o "Aguardando", mas a
+  rc.9 não manda o `tctoken`: o WhatsApp conta toda mensagem como abordagem a
+  desconhecido, as mensagens ficam "PENDING para sempre" (463) e o número entra
+  numa quarentena de dias, o risco de restrição que não dá para correr. A
+  2.3.7 ainda perde o LID no payload (`remoteJidAlt` igual ao telefone).
+- **`develop` no commit `e273b904` / Baileys 7.0.0-rc13** (a escolhida): LID
+  nativo (sessões no formato LID, migração das antigas, sessão quebrada
+  recriada sozinha) e o carimbo. Sem release, por isso o commit fixo no
+  workflow e a imagem sempre por digest.
+- ⚠️ **Nunca `evoapicloud/evolution-api:latest`**: em 04/11/2026 a tag
+  apontava para a 2.3.7 com a rc.9 (commit `b900770a`, build de 06/05/2026).
+  A `homolog` oficial é uma tag que pode andar; em 04/11/2026 ainda era o
+  digest `1e656f95…` de 14/07/2026, o mesmo commit desta, sem os patches
+  abaixo e sem o `prisma.config.ts`.
+
+Fontes: `docs/PLANO-baileys-7.md` §2 e §3 (diagnóstico, tabela das versões,
+decisão) e `docs/INFRA-VPS.md` §4 (a imagem no ar). O guia entregue
+(`docs/INSTALACAO.md`, passo 3.1) e o `docker-compose.evolution.yml`
+recomendam esta imagem e repetem o porquê: trocar aqui o commit, a Baileys ou
+um patch muda os dois no mesmo PR. Para quem ficou na 2.3.x, a ponte é
+`docker/evolution-lid-fix/`, que leva o ack do `<status>` (item 5) para a
+6.7.19 e não resolve o "Aguardando".
+
+## O que a imagem muda
+
 Construída pelo workflow `.github/workflows/evolution-cb.yml` a partir do
 **mesmo commit** da imagem `evoapicloud/evolution-api:homolog` que está em
 produção (`e273b904`, build de 14/07/2026), com estas diferenças:
