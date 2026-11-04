@@ -1763,6 +1763,23 @@ nome da época em que foram aplicadas.
   (PR #457) entrou no `main` antes do #458, como combinado, e foi aplicada
   depois desta (histórico `20261104220009`): na nossa produção a ordem não
   importa, porque o histórico é por timestamp.
+- **1121_cb_chave_por_funcionario** — `api_keys.membro_user_id` (o
+  funcionário dono da chave, `ON DELETE CASCADE` para `auth.users`: com SET
+  NULL, apagar o login viraria a chave da conta inteira) e `api_keys.funis`
+  (os funis que a chave vê; CHECK `api_keys_funis_nao_vazio`: nunca lista
+  vazia). PR #459, `docs/PLANO-chave-por-funcionario.md`.
+
+  ADITIVA, e aplicar ANTES do deploy é obrigatório: o app novo lê as duas
+  colunas no caminho de TODA chamada da API v1 (`findActiveKeyByHash`), e sem
+  elas a API inteira responde 500. Número: a 1119 e a 1120 eram dos PRs #457
+  e #458, e as sessões deles foram avisadas antes. Autorização do operador
+  em 04/11/2026 ("pode gravar", à pergunta de aplicar a 1121 na produção,
+  com o pedido de conferir antes a numeração das outras sessões). Aplicada em
+  04/11/2026 (histórico `20261104223155`), com o arquivo idêntico ao do
+  commit `612daa89`, que passou no replay do CI. Conferida: as duas colunas
+  existem; o `membro_user_id` é CASCADE e o `created_by` continua SET NULL;
+  o CHECK está ativo; e as 17 chaves que já existiam ficaram sem funcionário
+  e sem funis, ou seja, nenhuma integração mudou.
 
 ## Notas do histórico
 

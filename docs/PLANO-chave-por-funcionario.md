@@ -24,7 +24,7 @@
 
 | Fase | Escopo | Estado | Migration | PR |
 | --- | --- | --- | --- | --- |
-| **1** | Chave: funcionário, funis, validade e "Só leitura" na tela; corte na suspensão; EDITAR a chave | 🟡 código pronto (04/11), falta aplicar a 1121 e o e2e | `1121` (aditiva) **não aplicada** | `feat/chave-por-funcionario` |
+| **1** | Chave: funcionário, funis, validade e "Só leitura" na tela; corte na suspensão; EDITAR a chave | 🟡 código pronto (04/11); 1121 aplicada; falta o e2e no preview | `1121` (aditiva) **APLICADA** 04/11 (`20261104223155`) | PR #459 |
 | **2** | Recorte por funil nas rotas de leitura (chave recortada = default-deny) | 🟡 código pronto; forma do `deals!inner` MEDIDA no PostgREST real (5.534 = SQL) | não | idem |
 | **3** | O que falta ler: nome do arquivo, transcrição do áudio, histórico de automações | 🟡 código pronto | não | idem |
 | **4** | Guia do Claude do funcionário (sem MCP) e o piloto com uma pessoa | ⬜ depois do merge | não | — |
