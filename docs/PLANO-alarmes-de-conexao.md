@@ -86,7 +86,7 @@ alarme. Depois a classe na sentinela (a) e o (b) como complemento.
 | Fase | O quê | Estado |
 |---|---|---|
 | 0 | Estudo e medição (este documento) | Feito em 04/11/2026 |
-| 1 | (c) no CRM: régua, índice e motivo novo na saúde da conexão (cabeçalho e faixa da conversa) | PR #458 aberto (04/11/2026); a 1120 espera a aplicação em produção, ANTES do merge |
+| 1 | (c) no CRM: régua, índice e motivo novo na saúde da conexão (cabeçalho e faixa da conversa) | Mesclada em 04/11/2026 (PR #458, `19bf829c`); a 1120 foi aplicada antes do merge (histórico `20261104215651`; a leitura caiu de 973 ms para 7,8 ms) |
 | 2 | Avisos do próprio CRM no sino, com estado: (c) e (b) | Decidida (D2, D3, D5, D6, D8); a implementar |
 | 3 | Faixa fixa no topo enquanto houver alarme (E1) | Decidida (D1, D2); a implementar |
 | 4 | Sentinela: instância e classe na coleta, aviso `quedas:` | Decidida (D2, D7); começa pela leitura do log do incidente |
@@ -289,7 +289,10 @@ leitura.
 - **Instagram fica fora:** o Direct não manda recibo de entrega, e o aviso de
   leitura o CRM não grava (`persistir.ts`): o envio fica em `sent` para
   sempre.
-- **Grupo fica fora:** em grupo o recibo não passa de ✓.
+- **Grupo fica fora:** o ✓✓ de grupo só vem quando TODOS os participantes de
+  fora receberam (1119, com o 5º patch da imagem da Evolution; sem ele, nunca
+  passa de ✓), e um participante com o celular desligado o segura: não mede a
+  conexão.
 - **O celular fica fora:** a mensagem que a equipe manda pelo aparelho chega
   ao CRM pela mesma fila parada. No incidente, nenhuma chegou.
 - **Índice novo.** Os índices de `messages` que tocam conexão ou data são só
