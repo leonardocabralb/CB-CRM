@@ -113,8 +113,9 @@ não reverter sem perguntar.
 - ⚠️⚠️ **Vermelha (`tone === 'down'`) TRAVA o que sai para o cliente**: texto,
   anexo (inclusive a fila já montada: `sendDraft` e o Enviar do
   `MediaDraftPreview`), voz, agendar, modelo e o menu +. A anotação interna
-  fica livre. **Âmbar** (`detail` `webhook` = não recebe, ou `lagging` =
-  atrasada) só avisa — o mesmo lado do `ENVIA_MESMO_EM_AMARELO`. `pairing`,
+  fica livre. **Âmbar** (`detail` `webhook` = não recebe, `lagging` =
+  atrasada, ou `sem_recibo` = os envios saem e nada volta) só avisa — o
+  mesmo lado do `ENVIA_MESMO_EM_AMARELO`. `pairing`,
   `stale` e `lastError` não acendem nada: transitórios, a faixa piscaria a
   cada reconexão. É o oposto da faixa de divergência (só informa) de
   propósito: lá a mensagem chega, aqui não sai.
@@ -155,9 +156,11 @@ não reverter sem perguntar.
   a sonda pedida pelo realtime ainda pode responder "fora" (e regravar
   `disconnected` por cima do `connected` do webhook) até o tique seguinte —
   ~30–45 s depois de a conexão voltar.
-- **Não vê a conexão "aberta" que parou de receber sem erro** (02/10/2026: o
+- **A conexão "aberta" que parou de receber sem erro** (02/10/2026: o
   provedor diz `open`, o webhook aponta para cá e a medição de atraso
-  envelhece). Esse é outro alarme ("nada chega há tempo demais").
+  envelhece) só acende pelo `sem_recibo`, quando há envio do CRM por ela
+  (04/11/2026, `canais.md`). A frase manda NÃO reenviar. Sem envio, "nada
+  chega há tempo demais" é outro alarme.
 
 ### A janela de 24h da Meta é POR NÚMERO (`janela-24h.ts`)
 

@@ -86,6 +86,11 @@ qualquer uma é pergunta ao operador.
   filtro salvo não decide; o sino também avisa, com som do CRM (20/10/2026).
 - Canal: a faixa de divergência só informa, não bloqueia; cor derivada; anel
   no avatar e trilha colorida foram descartados.
+- Envios sem recibo (04/11/2026): acende no cabeçalho e na faixa da conversa
+  quando os 5 envios do CRM mais recentes com mais de 15 min, das últimas 3 h,
+  em pelo menos 3 conversas, não têm recibo; só avisa, não trava, e diz para
+  não reenviar; o Meu dia fica de fora; ligado em toda instalação, sem chave
+  para desligar (`canais.md`; o resto em `docs/PLANO-alarmes-de-conexao.md`).
 - Agentes de IA: o Playground testa o RASCUNHO da tela, conferido como o
   salvar, e compara com o salvo; a conversa não zera ao salvar. Versão
   publicada separada só depois do piloto (DC4, 26/10/2026).

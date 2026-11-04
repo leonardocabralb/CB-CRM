@@ -57,6 +57,12 @@ export interface ChannelHealth {
   atrasoSeg: number | null;
   /** Quando essa medição foi feita (ISO). */
   atrasoMedidoEm: string | null;
+  /**
+   * Nível 4 (`sem-recibo.ts`): desde quando os envios estão sem recibo (ISO),
+   * só com o motivo `sem_recibo`. A sonda antiga (antes do deploy) não manda
+   * o campo: ausente vale `null`.
+   */
+  semReciboDesde?: string | null;
 }
 
 const POLL_MS = 30_000;

@@ -93,6 +93,7 @@ describe('avisoDaConexao', () => {
       webhookOk: null,
       atrasoSeg: null,
       atrasoMedidoEm: null,
+      semRecibo: false,
       agoraMs: Date.parse('2026-10-05T13:00:00.000Z'),
     };
     const casos: [EntradaDeCor, string | null][] = [
@@ -107,13 +108,36 @@ describe('avisoDaConexao', () => {
         },
         'atrasada',
       ],
+      [{ ...base, semRecibo: true }, 'sem_recibo'],
       [{ ...base, estadoVivo: 'connecting' }, null],
       [{ ...base }, null],
     ];
     for (const [entrada, esperado] of casos) {
       const { tone, detail } = toneFor(entrada);
-      const r = aviso({ tone, detail, atrasoSeg: entrada.atrasoSeg });
+      const r = aviso({
+        tone,
+        detail,
+        atrasoSeg: entrada.atrasoSeg,
+        semReciboDesde: detail === 'sem_recibo' ? '2026-10-05T12:10:00.000Z' : null,
+      });
       expect(r?.tipo ?? null).toBe(esperado);
     }
+  });
+
+  it('sem recibo: âmbar com o começo da sequência', () => {
+    expect(
+      aviso({ tone: 'warn', detail: 'sem_recibo', semReciboDesde: '2026-11-03T12:05:00.000Z' }),
+    ).toEqual({ tipo: 'sem_recibo', rotulo: 'Bancário - Comercial', desdeIso: '2026-11-03T12:05:00.000Z' });
+  });
+
+  it('sem recibo SEM o `desde` (a sonda de antes do deploy) não afirma nada', () => {
+    expect(aviso({ tone: 'warn', detail: 'sem_recibo' })).toBeNull();
+    expect(aviso({ tone: 'warn', detail: 'sem_recibo', semReciboDesde: null })).toBeNull();
+  });
+
+  it('no grupo, sem recibo cala, como o resto do âmbar', () => {
+    expect(
+      aviso({ tone: 'warn', detail: 'sem_recibo', semReciboDesde: '2026-11-03T12:05:00.000Z' }, { ehGrupo: true }),
+    ).toBeNull();
   });
 });

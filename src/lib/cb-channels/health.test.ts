@@ -13,6 +13,8 @@ const BASE = {
   /** Nível 3: nunca medido. `null` é "não sei", e não acusa (1002). */
   atrasoSeg: null,
   atrasoMedidoEm: null,
+  /** Nível 4: os envios têm recibo (`sem-recibo.ts`). */
+  semRecibo: false,
   agoraMs: 1_000_000_000_000,
 };
 
@@ -182,6 +184,48 @@ describe('toneFor — a regra que o indicador carrega', () => {
         atrasoMedidoEm: agora(30_000),
       }),
     ).toEqual({ tone: 'warn', detail: 'webhook' });
+  });
+});
+
+describe('toneFor — envios sem recibo (nível 4, 04/11/2026)', () => {
+  it('DE PÉ, ENVIANDO E NADA VOLTA = amarelo, mesmo com o atraso apagado', () => {
+    // 03/11/2026: o atraso tinha expirado às 03:52 (nada chegava), e a
+    // conexão seguiu verde o dia útil inteiro com 90 envios sem ✓✓.
+    expect(toneFor({ ...BASE, estadoVivo: 'open', semRecibo: true })).toEqual({
+      tone: 'warn',
+      detail: 'sem_recibo',
+    });
+  });
+
+  it('vale também quando o provedor não respondeu (é dado do nosso banco)', () => {
+    expect(
+      toneFor({ ...BASE, estadoVivo: null, checkedAt: agora(STALE_MS / 2), semRecibo: true }),
+    ).toEqual({ tone: 'warn', detail: 'sem_recibo' });
+  });
+
+  it('o atraso medido vem antes: diz quantos minutos', () => {
+    expect(
+      toneFor({
+        ...BASE,
+        estadoVivo: 'open',
+        atrasoSeg: 40 * 60,
+        atrasoMedidoEm: agora(30_000),
+        semRecibo: true,
+      }),
+    ).toEqual({ tone: 'warn', detail: 'lagging' });
+  });
+
+  it('queda e webhook ganham do sem recibo', () => {
+    expect(toneFor({ ...BASE, estadoVivo: 'close', semRecibo: true }).detail).toBe('closed');
+    expect(
+      toneFor({ ...BASE, estadoVivo: 'open', webhookOk: false, semRecibo: true }).detail,
+    ).toBe('webhook');
+  });
+
+  it('frescor vencido segue `stale`: sem recibo não esconde o verde mentiroso', () => {
+    expect(
+      toneFor({ ...BASE, estadoVivo: null, checkedAt: agora(24 * 3600_000), semRecibo: true }).detail,
+    ).toBe('stale');
   });
 });
 

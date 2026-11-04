@@ -13,7 +13,9 @@
 //    TRAVADO, e a frase diz por quê e qual é a saída — sem isso a pessoa
 //    acharia que o CRM quebrou.
 //  · ÂMBAR, o mesmo desenho da faixa de número divergente: de pé e enviando,
-//    mas a entrada surda ou atrasada. Só avisa.
+//    mas a entrada surda, atrasada ou parada (os envios sem recibo). Só
+//    avisa. No sem recibo, a frase manda NÃO reenviar: as mensagens
+//    provavelmente chegaram (04/11/2026), e reenviar mandaria em dobro.
 //
 // ⚠️ Fundo `bg-red-600` com texto branco vale nos DOIS modos (o `dark:` está
 // inerte, `.claude/rules/ui.md`). No âmbar, `text-amber-700`, a cor que passa
@@ -29,6 +31,16 @@ import { TriangleAlert, WifiOff } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import type { AvisoDaConexao } from "@/lib/inbox/aviso-da-conexao";
+
+/** Dia e hora do começo da sequência sem recibo, no idioma do navegador. */
+function quandoFoi(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 export function FaixaDeConexao({
   aviso,
@@ -67,6 +79,22 @@ export function FaixaDeConexao({
     );
   }
 
+  const titulo =
+    aviso.tipo === "nao_recebe"
+      ? t("conexaoNaoRecebeTitulo", { channel: aviso.rotulo })
+      : aviso.tipo === "atrasada"
+        ? t("conexaoAtrasadaTitulo", { channel: aviso.rotulo })
+        : t("conexaoSemReciboTitulo", {
+            channel: aviso.rotulo,
+            quando: quandoFoi(aviso.desdeIso),
+          });
+  const texto =
+    aviso.tipo === "nao_recebe"
+      ? t("conexaoNaoRecebeTexto")
+      : aviso.tipo === "atrasada"
+        ? t("conexaoAtrasadaTexto", { minutos: aviso.minutos })
+        : t("conexaoSemReciboTexto");
+
   return (
     <div
       role="status"
@@ -77,16 +105,8 @@ export function FaixaDeConexao({
         className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400"
       />
       <div className="min-w-0 flex-1 text-xs text-amber-700 dark:text-amber-300">
-        <p className="break-words font-semibold">
-          {aviso.tipo === "nao_recebe"
-            ? t("conexaoNaoRecebeTitulo", { channel: aviso.rotulo })
-            : t("conexaoAtrasadaTitulo", { channel: aviso.rotulo })}
-        </p>
-        <p className="mt-0.5 break-words">
-          {aviso.tipo === "nao_recebe"
-            ? t("conexaoNaoRecebeTexto")
-            : t("conexaoAtrasadaTexto", { minutos: aviso.minutos })}
-        </p>
+        <p className="break-words font-semibold">{titulo}</p>
+        <p className="mt-0.5 break-words">{texto}</p>
       </div>
     </div>
   );

@@ -1748,6 +1748,21 @@ nome da época em que foram aplicadas.
   leitura, `authenticated` lê e não escreve nem chama a função,
   `service_role` chama; zero recibos e zero grupos com denominador depois da
   prova (desfeita).
+- **1120_cb_indice_dos_envios_por_conexao** — índice
+  `messages_canal_e_data_idx` em `messages (channel_id, created_at desc)
+  WHERE channel_id IS NOT NULL`: a leitura dos últimos envios de cada conexão
+  pelo alarme "envios sem recibo" (`sem-recibo.ts`, PR #458).
+
+  ADITIVA, mas aplicar ANTES do deploy: sem ela, a leitura custou 973 ms
+  medidos (EXPLAIN ANALYZE na conexão mais movimentada). Autorização do
+  operador em 04/11/2026 ("aplique e siga", à pergunta de aplicar a 1120 em
+  produção antes do merge), aplicada em 04/11/2026 (histórico
+  `20261104215651`) depois do replay local verde (243 arquivos e o
+  `verify-schema`). Conferida: o índice existe nas colunas certas (5 MB), e a
+  mesma consulta caiu para 7,8 ms, por Index Scan nele, já na ordem. A 1119
+  (PR #457) entrou no `main` antes do #458, como combinado, e foi aplicada
+  depois desta (histórico `20261104220009`): na nossa produção a ordem não
+  importa, porque o histórico é por timestamp.
 
 ## Notas do histórico
 

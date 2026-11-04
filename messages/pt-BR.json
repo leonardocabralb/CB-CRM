@@ -345,6 +345,8 @@
       "conexaoNaoRecebeTexto": "Ela envia normalmente, mas o que chega por este número não está entrando no CRM. Uma resposta nova do cliente pode não aparecer aqui.",
       "conexaoAtrasadaTitulo": "A conexão {channel} está recebendo com atraso",
       "conexaoAtrasadaTexto": "A última mensagem medida neste número levou cerca de {minutos} min para chegar ao CRM. Uma resposta recente pode ainda não estar aqui.",
+      "conexaoSemReciboTitulo": "A conexão {channel} não confirma a entrega desde {quando}",
+      "conexaoSemReciboTexto": "As mensagens enviadas por este número provavelmente chegaram, mas nenhuma voltou com a confirmação de entrega. As respostas dos clientes podem estar presas. Não reenvie: o cliente receberia em dobro.",
       "canalForaDoAr": "Fora do ar",
       "noMessagesYet": "Nenhuma mensagem ainda",
       "sendTemplateHint": "Envie um modelo para iniciar a conversa",
@@ -6926,6 +6928,7 @@
     "detail_lastError": "último erro registrado",
     "detail_incomplete": "faltam credenciais — refaça a conexão",
     "detail_lagging": "conectada, mas entregando com atraso",
+    "detail_sem_recibo": "conectada, mas os envios estão sem confirmação de entrega",
     "kind_meta": "API oficial · Meta",
     "kind_evolution": "Não oficial · QR Code",
     "kind_instagram": "Direct · Instagram",
@@ -6933,7 +6936,8 @@
     "checkedAgo": "verificada há {tempo}",
     "neverChecked": "ainda não verificada",
     "deliveryLag": "Entregando com {tempo} de atraso",
-    "lagMeasured": "medido há {tempo}"
+    "lagMeasured": "medido há {tempo}",
+    "noReceiptSince": "Sem confirmação de entrega desde {quando}"
   },
   "LeadEvents": {
     "title": "Histórico",
