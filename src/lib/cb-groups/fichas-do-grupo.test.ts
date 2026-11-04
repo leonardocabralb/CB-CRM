@@ -18,6 +18,7 @@ import {
   conversasDasFichas,
   fichasParaGravar,
   gravarFichasDoGrupo,
+  participantesDeFora,
 } from './fichas-do-grupo';
 
 const p = (over: Partial<ParticipanteDoGrupo>): ParticipanteDoGrupo => ({
@@ -83,7 +84,54 @@ describe('fichasParaGravar', () => {
   });
 });
 
+describe('participantesDeFora (1119) — o denominador do ✓✓ de grupo', () => {
+  it('quem não é o nosso número nem outro número do escritório; sem telefone conta como de fora', () => {
+    expect(
+      participantesDeFora(
+        [
+          p({ id: 'a@lid', telefone: '5583980000016' }),
+          p({ id: 'eu@lid', telefone: '5583980000099', somosNos: true }),
+          // Outro número do escritório, sem o nono dígito na lista.
+          p({ id: 'escritorio@lid', telefone: '551187650002' }),
+          // Sem telefone: pode ser qualquer um — o denominador fica maior, nunca menor.
+          p({ id: 'oculto@lid', telefone: null }),
+        ],
+        new Set(['5511987650002']),
+      ),
+    ).toBe(2);
+  });
+
+  it('a mesma pessoa listada duas vezes conta uma', () => {
+    expect(participantesDeFora([p({ id: 'a@lid', telefone: '5583980000016' }), p({ id: 'a@lid', telefone: '5583980000016' })], new Set())).toBe(1);
+  });
+
+  it('⚠️ ninguém além de nós com telefone: NULO (a lista não diz quem é quem)', () => {
+    expect(participantesDeFora([p({ somosNos: true, telefone: '5583980000099' }), p({}), p({ id: '222@lid' })], new Set())).toBeNull();
+  });
+});
+
 describe('gravarFichasDoGrupo', () => {
+  const denominadores = () =>
+    b.escritas.filter((e) => e.tabela === 'cb_groups' && e.op === 'update').map((e) => e.payload);
+
+  it('grava o denominador só depois de a conferência valer', async () => {
+    expect(
+      await gravarFichasDoGrupo(b.db, { accountId: 'conta-1', groupId: 'g-1', contatoIds: [], participantesDeFora: 3 }),
+    ).toBe(true);
+    expect(denominadores()).toEqual([{ participantes_de_fora: 3 }]);
+
+    b.respostasDeRpc.cb_gravar_fichas_do_grupo = null;
+    await gravarFichasDoGrupo(b.db, { accountId: 'conta-1', groupId: 'g-1', contatoIds: [], participantesDeFora: 5 });
+    expect(denominadores()).toEqual([{ participantes_de_fora: 3 }]);
+  });
+
+  it('sem o denominador no pedido, não mexe nele; nulo grava nulo ("não se sabe")', async () => {
+    await gravarFichasDoGrupo(b.db, { accountId: 'conta-1', groupId: 'g-1', contatoIds: [] });
+    expect(denominadores()).toEqual([]);
+    await gravarFichasDoGrupo(b.db, { accountId: 'conta-1', groupId: 'g-1', contatoIds: null, participantesDeFora: null });
+    expect(denominadores()).toEqual([{ participantes_de_fora: null }]);
+  });
+
   it('manda o conjunto à função da 1117 e devolve se ela carimbou', async () => {
     expect(await gravarFichasDoGrupo(b.db, { accountId: 'conta-1', groupId: 'g-1', contatoIds: ['ficha-ana'] })).toBe(true);
     expect(chamadas()).toEqual([{ p_account_id: 'conta-1', p_group_id: 'g-1', p_contact_ids: ['ficha-ana'] }]);
@@ -110,6 +158,10 @@ describe('conferirFichasDoGrupo', () => {
     ]);
     expect(ok).toBe(true);
     expect(chamadas()).toEqual([{ p_account_id: 'conta-1', p_group_id: 'g-1', p_contact_ids: ['ficha-ana'] }]);
+    // E o denominador (1119): só a cliente é de fora.
+    expect(b.escritas.filter((e) => e.tabela === 'cb_groups').map((e) => e.payload)).toEqual([
+      { participantes_de_fora: 1 },
+    ]);
   });
 
   it('⚠️ fichas que não se leram, ou os números do escritório, não refazem nada', async () => {

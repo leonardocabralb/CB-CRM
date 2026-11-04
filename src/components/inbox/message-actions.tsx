@@ -5,6 +5,7 @@ import {
   CornerUpLeft,
   Copy,
   Download,
+  Info,
   SmilePlus,
   Pencil,
   Trash2,
@@ -23,6 +24,7 @@ import { useTranslations } from "next-intl";
 import { ehEvolution } from "@/lib/cb-channels/transporte";
 import type { CbChannelKind } from "@/lib/cb-channels/repo";
 import { TOQUE_LONGO_MS } from "./player-de-audio";
+import { DadosDaMensagemDoGrupo } from "./dados-da-mensagem-do-grupo";
 
 // WhatsApp's own quick-reaction bar starts with these six. Picking the same
 // set keeps the affordance familiar without pulling in a 300KB emoji library.
@@ -51,6 +53,8 @@ interface MessageActionsProps {
   channelKind?: CbChannelKind | null;
   onDelete?: () => void;
   onEdit?: () => void;
+  /** O grupo desta conversa (`cb_groups.id`); nulo fora de grupo. */
+  grupoId?: string | null;
   children: ReactNode;
 }
 
@@ -70,6 +74,7 @@ export function MessageActions({
   channelKind = null,
   onDelete,
   onEdit,
+  grupoId = null,
   children,
 }: MessageActionsProps) {
   const t = useTranslations("Inbox.actions");
@@ -89,6 +94,10 @@ export function MessageActions({
   // reagir falharia, e responder citaria no CRM o que ele não viu. Copiar
   // fica (é como se reenvia à mão).
   const naoSaiu = message.nao_saiu === true;
+  // "Dados da mensagem" (1119): quem do grupo recebeu e quem leu. Só na
+  // mensagem NOSSA de grupo que saiu — é dela que chegam recibos.
+  const podeVerDados = !!grupoId && nossa && !naoSaiu && existeNoWhatsApp;
+  const [dadosAbertos, setDadosAbertos] = useState(false);
   const podeMexer =
     podeAgir &&
     existeNoWhatsApp &&
@@ -342,7 +351,7 @@ export function MessageActions({
       <div ref={bolhaRef} className="group/actions relative min-w-0 max-w-[75%]">
         {children}
       <div
-        data-touch-open={touchOpen || pickerOpen ? "true" : undefined}
+        data-touch-open={touchOpen || pickerOpen || dadosAbertos ? "true" : undefined}
         // Não depende de `touchOpen`: o toque no emoji (fora da linha, no
         // popover) fecha o `touchOpen`, e a barra pularia de volta ao topo
         // com o seletor ancorado nela — o dedo erraria o emoji.
@@ -404,6 +413,19 @@ export function MessageActions({
         >
           <Copy className={ICONE} />
         </button>
+        {podeVerDados && (
+          <Popover open={dadosAbertos} onOpenChange={setDadosAbertos}>
+            <PopoverTrigger
+              className={cn(BOTAO, "hover:bg-muted hover:text-foreground")}
+              aria-label={t("messageInfo")}
+            >
+              <Info className={ICONE} />
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-2" sideOffset={6}>
+              <DadosDaMensagemDoGrupo grupoId={grupoId!} messageId={message.message_id!} />
+            </PopoverContent>
+          </Popover>
+        )}
         {podeBaixar && (
           <button
             type="button"

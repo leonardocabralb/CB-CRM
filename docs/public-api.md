@@ -1612,7 +1612,11 @@ retried: that notification is lost for it.
   `read` that arrives after `failed` still moves the message to `read`
   (it proves the recipient saw it); `sent` and `delivered` do not. Two
   advances of the same message can still reach you out of order, so keep
-  the most advanced one, with `read` above `failed`.
+  the most advanced one, with `read` above `failed`. In a WhatsApp
+  **group** (QR-code connections), `delivered` means every participant
+  outside your account received the message and `read` that every one of
+  them read it — the CRM counts each participant's receipt, as WhatsApp
+  does; a group resend error does not become `failed`.
 - **`deal.*`** are delivered **at least once**: the attempt is recorded,
   and a notification whose attempt did not happen — the server restarted in
   the middle, or a database read failed — is sent again by the scheduler

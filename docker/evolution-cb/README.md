@@ -145,18 +145,58 @@ produção (`e273b904`, build de 14/07/2026), com estas diferenças:
    Entra pelo `patch-package` que o Dockerfile do upstream já roda (`patches/`
    copiado antes do `npm ci`); o nome do arquivo casa a versão instalada, e o
    build falha se o handler não estiver no `messages-recv.js`. 7 linhas.
+6. `recibo-de-grupo.patch` (04/11/2026) — **mensagem enviada a GRUPO nunca
+   passava de ✓.** Na Baileys 7.0.0-rc13 o recibo de grupo (entrega e
+   leitura) sai UM POR PARTICIPANTE no evento `message-receipt.update`
+   (`handleReceipt`), nunca no `messages.update`, e a Evolution só o usava
+   para marcar como lidas, no banco DELA, as mensagens RECEBIDAS
+   (`updateMessagesReadedByTimestamp`): nada ia ao webhook. Medido em
+   04/11/2026 no banco do CRM, 30 dias de mensagens da equipe e do robô nas
+   conexões da Evolution: em grupo, 83 `sent`, 10 `failed` e ZERO entregue ou
+   lida; no 1:1, milhares de entregues e de lidas.
+   O patch, depois do que o bloco já fazia, manda ao webhook, para cada
+   recibo de mensagem NOSSA (`fromMe`) num `@g.us`, um `messages.update` com
+   `{ keyId, remoteJid, fromMe: true, participant, participantAlt,
+   reciboDoGrupo, instante, instanceId }`:
+   - `reciboDoGrupo` é `READ` (o recibo traz `readTimestamp`) ou
+     `DELIVERY_ACK` (`receiptTimestamp`), e `instante` é esse carimbo, em
+     segundos; recibo sem carimbo válido não sai;
+   - `participant` é o `userJid` do recibo (sem aparelho); `participantAlt`,
+     só quando ele é LID, o telefone que a própria Evolution conhece para o
+     LID (`lidMapping.getPNForLID`); sem o par, ou com erro, o campo não vai;
+   - o próprio número da instância fica de fora (o `sender` e o `read-self`
+     dos nossos aparelhos também chegam como leitura), comparado com o
+     `user.id` e o `user.lid` do socket; e nada sai com `groupsIgnore` ligado;
+   - **SEM o campo `status`, de propósito**: o CRM que ainda não lê
+     `reciboDoGrupo` não acha `status` e ignora o aviso, em vez de pintar ✓✓
+     no primeiro recibo (que pode ser o do nosso outro número);
+   - cada recibo num try/catch com `warn` (`CB recibo-de-grupo: …`): falha num
+     não derruba os outros nem o resto do lote.
+
+   O mesmo patch põe no `messages.update` o `messageStubParameters` (o código
+   do erro do ack, ex.: `"479"`, que antes só o log trazia), quando vem
+   preenchido, só na CÓPIA que vai ao webhook: o objeto original segue para o
+   `messageUpdate.create` do Prisma, que recusaria o campo novo.
+   Limites: um aviso por recibo, sem juntar nada — a entrega e a leitura de
+   cada participante, mais uma leitura quando ele ouve uma mensagem de voz (o
+   recibo `played` também chega como `readTimestamp`); num grupo de 200
+   pessoas, são centenas de avisos por mensagem. O recibo do nosso OUTRO
+   número (outra conexão no mesmo grupo) sai como o de qualquer participante:
+   quem o separa é o CRM (`docs/PLANO-recibos-de-grupo.md`). A imagem sem o
+   patch não manda nada, como antes. Um arquivo, +82/−1 linhas.
 
 Mesmo commit = mesmas migrations: trocar entre esta imagem e a `homolog` não
 mexe no banco. O rollback é só trocar a imagem de volta.
 
-A ordem de aplicação é a do workflow (`2708-citacao`, `foto-de-perfil` e
-depois `sessao-unica-e-reconexao`); cada um foi gerado sobre os anteriores, em
-regiões distintas de `whatsapp.baileys.service.ts` (o terceiro mexe também em
-`instance.controller.ts` e `monitor.service.ts`). O da Baileys não passa pelo
-`git apply`: vai para `patches/` e é aplicado na instalação das dependências.
-Quando a Evolution subir a Baileys, ele tem de ser refeito para a versão nova
-(ou sai, se ela já trouxer o `CB:status`).
+A ordem de aplicação é a do workflow (`2708-citacao`, `foto-de-perfil`,
+`sessao-unica-e-reconexao` e depois `recibo-de-grupo`); cada um foi gerado
+sobre os anteriores, em regiões distintas de `whatsapp.baileys.service.ts` (o
+terceiro mexe também em `instance.controller.ts` e `monitor.service.ts`). O da
+Baileys não passa pelo `git apply`: vai para `patches/` e é aplicado na
+instalação das dependências. Quando a Evolution subir a Baileys, ele tem de
+ser refeito para a versão nova (ou sai, se ela já trouxer o `CB:status`).
 
 Quando o upstream mesclar o #2708, corrigir a foto de perfil E o ciclo de
-conexão (ou publicar uma `homolog` com tudo isso), esta imagem deixa de ser
-necessária. Plano vivo: `docs/PLANO-baileys-7.md`, P10.
+conexão e repassar o recibo de grupo (ou publicar uma `homolog` com tudo
+isso), esta imagem deixa de ser necessária. Plano vivo:
+`docs/PLANO-baileys-7.md`, P10.

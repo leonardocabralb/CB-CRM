@@ -2,10 +2,12 @@ name: evolution-cb
 
 # Constrói a nossa imagem da Evolution 2.4 (develop) a partir de um commit
 # fixo do upstream, com os patches de docker/evolution-cb/ (a citação do
-# cliente, a foto de perfil que travava a fila de entrada e a sessão única com
-# a reconexão depois do logout e do 408), o ack do <status> na Baileys (pelo
-# patch-package do próprio Dockerfile) e o prisma.config.ts dentro da imagem.
-# Ver docker/evolution-cb/README.md e docs/PLANO-baileys-7.md (P10, 5.10).
+# cliente, a foto de perfil que travava a fila de entrada, a sessão única com
+# a reconexão depois do logout e do 408, e o recibo de grupo com o código do
+# erro no webhook), o ack do <status> na Baileys (pelo patch-package do próprio
+# Dockerfile) e o prisma.config.ts dentro da imagem.
+# Ver docker/evolution-cb/README.md, docs/PLANO-baileys-7.md (P10, 5.10) e
+# docs/PLANO-recibos-de-grupo.md.
 
 on:
   workflow_dispatch:
@@ -17,7 +19,7 @@ on:
       tag:
         description: 'Tag de saída'
         required: true
-        default: '2.4.0-e273b904-citacao-foto-sessao-status'
+        default: '2.4.0-e273b904-citacao-foto-sessao-status-recibo'
 
 env:
   IMAGE: ghcr.io/leonardocabralb/evolution-api-cb
@@ -50,6 +52,8 @@ jobs:
           git apply ../docker/evolution-cb/foto-de-perfil-por-telefone-com-teto.patch
           git apply --check ../docker/evolution-cb/sessao-unica-e-reconexao.patch
           git apply ../docker/evolution-cb/sessao-unica-e-reconexao.patch
+          git apply --check ../docker/evolution-cb/recibo-de-grupo.patch
+          git apply ../docker/evolution-cb/recibo-de-grupo.patch
           test -f prisma.config.ts
           # builder: o arquivo entra junto com o resto do fonte
           sed -i 's#^COPY ./tsup.config.ts ./$#COPY ./tsup.config.ts ./\nCOPY ./prisma.config.ts ./#' Dockerfile
@@ -80,6 +84,15 @@ jobs:
           ! grep -qF "instance.state === 'close'" src/api/controllers/instance.controller.ts || exit 1
           # A limpeza que apaga as creds (Session) apaga também as chaves Signal do Redis.
           awk 'index($0, "public async cleaningUp(instanceName") {f=1} f && index($0, "if (this.redis.REDIS.ENABLED) {") {ok=1; exit} f && index($0, "public async cleaningStoreData(") {exit} END {exit !ok}' src/api/services/monitor.service.ts
+          # Recibo de grupo: o message-receipt.update de mensagem nossa em grupo vai ao webhook (sem o
+          # próprio número, com o telefone do LID e sem `status`), e o messages.update leva o
+          # messageStubParameters numa CÓPIA — o envio antigo, com o mesmo objeto do Prisma, não pode sobrar.
+          grep -qF "!key.remoteJid.endsWith('@g.us')" "$BAILEYS"
+          grep -qF '(me?.lid && areJidsSameUser(participant, me.lid))' "$BAILEYS"
+          grep -qF 'getPNForLID(participant)' "$BAILEYS"
+          grep -qF 'reciboDoGrupo,' "$BAILEYS"
+          grep -qF '? { ...message, messageStubParameters }' "$BAILEYS"
+          ! grep -qF 'this.sendDataWebhook(Events.MESSAGES_UPDATE, message);' "$BAILEYS" || exit 1
           # Ack do <status> (WhiskeySockets/Baileys#2858): o patch é da BAILEYS compilada, não do
           # fonte da Evolution. O Dockerfile do upstream copia patches/ antes do `npm ci` (cujo
           # postinstall roda o patch-package) e roda `npx patch-package` de novo; o nome do

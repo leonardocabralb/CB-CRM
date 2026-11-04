@@ -352,6 +352,8 @@
       "conexaoNaoRecebeTexto": "It sends normally, but what arrives on this number is not reaching the CRM. A new reply from the customer may not show up here.",
       "conexaoAtrasadaTitulo": "The {channel} connection is receiving with a delay",
       "conexaoAtrasadaTexto": "The last message measured on this number took about {minutos} min to reach the CRM. A recent reply may not be here yet.",
+      "conexaoSemReciboTitulo": "The {channel} connection has not confirmed deliveries since {quando}",
+      "conexaoSemReciboTexto": "Messages sent from this number have most likely arrived, but none came back with a delivery confirmation. Customers' replies may be held up. Do not resend: the customer would get it twice.",
       "canalForaDoAr": "Down",
       "noMessagesYet": "No messages yet",
       "sendTemplateHint": "Send a template to start the conversation",
@@ -594,7 +596,21 @@
       "cancel": "Cancel",
       "deleteRequested": "Deletion requested",
       "download": "Download",
-      "downloadFailed": "Couldn't download the file"
+      "downloadFailed": "Couldn't download the file",
+      "messageInfo": "Message info"
+    },
+    "messageInfo": {
+      "title": "Message info",
+      "loading": "Loading…",
+      "failed": "Couldn't load the receipts.",
+      "retry": "Try again",
+      "none": "No receipts recorded for this message.",
+      "noneHint": "Group receipts depend on the WhatsApp connection update: without it, or for messages sent before it, nothing is recorded.",
+      "summary": "Received by {entregues} of {total} · read by {lidas}",
+      "truncated": "The list shows the first {n} receipts.",
+      "readBy": "Read by",
+      "deliveredTo": "Delivered to",
+      "hiddenNumber": "Hidden number"
     },
     "replyQuote": {
       "photo": "[Photo]",
@@ -6951,6 +6967,7 @@
     "detail_lastError": "last error recorded",
     "detail_incomplete": "missing credentials — set the connection up again",
     "detail_lagging": "connected, but delivering late",
+    "detail_sem_recibo": "connected, but sent messages are not being confirmed as delivered",
     "kind_meta": "Official API · Meta",
     "kind_evolution": "Unofficial · QR Code",
     "kind_instagram": "Direct · Instagram",
@@ -6958,7 +6975,8 @@
     "checkedAgo": "checked {tempo} ago",
     "neverChecked": "not checked yet",
     "deliveryLag": "Delivering {tempo} behind",
-    "lagMeasured": "measured {tempo} ago"
+    "lagMeasured": "measured {tempo} ago",
+    "noReceiptSince": "No delivery confirmation since {quando}"
   },
   "LeadEvents": {
     "title": "History",

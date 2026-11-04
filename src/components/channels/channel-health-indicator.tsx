@@ -107,6 +107,16 @@ function hums(iso: string | null): string | null {
   return `${Math.floor(h / 24)} d`;
 }
 
+/** Dia e hora (o começo da sequência sem recibo), no idioma do navegador. */
+function quandoFoi(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 /** Uma duração em segundos, no mesmo vocabulário curto do `hums`. */
 function duracao(seg: number): string {
   const min = Math.floor(seg / 60);
@@ -134,6 +144,9 @@ function Ficha({ c }: { c: ChannelHealth }) {
   // medição velha não vira `lagging`, então não chega aqui.
   const atrasada = c.detail === 'lagging';
   const medido = hums(c.atrasoMedidoEm);
+  // Nível 4, pelo mesmo princípio: o `detail` do servidor, com a data que a
+  // sonda mandou junto (`sem-recibo.ts`).
+  const semReciboDesde = c.detail === 'sem_recibo' ? (c.semReciboDesde ?? null) : null;
 
   return (
     <div className="flex items-start gap-2.5 py-1.5">
@@ -174,6 +187,11 @@ function Ficha({ c }: { c: ChannelHealth }) {
           <p className="mt-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
             {t('deliveryLag', { tempo: duracao(c.atrasoSeg) })}
             {medido ? ` · ${t('lagMeasured', { tempo: medido })}` : ''}
+          </p>
+        )}
+        {semReciboDesde && (
+          <p className="mt-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+            {t('noReceiptSince', { quando: quandoFoi(semReciboDesde) })}
           </p>
         )}
       </div>

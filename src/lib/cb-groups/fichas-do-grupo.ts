@@ -81,7 +81,13 @@ export function fichasParaGravar<T extends ParticipanteDoGrupo>(
  */
 export async function gravarFichasDoGrupo(
   db: SupabaseClient,
-  args: { accountId: string; groupId: string; contatoIds: string[] | null },
+  args: {
+    accountId: string;
+    groupId: string;
+    contatoIds: string[] | null;
+    /** O denominador do ✓✓ de grupo (1119); ausente = não mexe. */
+    participantesDeFora?: number | null;
+  },
 ): Promise<boolean> {
   const { data, error } = await db.rpc('cb_gravar_fichas_do_grupo', {
     p_account_id: args.accountId,
@@ -92,7 +98,37 @@ export async function gravarFichasDoGrupo(
     console.error('[cb-groups] gravar as fichas do grupo falhou:', error.message);
     return false;
   }
-  return data === true;
+  if (data !== true) return false;
+  // Só depois de a conferência valer (o grupo é desta conta). Falhar aqui
+  // não desfaz as fichas: a bolha de grupo só fica em ✓ até a próxima.
+  if (args.participantesDeFora !== undefined) {
+    const { error: erroDoDenominador } = await db
+      .from('cb_groups')
+      .update({ participantes_de_fora: args.participantesDeFora })
+      .eq('id', args.groupId)
+      .eq('account_id', args.accountId);
+    if (erroDoDenominador) {
+      console.error('[cb-groups] gravar os participantes de fora falhou:', erroDoDenominador.message);
+    }
+  }
+  return true;
+}
+
+/**
+ * Quantos participantes NÃO são números da conta (1119): o denominador do ✓✓
+ * de grupo (`recibos-do-grupo.ts`). NULO na regra de `fichasParaGravar`:
+ * ninguém além de nós com telefone = a leitura não diz quem é quem.
+ * Participante sem telefone conta como de fora — sem saber, o denominador fica
+ * MAIOR e a bolha espera; nunca o contrário.
+ */
+export function participantesDeFora<T extends ParticipanteDoGrupo>(
+  participantes: T[],
+  doEscritorio: Set<string>,
+): number | null {
+  const outros = participantes.filter((p) => !p.somosNos);
+  if (outros.length > 0 && outros.every((p) => !p.telefone)) return null;
+  const deFora = outros.filter((p) => !p.telefone || !doEscritorio.has(chaveDePessoa(p.telefone)));
+  return new Set(deFora.map((p) => p.id)).size;
 }
 
 /**
@@ -118,6 +154,7 @@ export async function conferirFichasDoGrupo(
       (p) => (p.telefone ? mapa.get(chaveDePessoa(p.telefone))?.id : null),
       doEscritorio,
     ),
+    participantesDeFora: participantesDeFora(args.participantes, doEscritorio),
   });
 }
 

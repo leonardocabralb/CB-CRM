@@ -8,6 +8,8 @@ paths:
   - "src/hooks/use-grupos-do-contato.ts"
   - "src/components/inbox/painel/grupos-do-contato.tsx"
   - "supabase/migrations/1117_cb_grupos_dos_contatos.sql"
+  - "supabase/migrations/1119_cb_recibos_do_grupo.sql"
+  - "src/components/inbox/dados-da-mensagem-do-grupo*"
 ---
 
 # Grupos de WhatsApp — regras
@@ -25,6 +27,37 @@ medições: `docs/PLANO-participantes-do-grupo.md`.
 - ⚠️ **A regra do `@lid` do 1:1 NÃO vale em grupo.** O remetente vai
   desnormalizado em `messages.group_sender_*`, sem FK e sem criar contato.
   Quase todo participante chega em `@lid`: a regra do 1:1 esvaziaria o recurso.
+- ⚠️⚠️ **Recibo de grupo** (04/11/2026, 1119; decisões do operador): o ERROR
+  não vira "não entregue" (só o `479`, quando vem o código), e a bolha vira
+  ✓✓/azul quando TODOS os participantes de fora receberam/leram, como o
+  WhatsApp — pelo recibo por participante que o 5º patch repassa
+  (`recibos-do-grupo.ts`, `cb_recibos_do_grupo`, `cb_registrar_recibo_do_grupo`
+  com trava por mensagem: sem ela, dois recibos juntos contavam "1" cada).
+  O transporte: `whatsapp-evolution.md` (Recibos); o plano:
+  `docs/PLANO-recibos-de-grupo.md`.
+- ⚠️⚠️ **O recibo guarda o participante (o JID como chegou, sem o
+  aparelho), a FICHA e as horas, nunca o telefone à parte** (a D4 de 29/10,
+  abaixo: o telefone de quem não é cliente só existe na leitura ao vivo). No
+  grupo endereçado por telefone (raro) o próprio JID é o número, como já em
+  `messages.group_sender_jid`. A ficha sai do telefone da CHEGADA
+  (`fichaDoRecibo`, pela chave de pessoa) e fica sem FK, como na 1117; o
+  `participantAlt` do aviso morre na rota do webhook. Só com
+  `groups_enabled` (a conexão que desliga grupos não grava nada) e nunca o
+  número da conta (`ehNumeroDaConta`: o `own_lid` ou a chave do
+  `display_phone`).
+- ⚠️ **O denominador `cb_groups.participantes_de_fora` sai da MESMA conferência
+  das fichas** (`participantesDeFora`, pelos `chavesDasConexoes`), no detalhe
+  e no painel; NULO = não se sabe, e a bolha fica em ✓. Sem telefone conta
+  como de fora (o denominador só erra para cima). Envelhece com a
+  conferência: quem entrou depois não conta. Não guarda a LISTA.
+- ⚠️ **"Dados da mensagem"** (barra de ações da bolha nossa de grupo que
+  saiu, `dados-da-mensagem-do-grupo.tsx`) lê do BANCO, nunca ao vivo
+  (`GET /api/cb/groups/[id]/recibos`): quem leu e quem recebeu. Nome pela
+  ficha do recibo, senão pela regra dos participantes; telefone só quando o
+  participante É um JID de telefone; nunca o LID. Vazio = "nenhum recibo
+  REGISTRADO" (a mensagem de antes do patch não tem), falha = 500 e "Tentar
+  de novo". O resumo "N de M" some com a lista cortada (o `total` vem do
+  `count`) e com mais recibos que o denominador.
 - **Grupo não dispara automação, fluxo nem IA**: `cb-groups/persist.ts` não
   importa os motores, e um teste lê o fonte. Grupo nas automações = import
   visível ali, nunca uma flag. `persist.ts` também não chama a Evolution:

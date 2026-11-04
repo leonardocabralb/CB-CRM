@@ -12,7 +12,12 @@
 #   - 2.3.7 e 2.4.0-rc2 / Baileys 7.0.0-rc.9: "PENDING para sempre" (463),
 #     o risco de restrição do número;
 #   - evoapicloud/evolution-api:latest: em 04/11/2026 era a 2.3.7 com a
-#     rc.9. Nunca use.
+#     rc.9. Nunca use;
+#   - a 2.4 oficial (homolog), mesmo commit, sem os patches: a citação do
+#     cliente some, a entrada anda uma mensagem por minuto, dois sockets se
+#     derrubam em laço, o 408 desfaz o pareamento, a conexão de algumas contas
+#     cai a cada ~50 min (o <status> sem ack) e a mensagem enviada a grupo não
+#     passa de ✓ (os recibos de grupo não chegam ao CRM).
 # Por isso não há valor padrão: sem EVOLUTION_IMAGE, o compose recusa subir.
 # A imagem é só linux/amd64 (o workflow só monta essa); num Mac com Apple
 # Silicon ela roda emulada. A 2.4 exige ativar a licença gratuita no

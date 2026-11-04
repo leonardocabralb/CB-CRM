@@ -30,7 +30,12 @@ export function vivaParaEnviar(c: { tone: string; detail: string | null }): bool
  * cobranças do dia teriam sido silenciosamente adiadas por uma latência de
  * entrada (Codex, PR #220).
  *
+ * `sem_recibo` (`sem-recibo.ts`) também é de ENTRADA: os envios SAEM, e o
+ * que não volta é o recibo, que chega pela mesma fila da mensagem do cliente.
+ * No incidente de 02–04/11/2026 as mensagens tinham chegado. Deixá-lo de
+ * fora adiaria as cobranças do dia por uma fila de recibos parada.
+ *
  * `pairing`, `stale` e `lastError` continuam FORA. Amarelo novo decide por
  * escrito de que lado fica.
  */
-const ENVIA_MESMO_EM_AMARELO = new Set(['webhook', 'lagging']);
+const ENVIA_MESMO_EM_AMARELO = new Set(['webhook', 'lagging', 'sem_recibo']);
