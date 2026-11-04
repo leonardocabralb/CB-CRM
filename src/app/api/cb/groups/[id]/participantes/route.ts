@@ -43,6 +43,7 @@ import {
   conversasDasFichas,
   fichasParaGravar,
   gravarFichasDoGrupo,
+  participantesDeFora,
 } from '@/lib/cb-groups/fichas-do-grupo';
 import { EvolutionClient } from '@/lib/whatsapp/transport/evolution-client';
 import { decrypt } from '@/lib/whatsapp/encryption';
@@ -161,6 +162,8 @@ export async function GET(
             accountId: ctx.accountId,
             groupId: id,
             contatoIds: fichasParaGravar(comNome, (p) => p.contatoId, doEscritorio),
+            // O denominador do ✓✓ de grupo (1119), na mesma leitura completa.
+            participantesDeFora: participantesDeFora(comNome, doEscritorio),
           })
         : Promise.resolve(false),
     ]);

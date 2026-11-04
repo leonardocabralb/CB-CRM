@@ -25,10 +25,24 @@ medições: `docs/PLANO-participantes-do-grupo.md`.
 - ⚠️ **A regra do `@lid` do 1:1 NÃO vale em grupo.** O remetente vai
   desnormalizado em `messages.group_sender_*`, sem FK e sem criar contato.
   Quase todo participante chega em `@lid`: a regra do 1:1 esvaziaria o recurso.
-- ⚠️ **Recibo de grupo** (04/11/2026): o ERROR não vira "não entregue", e a
-  bolha não passa de ✓ — entrega e leitura são por participante, e a
-  Evolution não as repassa. Regra em `whatsapp-evolution.md` (Recibos);
-  plano para o ✓✓ em `docs/PLANO-recibos-de-grupo.md`.
+- ⚠️⚠️ **Recibo de grupo** (04/11/2026, 1119; decisões do operador): o ERROR
+  não vira "não entregue" (só o `479`, quando vem o código), e a bolha vira
+  ✓✓/azul quando TODOS os participantes de fora receberam/leram, como o
+  WhatsApp — pelo recibo por participante que o 5º patch repassa
+  (`recibos-do-grupo.ts`, `cb_recibos_do_grupo`, `cb_registrar_recibo_do_grupo`
+  com trava por mensagem: sem ela, dois recibos juntos contavam "1" cada).
+  O transporte: `whatsapp-evolution.md` (Recibos); o plano:
+  `docs/PLANO-recibos-de-grupo.md`.
+- ⚠️ **O denominador `cb_groups.participantes_de_fora` sai da MESMA conferência
+  das fichas** (`participantesDeFora`, pelos `chavesDasConexoes`), no detalhe
+  e no painel; NULO = não se sabe, e a bolha fica em ✓. Sem telefone conta
+  como de fora (o denominador só erra para cima). Envelhece com a
+  conferência: quem entrou depois não conta. Não guarda a LISTA.
+- ⚠️ **"Dados da mensagem"** (barra de ações da bolha nossa de grupo que
+  saiu, `dados-da-mensagem-do-grupo.tsx`) lê do BANCO, nunca ao vivo
+  (`GET /api/cb/groups/[id]/recibos`): quem leu e quem recebeu, nome pela
+  regra dos participantes, nunca o LID. Vazio = "nenhum recibo REGISTRADO"
+  (a mensagem de antes do patch não tem), falha = 500 e "Tentar de novo".
 - **Grupo não dispara automação, fluxo nem IA**: `cb-groups/persist.ts` não
   importa os motores, e um teste lê o fonte. Grupo nas automações = import
   visível ali, nunca uma flag. `persist.ts` também não chama a Evolution:

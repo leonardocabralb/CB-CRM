@@ -587,7 +587,20 @@
       "cancel": "Cancelar",
       "deleteRequested": "Exclusão solicitada",
       "download": "Baixar",
-      "downloadFailed": "Não foi possível baixar o arquivo"
+      "downloadFailed": "Não foi possível baixar o arquivo",
+      "messageInfo": "Dados da mensagem"
+    },
+    "messageInfo": {
+      "title": "Dados da mensagem",
+      "loading": "Carregando…",
+      "failed": "Não foi possível carregar os recibos.",
+      "retry": "Tentar de novo",
+      "none": "Nenhum recibo registrado para esta mensagem.",
+      "noneHint": "Os recibos de grupo passaram a ser registrados com a atualização da conexão do WhatsApp; mensagens anteriores não têm.",
+      "summary": "Recebida por {entregues} de {total} · lida por {lidas}",
+      "readBy": "Lida por",
+      "deliveredTo": "Entregue a",
+      "hiddenNumber": "Número oculto"
     },
     "replyQuote": {
       "photo": "[Foto]",

@@ -199,6 +199,11 @@ O CRM faz `POST` num endereço seu quando algo acontece aqui. Seis eventos:
 | `deal.stage_changed` | Um card muda de etapa — ou de funil |
 | `deal.status_changed` | Um card é marcado ganho ou perdido, ou é reaberto |
 
+**`message.status_updated` em grupo** (conexão por QR code): `delivered`
+quando TODOS os participantes de fora da sua conta receberam e `read` quando
+todos leram — o CRM conta o recibo de cada participante, como o WhatsApp. O
+erro de reenvio do grupo não vira `failed`.
+
 **`conversation.created` quer dizer "o cliente abriu a conversa".** Sai
 quando a primeira mensagem de um contato — no WhatsApp, ou a primeira DM no
 Instagram — cria a conversa dele (pela API oficial do WhatsApp, uma primeira

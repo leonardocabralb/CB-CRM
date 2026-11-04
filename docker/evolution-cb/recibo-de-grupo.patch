@@ -1,0 +1,108 @@
+diff --git a/src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts b/src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts
+index 00b2554..65edf63 100644
+--- a/src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts
++++ b/src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts
+@@ -95,6 +95,7 @@ import { useMultiFileAuthStateRedisDb } from '@utils/use-multi-file-auth-state-r
+ import axios from 'axios';
+ import makeWASocket, {
+   AnyMessageContent,
++  areJidsSameUser,
+   BinaryNode,
+   BufferedEventData,
+   BufferJSON,
+@@ -2014,7 +2015,15 @@ export class BaileysStartupService extends ChannelStartupService {
+             }
+           }
+ 
+-          this.sendDataWebhook(Events.MESSAGES_UPDATE, message);
++          // CB (recibo-de-grupo.patch): o código do erro (ex.: "479") vai ao webhook, numa CÓPIA. O
++          // `message` segue intacto para o messageUpdate.create abaixo: campo novo nele derruba a gravação.
++          const messageStubParameters = update.messageStubParameters;
++          this.sendDataWebhook(
++            Events.MESSAGES_UPDATE,
++            Array.isArray(messageStubParameters) && messageStubParameters.length > 0
++              ? { ...message, messageStubParameters }
++              : message,
++          );
+ 
+           if (this.configService.get<Database>('DATABASE').SAVE_DATA.MESSAGE_UPDATE) {
+             // eslint-disable-next-line @typescript-eslint/no-unused-vars
+@@ -2268,6 +2277,78 @@ export class BaileysStartupService extends ChannelStartupService {
+                   this.updateMessagesReadedByTimestamp(remoteJid, remotesJidMap[remoteJid]),
+                 ),
+               );
++
++              // CB (recibo-de-grupo.patch): o recibo de GRUPO (entrega e leitura, um por participante) só
++              // chega por este evento, e a Evolution não o repassava. Vai ao webhook como messages.update (o
++              // evento que o CRM já assina), SEM `status`: o CRM que não lê `reciboDoGrupo` ignora o aviso.
++              if (!settings?.groupsIgnore) {
++                for (const event of payload) {
++                  try {
++                    const { key, receipt } = event;
++                    const participant = receipt?.userJid;
++                    if (
++                      key?.fromMe !== true ||
++                      typeof key.remoteJid !== 'string' ||
++                      !key.remoteJid.endsWith('@g.us') ||
++                      typeof key.id !== 'string' ||
++                      typeof participant !== 'string' ||
++                      participant === ''
++                    ) {
++                      continue;
++                    }
++
++                    // O `sender` e o `read-self` dos NOSSOS aparelhos também chegam aqui, como leitura.
++                    const me = this.client.user;
++                    if (
++                      (me?.id && areJidsSameUser(participant, me.id)) ||
++                      (me?.lid && areJidsSameUser(participant, me.lid))
++                    ) {
++                      continue;
++                    }
++
++                    let reciboDoGrupo: 'READ' | 'DELIVERY_ACK';
++                    let instante: number;
++                    if (typeof receipt.readTimestamp === 'number' && Number.isFinite(receipt.readTimestamp)) {
++                      reciboDoGrupo = 'READ';
++                      instante = receipt.readTimestamp;
++                    } else if (
++                      typeof receipt.receiptTimestamp === 'number' &&
++                      Number.isFinite(receipt.receiptTimestamp)
++                    ) {
++                      reciboDoGrupo = 'DELIVERY_ACK';
++                      instante = receipt.receiptTimestamp;
++                    } else {
++                      continue;
++                    }
++
++                    // O telefone do participante em LID, quando a Evolution conhece o par; senão, nada.
++                    let participantAlt: string | undefined;
++                    if (participant.endsWith('@lid')) {
++                      try {
++                        const pn = await this.client.signalRepository?.lidMapping?.getPNForLID(participant);
++                        participantAlt = (pn && jidNormalizedUser(pn)) || undefined;
++                      } catch {
++                        participantAlt = undefined;
++                      }
++                    }
++
++                    this.sendDataWebhook(Events.MESSAGES_UPDATE, {
++                      keyId: key.id,
++                      remoteJid: key.remoteJid,
++                      fromMe: true,
++                      participant,
++                      participantAlt,
++                      reciboDoGrupo,
++                      instante,
++                      instanceId: this.instanceId,
++                    });
++                  } catch (error) {
++                    this.logger.warn(
++                      `CB recibo-de-grupo: aviso não repassado (${event?.key?.id}): ${error?.message ?? error}`,
++                    );
++                  }
++                }
++              }
+             }
+ 
+             if (events['presence.update']) {

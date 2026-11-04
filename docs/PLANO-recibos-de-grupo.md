@@ -52,7 +52,7 @@ chegado (ele conferiu no WhatsApp).
 | Fase | O quê | Estado |
 |---|---|---|
 | 1 | O ERROR de grupo não vira "não entregue" | Implementada na branch `fix/erro-de-grupo-nao-e-falha` (04/11/2026); falta PR, CI e merge |
-| 2 | ✓✓ e azul em grupo, e "Dados da mensagem" (quem recebeu e quem leu) | Planejada; decisões D1–D5 pendentes |
+| 2 | ✓✓ e azul em grupo, e "Dados da mensagem" (quem recebeu e quem leu) | Decidida (D1–D3 e D5, 04/11/2026) e implementada na branch `feat/recibos-de-grupo`, que já traz a Fase 1; falta: PR, CI, aplicar a 1119 (antes do deploy), merge, a imagem nova, a troca na VPS e a prova num grupo de teste. D4 pendente |
 
 ## Fase 1 — o ERROR de grupo não vira falha
 
@@ -149,23 +149,67 @@ leram, e "Dados da mensagem" diz quem recebeu e quem leu, com hora.
 - **Nosso outro número contado como de fora** (sem `own_lid` e sem o par do
   LID) anteciparia o ✓✓. A cobertura é o `participantAlt`; medir no grupo de
   teste antes de ligar.
-- **Volume:** até 2 avisos por participante por mensagem. Os grupos do
-  escritório têm de 3 a 6 pessoas; um grupo de 200 seriam 400 avisos por
-  mensagem (D5).
+- **Volume:** um aviso por recibo, sem juntar — a entrega e a leitura de cada
+  participante, mais uma quando ele ouve uma mensagem de voz (o `played` também
+  chega como leitura). Se o WhatsApp manda um recibo por APARELHO do
+  participante, não foi medido (o CRM conta a pessoa uma vez de qualquer
+  jeito). Os grupos do escritório têm de 3 a 6 pessoas; um grupo de 200 seriam
+  centenas de avisos por mensagem (D5).
 - **Versões cruzadas:** o CRM de antes do PR ignora o aviso novo (sem
   `status`); a imagem de antes do patch não manda nada (como hoje). O
   rollback da imagem devolve o comportamento da Fase 1.
+- **No patch, o repasse vem DEPOIS do que a Evolution já fazia no evento:** se
+  aquele UPDATE dela lançar, os avisos de grupo do lote se perdem junto com o
+  resto do lote, como já acontecia com os outros eventos.
 
-### Decisões pendentes do operador
+### Decisões do operador (04/11/2026, "Sim, como recomendado")
 
-- **D1. Semântica.** Recomendado: ✓✓ e azul quando TODOS de fora, como o
-  WhatsApp, com o limite do denominador. Alternativa mais simples: "alguém de
-  fora recebeu/leu" — mas o azul pode ser de um colega, não do cliente.
-- **D2. "Dados da mensagem".** Recomendado: só quem recebeu e quem leu, do
-  banco. Alternativa: também "ainda não recebeu", lendo o grupo ao vivo.
-- **D3. Integradores.** Recomendado: o `message.status_updated` passa a sair
-  para mensagem de grupo, documentado.
-- **D4. As 10 vermelhas antigas.** Voltar para `sent`: escrita em produção,
-  só com o "pode gravar".
-- **D5. Grupo grande.** Recomendado: sem teto agora; registrar o volume para
-  quem instala.
+- **D1. Semântica — DECIDIDA:** ✓✓ e azul quando TODOS de fora, como o
+  WhatsApp, com o limite do denominador. (A alternativa "alguém de fora"
+  ficou de fora: o azul poderia ser de um colega, não do cliente.)
+- **D2. "Dados da mensagem" — DECIDIDA:** só quem recebeu e quem leu, do
+  banco, sem ler o grupo ao vivo.
+- **D3. Integradores — DECIDIDA:** o `message.status_updated` passa a sair
+  para mensagem de grupo, documentado (`docs/webhooks.md`,
+  `docs/public-api.md`).
+- **D4. As 10 vermelhas antigas — PENDENTE:** voltar para `sent` é escrita em
+  produção, só com o "pode gravar".
+- **D5. Grupo grande — DECIDIDA:** sem teto agora; o volume está registrado
+  no README da imagem e no guia de instalação (um aviso por recibo).
+
+## Fase 2 — o que foi feito (04/11/2026)
+
+- **Migration `1119_cb_recibos_do_grupo.sql`:** `cb_groups.participantes_de_fora`
+  (CHECK ≥ 0), `cb_recibos_do_grupo` (PK conta + mensagem + participante; FK
+  composta e CASCADE para `cb_groups`; leitura na forma da 1032; escrita só do
+  servidor) e `cb_registrar_recibo_do_grupo` (grava só avançando por `LEAST`,
+  trava por mensagem com `pg_advisory_xact_lock`, devolve a contagem e o
+  denominador). Pino `recibos-do-grupo-1119.test.ts`.
+- **CRM:** `src/lib/cb-groups/recibos-do-grupo.ts` (ler o aviso, número da
+  conta, status agregado, gravar); a rota da Evolution ganha o caminho do
+  recibo de grupo e o código no ERROR de grupo (`ehErroDeGrupo`), e o trecho
+  da escada + espera da linha + aviso ao integrador virou
+  `aplicarStatusDoRecibo`, usado pelos dois caminhos; a conferência das
+  fichas grava `participantes_de_fora` (detalhe e painel).
+- **Tela:** "Dados da mensagem" na barra de ações
+  (`dados-da-mensagem-do-grupo.tsx`) e a rota `GET /api/cb/groups/[id]/recibos`.
+- **Imagem:** o 5º patch (`docker/evolution-cb/recibo-de-grupo.patch`), o
+  workflow e o README da pasta, o guia de instalação e o compose.
+- **Medido antes do PR:** replay completo num Postgres 16 descartável (243
+  migrations até a 1119, `verify-schema.sql` OK); a 1119 reaplicada com dado
+  fictício (a prova do bloco DO roda e se desfaz); corrida de duas sessões na
+  MESMA mensagem: a segunda esperou ~1,5 s pela trava e contou 2; mensagens
+  diferentes não esperam uma pela outra; só o `service_role` executa; pela
+  RLS, o membro da conta vê os recibos e o de outra conta não. Testes da
+  rota (o recibo antes da linha, o número da conta, o denominador nulo, a
+  função ausente, o código 479 × outro); a exclusão do número da conta
+  reprova o teste quando desligada.
+- **Medido no patch (fonte do upstream, fora da VPS):** os 4 patches de fonte
+  aplicam limpos na ordem num checkout novo do `e273b904`; as 6 travas novas
+  do workflow passam com o patch e reprovam sem ele; `tsc --noEmit` com 0
+  erros com e sem o patch (saída idêntica) e o `npm run build` passa nos dois;
+  numa bancada com o código real do serviço e dublês (JIDs fictícios), 14
+  recibos viraram os 4 avisos esperados (o nosso número, 1:1,
+  `status@broadcast`, `fromMe` falso e carimbo inválido ficam de fora; com
+  `groupsIgnore`, nenhum), e o `479` vai ao webhook e nunca ao Prisma. Não
+  rodado: o build Docker (a máquina não tem Docker; roda no workflow).
