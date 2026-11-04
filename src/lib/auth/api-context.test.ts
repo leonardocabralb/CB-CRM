@@ -14,9 +14,13 @@ vi.mock("@/lib/api/v1/cliente-da-api", () => ({
 // Mock the store so we control which row a hash resolves to.
 const findActiveKeyByHash = vi.fn<(hash: string) => Promise<ApiKeyRow | null>>();
 const touchLastUsed = vi.fn();
+const funcionarioAtivoNaConta =
+  vi.fn<(userId: string, accountId: string) => Promise<boolean>>();
 vi.mock("@/lib/api-keys/store", () => ({
   findActiveKeyByHash: (hash: string) => findActiveKeyByHash(hash),
   touchLastUsed: (id: string) => touchLastUsed(id),
+  funcionarioAtivoNaConta: (userId: string, accountId: string) =>
+    funcionarioAtivoNaConta(userId, accountId),
 }));
 
 // Import AFTER the mocks are registered.
@@ -39,6 +43,8 @@ function row(overrides: Partial<ApiKeyRow> = {}): ApiKeyRow {
     scopes: ["messages:send"],
     expires_at: null,
     revoked_at: null,
+    membro_user_id: null,
+    funis: null,
     ...overrides,
   };
 }
@@ -47,6 +53,7 @@ beforeEach(() => {
   __resetRateLimitForTests();
   findActiveKeyByHash.mockReset();
   touchLastUsed.mockReset();
+  funcionarioAtivoNaConta.mockReset();
 });
 
 afterEach(() => {
@@ -142,6 +149,69 @@ describe("requireApiKey", () => {
       requireApiKey(reqWith(`Bearer ${KEY}`)),
       "rate_limited",
       429,
+    );
+  });
+});
+
+// NOSSO (1120): a chave do FUNCIONÁRIO e o recorte por funil.
+describe("requireApiKey — chave do funcionário (1120)", () => {
+  it("a chave da CONTA (sem funcionário) não consulta o perfil: nada muda para o n8n", async () => {
+    findActiveKeyByHash.mockResolvedValue(row());
+    const ctx = await requireApiKey(reqWith(`Bearer ${KEY}`));
+    expect(funcionarioAtivoNaConta).not.toHaveBeenCalled();
+    expect(ctx.membroUserId).toBeNull();
+    expect(ctx.funis).toBeNull();
+  });
+
+  it("funcionário ativo na conta da chave: passa, com o id dele no contexto", async () => {
+    findActiveKeyByHash.mockResolvedValue(row({ membro_user_id: "func-1" }));
+    funcionarioAtivoNaConta.mockResolvedValue(true);
+    const ctx = await requireApiKey(reqWith(`Bearer ${KEY}`));
+    // Conferido NA CONTA DA CHAVE (a remoção move o perfil para outra conta).
+    expect(funcionarioAtivoNaConta).toHaveBeenCalledWith("func-1", "acct-1");
+    expect(ctx.membroUserId).toBe("func-1");
+  });
+
+  it("funcionário suspenso ou fora da conta: 401, como uma chave revogada", async () => {
+    findActiveKeyByHash.mockResolvedValue(row({ membro_user_id: "func-1" }));
+    funcionarioAtivoNaConta.mockResolvedValue(false);
+    await expectApiError(requireApiKey(reqWith(`Bearer ${KEY}`)), "unauthorized", 401);
+    expect(touchLastUsed).not.toHaveBeenCalled();
+  });
+
+  it("a leitura do perfil que FALHA é 500, nunca 401 nem chave aberta", async () => {
+    findActiveKeyByHash.mockResolvedValue(row({ membro_user_id: "func-1" }));
+    funcionarioAtivoNaConta.mockRejectedValue(new Error("API key member lookup failed"));
+    await expectApiError(requireApiKey(reqWith(`Bearer ${KEY}`)), "internal", 500);
+  });
+
+  it("chave recortada por funil numa rota que NÃO declara o recorte: 403 restricted_key", async () => {
+    findActiveKeyByHash.mockResolvedValue(
+      row({ funis: ["pipe-1"], scopes: ["contacts:read", "contacts:write"] }),
+    );
+    // Mesmo com o escopo: a rota que não sabe recortar leria a conta inteira.
+    await expectApiError(
+      requireApiKey(reqWith(`Bearer ${KEY}`), "contacts:write"),
+      "restricted_key",
+      403,
+    );
+    expect(touchLastUsed).not.toHaveBeenCalled();
+  });
+
+  it("chave recortada numa rota que declara o recorte: passa, com os funis no contexto", async () => {
+    findActiveKeyByHash.mockResolvedValue(row({ funis: ["pipe-1"], scopes: ["contacts:read"] }));
+    const ctx = await requireApiKey(reqWith(`Bearer ${KEY}`), "contacts:read", {
+      aceitaRecorte: true,
+    });
+    expect(ctx.funis).toEqual(["pipe-1"]);
+  });
+
+  it("lista de funis VAZIA FECHA (403), nunca vira a conta inteira", async () => {
+    findActiveKeyByHash.mockResolvedValue(row({ funis: [] }));
+    await expectApiError(
+      requireApiKey(reqWith(`Bearer ${KEY}`), undefined, { aceitaRecorte: true }),
+      "restricted_key",
+      403,
     );
   });
 });

@@ -242,6 +242,9 @@ BEGIN
          'cb_celulares_dos_membros', 'cb_conversa_aberta',
          'cb_conversation_favorites', 'cb_inbox_filtro_padrao',
          'cb_inbox_saved_filters', 'cb_ordem_dos_blocos',
+         -- a chave do funcionário (1120): apagado o login, a chave vai junto
+         -- (SET NULL a abriria para a conta inteira)
+         'api_keys',
          -- dono durável: sempre `accounts.owner_user_id` (RESTRICT)
          'contacts', 'conversations', 'custom_fields'
        );

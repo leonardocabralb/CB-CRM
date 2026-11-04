@@ -19,11 +19,20 @@ import { ok, toApiErrorResponse } from '@/lib/api/v1/respond';
 
 export async function GET(request: Request) {
   try {
-    const ctx = await requireApiKey(request);
+    // NOSSO (1120): a chave recortada também se identifica aqui — é por esta
+    // resposta que quem integra descobre o recorte dela.
+    const ctx = await requireApiKey(request, undefined, { aceitaRecorte: true });
     const name = await getAccountName(ctx.accountId);
     return ok({
       account: { id: ctx.accountId, name },
-      key: { id: ctx.keyId, scopes: ctx.scopes },
+      key: {
+        id: ctx.keyId,
+        scopes: ctx.scopes,
+        // NOSSO (1120): campos NOVOS, sem tirar nenhum. `member_user_id` nulo
+        // = chave da conta; `pipeline_ids` nulo = vê todos os funis.
+        member_user_id: ctx.membroUserId,
+        pipeline_ids: ctx.funis,
+      },
     });
   } catch (err) {
     return toApiErrorResponse(err);

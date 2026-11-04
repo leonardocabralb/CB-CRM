@@ -1,0 +1,89 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  OPCOES_DE_VALIDADE_DIAS,
+  VALIDADE_MAXIMA_DIAS,
+  escritaNaChaveRecortada,
+  lerFunis,
+  lerMembro,
+  lerValidade,
+} from './configuracao';
+import { API_SCOPES, ehEscopoDeLeitura } from './scopes';
+
+const AGORA = Date.parse('2026-11-04T12:00:00Z');
+const UUID_A = '11111111-1111-4111-8111-111111111111';
+const UUID_B = '22222222-2222-4222-8222-222222222222';
+
+describe('lerValidade', () => {
+  it('ausente = não mexer; null = sem validade', () => {
+    expect(lerValidade(undefined, AGORA)).toEqual({ ok: true, valor: undefined });
+    expect(lerValidade(null, AGORA)).toEqual({ ok: true, valor: null });
+  });
+
+  it('N dias a partir de AGORA, com teto de 1 ano', () => {
+    expect(lerValidade(90, AGORA)).toEqual({ ok: true, valor: '2027-02-02T12:00:00.000Z' });
+    const teto = lerValidade(10_000, AGORA);
+    expect(teto.ok && teto.valor).toBe(
+      new Date(AGORA + VALIDADE_MAXIMA_DIAS * 86_400_000).toISOString()
+    );
+  });
+
+  it('recusa número inválido em vez de criar chave sem prazo em silêncio', () => {
+    for (const ruim of [0, -5, '90', Number.NaN, Infinity]) {
+      expect(lerValidade(ruim, AGORA).ok).toBe(false);
+    }
+  });
+
+  it('o padrão do formulário é 90 dias (decisão do operador)', () => {
+    expect(OPCOES_DE_VALIDADE_DIAS[0]).toBe(90);
+  });
+});
+
+describe('lerMembro', () => {
+  it('UUID, null ou ausente', () => {
+    expect(lerMembro(UUID_A)).toEqual({ ok: true, valor: UUID_A });
+    expect(lerMembro(null)).toEqual({ ok: true, valor: null });
+    expect(lerMembro(undefined)).toEqual({ ok: true, valor: undefined });
+    expect(lerMembro('ana').ok).toBe(false);
+  });
+});
+
+describe('lerFunis', () => {
+  it('lista de UUIDs sem repetição; null = todos', () => {
+    expect(lerFunis([UUID_A, UUID_B, UUID_A.toUpperCase()])).toEqual({
+      ok: true,
+      valor: [UUID_A, UUID_B],
+    });
+    expect(lerFunis(null)).toEqual({ ok: true, valor: null });
+  });
+
+  it('⚠️ lista VAZIA é recusada: nunca vira "todos" por um clique errado', () => {
+    expect(lerFunis([]).ok).toBe(false);
+  });
+
+  it('recusa item que não é UUID e o que não é lista', () => {
+    expect(lerFunis([UUID_A, 'Trabalhista']).ok).toBe(false);
+    expect(lerFunis(UUID_A).ok).toBe(false);
+  });
+});
+
+describe('escritaNaChaveRecortada', () => {
+  it('chave recortada só lê: aponta o primeiro escopo de escrita', () => {
+    expect(escritaNaChaveRecortada([UUID_A], ['contacts:read', 'messages:send'])).toBe(
+      'messages:send'
+    );
+    expect(escritaNaChaveRecortada([UUID_A], ['contacts:read', 'messages:read'])).toBeNull();
+  });
+
+  it('sem recorte, escrita é permitida (a chave da conta de sempre)', () => {
+    expect(escritaNaChaveRecortada(null, ['messages:send', 'contacts:write'])).toBeNull();
+  });
+
+  it('todo escopo é de leitura OU de escrita pelo sufixo (sem terceiro caso)', () => {
+    const leitura = API_SCOPES.filter(ehEscopoDeLeitura);
+    expect(leitura.length).toBeGreaterThan(5);
+    for (const s of API_SCOPES) {
+      if (!ehEscopoDeLeitura(s)) expect(s.endsWith(':read'), s).toBe(false);
+    }
+  });
+});

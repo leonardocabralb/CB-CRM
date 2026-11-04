@@ -48,6 +48,7 @@ import {
   lerTagsDoCorpo,
   TagReferenceError,
 } from '@/lib/api/v1/tags-do-contato';
+import { funisDaChave } from '@/lib/api/v1/recorte-por-funil';
 import { fichasPeloTelefoneAntigo } from '@/lib/contacts/contatos-antigos';
 import { pareceIdDeEtiqueta } from '@/lib/contacts/id-de-etiqueta';
 import { ramoContem } from '@/lib/postgrest/literal';
@@ -65,7 +66,7 @@ function lerBusca(raw: string): string {
 
 export async function GET(request: Request) {
   try {
-    const ctx = await requireApiKey(request, 'contacts:read');
+    const ctx = await requireApiKey(request, 'contacts:read', { aceitaRecorte: true });
     const { limit, cursor } = parseListParams(request);
     const url = new URL(request.url);
     const search = lerBusca(url.searchParams.get('search') ?? '');
@@ -88,9 +89,15 @@ export async function GET(request: Request) {
     // contact's FULL tag set for serialization. This filters in one
     // bounded query (paged by limit+1) instead of pre-fetching an
     // unbounded id list into an `.in(...)`.
-    const selectClause = tag
-      ? `${CONTACT_SELECT}, tag_filter:contact_tags!inner(tag_id)`
-      : CONTACT_SELECT;
+    //
+    // NOSSO (1120): a chave recortada por funil usa a MESMA forma para o
+    // recorte — um INNER join apelidado em `deals`, só para o WHERE (o pai
+    // fica se ALGUM card dele está num funil da chave; o PostgREST não
+    // repete o pai por card). Sem recorte, a consulta é a de sempre.
+    const funis = funisDaChave(ctx);
+    let selectClause = CONTACT_SELECT;
+    if (tag) selectClause += ', tag_filter:contact_tags!inner(tag_id)';
+    if (funis) selectClause += ', funil_filter:deals!inner(pipeline_id)';
 
     let query = ctx.supabase
       .from('contacts')
@@ -118,6 +125,9 @@ export async function GET(request: Request) {
 
     if (tag) {
       query = query.eq('tag_filter.tag_id', tag);
+    }
+    if (funis) {
+      query = query.in('funil_filter.pipeline_id', funis);
     }
 
     query = query

@@ -64,6 +64,40 @@ Vale ao mexer nas rotas `/api/v1`, nas chaves e escopos, na doc pública (`docs/
 - ⚠️ **O que a doc pública promete, a rota cumpre:** `POST /api/v1/broadcasts` leva o `channel_id` do corpo até `createBroadcast` (a rota do upstream o descarta; com dois números oficiais a campanha sairia por um escolhido ao acaso). Canal inválido = 400 `meta_channel_required`, nada enviado. Pino: `src/app/api/v1/broadcasts/route.test.ts`.
 - ⚠️ **`src/lib/rate-limit.ts` é um `Map` em memória POR PROCESSO.** No deploy `start-first` há dois processos vivos: o limite não serializa nada. Idempotência de verdade (não pagar duas vezes, não enviar duas vezes) mora no banco, por cadeado.
 
+### Chave do FUNCIONÁRIO, recortada por funil (1120)
+
+`api_keys.membro_user_id`/`funis`, `src/lib/api-keys/configuracao.ts`
+(gestão), `src/lib/api/v1/recorte-por-funil.ts` (a régua), o `PATCH
+/api/account/api-keys/[id]` (editar) e o diálogo de `api-keys-settings.tsx`.
+Decisões do operador (04/11/2026): `docs/PLANO-chave-por-funcionario.md`.
+
+- ⚠️⚠️ **A chave do funcionário vale enquanto ele está na conta e ATIVO**:
+  `requireApiKey` lê o perfil (`funcionarioAtivoNaConta`: mesma `account_id`
+  da CHAVE e `suspenso_em` nulo) a cada chamada. A API roda em service role,
+  então o corte de `is_account_member` (1067) não a alcança sozinho. Fora =
+  401 (como revogada); leitura que falha = 500. A FK é CASCADE de propósito:
+  com SET NULL, apagar o login viraria a chave da conta inteira.
+- ⚠️⚠️ **Recorte DEFAULT-DENY**: chave com `funis` só passa em rota que
+  declara `requireApiKey(…, { aceitaRecorte: true })`; o resto é 403
+  `restricted_key`. Lista vazia FECHA (403), nunca abre (o CHECK da 1120 a
+  recusa). Rota que declara recorta TODA leitura: o cliente tem card num funil
+  da chave (`contatoNoRecorte`), o card/funil é da lista (`funilNoRecorte`,
+  `funisDaChave`). Fora = o MESMO 404/lista vazia de quem não existe, nunca
+  403. Listas que só recortam pelo cliente (`/conversations`, `/notes`,
+  `/tasks`) EXIGEM `contact_id` (`exigirFiltroDoCliente`); `/contacts` usa
+  `funil_filter:deals!inner(pipeline_id)` (a forma do `tag_filter`). Pino
+  `src/app/api/v1/recorte-por-funil.chamadores.test.ts`: o manifesto de quem
+  aceita, só GET, e a régua chamada.
+- ⚠️ **A recortada é SÓ LEITURA** (`escritaNaChaveRecortada`, no POST e no
+  resultado do PATCH; escopo `:read` = `ehEscopoDeLeitura`). Liberar escrita
+  exigiria recortar cada escrita: decisão nova do operador.
+- **Sem recorte nem funcionário, nada muda**: `contatoNoRecorte` responde sem
+  consultar, e a conferência do perfil só roda na chave do funcionário — as
+  integrações (n8n, Make, iMotion) seguem iguais.
+- **A edição mexe só no que veio** (o diálogo manda só o que mudou: reenviar o
+  funcionário suspenso de hoje faria a edição inteira falhar) e vale na
+  PRÓXIMA chamada.
+
 ### Tag ADITIVA na API v1: `POST /api/v1/contacts/{id}/tags`
 
 `src/lib/api/v1/tags-do-contato.ts` (parse puro) e `src/lib/api/v1/contacts.ts`.

@@ -34,6 +34,8 @@ export const API_SCOPES = [
   'notes:write',
   'custom_fields:read',
   'custom_fields:write',
+  // NOSSO (1120): o histórico de automações de um cliente (leitura).
+  'automations:read',
 ] as const;
 
 export type ApiScope = (typeof API_SCOPES)[number];
@@ -69,7 +71,17 @@ export const SCOPE_DESCRIPTIONS: Record<ApiScope, string> = {
   'notes:write': 'Create internal conversation notes',
   'custom_fields:read': 'Read contact custom field values (by field key)',
   'custom_fields:write': 'Write contact custom field values (by field key)',
+  'automations:read': "Read a contact's automation run history",
 };
+
+/**
+ * NOSSO (1120): é escopo de LEITURA? A chave recortada por funil só aceita
+ * estes (formulário e rota de criação recusam o resto). A régua é o sufixo:
+ * todo escopo de leitura termina em `:read`, e os de escrita não.
+ */
+export function ehEscopoDeLeitura(scope: ApiScope): boolean {
+  return scope.endsWith(':read');
+}
 
 /** Type-narrow an unknown value into a valid `ApiScope`. */
 export function isApiScope(value: unknown): value is ApiScope {

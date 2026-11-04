@@ -24,6 +24,15 @@ import {
   requireRole,
   toErrorResponse,
 } from '@/lib/auth/account';
+import {
+  COLUNAS_DA_CHAVE,
+  escritaNaChaveRecortada,
+  funisSaoDaConta,
+  lerFunis,
+  lerMembro,
+  lerValidade,
+  membroAtivoDaConta,
+} from '@/lib/api-keys/configuracao';
 import { generateApiKey } from '@/lib/api-keys/keys';
 import { normalizeScopes } from '@/lib/api-keys/scopes';
 import {
@@ -33,14 +42,11 @@ import {
 } from '@/lib/rate-limit';
 
 const MAX_NAME_LEN = 80;
-// Hard ceiling on caller-supplied expiry (1 year), mirroring the
-// invite-link clamp. NULL/absent = never expires.
-const MAX_EXPIRY_DAYS = 365;
 
 // Columns safe to expose. `key_hash` is deliberately excluded — it
-// never leaves the server.
-const SAFE_COLUMNS =
-  'id, name, key_prefix, scopes, last_used_at, expires_at, revoked_at, created_at';
+// never leaves the server. NOSSO (1120): a lista mora em `configuracao.ts`
+// (a rota de edição devolve a mesma), com o funcionário dono e os funis.
+const SAFE_COLUMNS = COLUNAS_DA_CHAVE;
 
 export async function GET() {
   try {
@@ -82,6 +88,8 @@ export async function POST(request: Request) {
       name?: unknown;
       scopes?: unknown;
       expiresInDays?: unknown;
+      membroUserId?: unknown;
+      funis?: unknown;
     } | null;
 
     const rawName = typeof body?.name === 'string' ? body.name.trim() : '';
@@ -108,17 +116,45 @@ export async function POST(request: Request) {
       );
     }
 
-    let expiresAt: string | null = null;
-    const rawExpiry = body?.expiresInDays;
-    if (
-      typeof rawExpiry === 'number' &&
-      Number.isFinite(rawExpiry) &&
-      rawExpiry > 0
-    ) {
-      const days = Math.min(Math.floor(rawExpiry), MAX_EXPIRY_DAYS);
-      expiresAt = new Date(
-        Date.now() + days * 24 * 60 * 60 * 1000
-      ).toISOString();
+    // NOSSO (1120): validade, funcionário e funis pela régua de
+    // `configuracao.ts`. Ausente = como antes (sem validade, chave da conta,
+    // todos os funis).
+    const validade = lerValidade(body?.expiresInDays, Date.now());
+    const membro = lerMembro(body?.membroUserId);
+    const funis = lerFunis(body?.funis);
+    for (const lido of [validade, membro, funis]) {
+      if (!lido.ok) return NextResponse.json({ error: lido.erro }, { status: 400 });
+    }
+    const expiresAt = (validade.ok && validade.valor) || null;
+    const membroUserId = (membro.ok && membro.valor) || null;
+    const funisDaChave = (funis.ok && funis.valor) || null;
+
+    // A chave recortada por funil é SÓ DE LEITURA (decisão do operador).
+    const escrita = escritaNaChaveRecortada(funisDaChave, scopes);
+    if (escrita) {
+      return NextResponse.json(
+        { error: `A key limited to pipelines is read-only: remove '${escrita}'` },
+        { status: 400 }
+      );
+    }
+
+    try {
+      if (funisDaChave && !(await funisSaoDaConta(ctx.supabase, ctx.accountId, funisDaChave))) {
+        return NextResponse.json(
+          { error: "'funis' must be pipelines of this account" },
+          { status: 400 }
+        );
+      }
+      if (membroUserId && !(await membroAtivoDaConta(ctx.supabase, ctx.accountId, membroUserId))) {
+        return NextResponse.json(
+          { error: "'membroUserId' must be an active member of this account" },
+          { status: 400 }
+        );
+      }
+    } catch (err) {
+      // Leitura que falhou não é "inválido" (CLAUDE.md, 8b).
+      console.error('[POST /api/account/api-keys] lookup error:', err);
+      return NextResponse.json({ error: 'Failed to create API key' }, { status: 500 });
     }
 
     const { plaintext, hash, prefix } = generateApiKey();
@@ -133,6 +169,8 @@ export async function POST(request: Request) {
         key_hash: hash,
         scopes,
         expires_at: expiresAt,
+        membro_user_id: membroUserId,
+        funis: funisDaChave,
       })
       .select(SAFE_COLUMNS)
       .single();

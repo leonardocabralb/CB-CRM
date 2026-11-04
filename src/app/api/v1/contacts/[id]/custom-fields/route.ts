@@ -36,6 +36,7 @@ import {
   serializeCustomFields,
 } from '@/lib/api/v1/custom-fields';
 import { idAtualDaFicha } from '@/lib/api/v1/contacts';
+import { contatoNoRecorte } from '@/lib/api/v1/recorte-por-funil';
 import { salvarValoresDoContato } from '@/lib/contacts/custom-values';
 import { ehUuid } from '@/lib/tasks/validar';
 import type { CustomField } from '@/types';
@@ -96,12 +97,17 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const ctx = await requireApiKey(request, 'custom_fields:read');
+    const ctx = await requireApiKey(request, 'custom_fields:read', { aceitaRecorte: true });
     const { id } = await params;
     if (!ehUuid(id)) throw badRequest("'id' must be a UUID");
 
     const dados = await carregar(ctx.supabase, ctx.accountId, id);
     if (!dados) return fail('not_found', 'Contact not found', 404);
+    // NOSSO (1120): fora do recorte por funil, o mesmo 404 de quem não existe
+    // (pela ficha que FICOU, como a leitura acima).
+    if (!(await contatoNoRecorte(ctx, dados.contactId))) {
+      return fail('not_found', 'Contact not found', 404);
+    }
 
     return ok({
       contact_id: dados.contactId,

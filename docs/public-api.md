@@ -26,15 +26,62 @@ In the dashboard: **Settings → API → Keys → New API key**. Only
 **admins and owners** can create keys.
 
 1. Give the key a name (after the integration that will use it).
-2. Grant the **scopes** it needs — nothing more (see below).
-3. Copy the key. **The full key is shown exactly once.** wacrm
+2. Choose its **validity**: 90 days by default, or 30, 180, 365 days, or no
+   expiry. An expired key answers `401`, like a revoked one.
+3. Optionally, pick the **team member** the key belongs to and the
+   **pipelines** it can see (see [below](#keys-for-a-team-member-limited-to-pipelines)).
+   Leave both empty for an account key (an integration such as n8n or Make).
+4. Grant the **scopes** it needs — nothing more (see below). **Read-only**
+   checks every `:read` scope at once.
+5. Copy the key. **The full key is shown exactly once.** wacrm
    stores only a SHA-256 hash, so it can never be shown again. If you
    lose it, revoke it and create a new one.
+
+### Editing a key
+
+**Settings → API → Keys → Edit** changes the name, the scopes, the validity
+(a new period counts from today), the team member and the pipelines of a key
+without issuing a new one: whoever already uses it keeps the same key. The
+change applies on the key's next request — removing a pipeline cuts that
+access at once. A revoked key can't be edited.
 
 ### Revoking a key
 
 **Settings → API → Keys → Revoke.** Revocation is effective on the
 key's next request. Revoked keys stay in the list as an audit trail.
+
+### Keys for a team member, limited to pipelines
+
+A key can **belong to a team member** — for someone on the team who uses an
+AI assistant (Claude, for instance) to read a client's conversation and
+documents. Such a key works only while that person is on the team: the
+moment they are **suspended** or **removed**, every request with it answers
+`401`, as if it were revoked (deleting their login deletes the key). An
+account key (no team member) keeps working as before, whoever created it.
+
+A key can also be **limited to pipelines**. It then sees **only the clients
+that have a card in one of those pipelines** — and, of those clients,
+everything the scopes allow: the contact, the conversation and its messages
+and files, notes, tasks, custom fields, deals and the automation history.
+When a client's card moves to a pipeline outside the list, the key loses that
+client at once; a client with no card at all is not visible.
+
+- **Read-only.** A key limited to pipelines accepts only `:read` scopes.
+- **Only these endpoints** accept it: `GET /me`, `GET /contacts`,
+  `GET /contacts/{id}`, `GET /contacts/{id}/custom-fields`,
+  `GET /contacts/{id}/automation-runs`, `GET /conversations`,
+  `GET /conversations/{id}`, `GET /conversations/{id}/messages`,
+  `GET /notes`, `GET /tasks`, `GET /tasks/{id}`, `GET /deals`,
+  `GET /deals/{id}` and `GET /pipelines`. Any other endpoint answers
+  `403 restricted_key`.
+- **A client outside the pipelines is "not found"**: `404` on the `{id}`
+  endpoints, an empty list on the lists — the same answer as for something
+  that does not exist.
+- `GET /conversations`, `GET /notes` and `GET /tasks` **require
+  `contact_id`** with such a key (`400` without it). `GET /contacts`,
+  `GET /deals` and `GET /pipelines` list only what is inside the pipelines.
+- `GET /me` returns the team member (`member_user_id`) and the pipelines
+  (`pipeline_ids`) of the key.
 
 ## Scopes
 
@@ -63,6 +110,7 @@ it. Grant the minimum.
 | `notes:write`        | Create internal conversation notes       |
 | `custom_fields:read` | Read contact custom field values         |
 | `custom_fields:write`| Write contact custom field values        |
+| `automations:read`   | Read a contact's automation run history  |
 
 A key with **no scopes** still authenticates and can call
 `GET /api/v1/me` — useful for verifying a key works.
@@ -86,6 +134,7 @@ may be reworded.
 | ------ | -------------- | ------------------------------------------------ |
 | 401    | `unauthorized` | Missing / malformed / unknown / revoked / expired key |
 | 403    | `forbidden`    | Valid key, but missing the required scope        |
+| 403    | `restricted_key` | A key [limited to pipelines](#keys-for-a-team-member-limited-to-pipelines) on an endpoint that does not accept it |
 | 429    | `rate_limited` | Per-key rate limit exceeded                      |
 | 400    | `bad_request`  | Malformed input                                  |
 | 400    | `unknown_tag_ids` | A tag id (UUID) that is not a tag of this account — see [tags](#post-apiv1contactsidtags) |
@@ -171,10 +220,19 @@ curl https://your-crm.example.com/api/v1/me \
 {
   "data": {
     "account": { "id": "…", "name": "Acme Inc" },
-    "key": { "id": "…", "scopes": ["messages:send"] }
+    "key": {
+      "id": "…",
+      "scopes": ["messages:send"],
+      "member_user_id": null,
+      "pipeline_ids": null
+    }
   }
 }
 ```
+
+`member_user_id` is the team member the key belongs to (`null` = an account
+key); `pipeline_ids` are the pipelines it can see (`null` = all of them). See
+[keys for a team member](#keys-for-a-team-member-limited-to-pipelines).
 
 ### `POST /api/v1/messages`
 
@@ -699,6 +757,44 @@ current values in the response of its own writes).
 > Until 26/09/2026 `""` and `null` in `values` cleared the value. They no
 > longer do: clearing is `clear`, and only `clear`.
 
+### `GET /api/v1/contacts/{id}/automation-runs`
+
+A contact's automation history, newest first: one item per time an
+automation ran for this contact. Scope: `automations:read`. Paginated. The id
+of a contact merged into another one reads the contact that stayed, as on
+`GET /contacts/{id}`.
+
+```jsonc
+{
+  "id": "…",
+  "automation_id": "…",
+  "automation_name": "No-show follow-up",
+  "trigger_event": "deal_stage_changed", // what started it; "manual" when someone ran it from the conversation
+  "outcome": "completed",               // completed | blocked | failed | interrupted | null
+  "interrupted_by": null,               // resposta | etapa | parar | passo | desativacao | fusao | lixeira
+  "interrupted_at": null,
+  "error_message": null,
+  "steps": [
+    { "step_id": "…", "step_type": "send_message", "status": "success", "detail": null }
+  ],
+  "started_at": "…",
+  "finished_at": "…"
+}
+```
+
+- `outcome`: `completed` — it ran to the end; `blocked` — a condition stopped
+  it before it did anything; `failed` — a step failed; `interrupted` — it was
+  stopped before the end, and `interrupted_by` says why: the client replied
+  (`resposta`), the card left the stage (`etapa`), someone pressed Stop
+  (`parar`), a "Stop automation" step (`passo`), the automation was turned off
+  (`desativacao`), the contact was merged (`fusao`) or moved to the trash
+  (`lixeira`). `null` means it is still running or waiting on a "Wait" step —
+  or it is an old run, recorded before outcomes existed.
+- `steps` are the steps as recorded. With a condition whose branch had
+  steps, the recorded order is not the order they ran in (the branch is
+  recorded before the condition). `detail` is the engine's own text, in
+  English.
+
 ### `GET /api/v1/conversations`
 
 List conversations, newest first. Scope: `conversations:read`.
@@ -742,7 +838,11 @@ first (`404` otherwise).
   "sender_type": "customer",      // customer | agent (the team, the paired phone, this API) | bot (automations, robots, AI agents)
   "content_type": "text",         // text | image | video | audio | document | location | template | interactive | call | contact…
   "content_text": "Hi 👋",
-  "media_url": null, "template_name": null,
+  "media_url": null,              // the file's address (images, audio, video, documents, stickers)
+  "media_filename": null,         // the file's name — the sender's, or the one stored for older documents
+  "media_mime_type": null,        // e.g. "application/pdf", when known
+  "transcription": null,          // a voice note's transcription, once it is ready (audio only)
+  "template_name": null,
   "whatsapp_message_id": "wamid.…",
   "status": "read",               // sending | sent | delivered | read | failed
   "reply_to_message_id": null,    // the message this one quotes
@@ -750,6 +850,12 @@ first (`404` otherwise).
   "created_at": "…"
 }
 ```
+
+**Files.** `media_url` opens the file itself — download it from there, with
+no key (anyone holding the address can open it, so treat it like the file).
+`media_filename` is the name to save it under. A voice note carries its
+`transcription` once the CRM has transcribed it (`null` before that, or when
+transcription is off).
 
 **WhatsApp calls** are listed here too (WhatsApp connections by QR code
 only), with `content_type: "call"` and `content_text: null`. A call nobody

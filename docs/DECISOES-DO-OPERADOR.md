@@ -132,3 +132,8 @@ qualquer uma é pergunta ao operador.
 - Tarefa recorrente: PELO CALENDÁRIO (nasce no dia do prazo, concluída ou
   não a anterior), contando do prazo anterior; só no formulário; avisa no
   sino (30/09/2026).
+- Chave de API do funcionário (04/11/2026): pertence a um membro (suspender
+  ou remover corta); recorte por FUNIL, nunca por conexão; a recortada é SÓ
+  DE LEITURA (o admin a edita, mas não lhe dá escrita); cliente sem card não
+  aparece e o card que sai do funil some para a chave; validade padrão de 90
+  dias; sem registro das chamadas por enquanto; sem MCP (`api-v1.md`).

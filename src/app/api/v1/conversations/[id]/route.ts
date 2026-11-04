@@ -5,6 +5,7 @@
 
 import { requireApiKey } from '@/lib/auth/api-context';
 import { ok, fail, badRequest, toApiErrorResponse } from '@/lib/api/v1/respond';
+import { contatoNoRecorte } from '@/lib/api/v1/recorte-por-funil';
 import { ehUuid } from '@/lib/tasks/validar';
 import {
   CONVERSATION_SELECT,
@@ -18,7 +19,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const ctx = await requireApiKey(request, 'conversations:read');
+    const ctx = await requireApiKey(request, 'conversations:read', { aceitaRecorte: true });
     const { id } = await params;
     // NOSSO: id malformado é 400, como nas outras rotas `{id}` da v1 — sem
     // isto o 22P02 do PostgREST saía 500, e o integrador repetiria.
@@ -39,6 +40,11 @@ export async function GET(
       return fail('internal', 'Failed to read conversation', 500);
     }
     if (!data) return fail('not_found', 'Conversation not found', 404);
+    // NOSSO (1120): fora do recorte por funil, o mesmo 404 de quem não existe.
+    const contactId = (data as { contact_id?: string | null }).contact_id ?? null;
+    if (!(await contatoNoRecorte(ctx, contactId))) {
+      return fail('not_found', 'Conversation not found', 404);
+    }
 
     return ok(serializeConversation(normalizeConversation(data as Conversation)));
   } catch (err) {

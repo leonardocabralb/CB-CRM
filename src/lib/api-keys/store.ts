@@ -22,6 +22,14 @@ export interface ApiKeyRow {
   scopes: string[];
   expires_at: string | null;
   revoked_at: string | null;
+  /**
+   * NOSSO (1120): o funcionário dono da chave. Nulo = chave da CONTA (n8n,
+   * Make), como toda chave anterior. Com valor, `requireApiKey` confere a
+   * cada chamada que ele continua na conta e não está suspenso.
+   */
+  membro_user_id: string | null;
+  /** NOSSO (1120): funis que a chave enxerga. Nulo = todos. */
+  funis: string[] | null;
 }
 
 /**
@@ -41,7 +49,9 @@ export async function findActiveKeyByHash(
 ): Promise<ApiKeyRow | null> {
   const { data, error } = await supabaseAdmin()
     .from('api_keys')
-    .select('id, account_id, created_by, name, scopes, expires_at, revoked_at')
+    .select(
+      'id, account_id, created_by, name, scopes, expires_at, revoked_at, membro_user_id, funis'
+    )
     .eq('key_hash', hash)
     .maybeSingle();
 
@@ -59,6 +69,36 @@ export async function findActiveKeyByHash(
   }
 
   return data as ApiKeyRow;
+}
+
+/**
+ * NOSSO (1120): o funcionário dono da chave ainda é membro ATIVO da conta
+ * da chave? Lê `profiles` com service role, então a RLS (e com ela o corte
+ * de `is_account_member` para o suspenso, 1067) NÃO se aplica: a suspensão
+ * é conferida aqui, por escrito. Remover da equipe (`remove_account_member`)
+ * move o perfil para uma conta própria, e a conferência pela `account_id`
+ * da chave cobre esse caso também.
+ *
+ * ⚠️ A leitura que FALHA lança (como `findActiveKeyByHash`): "não sei" nunca
+ * vira "não é membro" (401, chave recusada) nem "é membro" (chave aberta).
+ */
+export async function funcionarioAtivoNaConta(
+  userId: string,
+  accountId: string
+): Promise<boolean> {
+  const { data, error } = await supabaseAdmin()
+    .from('profiles')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('account_id', accountId)
+    .is('suspenso_em', null)
+    .limit(1);
+
+  if (error) {
+    console.error('[api-keys/store] member lookup error:', error.message);
+    throw new Error('API key member lookup failed');
+  }
+  return (data ?? []).length > 0;
 }
 
 /**

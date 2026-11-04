@@ -20,6 +20,8 @@ import type { RateLimitResult } from '@/lib/rate-limit';
 export type ApiErrorCode =
   | 'unauthorized' // missing / malformed / unknown / revoked / expired key
   | 'forbidden' // valid key, but missing the required scope
+  // NOSSO (1120): chave recortada por funil numa rota que não sabe recortar.
+  | 'restricted_key'
   | 'rate_limited' // per-key budget exhausted
   | 'bad_request' // malformed input
   | 'not_found'

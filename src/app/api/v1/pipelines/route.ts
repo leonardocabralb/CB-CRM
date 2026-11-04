@@ -11,16 +11,21 @@
 import { requireApiKey } from '@/lib/auth/api-context';
 import { ok, fail, toApiErrorResponse } from '@/lib/api/v1/respond';
 import { serializePipeline } from '@/lib/api/v1/deals';
+import { funisDaChave } from '@/lib/api/v1/recorte-por-funil';
 
 export async function GET(request: Request) {
   try {
-    const ctx = await requireApiKey(request, 'deals:read');
+    const ctx = await requireApiKey(request, 'deals:read', { aceitaRecorte: true });
 
-    const { data, error } = await ctx.supabase
+    let query = ctx.supabase
       .from('pipelines')
       .select('id, name, created_at, pipeline_stages(id, name, position, color)')
-      .eq('account_id', ctx.accountId)
-      .order('created_at', { ascending: true });
+      .eq('account_id', ctx.accountId);
+    // NOSSO (1120): a chave recortada vê só os funis dela.
+    const funis = funisDaChave(ctx);
+    if (funis) query = query.in('id', funis);
+
+    const { data, error } = await query.order('created_at', { ascending: true });
 
     if (error) {
       console.error('[api/v1/pipelines] list error:', error);
