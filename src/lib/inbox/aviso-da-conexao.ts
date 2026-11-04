@@ -8,9 +8,11 @@
 //
 //  · FORA DO AR (`tone === 'down'`): nada sai por ela. Faixa vermelha e o
 //    compositor TRAVADO (o operador escolheu travar, não só avisar).
-//  · NÃO RECEBE (`detail === 'webhook'`) ou ATRASADA (`detail === 'lagging'`):
-//    de pé e enviando, mas a ENTRADA está surda ou atrasada. Faixa âmbar, só
-//    aviso — é o mesmo lado do `ENVIA_MESMO_EM_AMARELO` da régua do Asaas.
+//  · NÃO RECEBE (`detail === 'webhook'`), ATRASADA (`detail === 'lagging'`)
+//    ou SEM RECIBO (`detail === 'sem_recibo'`, os envios saem e nada volta):
+//    de pé e enviando, mas a ENTRADA está surda, atrasada ou parada. Faixa
+//    âmbar, só aviso — é o mesmo lado do `ENVIA_MESMO_EM_AMARELO` da régua
+//    do Asaas.
 //
 // Os outros amarelos (`pairing`, `stale`, `lastError`) ficam de fora de
 // propósito: são transitórios, e uma faixa que pisca a cada reconexão ensina
@@ -24,10 +26,11 @@
 // hook guarda a última lista boa quando a sonda seguinte falha; afirmar
 // "fora do ar" a partir dela travaria o compositor sobre informação velha.
 //
-// ⚠️ Este eixo NÃO vê a conexão "aberta" que parou de receber sem erro
-// nenhum (02/10/2026): o provedor diz `open`, o webhook aponta para cá e a
-// medição de atraso envelhece. Esse é outro alarme ("nada chega há tempo
-// demais"), que nenhum código mede ainda.
+// ⚠️ A conexão "aberta" que parou de receber sem erro nenhum (02/10/2026 e
+// 02–04/11/2026: o provedor diz `open`, o webhook aponta para cá e a medição
+// de atraso envelhece) só acende pelo `sem_recibo`, e só quando há envio do
+// CRM por ela: os recibos param junto com a entrada. Sem envio nenhum, segue
+// sem alarme ("nada chega há tempo demais" é outra régua, que ninguém mede).
 // ============================================================
 
 /** O que este módulo precisa da saúde de uma conexão (`useChannelHealth`). */
@@ -37,12 +40,15 @@ export interface SaudeDaConexao {
   tone: 'ok' | 'warn' | 'down' | 'unknown';
   detail: string | null;
   atrasoSeg: number | null;
+  /** Desde quando os envios estão sem recibo (ISO), só com `sem_recibo`. */
+  semReciboDesde?: string | null;
 }
 
 export type AvisoDaConexao =
   | { tipo: 'fora_do_ar'; rotulo: string }
   | { tipo: 'nao_recebe'; rotulo: string }
-  | { tipo: 'atrasada'; rotulo: string; minutos: number };
+  | { tipo: 'atrasada'; rotulo: string; minutos: number }
+  | { tipo: 'sem_recibo'; rotulo: string; desdeIso: string };
 
 export function avisoDaConexao(args: {
   /**
@@ -77,6 +83,11 @@ export function avisoDaConexao(args: {
   // seria contradição do servidor, e "atrasada há 0 min" mentiria.
   if (c.detail === 'lagging' && c.atrasoSeg !== null) {
     return { tipo: 'atrasada', rotulo: c.label, minutos: Math.round(c.atrasoSeg / 60) };
+  }
+  // `sem_recibo` só nasce com a sequência medida; sem o `desde` (a sonda de
+  // antes do deploy não manda o campo), a frase não teria o que dizer.
+  if (c.detail === 'sem_recibo' && c.semReciboDesde) {
+    return { tipo: 'sem_recibo', rotulo: c.label, desdeIso: c.semReciboDesde };
   }
   return null;
 }

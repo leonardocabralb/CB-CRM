@@ -34,6 +34,7 @@ const BASE: EntradaDeCor = {
   webhookOk: null,
   atrasoSeg: null,
   atrasoMedidoEm: null,
+  semRecibo: false,
   agoraMs: Date.parse('2026-09-16T15:00:00.000Z'),
 };
 
@@ -46,6 +47,7 @@ const CENARIOS: EntradaDeCor[] = [
   { ...BASE, estadoVivo: 'open', webhookOk: false },
   { ...BASE, estadoVivo: 'open', lastError: 'algo' },
   { ...BASE, estadoVivo: 'open', atrasoSeg: LIMIAR_ATRASO_SEG + 60, atrasoMedidoEm: FRESCO },
+  { ...BASE, estadoVivo: 'open', semRecibo: true },
   { ...BASE, status: 'disconnected' },
   { ...BASE, status: 'connecting' },
   { ...BASE, status: 'connected', checkedAt: null },
@@ -57,6 +59,7 @@ const CENARIOS: EntradaDeCor[] = [
     atrasoSeg: LIMIAR_ATRASO_SEG + 60,
     atrasoMedidoEm: FRESCO,
   },
+  { ...BASE, status: 'connected', checkedAt: '2026-09-16T14:59:50.000Z', semRecibo: true },
 ];
 
 const RESULTADOS = CENARIOS.map(toneFor);

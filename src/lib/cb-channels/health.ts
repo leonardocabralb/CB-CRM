@@ -32,6 +32,7 @@ import { ehUrlAlcancavel } from './webhook-url';
 import type { CbChannelStatus, CbChannelKind } from './repo';
 import { ehEvolution, ehInstagram, ehMeta } from './transporte';
 import { alarmeDeAtraso, atrasoDaFronteira } from './atraso-de-entrega';
+import { lerEnviosRecentes, semRecibo, type SemRecibo } from './sem-recibo';
 import { identidadeDoCanal } from './display';
 import { InstagramApiError, criarClienteInstagram } from '@/lib/instagram/graph';
 
@@ -64,6 +65,11 @@ export interface ChannelHealth {
   atrasoSeg: number | null;
   /** Quando essa medição foi feita (ISO). Medição velha vale menos. */
   atrasoMedidoEm: string | null;
+  /**
+   * Nível 4 (`sem-recibo.ts`): desde quando os envios desta conexão estão
+   * sem recibo (ISO). Só com o motivo `sem_recibo`; `null` no resto.
+   */
+  semReciboDesde: string | null;
 }
 
 /** Acima disto, "conectado" deixa de ser confiável e vira amarelo. */
@@ -80,6 +86,12 @@ const TTL_EVOLUTION_MS = 15_000;
 const TTL_META_MS = 60_000;
 /** Nível 2 é uma chamada POR instância — cadência bem mais lenta. */
 const TTL_WEBHOOK_MS = 5 * 60_000;
+/**
+ * Nível 4 é uma consulta ao banco POR conexão. A régua conta envios com mais
+ * de 15 min: 1 min de cache não muda quando ela acende, e segura as abas que
+ * sondam juntas (a rota aceita 40 por minuto por pessoa).
+ */
+const TTL_SEM_RECIBO_MS = 60_000;
 
 // ------------------------------------------------------------
 // Cache + single-flight
@@ -150,6 +162,12 @@ export interface EntradaDeCor {
    * amostra sozinha fala do passado, e sem a idade o alarme nunca apaga.
    */
   atrasoMedidoEm: string | null;
+  /**
+   * Nível 4: os envios desta conexão estão sem recibo (`semRecibo`). Como o
+   * atraso, é informação LOCAL — lida no nosso banco, não perguntada ao
+   * provedor —, então vale também quando o provedor não respondeu.
+   */
+  semRecibo: boolean;
   agoraMs: number;
 }
 
@@ -181,6 +199,10 @@ export function toneFor(e: EntradaDeCor): { tone: HealthTone; detail: string | n
     // 16/09/2026 sem o sistema dizer nada.
     if (alarmeDeAtraso({ atrasoSeg: e.atrasoSeg, medidoEmIso: e.atrasoMedidoEm, agoraMs: e.agoraMs }))
       return { tone: 'warn', detail: 'lagging' };
+    // Nível 4: de pé e enviando — e nada volta. O atraso vem antes porque
+    // diz mais (quantos minutos); este vê a conexão que parou de receber de
+    // vez, quando o atraso já apagou sem mensagem nova (04/11/2026).
+    if (e.semRecibo) return { tone: 'warn', detail: 'sem_recibo' };
     return { tone: 'ok', detail: null };
   }
 
@@ -199,6 +221,7 @@ export function toneFor(e: EntradaDeCor): { tone: HealthTone; detail: string | n
   // ao provedor —, então vale igual aqui, onde o provedor não respondeu.
   if (alarmeDeAtraso({ atrasoSeg: e.atrasoSeg, medidoEmIso: e.atrasoMedidoEm, agoraMs: e.agoraMs }))
     return { tone: 'warn', detail: 'lagging' };
+  if (e.semRecibo) return { tone: 'warn', detail: 'sem_recibo' };
   return { tone: 'ok', detail: null };
 }
 
@@ -382,6 +405,27 @@ export async function probeChannels(
     }),
   );
 
+  // ---- Nível 4: os envios estão sem recibo? Uma consulta por conexão de
+  // WhatsApp, com cache por CONTA (a RLS de `messages` é por conta: o mesmo
+  // resultado para todo membro). O Instagram fica de fora: não manda recibo
+  // de entrega. A leitura que falha é "não sei" e nunca acende.
+  const semReciboPorCanal = await comCache(
+    `sem-recibo:${accountId}`,
+    TTL_SEM_RECIBO_MS,
+    async () => {
+      const mapa = new Map<string, SemRecibo | null>();
+      await Promise.all(
+        canais
+          .filter((c) => ehEvolution(c) || ehMeta(c))
+          .map(async (c) => {
+            const envios = await lerEnviosRecentes(db, c.id, agora);
+            mapa.set(c.id, envios ? semRecibo(envios, agora) : null);
+          }),
+      );
+      return mapa;
+    },
+  );
+
   const saidas: ChannelHealth[] = [];
   const paraGravar: { id: string; status: CbChannelStatus }[] = [];
 
@@ -470,6 +514,7 @@ export async function probeChannels(
       carimboIso: c.entrega_carimbo_em,
       recebidaIso: c.entrega_recebida_em,
     });
+    const recibo = semReciboPorCanal.get(c.id) ?? null;
 
     const { tone, detail } = toneFor({
       status: c.status,
@@ -480,6 +525,7 @@ export async function probeChannels(
       webhookOk,
       atrasoSeg,
       atrasoMedidoEm: c.entrega_recebida_em,
+      semRecibo: recibo !== null,
       agoraMs: agora,
     });
 
@@ -517,6 +563,9 @@ export async function probeChannels(
       webhookOk,
       atrasoSeg,
       atrasoMedidoEm: c.entrega_recebida_em,
+      // Só junto do motivo: a tela lê o `detail`, e uma data solta seria
+      // uma segunda régua.
+      semReciboDesde: detail === 'sem_recibo' && recibo ? recibo.desdeIso : null,
     });
   }
 

@@ -352,6 +352,8 @@
       "conexaoNaoRecebeTexto": "It sends normally, but what arrives on this number is not reaching the CRM. A new reply from the customer may not show up here.",
       "conexaoAtrasadaTitulo": "The {channel} connection is receiving with a delay",
       "conexaoAtrasadaTexto": "The last message measured on this number took about {minutos} min to reach the CRM. A recent reply may not be here yet.",
+      "conexaoSemReciboTitulo": "The {channel} connection has not confirmed deliveries since {quando}",
+      "conexaoSemReciboTexto": "Messages sent from this number have most likely arrived, but none came back with a delivery confirmation. Customers' replies may be held up. Do not resend: the customer would get it twice.",
       "canalForaDoAr": "Down",
       "noMessagesYet": "No messages yet",
       "sendTemplateHint": "Send a template to start the conversation",
@@ -6919,6 +6921,7 @@
     "detail_lastError": "last error recorded",
     "detail_incomplete": "missing credentials — set the connection up again",
     "detail_lagging": "connected, but delivering late",
+    "detail_sem_recibo": "connected, but sent messages are not being confirmed as delivered",
     "kind_meta": "Official API · Meta",
     "kind_evolution": "Unofficial · QR Code",
     "kind_instagram": "Direct · Instagram",
@@ -6926,7 +6929,8 @@
     "checkedAgo": "checked {tempo} ago",
     "neverChecked": "not checked yet",
     "deliveryLag": "Delivering {tempo} behind",
-    "lagMeasured": "measured {tempo} ago"
+    "lagMeasured": "measured {tempo} ago",
+    "noReceiptSince": "No delivery confirmation since {quando}"
   },
   "LeadEvents": {
     "title": "History",
