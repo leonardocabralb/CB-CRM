@@ -231,10 +231,15 @@ BEGIN
     SELECT string_agg(DISTINCT r.relname::text, ', ') INTO v_fora
       FROM pg_constraint c
       JOIN pg_class r ON r.oid = c.conrelid
+      JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
      WHERE c.contype = 'f'
        AND c.confrelid = 'auth.users'::regclass
        AND c.confdeltype = 'c'
        AND r.relnamespace = 'public'::regnamespace
+       -- a chave do funcionário (1121): apagado o login, a chave vai junto
+       -- (SET NULL a abriria para a conta inteira). Só ESTA coluna: o
+       -- `created_by` da mesma tabela é autoria e continua SET NULL.
+       AND NOT (r.relname = 'api_keys' AND a.attname = 'membro_user_id')
        AND r.relname NOT IN (
          -- dado da pessoa
          'profiles', 'member_presence', 'notifications',

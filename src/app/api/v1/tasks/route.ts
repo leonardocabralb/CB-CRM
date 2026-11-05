@@ -25,6 +25,7 @@ import {
   buildPage,
 } from '@/lib/api/v1/pagination';
 import { resolveApiAuthor } from '@/lib/api/v1/authorship';
+import { contatoNoRecorte, exigirFiltroDoCliente } from '@/lib/api/v1/recorte-por-funil';
 import { serializeTask } from '@/lib/api/v1/tasks';
 import {
   ehDataValida,
@@ -36,7 +37,7 @@ import {
 
 export async function GET(request: Request) {
   try {
-    const ctx = await requireApiKey(request, 'tasks:read');
+    const ctx = await requireApiKey(request, 'tasks:read', { aceitaRecorte: true });
     const { limit, cursor } = parseListParams(request);
     const url = new URL(request.url);
     const contactId = url.searchParams.get('contact_id');
@@ -52,6 +53,11 @@ export async function GET(request: Request) {
     if (responsavelId && !ehUuid(responsavelId)) {
       throw badRequest("'responsavel_user_id' must be a UUID");
     }
+
+    // NOSSO (1121): a chave recortada por funil lista só pelo CLIENTE, e só
+    // cliente do recorte (fora dele, a lista vazia de quem não tem tarefa).
+    exigirFiltroDoCliente(ctx, Boolean(contactId));
+    if (!(await contatoNoRecorte(ctx, contactId))) return okList([], null);
 
     let query = ctx.supabase
       .from('cb_tasks')

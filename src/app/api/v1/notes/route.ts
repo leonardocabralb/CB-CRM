@@ -34,6 +34,7 @@ import {
   buildPage,
 } from '@/lib/api/v1/pagination';
 import { resolveApiAuthor } from '@/lib/api/v1/authorship';
+import { contatoNoRecorte, exigirFiltroDoCliente } from '@/lib/api/v1/recorte-por-funil';
 import { urlParaAbrirAnexo } from '@/lib/media/abrir-anexo';
 import { lerAnexosDaNota, urlPublicaDoAnexo } from '@/lib/notes/anexos';
 import { ehUuid } from '@/lib/tasks/validar';
@@ -92,7 +93,7 @@ function serializeNote(row: Record<string, unknown>): ApiNote {
 
 export async function GET(request: Request) {
   try {
-    const ctx = await requireApiKey(request, 'notes:read');
+    const ctx = await requireApiKey(request, 'notes:read', { aceitaRecorte: true });
     const { limit, cursor } = parseListParams(request);
     const url = new URL(request.url);
     const conversationId = url.searchParams.get('conversation_id');
@@ -104,6 +105,11 @@ export async function GET(request: Request) {
     if (contactId && !ehUuid(contactId)) {
       throw badRequest("'contact_id' must be a UUID");
     }
+
+    // NOSSO (1121): a chave recortada por funil lista só pelo CLIENTE, e só
+    // cliente do recorte. Fora dele, a lista vazia de quem não tem anotação.
+    exigirFiltroDoCliente(ctx, Boolean(contactId));
+    if (!(await contatoNoRecorte(ctx, contactId))) return okList([], null);
 
     let query = ctx.supabase
       .from('cb_conversation_notes')

@@ -38,6 +38,7 @@ import {
   lerTagsDoCorpo,
   TagReferenceError,
 } from '@/lib/api/v1/tags-do-contato';
+import { contatoNoRecorte } from '@/lib/api/v1/recorte-por-funil';
 import { ehUuid } from '@/lib/tasks/validar';
 
 export async function GET(
@@ -45,11 +46,16 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const ctx = await requireApiKey(request, 'contacts:read');
+    const ctx = await requireApiKey(request, 'contacts:read', { aceitaRecorte: true });
     const { id } = await params;
     if (!ehUuid(id)) throw badRequest("'id' must be a UUID");
     // Id de ficha UNIDA a outra (1092) responde com a que ficou.
     const atual = await idAtualDaFicha(ctx.supabase, ctx.accountId, id);
+    // NOSSO (1121): o recorte vale para a ficha que FICOU, e fora dele é o
+    // mesmo 404 de quem não existe.
+    if (atual && !(await contatoNoRecorte(ctx, atual))) {
+      return fail('not_found', 'Contact not found', 404);
+    }
     const contact = atual ? await getContactById(ctx.supabase, ctx.accountId, atual) : null;
     if (!contact) return fail('not_found', 'Contact not found', 404);
     return ok(contact);

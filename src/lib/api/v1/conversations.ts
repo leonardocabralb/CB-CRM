@@ -8,6 +8,7 @@
 // endpoint's response vocabulary.
 // ============================================================
 
+import { mediaFilename, nomeDeclarado } from '@/lib/media/filename';
 import type { Conversation, Message } from '@/types';
 
 export interface ApiConversation {
@@ -56,6 +57,20 @@ export interface ApiMessage {
   content_type: string;
   content_text: string | null;
   media_url: string | null;
+  /**
+   * NOSSO (1121): o nome do arquivo — o que o remetente deu (969) ou, nos
+   * documentos antigos, o do caminho no Storage (`mediaFilename`, a régua da
+   * tela). Nulo em mensagem sem arquivo.
+   */
+  media_filename: string | null;
+  /** NOSSO (1121): o tipo MIME do arquivo, quando conhecido (042). */
+  media_mime_type: string | null;
+  /**
+   * NOSSO (1121): a transcrição da nota de voz (943), só em `audio` com a
+   * transcrição PRONTA. ⚠️ A coluna `transcricao` também guarda o texto lido
+   * de outros arquivos para o agente de IA: só o áudio sai aqui.
+   */
+  transcription: string | null;
   template_name: string | null;
   whatsapp_message_id: string | null;
   status: string;
@@ -112,6 +127,16 @@ export function serializeMessage(m: Message): ApiMessage {
     content_type: m.content_type,
     content_text: m.content_text ?? null,
     media_url: m.media_url ?? null,
+    // Com arquivo, a régua da tela (o nome do remetente, o do caminho, ou um
+    // gerado). Sem arquivo, só o nome declarado, LIMPO como na tela
+    // (`nomeDeclarado` saneia `../`): nunca um nome inventado para o que não
+    // existe.
+    media_filename: m.media_url ? mediaFilename(m) : nomeDeclarado(m),
+    media_mime_type: m.media_type ?? null,
+    transcription:
+      m.content_type === 'audio' && m.transcricao_status === 'pronta'
+        ? (m.transcricao ?? null)
+        : null,
     template_name: m.template_name ?? null,
     whatsapp_message_id: m.message_id ?? null,
     status: m.status,

@@ -210,8 +210,10 @@ ela ainda faz login — cai na tela de acesso suspenso.
   **transferir a conta para um suspenso é recusado** — com `FOR UPDATE` no
   alvo, que serializa com a suspensão. Só SUSPENDER o dono é recusado:
   reativar um dono suspenso fica aberto, como saída.
-- Chaves de API são da CONTA: as que a pessoa criou continuam valendo. Agendadas
-  dela continuam saindo.
+- Chaves de API são da CONTA: as que a pessoa CRIOU continuam valendo. A chave
+  que PERTENCE a ela (`api_keys.membro_user_id`, 1121) para na hora: o caminho
+  da chave confere o perfil a cada chamada (`api-v1.md`). Agendadas dela
+  continuam saindo.
 - ⚠️ **A linha de Membros não comporta mais uma coluna.** A data de entrada
   mora DENTRO da coluna "Situação" (embaixo do selo), e suspender é a chave,
   não um botão: a 1ª versão tinha as duas coisas soltas e, a 1440 px, sobravam

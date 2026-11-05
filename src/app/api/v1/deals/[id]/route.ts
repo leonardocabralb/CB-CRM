@@ -20,6 +20,7 @@
 import { requireApiKey } from '@/lib/auth/api-context';
 import { ok, fail, badRequest, toApiErrorResponse } from '@/lib/api/v1/respond';
 import { DEAL_STATUSES, serializeDeal } from '@/lib/api/v1/deals';
+import { funilNoRecorte } from '@/lib/api/v1/recorte-por-funil';
 import { drenarEventosDeFunil } from '@/lib/automations/drain-events';
 import { ehUuid } from '@/lib/tasks/validar';
 import { escritaDoTituloManual } from '@/lib/deals/titulo-do-card';
@@ -29,7 +30,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const ctx = await requireApiKey(request, 'deals:read');
+    const ctx = await requireApiKey(request, 'deals:read', { aceitaRecorte: true });
     const { id } = await params;
     if (!ehUuid(id)) throw badRequest("'id' must be a UUID");
 
@@ -47,6 +48,10 @@ export async function GET(
       return fail('internal', 'Failed to read deal', 500);
     }
     if (!data) return fail('not_found', 'Deal not found', 404);
+    // NOSSO (1121): card de funil fora do recorte = o mesmo 404.
+    if (!funilNoRecorte(ctx, (data as { pipeline_id?: string | null }).pipeline_id)) {
+      return fail('not_found', 'Deal not found', 404);
+    }
     return ok(serializeDeal(data as Record<string, unknown>));
   } catch (err) {
     return toApiErrorResponse(err);

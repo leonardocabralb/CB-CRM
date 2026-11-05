@@ -125,6 +125,51 @@ describe('serializeMessage', () => {
     expect(publico.direction).toBe('outbound');
   });
 
+  // NOSSO (1121): o nome do arquivo, o tipo e a transcrição do áudio.
+  it('expõe o nome do arquivo, o tipo e a transcrição PRONTA só do áudio', () => {
+    const base = {
+      id: 'm1',
+      conversation_id: 'conv1',
+      sender_type: 'customer',
+      created_at: '2026-11-04T12:00:00Z',
+    };
+    const doc = serializeMessage({
+      ...base,
+      content_type: 'document',
+      media_url: 'https://x.supabase.co/storage/v1/object/public/chat-media/a/contrato.pdf',
+      media_filename: 'Contrato assinado.pdf',
+      media_type: 'application/pdf',
+      transcricao: 'texto lido do PDF para a IA',
+      transcricao_status: 'pronta',
+    } as unknown as Message);
+    expect(doc.media_filename).toBe('Contrato assinado.pdf');
+    expect(doc.media_mime_type).toBe('application/pdf');
+    // ⚠️ A coluna também guarda o texto lido de documento para a IA: só áudio sai.
+    expect(doc.transcription).toBeNull();
+
+    const audio = serializeMessage({
+      ...base,
+      content_type: 'audio',
+      media_url: 'https://x.supabase.co/storage/v1/object/public/chat-media/a/voz.ogg',
+      transcricao: 'bom dia, doutor',
+      transcricao_status: 'pronta',
+    } as unknown as Message);
+    expect(audio.transcription).toBe('bom dia, doutor');
+
+    const transcrevendo = serializeMessage({
+      ...base,
+      content_type: 'audio',
+      media_url: 'https://x.supabase.co/storage/v1/object/public/chat-media/a/voz.ogg',
+      transcricao: null,
+      transcricao_status: 'transcrevendo',
+    } as unknown as Message);
+    expect(transcrevendo.transcription).toBeNull();
+
+    const texto = serializeMessage({ ...base, content_type: 'text' } as unknown as Message);
+    expect(texto.media_filename).toBeNull();
+    expect(texto.media_mime_type).toBeNull();
+  });
+
   it('expõe channel_id, e null quando a mensagem é pré-multi-canal', () => {
     const base = {
       id: 'm1',
