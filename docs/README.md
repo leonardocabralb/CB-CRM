@@ -17,6 +17,7 @@
 | [`public-api.md`](./public-api.md) | A API REST `/api/v1`, os escopos e as chaves revogáveis |
 | [`webhooks.md`](./webhooks.md) | Os webhooks das duas direções: receber acionamentos de fora e avisar sistemas externos |
 | [`mcp.md`](./mcp.md) | O servidor MCP, para operar o CRM a partir de assistentes de IA |
+| [`skill-ler-cliente/`](./skill-ler-cliente/LEIA-ME.md) | A skill do Claude de quem atende: com a chave do funcionário, lê o cliente, organiza os documentos na pasta dele e monta a ficha de atendimento |
 
 ## Onde mais procurar
 

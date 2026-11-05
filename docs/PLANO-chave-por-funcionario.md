@@ -27,7 +27,7 @@
 | **1** | Chave: funcionário, funis, validade e "Só leitura" na tela; corte na suspensão; EDITAR a chave | ✅ pronto; 1121 aplicada; e2e OK no preview (04/11) | `1121` (aditiva) **APLICADA** 04/11 (`20261104223155`) | PR #459 |
 | **2** | Recorte por funil nas rotas de leitura (chave recortada = default-deny) | ✅ pronto; `deals!inner` MEDIDO no PostgREST real (5.534 = SQL); e2e OK | não | idem |
 | **3** | O que falta ler: nome do arquivo, transcrição do áudio, histórico de automações | ✅ pronto; e2e OK (arquivo baixado sem chave) | não | idem |
-| **4** | Guia do Claude do funcionário (sem MCP) e o piloto com uma pessoa | ⬜ depois do merge | não | — |
+| **4** | Guia do Claude do funcionário (sem MCP) e o piloto com uma pessoa | 🟡 skill pronta (`docs/skill-ler-cliente/`), testada contra um servidor falso; falta o piloto com uma chave real | não | (a abrir) |
 
 **Respostas do operador (04/11/2026):** D1 = 90 dias; D2 = aceita os dois
 efeitos; D3 = recortada só leitura, e o ADMIN pode EDITAR a chave depois
@@ -218,14 +218,31 @@ separadas, a Fase 1 recusa criar chave com funis até a Fase 2 estar no ar.
   - **Claude Code**: chama a API e grava arquivos. Funciona.
   - **Modo Cowork do app**: **medir** se o ambiente dele alcança
     `crm.cbadvogados.com` antes de escolher.
-- **A chave fica numa variável de ambiente** (ex.: `CRM_API_KEY`), nunca colada
-  na conversa: o que se cola fica no histórico do Claude.
-- **Guia do Claude** (uma skill): achar o cliente por nome ou telefone; ler a
-  conversa inteira (paginando); baixar cada anexo pelo `media_url` com nome
-  `AAAA-MM-DD_<tipo>_<nome original>`; anexos das anotações; o resumo; o
-  modelo da ficha de atendimento do Trabalhista.
+- **A chave fica no arquivo `~/.crm-api-key`** (ou em `CRM_API_KEY`), gravado
+  pela pessoa fora do Claude e nunca colado na conversa: o que se cola fica no
+  histórico do Claude.
+- **Feito (04/11/2026):** a skill `ler-cliente-do-crm` em
+  `docs/skill-ler-cliente/` (`SKILL.md`, `LEIA-ME.md`,
+  `exportar_cliente.py`, `config.json`). O que ela faz:
+  - **O script** (Python 3.8+, sem instalar nada) acha o cliente e grava a
+    pasta dele: `conversa.md` em ordem, com a transcrição dos áudios;
+    `resumo-do-crm.md`; `originais/`; e `arquivos.json`, com o `dia` já no
+    horário de Brasília.
+  - **Rodar de novo** baixa só o que é novo e acha a mesma pasta, mesmo
+    renomeada. Campo com "senha" no nome fica de fora.
+  - **O Claude** copia os documentos para `documentos/` com o nome
+    `<Tipo>_<AAAA-MM-DD>[_<nome original>]`, que é o padrão do operador: a
+    data é o dia em que o arquivo chegou, e o nome original só entra quando
+    diz algo além do tipo. Depois ele resume a conversa e preenche a ficha.
+  - **Testado contra um servidor falso** (dados fictícios): paginação, 429,
+    fração de segundo de 1 a 6 dígitos, a mensagem das 22h50, a homônima,
+    permissão faltando, a chave fora de todo arquivo e a mídia sem a chave.
+- **Fora do repositório:** o pacote do escritório leva o mesmo conteúdo, o
+  `config.json` com o endereço, o `modelo-da-ficha.md` do Trabalhista
+  (proposta, a ajustar pelo operador) e o `tipos-de-documento.md`.
 - **Piloto:** uma pessoa, uma chave com 30 dias, um cliente de teste; depois
-  conferir a suspensão cortando a chave na hora.
+  conferir a suspensão cortando a chave na hora. A pasta dos clientes no
+  computador dela fica para o piloto: o Claude pergunta na primeira vez.
 
 ## Riscos
 
@@ -248,7 +265,8 @@ separadas, a Fase 1 recusa criar chave com funis até a Fase 2 estar no ar.
 - **D2.** Aceitar os dois efeitos do recorte: cliente sem card fica invisível,
   e o card que sai do funil some para a chave.
 - **D3.** Chave recortada sempre só de leitura (julgamento acima).
-- **D4.** Qual Claude: Claude Code ou Cowork (depois da medição da Fase 4).
-- **D5.** Onde mora o guia: a parte genérica ("ler um cliente pela API") pode
-  ir para a doc; o modelo da ficha do Trabalhista é do escritório e fica
-  fora do repositório.
+- **D4.** Qual Claude: o operador respondeu "qualquer um dos dois". A skill
+  nasce para o Claude Code. O Cowork não foi medido.
+- **D5.** Onde mora o guia: RESPONDIDO. A parte genérica fica no repositório
+  (`docs/skill-ler-cliente/`); o modelo da ficha do Trabalhista é do
+  escritório e fica fora dele.
