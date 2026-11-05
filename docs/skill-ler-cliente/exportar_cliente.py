@@ -385,9 +385,13 @@ def exportar(api: Api, termo: str, base_dos_clientes: str) -> None:
     arquivos: list = []
 
     def guardar(origem_id: str, url, iso, nome, mime, extra: dict):
-        """Baixa uma vez só; rodar de novo reaproveita o que já está na pasta."""
+        """Baixa uma vez só; rodar de novo reaproveita o que já está na pasta,
+        mas só se o arquivo de lá é o MESMO (o endereço sem a consulta): o
+        anexo trocado na anotação ou a mídia regravada baixam de novo."""
+        fonte = (url or "").split("?")[0]
         anterior = ja_baixados.get(origem_id)
-        if anterior and os.path.isfile(os.path.join(originais, anterior["arquivo"])):
+        if (anterior and anterior.get("fonte") == fonte
+                and os.path.isfile(os.path.join(originais, anterior["arquivo"]))):
             arquivos.append({**anterior, **extra, "motivo": None, "novo": False})
             return anterior["arquivo"], None
         nome_salvo = nome_seguro(f"{quando(iso, '%Y-%m-%d_%Hh%M')}_{com_extensao(nome or 'arquivo', mime)}")
@@ -398,8 +402,9 @@ def exportar(api: Api, termo: str, base_dos_clientes: str) -> None:
         motivo = baixar(url, destino)
         # `dia` e `chegou_em` já no horário de Brasília: é deles que sai a data
         # do nome novo (o ISO do banco é UTC e erra o dia depois das 21h)
-        info = {"origem_id": origem_id, "dia": quando(iso, "%Y-%m-%d"), "chegou_em": quando(iso),
-                "nome_original": nome, "mime": mime, "arquivo": None if motivo else os.path.basename(destino)}
+        info = {"origem_id": origem_id, "fonte": fonte, "dia": quando(iso, "%Y-%m-%d"),
+                "chegou_em": quando(iso), "nome_original": nome, "mime": mime,
+                "arquivo": None if motivo else os.path.basename(destino)}
         if not motivo:
             ja_baixados[origem_id] = info
         arquivos.append({**info, **extra, "motivo": motivo, "novo": not motivo})
@@ -417,7 +422,10 @@ def exportar(api: Api, termo: str, base_dos_clientes: str) -> None:
                  "transcricao": m.get("transcription")})
     for nota in anotacoes:
         for i, anexo in enumerate(nota.get("anexos") or []):
-            guardar(f"nota:{nota['id']}:{i}", anexo.get("url"), nota.get("created_at"),
+            # pelo endereço, nunca pela posição: tirar um anexo da anotação
+            # não pode dar ao seguinte o arquivo baixado do que saiu
+            fonte = (anexo.get("url") or "").split("?")[0]
+            guardar(f"nota:{nota['id']}:{fonte or i}", anexo.get("url"), nota.get("created_at"),
                     anexo.get("nome"), anexo.get("tipo"),
                     {"origem": "anotação interna", "mandado_por": nota.get("autor_nome") or "Equipe",
                      "texto_da_anotacao": nota.get("texto")})
