@@ -102,8 +102,8 @@ Supabase (Postgres + Auth + Storage + RLS) · Meta Cloud API · Evolution API.
   chave crua na tela.
 - `mcp-server/` — subprojeto com `package.json` próprio: `npm` dentro dele.
 - `docs/` — ENTREGUES a quem instala: `README`, `INSTALACAO`, `ATUALIZAR`,
-  `docker`, `public-api`, `mcp`, `webhooks`, `multi-waba`, `conexao-meta`.
-  INTERNOS (nossa operação, não viajam): `PLANO-*`, `HANDOFF-*`, `INFRA-VPS`,
+  `docker`, `public-api`, `mcp`, `webhooks`, `multi-waba`, `conexao-meta`,
+  `skill-ler-cliente/`. INTERNOS (nossa operação, não viajam): `PLANO-*`, `HANDOFF-*`, `INFRA-VPS`,
   `DEPLOY-VPS`, `MERGE-UPSTREAM`, `MIGRATIONS-APLICADAS`,
   `DECISOES-DO-OPERADOR`. `EVOLUTION-LID-FIX` está obsoleto.
 - `.env.local` — segredos; nunca commitar; modelo em `.env.local.example`.
