@@ -11,6 +11,7 @@ import {
   decidir,
   destinatarios,
   emHorarioUtil,
+  episodioAberto,
   medirAtraso,
   medirSemRecibo,
   textosDoAviso,
@@ -271,6 +272,60 @@ describe('decidir — o que vale para os dois', () => {
   it('"não sei" ou "normal" sem episódio aberto não fazem nada', () => {
     expect(decidir('atraso', null, naoSei, AGORA, true)).toEqual({ motivo: null, depois: null, seFalhar: null });
     expect(decidir('sem_recibo', null, normal, AGORA, true)).toEqual({ motivo: null, depois: null, seFalhar: null });
+  });
+});
+
+describe('episodioAberto — o que o botão das conexões mostra do sino (E1)', () => {
+  it('sem episódio guardado, nada: o ao vivo é da sonda, não daqui', () => {
+    expect(episodioAberto('sem_recibo', null, aceso, AGORA)).toBeNull();
+    expect(episodioAberto('atraso', null, aceso, AGORA)).toBeNull();
+  });
+
+  it('a prova de agora fecha JÁ, sem esperar o ciclo apagar a linha', () => {
+    expect(episodioAberto('sem_recibo', estado(), normal, AGORA)).toBeNull();
+    expect(episodioAberto('atraso', estado(), normal, AGORA)).toBeNull();
+  });
+
+  it('⚠️ a prova GUARDADA fecha, menos se a medição acendeu de novo (o `decidir` a anula)', () => {
+    const provado = estado({ normalizouEmIso: iso(AGORA - 2 * MIN), avisadoEmIso: iso(AGORA - H) });
+    expect(episodioAberto('sem_recibo', provado, naoSei, AGORA)).toBeNull();
+    expect(episodioAberto('atraso', provado, naoSei, AGORA)).toBeNull();
+    expect(episodioAberto('atraso', provado, aceso, AGORA)).toEqual({ tipo: 'atraso', desdeIso: DESDE });
+    expect(episodioAberto('sem_recibo', provado, aceso, AGORA)).toEqual({ tipo: 'sem_recibo', desdeIso: DESDE });
+  });
+
+  it('⚠️ expirar não normaliza: o (c) AVISADO sem prova continua aberto às 8h, com o "desde" dele', () => {
+    const avisado = estado({ avisadoEmIso: iso(AGORA - 10 * H) });
+    expect(episodioAberto('sem_recibo', avisado, naoSei, AGORA)).toEqual({ tipo: 'sem_recibo', desdeIso: DESDE });
+    const devido = estado({ devidoEmIso: iso(AGORA - 10 * H) });
+    expect(episodioAberto('sem_recibo', devido, naoSei, AGORA)).toEqual({ tipo: 'sem_recibo', desdeIso: DESDE });
+  });
+
+  it('⚠️ P3b: o (c) que o sino CALA (nunca avisado nem devido) só aparece enquanto ACESO, com a sequência de agora', () => {
+    expect(episodioAberto('sem_recibo', estado(), naoSei, AGORA)).toBeNull();
+    expect(episodioAberto('sem_recibo', estado(), aceso, AGORA)).toEqual({
+      tipo: 'sem_recibo',
+      desdeIso: iso(AGORA - 40 * MIN),
+    });
+  });
+
+  it('o (c) avisado e aceso fica com o "desde" já dito (a régua do `decidir`)', () => {
+    const avisado = estado({ avisadoEmIso: iso(AGORA - H) });
+    expect(episodioAberto('sem_recibo', avisado, aceso, AGORA)?.desdeIso).toBe(DESDE);
+  });
+
+  it('⚠️ o (b) só aparece depois de DURAR 30 min (D5): o reinício da Evolution não acende o alarme de todo mundo', () => {
+    const recente = estado({ desdeIso: iso(AGORA - DURACAO_DO_ATRASO_NO_SINO_MS + MIN) });
+    expect(episodioAberto('atraso', recente, aceso, AGORA)).toBeNull();
+    const longo = estado({ desdeIso: iso(AGORA - DURACAO_DO_ATRASO_NO_SINO_MS) });
+    expect(episodioAberto('atraso', longo, aceso, AGORA)).toEqual({
+      tipo: 'atraso',
+      desdeIso: iso(AGORA - DURACAO_DO_ATRASO_NO_SINO_MS),
+    });
+  });
+
+  it('⚠️ o incidente de 03/11: a medição venceu às 03:52, e o (b) segue aberto de manhã', () => {
+    expect(episodioAberto('atraso', estado(), naoSei, AGORA)).toEqual({ tipo: 'atraso', desdeIso: DESDE });
   });
 });
 

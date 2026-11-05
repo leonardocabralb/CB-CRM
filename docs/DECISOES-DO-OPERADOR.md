@@ -98,6 +98,11 @@ qualquer uma é pergunta ao operador.
   "Continua" a cada 24 h, "Normalizou" só com prova; recebem owner/admin e os
   membros cujo perfil vê a conexão; ligados em toda instalação, sem chave
   (`canais.md`, 1122).
+- Alarme de conexão na tela (05/11/2026): sem faixa fixa no topo (o operador
+  achou feia); o botão das conexões do cabeçalho se ALARGA, com a cor do
+  alarme e qual conexão e o quê, e o popover abre com os alarmes explicados.
+  O atraso só aparece ali quando dura 30 min, como no sino; os alarmes da
+  sentinela entram com a Fase 4 (`canais.md`).
 - Agentes de IA: o Playground testa o RASCUNHO da tela, conferido como o
   salvar, e compara com o salvo; a conversa não zera ao salvar. Versão
   publicada separada só depois do piloto (DC4, 26/10/2026).

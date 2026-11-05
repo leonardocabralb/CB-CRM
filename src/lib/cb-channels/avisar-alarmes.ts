@@ -41,13 +41,13 @@ import {
   medirAtraso,
   medirSemRecibo,
   textosDoAviso,
-  type DetalheDoAlarme,
   type EstadoDoAlarme,
   type Medicao,
   type MembroDaConta,
   type TipoDoAlarme,
   type Tradutor,
 } from './alarmes-no-sino';
+import { lerEstadosDosAlarmes } from './estado-dos-alarmes';
 import { lerEnviosRecentes } from './sem-recibo';
 import { ehEvolution, ehMeta } from './transporte';
 
@@ -56,7 +56,6 @@ const MAX_TITULO = 200;
 const MAX_CORPO = 500;
 
 const PAGINA_DE_CANAIS = 500;
-const PAGINA_DE_ESTADOS = 1000;
 
 /**
  * O passo roda PRIMEIRO no ciclo e não pode comer o prazo dos outros quatro
@@ -72,16 +71,6 @@ interface LinhaDoCanal {
   label: string;
   entrega_carimbo_em: string | null;
   entrega_recebida_em: string | null;
-}
-
-interface LinhaDoEstado {
-  channel_id: string;
-  tipo: TipoDoAlarme;
-  desde: string;
-  avisado_em: string | null;
-  normalizou_em: string | null;
-  devido_em: string | null;
-  detalhe: DetalheDoAlarme | null;
 }
 
 interface LinhaDoMembro {
@@ -178,48 +167,6 @@ async function lerMembros(admin: SupabaseClient, accountId: string): Promise<Mem
       papel: m.account_role,
       perfil: m.perfil_id ? (porId.get(m.perfil_id) ?? null) : null,
     }));
-}
-
-/**
- * O estado dos alarmes da conta, por `<canal>:<tipo>`. `null` = falhou.
- *
- * ⚠️ Paginado (Codex, #460): o PostgREST corta em 1000 linhas sem avisar, e o
- * estado que faltasse seria lido como "não há" — o aceso tentaria nascer de
- * novo (e perderia para a chave), o normalizado nunca sairia. Página por
- * `range`: só este passo escreve aqui, um ciclo por vez.
- */
-async function lerEstados(
-  admin: SupabaseClient,
-  accountId: string,
-): Promise<Map<string, EstadoDoAlarme> | null> {
-  const linhas: LinhaDoEstado[] = [];
-  for (let de = 0; ; de += PAGINA_DE_ESTADOS) {
-    const { data, error } = await admin
-      .from('cb_alarmes_de_conexao')
-      .select('channel_id, tipo, desde, avisado_em, normalizou_em, devido_em, detalhe')
-      .eq('account_id', accountId)
-      .order('channel_id', { ascending: true })
-      .order('tipo', { ascending: true })
-      .range(de, de + PAGINA_DE_ESTADOS - 1);
-    if (error) {
-      console.warn('[alarmes] não leu o estado dos alarmes:', error.message);
-      return null;
-    }
-    const lote = (data ?? []) as LinhaDoEstado[];
-    linhas.push(...lote);
-    if (lote.length < PAGINA_DE_ESTADOS) break;
-  }
-  const mapa = new Map<string, EstadoDoAlarme>();
-  for (const l of linhas) {
-    mapa.set(`${l.channel_id}:${l.tipo}`, {
-      desdeIso: l.desde,
-      avisadoEmIso: l.avisado_em,
-      normalizouEmIso: l.normalizou_em,
-      devidoEmIso: l.devido_em,
-      detalhe: l.detalhe ?? {},
-    });
-  }
-  return mapa;
 }
 
 // ------------------------------------------------------------
@@ -385,7 +332,7 @@ async function carregarConta(
   horarioUtil: boolean,
   textos: Textos,
 ): Promise<Conta | null> {
-  const [membros, estados] = await Promise.all([lerMembros(admin, accountId), lerEstados(admin, accountId)]);
+  const [membros, estados] = await Promise.all([lerMembros(admin, accountId), lerEstadosDosAlarmes(admin, accountId)]);
   // Sem saber quem recebe ou o que já foi avisado, nada se decide.
   if (membros === null || estados === null) return null;
   return { ctx: { admin, accountId, membros, agoraMs, horarioUtil, textos }, estados };

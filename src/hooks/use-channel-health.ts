@@ -34,6 +34,7 @@
 import { useSyncExternalStore } from 'react';
 
 import { createClient } from '@/lib/supabase/client';
+import type { EpisodioAberto } from '@/lib/cb-channels/alarmes-no-sino';
 import type { CbChannelKind } from '@/lib/cb-channels/repo';
 
 export type HealthTone = 'ok' | 'warn' | 'down' | 'unknown';
@@ -59,10 +60,16 @@ export interface ChannelHealth {
   atrasoMedidoEm: string | null;
   /**
    * Nível 4 (`sem-recibo.ts`): desde quando os envios estão sem recibo (ISO),
-   * só com o motivo `sem_recibo`. A sonda antiga (antes do deploy) não manda
-   * o campo: ausente vale `null`.
+   * sempre que a régua acende, mesmo atrás de outro motivo (`health.ts`). A
+   * sonda antiga (antes do deploy) não manda o campo: ausente vale `null`.
    */
   semReciboDesde?: string | null;
+  /**
+   * E1 (`health.ts`): os episódios do sino ainda abertos, decididos no
+   * servidor. `null` = o estado não foi lido; ausente = a sonda de antes do
+   * deploy. Nos dois, o botão das conexões fica só com o ao vivo.
+   */
+  episodios?: EpisodioAberto[] | null;
 }
 
 const POLL_MS = 30_000;

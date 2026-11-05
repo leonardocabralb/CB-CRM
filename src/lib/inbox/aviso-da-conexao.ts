@@ -40,7 +40,10 @@ export interface SaudeDaConexao {
   tone: 'ok' | 'warn' | 'down' | 'unknown';
   detail: string | null;
   atrasoSeg: number | null;
-  /** Desde quando os envios estão sem recibo (ISO), só com `sem_recibo`. */
+  /**
+   * Desde quando os envios estão sem recibo (ISO), sempre que a régua acende;
+   * AQUI só vale com o motivo `sem_recibo` (o `detail` decide a faixa).
+   */
   semReciboDesde?: string | null;
 }
 

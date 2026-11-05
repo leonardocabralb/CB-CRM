@@ -233,6 +233,46 @@ export function decidir(
   return seguir(atual, false);
 }
 
+/** Um episódio do sino ainda aberto, como o botão das conexões o mostra (E1). */
+export interface EpisodioAberto {
+  tipo: TipoDoAlarme;
+  desdeIso: string;
+}
+
+/**
+ * E1 (Fase 3): o episódio GUARDADO continua aberto para o botão das conexões
+ * do cabeçalho? É isso que faz o alarme da madrugada ser visto às 8h: a sonda
+ * ao vivo apaga quando a medição envelhece, e o episódio só fecha com PROVA
+ * (expirar não normaliza). As regras são as do `decidir`:
+ *  · a prova de agora fecha já — a linha só sai no ciclo seguinte (até
+ *    ~16 min), e o botão não espera por ela; a guardada em `normalizou_em`
+ *    também, MENOS se a medição acendeu de novo (o `decidir` a anula);
+ *  · o (b) só conta depois de DURAR 30 min (D5): antes disso é o reinício da
+ *    Evolution, que a faixa da conversa e o glifo já mostram;
+ *  · o (c) que o sino CALA (P3b: visto fora do horário útil, nunca avisado
+ *    nem devido) só aparece enquanto ACESO — guardado e apagado, seria o falso
+ *    positivo noturno do robô para lead frio, de manhã, até o 1º recibo. O
+ *    ainda não avisado acompanha a sequência de AGORA.
+ */
+export function episodioAberto(
+  tipo: TipoDoAlarme,
+  estado: EstadoDoAlarme | null,
+  medicao: Medicao,
+  agoraMs: number,
+): EpisodioAberto | null {
+  if (estado === null || medicao.tipo === 'normal') return null;
+  const aceso = medicao.tipo === 'aceso';
+  if (estado.normalizouEmIso !== null && !aceso) return null;
+  if (tipo === 'atraso') {
+    return agoraMs - Date.parse(estado.desdeIso) >= DURACAO_DO_ATRASO_NO_SINO_MS
+      ? { tipo, desdeIso: estado.desdeIso }
+      : null;
+  }
+  if (!aceso && estado.avisadoEmIso === null && estado.devidoEmIso === null) return null;
+  const desdeIso = aceso && estado.avisadoEmIso === null ? medicao.desdeIso : estado.desdeIso;
+  return { tipo, desdeIso };
+}
+
 /** Um membro da conta, com o papel e o perfil REAIS (nunca o do "Ver como"). */
 export interface MembroDaConta {
   userId: string;

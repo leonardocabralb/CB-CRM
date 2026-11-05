@@ -6976,7 +6976,20 @@
     "neverChecked": "not checked yet",
     "deliveryLag": "Delivering {tempo} behind",
     "lagMeasured": "measured {tempo} ago",
-    "noReceiptSince": "No delivery confirmation since {quando}"
+    "noReceiptSince": "No delivery confirmation since {quando}",
+    "alarme": {
+      "foraDoAr": "{canal} offline",
+      "semRecibo": "{canal} without delivery confirmation since {quando}",
+      "naoRecebe": "{canal} not receiving messages",
+      "atrasada": "{canal} receiving with a delay since {quando}",
+      "foraDoArDetalhe": "Nothing is sent or received through this number until it comes back.",
+      "semReciboDetalhe": "The messages most likely arrived, but customers' replies may be held up. Do not resend: the customer would get it twice.",
+      "naoRecebeDetalhe": "It sends normally, but what customers send to this number is not reaching the CRM.",
+      "atrasadaDetalhe": "Recent customer replies may not have reached the CRM yet.",
+      "atrasadaMedida": "The last message measured took {tempo} to reach the CRM. Recent customer replies may not have arrived yet.",
+      "maisAlertas": "{n, plural, one {and # more alert} other {and # more alerts}}",
+      "verConexoes": "View connections"
+    }
   },
   "AlarmesDeConexao": {
     "semRecibo": {
