@@ -89,6 +89,12 @@ client at once; a client with no card at all is not visible.
 - `GET /me` returns the team member (`member_user_id`) and the pipelines
   (`pipeline_ids`) of the key.
 
+A ready-made **Claude skill** uses such a key to export one client to a
+folder (the conversation in order, with audio transcriptions, its files,
+notes, tasks, custom fields, deals and automation history), rename the
+documents and fill in an intake form:
+[`skill-ler-cliente/`](./skill-ler-cliente/LEIA-ME.md) (in Portuguese).
+
 ## Scopes
 
 A key can do only what its scopes allow — independent of who created
