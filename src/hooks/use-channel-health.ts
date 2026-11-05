@@ -35,6 +35,7 @@ import { useSyncExternalStore } from 'react';
 
 import { createClient } from '@/lib/supabase/client';
 import type { EpisodioAberto } from '@/lib/cb-channels/alarmes-no-sino';
+import type { AlarmeDaSentinela } from '@/lib/cb-channels/alarmes-da-sentinela';
 import type { CbChannelKind } from '@/lib/cb-channels/repo';
 
 export type HealthTone = 'ok' | 'warn' | 'down' | 'unknown';
@@ -70,6 +71,11 @@ export interface ChannelHealth {
    * deploy. Nos dois, o botão das conexões fica só com o ao vivo.
    */
   episodios?: EpisodioAberto[] | null;
+  /**
+   * E1 (Fase 4): os alarmes de conexão abertos da sentinela da VPS (1123).
+   * `null` = não lidos; ausente = a sonda de antes do deploy.
+   */
+  sentinela?: AlarmeDaSentinela[] | null;
 }
 
 const POLL_MS = 30_000;

@@ -148,31 +148,56 @@ interface LinhaDoEstadoFalsa {
   devido_em?: string | null;
 }
 
-/** A service role: só a leitura do estado, com a conta conferida. */
-function adminFalso(resposta: { linhas: LinhaDoEstadoFalsa[] } | { erro: string }) {
+interface LinhaDaSentinelaFalsa {
+  channel_id: string;
+  chave: string;
+  desde: string;
+}
+
+type Resposta<T> = { linhas: T[] } | { erro: string };
+
+/** A service role: só as leituras das duas tabelas, com a conta conferida. */
+function adminFalso(
+  resposta: Resposta<LinhaDoEstadoFalsa>,
+  sentinela: Resposta<LinhaDaSentinelaFalsa> = { linhas: [] },
+) {
   const contas: string[] = [];
-  const consulta = {
-    select: () => consulta,
-    eq: (coluna: string, valor: string) => {
-      if (coluna === 'account_id') contas.push(valor);
-      return consulta;
-    },
-    order: () => consulta,
-    range: async () =>
-      'erro' in resposta
-        ? { data: null, error: { message: resposta.erro } }
-        : {
-            data: resposta.linhas.map((l) => ({
-              avisado_em: null,
-              normalizou_em: null,
-              devido_em: null,
-              detalhe: null,
-              ...l,
-            })),
-            error: null,
-          },
+  const cortes: string[] = [];
+  const consulta = (tabela: string) => {
+    const q = {
+      select: () => q,
+      eq: (coluna: string, valor: string) => {
+        if (coluna === 'account_id') contas.push(`${tabela}:${valor}`);
+        return q;
+      },
+      gte: (coluna: string, valor: string) => {
+        if (coluna === 'visto_em') cortes.push(valor);
+        return q;
+      },
+      order: () => q,
+      range: async () => {
+        if (tabela === 'cb_alarmes_da_sentinela') {
+          return 'erro' in sentinela
+            ? { data: null, error: { message: sentinela.erro } }
+            : { data: sentinela.linhas, error: null };
+        }
+        return 'erro' in resposta
+          ? { data: null, error: { message: resposta.erro } }
+          : {
+              data: resposta.linhas.map((l) => ({
+                avisado_em: null,
+                normalizou_em: null,
+                devido_em: null,
+                detalhe: null,
+                ...l,
+              })),
+              error: null,
+            };
+      },
+    };
+    return q;
   };
-  return { db: { from: () => consulta } as never, contas };
+  return { db: { from: (tabela: string) => consulta(tabela) } as never, contas, cortes };
 }
 
 describe('probeChannels — os episódios abertos do sino (E1)', () => {
@@ -198,7 +223,10 @@ describe('probeChannels — os episódios abertos do sino (E1)', () => {
     const saude = await probeChannels(bancoFalso(), 'conta-1', admin.db);
     const porId = new Map(saude.map((c) => [c.id, c]));
 
-    expect(admin.contas).toEqual(['conta-1']);
+    expect(admin.contas.sort()).toEqual([
+      'cb_alarmes_da_sentinela:conta-1',
+      'cb_alarmes_de_conexao:conta-1',
+    ]);
     // O (c) aceso e ainda não avisado acompanha a sequência de agora (40 min).
     expect(porId.get('evo')?.episodios).toEqual([
       { tipo: 'sem_recibo', desdeIso: expect.any(String) },
@@ -220,7 +248,7 @@ describe('probeChannels — os episódios abertos do sino (E1)', () => {
       linhas: [{ channel_id: 'meta', tipo: 'atraso', desde: new Date(Date.now() - 45 * MIN).toISOString() }],
     });
     const depois = await probeChannels(bancoFalso(), 'conta-1', bom.db);
-    expect(bom.contas).toEqual(['conta-1']);
+    expect(bom.contas).toContain('cb_alarmes_de_conexao:conta-1');
     expect(depois.find((c) => c.id === 'meta')?.episodios).toHaveLength(1);
   });
 
@@ -237,5 +265,50 @@ describe('probeChannels — os episódios abertos do sino (E1)', () => {
     });
     const saude = await probeChannels(bancoFalso(), 'conta-1', admin.db);
     expect(saude.find((c) => c.id === 'meta')?.episodios).toEqual([]);
+  });
+});
+
+describe('probeChannels — os alarmes abertos da sentinela (E1, Fase 4)', () => {
+  beforeEach(() => {
+    lidas.length = 0;
+    __limparCacheDeSaude();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  it('sem a service role, `sentinela` sai null', async () => {
+    const saude = await probeChannels(bancoFalso(), 'conta-1');
+    expect(saude.every((c) => c.sentinela === null)).toBe(true);
+  });
+
+  it('cada conexão leva os dela; chave desconhecida é ignorada; a leitura corta em 3 h', async () => {
+    const antes = Date.now();
+    const admin = adminFalso(
+      { linhas: [] },
+      {
+        linhas: [
+          { channel_id: 'evo', chave: 'quedas', desde: '2026-11-05T10:00:00.000Z' },
+          { channel_id: 'evo', chave: 'inventada', desde: '2026-11-05T10:00:00.000Z' },
+          { channel_id: 'meta', chave: 'sem_entrada', desde: '2026-11-05T11:00:00.000Z' },
+        ],
+      },
+    );
+    const saude = await probeChannels(bancoFalso(), 'conta-1', admin.db);
+    const porId = new Map(saude.map((c) => [c.id, c]));
+    expect(porId.get('evo')?.sentinela).toEqual([{ chave: 'quedas', desdeIso: '2026-11-05T10:00:00.000Z' }]);
+    expect(porId.get('meta')?.sentinela).toEqual([
+      { chave: 'sem_entrada', desdeIso: '2026-11-05T11:00:00.000Z' },
+    ]);
+    expect(porId.get('ig')?.sentinela).toEqual([]);
+    expect(admin.contas).toContain('cb_alarmes_da_sentinela:conta-1');
+    const corte = Date.parse(admin.cortes[0]);
+    expect(antes - corte).toBeGreaterThanOrEqual(3 * 60 * 60_000 - 1000);
+    expect(antes - corte).toBeLessThanOrEqual(3 * 60 * 60_000 + 60_000);
+  });
+
+  it('⚠️ a leitura que falha é "não sei" (null), sem derrubar os episódios do sino', async () => {
+    const admin = adminFalso({ linhas: [] }, { erro: 'relation does not exist' });
+    const saude = await probeChannels(bancoFalso(), 'conta-1', admin.db);
+    expect(saude.every((c) => c.sentinela === null)).toBe(true);
+    expect(saude.find((c) => c.id === 'evo')?.episodios).toEqual([]);
   });
 });

@@ -21,7 +21,9 @@
 //  · COM ALARME, SE ALARGA (E1, Fase 3 dos alarmes de conexão; decisão do
 //    operador, 05/11/2026, no lugar de uma faixa fixa no topo): o fundo pega a
 //    cor do alarme e, do `md` para cima, o botão diz QUAL conexão e o quê, sem
-//    abrir o popover; o popover abre com os alarmes explicados no topo. A
+//    abrir o popover. No popover, cada alarme mora na ficha da PRÓPRIA
+//    conexão, como os outros avisos dela (decisão do operador: os cartões no
+//    topo ficaram grosseiros). A
 //    régua (o que conta como alarme, para quem) é `alarmes-do-cabecalho.ts`:
 //    o amarelo dos estados de passagem (reconectando, sem confirmação há
 //    pouco) e o atraso curto do reinício da Evolution NÃO alargam — só o
@@ -29,18 +31,18 @@
 //    título: fica só o fundo colorido.
 // ============================================================
 
-import Link from 'next/link';
-import { TriangleAlert, WifiOff } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
 
 import { ABRE_PARA_BAIXO } from '@/components/layout/popup-do-cabecalho';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useAuth } from '@/hooks/use-auth';
 import { useChannelHealth, type ChannelHealth, type HealthTone } from '@/hooks/use-channel-health';
-import { alarmesDoCabecalho, type AlarmeDoCabecalho } from '@/lib/cb-channels/alarmes-do-cabecalho';
+import {
+  alarmesDoCabecalho,
+  alarmesPorConexao,
+  type AlarmeDoCabecalho,
+} from '@/lib/cb-channels/alarmes-do-cabecalho';
 import { formatChannelPhone } from '@/lib/cb-channels/display';
-import { podeVerSecao } from '@/lib/perfis/visibilidade';
 import { cn } from '@/lib/utils';
 
 import { WhatsAppGlyph } from './whatsapp-glyph';
@@ -154,22 +156,40 @@ function textoCurto(t: Tradutor, a: AlarmeDoCabecalho): string {
       return t('alarme.naoRecebe', { canal: a.rotulo });
     case 'atrasada':
       return t('alarme.atrasada', { canal: a.rotulo, quando: quandoFoi(a.desdeIso) });
+    // Os da sentinela da VPS (1123, Fase 4).
+    case 'sem_entrada':
+      return t('alarme.semEntrada', { canal: a.rotulo, quando: quandoFoi(a.desdeIso) });
+    case 'nao_gravadas':
+      return t('alarme.naoGravadas', { canal: a.rotulo, quando: quandoFoi(a.desdeIso) });
+    case 'falhas':
+      return t('alarme.falhas', { canal: a.rotulo, quando: quandoFoi(a.desdeIso) });
+    case 'quedas':
+      return t('alarme.quedas', { canal: a.rotulo, quando: quandoFoi(a.desdeIso) });
   }
 }
 
-/** O que fazer com ele, no popover. O sem recibo manda NÃO reenviar (raiz, 8e). */
-function textoLongo(t: Tradutor, a: AlarmeDoCabecalho): string {
+/**
+ * O alarme na ficha da PRÓPRIA conexão (o nome dela já está acima), como os
+ * outros avisos da ficha. Fora do ar e não recebe não ganham linha: o status
+ * da ficha já diz. O sem recibo manda NÃO reenviar (raiz, 8e).
+ */
+function textoNaFicha(t: Tradutor, a: AlarmeDoCabecalho): string | null {
   switch (a.tipo) {
     case 'fora_do_ar':
-      return t('alarme.foraDoArDetalhe');
-    case 'sem_recibo':
-      return t('alarme.semReciboDetalhe');
     case 'nao_recebe':
-      return t('alarme.naoRecebeDetalhe');
+      return null;
+    case 'sem_recibo':
+      return t('alarme.naFicha.semRecibo', { quando: quandoFoi(a.desdeIso) });
     case 'atrasada':
-      return a.atrasoSeg !== null
-        ? t('alarme.atrasadaMedida', { tempo: duracao(a.atrasoSeg) })
-        : t('alarme.atrasadaDetalhe');
+      return t('alarme.naFicha.atrasada', { quando: quandoFoi(a.desdeIso) });
+    case 'sem_entrada':
+      return t('alarme.naFicha.semEntrada', { quando: quandoFoi(a.desdeIso) });
+    case 'nao_gravadas':
+      return t('alarme.naFicha.naoGravadas', { quando: quandoFoi(a.desdeIso) });
+    case 'falhas':
+      return t('alarme.naFicha.falhas', { quando: quandoFoi(a.desdeIso) });
+    case 'quedas':
+      return t('alarme.naFicha.quedas', { quando: quandoFoi(a.desdeIso) });
   }
 }
 
@@ -183,27 +203,7 @@ const COR_DO_ALARME = {
   ambar: 'bg-amber-500/10 text-amber-700 ring-amber-500/40 hover:bg-amber-500/15',
 } as const;
 
-function AlarmeNoPopover({ a }: { a: AlarmeDoCabecalho }) {
-  const t = useTranslations('ChannelHealth');
-  const vermelho = a.tipo === 'fora_do_ar';
-  const Icone = vermelho ? WifiOff : TriangleAlert;
-  return (
-    <div
-      className={cn(
-        'flex items-start gap-2 rounded-md px-2 py-1.5 text-xs',
-        vermelho ? COR_DO_ALARME.vermelho : COR_DO_ALARME.ambar,
-      )}
-    >
-      <Icone aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
-      <div className="min-w-0">
-        <p className="break-words font-semibold">{textoCurto(t, a)}</p>
-        <p className="mt-0.5 break-words">{textoLongo(t, a)}</p>
-      </div>
-    </div>
-  );
-}
-
-function Ficha({ c }: { c: ChannelHealth }) {
+function Ficha({ c, alarmes }: { c: ChannelHealth; alarmes: readonly AlarmeDoCabecalho[] }) {
   const t = useTranslations('ChannelHealth');
   const telefone = formatChannelPhone(c.phone);
   const verificado = hums(c.checkedAt);
@@ -221,9 +221,6 @@ function Ficha({ c }: { c: ChannelHealth }) {
   // medição velha não vira `lagging`, então não chega aqui.
   const atrasada = c.detail === 'lagging';
   const medido = hums(c.atrasoMedidoEm);
-  // Nível 4, pelo mesmo princípio: o `detail` do servidor, com a data que a
-  // sonda mandou junto (`sem-recibo.ts`).
-  const semReciboDesde = c.detail === 'sem_recibo' ? (c.semReciboDesde ?? null) : null;
 
   return (
     <div className="flex items-start gap-2.5 py-1.5">
@@ -266,11 +263,19 @@ function Ficha({ c }: { c: ChannelHealth }) {
             {medido ? ` · ${t('lagMeasured', { tempo: medido })}` : ''}
           </p>
         )}
-        {semReciboDesde && (
-          <p className="mt-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
-            {t('noReceiptSince', { quando: quandoFoi(semReciboDesde) })}
-          </p>
-        )}
+        {/* E1: os alarmes DESTA conexão que o status acima não diz, do pior
+            para o mais leve (o sem recibo, que era a linha "Sem confirmação
+            de entrega desde…", vem por aqui, também atrás de outro motivo). */}
+        {alarmes.map((a) => {
+          const texto = textoNaFicha(t, a);
+          return (
+            texto && (
+              <p key={a.tipo} className="mt-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+                {texto}
+              </p>
+            )
+          );
+        })}
       </div>
     </div>
   );
@@ -280,9 +285,6 @@ export function ChannelHealthIndicator({ className }: { className?: string }) {
   const t = useTranslations('ChannelHealth');
   const { channels, loading, falhou } = useChannelHealth();
   const { acesso } = useAuth();
-  // Aberto CONTROLADO: o cabeçalho continua montado na navegação, e o link
-  // "Ver conexões" deixaria o popover aberto por cima de Configurações.
-  const [aberto, setAberto] = useState(false);
 
   // Conta sem conexão: nada a dizer.
   if (channels.length === 0) return null;
@@ -295,8 +297,11 @@ export function ChannelHealthIndicator({ className }: { className?: string }) {
     ruins: tons.filter((x) => x !== 'ok').length,
   });
 
-  // E1: o alarme de quem recebe o aviso (D2), o pior primeiro.
-  const alarmes = alarmesDoCabecalho({ saude: channels, carregando: loading, falhou, acesso });
+  // E1: o alarme de quem recebe o aviso (D2), o pior primeiro; a ficha de
+  // cada conexão mostra todos os dela.
+  const entrada = { saude: channels, carregando: loading, falhou, acesso };
+  const alarmes = alarmesDoCabecalho(entrada);
+  const porConexao = alarmesPorConexao(entrada);
   const principal = alarmes[0] ?? null;
   const curto = principal ? textoCurto(t, principal) : null;
   const outros = alarmes.length - 1;
@@ -307,7 +312,7 @@ export function ChannelHealthIndicator({ className }: { className?: string }) {
     : resumo;
 
   return (
-    <Popover open={aberto} onOpenChange={setAberto}>
+    <Popover>
       <PopoverTrigger
         aria-label={rotulo}
         title={rotulo}
@@ -355,29 +360,12 @@ export function ChannelHealthIndicator({ className }: { className?: string }) {
         collisionAvoidance={ABRE_PARA_BAIXO}
         className="max-h-[max(var(--available-height),16rem)] w-80 overflow-y-auto"
       >
-        {alarmes.length > 0 && (
-          <div className="mb-2 space-y-1.5 border-b border-border pb-2">
-            {alarmes.map((a) => (
-              <AlarmeNoPopover key={a.canalId} a={a} />
-            ))}
-            {/* Só para quem vê a seção: o link cairia numa tela fora do perfil. */}
-            {podeVerSecao(acesso, 'channels') && (
-              <Link
-                href="/settings?tab=channels"
-                onClick={() => setAberto(false)}
-                className="inline-block px-0.5 text-xs font-medium text-primary underline-offset-2 hover:underline"
-              >
-                {t('alarme.verConexoes')}
-              </Link>
-            )}
-          </div>
-        )}
         <p className="px-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {t('title')}
         </p>
         <div className="divide-y divide-border">
           {channels.map((c) => (
-            <Ficha key={c.id} c={c} />
+            <Ficha key={c.id} c={c} alarmes={porConexao.get(c.id) ?? []} />
           ))}
         </div>
       </PopoverContent>

@@ -1818,3 +1818,21 @@ nome da época em que foram aplicadas.
   lista. Ou seja, **o histórico não é fonte de verdade completa** — para checar
   se algo foi aplicado, consultar o schema, não só o histórico. (A 947 também
   está aplicada sem registro — ver a entrada 946–947.)
+
+- **1123_cb_alarmes_da_sentinela** — `cb_alarmes_da_sentinela` (os alarmes de
+  conexão ABERTOS da sentinela da VPS, para o botão das conexões do cabeçalho:
+  uma linha por conexão e chave — `sem_entrada`, `nao_gravadas`, `falhas`,
+  `quedas` —, com `desde` e `visto_em`; fechada ao navegador, fora da
+  publicação, FK composta para `cb_channels` com CASCADE). Quem grava é a
+  sentinela (`ops/vps/saude-whatsapp/sentinela.py`); a sonda da saúde lê com a
+  service role e ignora linha não confirmada há 3 h. PR #464,
+  `docs/PLANO-alarmes-de-conexao.md` (Fase 4).
+
+  ADITIVA, ANTES do deploy e da sentinela nova: sem ela, a sonda lê "não sei"
+  e a sentinela registra a falha no log e segue. Autorização do operador em
+  05/11/2026 ("Sim, aplicar", à pergunta de aplicar a 1123 em produção quando o
+  replay do CI ficasse verde), aplicada em 05/11/2026 (histórico
+  `20261105155154`) pela Management API, com o arquivo idêntico ao do commit
+  `841d918d`, que passou no replay do CI. Conferida: RLS ligada e nenhuma
+  policy; `anon` e `authenticated` sem leitura; `service_role` grava; o CHECK
+  com as quatro chaves; zero linhas.
