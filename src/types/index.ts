@@ -535,10 +535,13 @@ export interface Conversation {
  * na 944 (`task_assigned`, `task_reply`), na 1075 (`note_reply`) e na 1085
  * (`whatsapp_alert`).
  *
- * `whatsapp_alert` (1085) é gravado por um monitor de FORA do app, com a
- * service role, para os owner/admin da conta: título e corpo já escritos, sem
- * conversa nem tarefa (o clique só marca lido). Na nossa instalação, a
- * sentinela de `ops/vps/saude-whatsapp/` (`docs/INFRA-VPS.md`).
+ * `whatsapp_alert` (1085) é gravado com a service role, título e corpo já
+ * escritos, sem conversa nem tarefa (o clique só marca lido), por DOIS
+ * escritores: um monitor de FORA do app, para os owner/admin da conta (na
+ * nossa instalação, a sentinela de `ops/vps/saude-whatsapp/`,
+ * `docs/INFRA-VPS.md`), e o próprio CRM, nos alarmes de conexão (1122,
+ * `src/lib/cb-channels/avisar-alarmes.ts`), para os owner/admin e os membros
+ * cujo perfil vê a conexão.
  *
  * ⚠️ Não confundir com o `'conversation_assigned'` homônimo mais abaixo neste
  * arquivo, que é gatilho de AUTOMAÇÃO. São coisas diferentes com o mesmo nome.

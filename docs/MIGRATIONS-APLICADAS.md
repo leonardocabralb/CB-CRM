@@ -1780,6 +1780,25 @@ nome da época em que foram aplicadas.
   existem; o `membro_user_id` é CASCADE e o `created_by` continua SET NULL;
   o CHECK está ativo; e as 17 chaves que já existiam ficaram sem funcionário
   e sem funis, ou seja, nenhuma integração mudou.
+- **1122_cb_alarmes_de_conexao** — `cb_alarmes_de_conexao` (o estado dos
+  alarmes de conexão no sino, uma linha por conexão e tipo: `desde`,
+  `avisado_em`, `normalizou_em`, `devido_em`, `detalhe`; fechada ao navegador,
+  fora da publicação, FK composta para `cb_channels` com CASCADE) e a função
+  `cb_gravar_alarme_de_conexao` (o estado cercado e o aviso `whatsapp_alert`
+  na MESMA transação, só para membro ativo da conta; EXECUTE só do
+  `service_role`). PR #460, `docs/PLANO-alarmes-de-conexao.md` (Fase 2).
+
+  ADITIVA, ANTES do deploy: sem ela, o passo novo do ciclo falha ao ler o
+  estado e não avisa (é isolado: o resto do ciclo segue). Autorização do
+  operador em 04/11/2026 ("Sim, aplicar", à pergunta de aplicar a 1122 em
+  produção quando o CI do #460 fechasse verde), aplicada em 04/11/2026
+  (histórico `20261105001553`), com o arquivo idêntico ao do commit
+  `804d4686`, que passou no replay do CI; os dois achados do Codex nesse
+  commit eram do TypeScript, não da migration. Conferida: as 8 colunas; RLS
+  ligada e nenhuma policy; `anon` e `authenticated` sem leitura nem EXECUTE,
+  `service_role` grava e executa; fora da publicação; zero estados e zero
+  avisos depois da conferência, que chamou a função como `service_role` com
+  dado real e se desfez.
 
 ## Notas do histórico
 

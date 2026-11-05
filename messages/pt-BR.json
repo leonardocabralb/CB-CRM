@@ -6971,6 +6971,27 @@
     "lagMeasured": "medido há {tempo}",
     "noReceiptSince": "Sem confirmação de entrega desde {quando}"
   },
+  "AlarmesDeConexao": {
+    "semRecibo": {
+      "titulo": "Conexão sem confirmação de entrega: {canal}",
+      "corpo": "Os envios por este número não voltam com a confirmação de entrega desde {desde}. As mensagens provavelmente chegaram, mas as respostas dos clientes podem estar presas. Não reenvie: o cliente receberia em dobro."
+    },
+    "atraso": {
+      "titulo": "Conexão recebendo com atraso: {canal}",
+      "corpo": "A última mensagem medida levou cerca de {tempo} para chegar ao CRM ({quando}). Respostas recentes dos clientes podem ainda não ter chegado.",
+      "semMedida": "As mensagens deste número estão chegando ao CRM com atraso desde {desde}."
+    },
+    "tempo": {
+      "minutos": "{minutos} min",
+      "horas": "{horas} h {minutos} min"
+    },
+    "continua": "Continua — {titulo}",
+    "semProva": "Ainda sem prova de que normalizou: nenhuma medição nova mostrou o fim. Desde {desde}.",
+    "normalizou": "Normalizou — {titulo}",
+    "normalizouCorpo": "Voltou ao normal em {fim}; tinha começado em {inicio}.",
+    "passou": "Aconteceu e já normalizou — {titulo}",
+    "passouCorpo": "{corpo} Voltou ao normal em {fim}."
+  },
   "LeadEvents": {
     "title": "Histórico",
     "loading": "Carregando histórico…",

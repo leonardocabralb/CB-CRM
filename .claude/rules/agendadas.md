@@ -28,7 +28,8 @@ anexos, em `.claude/rules/midia.md`. O texto antigo, com a história, está em
   `/api/cb/scheduled/cron` (laço do `docker-stack.yml`). Sem ele a tabela só
   enche — o destino de `broadcasts.scheduled_at`, viva e sem leitor desde a
   001.
-- ⚠️ **A rota carrega também, no `after()` (`rodarManutencaoDoCiclo`), as
+- ⚠️ **A rota carrega também, no `after()` (`rodarManutencaoDoCiclo`), os
+  ALARMES DE CONEXÃO no sino** (1122, `.claude/rules/canais.md`), **as
   TAREFAS RECORRENTES** (1074), **a limpeza da Lixeira de contatos** (1097:
   o vencimento e a fila de arquivos, `.claude/rules/deploy.md`) **e a poda do
   conteúdo dos turnos da IA** (1110, `ia-central.md`): tirá-la do

@@ -6978,6 +6978,27 @@
     "lagMeasured": "measured {tempo} ago",
     "noReceiptSince": "No delivery confirmation since {quando}"
   },
+  "AlarmesDeConexao": {
+    "semRecibo": {
+      "titulo": "Connection not confirming delivery: {canal}",
+      "corpo": "Messages sent from this number have not come back with a delivery confirmation since {desde}. They most likely arrived, but customers' replies may be held up. Do not resend: the customer would get it twice."
+    },
+    "atraso": {
+      "titulo": "Connection receiving with a delay: {canal}",
+      "corpo": "The last message measured took about {tempo} to reach the CRM ({quando}). Recent customer replies may not have arrived yet.",
+      "semMedida": "Messages from this number have been reaching the CRM late since {desde}."
+    },
+    "tempo": {
+      "minutos": "{minutos} min",
+      "horas": "{horas} h {minutos} min"
+    },
+    "continua": "Still going — {titulo}",
+    "semProva": "Still no proof that it is back to normal: no new measurement has shown the end. Since {desde}.",
+    "normalizou": "Back to normal — {titulo}",
+    "normalizouCorpo": "Back to normal at {fim}; it had started at {inicio}.",
+    "passou": "Happened and is already back to normal — {titulo}",
+    "passouCorpo": "{corpo} Back to normal at {fim}."
+  },
   "LeadEvents": {
     "title": "History",
     "loading": "Loading history…",
