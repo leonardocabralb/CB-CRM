@@ -87,7 +87,7 @@ alarme. Depois a classe na sentinela (a) e o (b) como complemento.
 |---|---|---|
 | 0 | Estudo e medição (este documento) | Feito em 04/11/2026 |
 | 1 | (c) no CRM: régua, índice e motivo novo na saúde da conexão (cabeçalho e faixa da conversa) | Mesclada em 04/11/2026 (PR #458, `19bf829c`); a 1120 foi aplicada antes do merge (histórico `20261104215651`; a leitura caiu de 973 ms para 7,8 ms) |
-| 2 | Avisos do próprio CRM no sino, com estado: (c) e (b) | Decidida (D2, D3, D5, D6, D8); a implementar |
+| 2 | Avisos do próprio CRM no sino, com estado: (c) e (b) | Mesclada em 04/11/2026 (PR #460, `42fc91b2`); a 1122 foi aplicada antes do merge (histórico `20261105001553`) |
 | 3 | Faixa fixa no topo enquanto houver alarme (E1) | Decidida (D1, D2); a implementar |
 | 4 | Sentinela: instância e classe na coleta, aviso `quedas:` | Decidida (D2, D7); começa pela leitura do log do incidente |
 | 5 | Aviso no celular dos administradores (E3) | Fora (D1) |
@@ -400,10 +400,17 @@ recibo foi medido numa hora só: a primeira semana no ar vale como conferência.
 
 ## 6. Custos e riscos
 
-- **Banco:** o passo do cron faz uma consulta por conexão, a cada ~15 min,
-  pelo índice novo. A sonda da saúde ganha a mesma consulta, com cache (ela
-  já guarda a resposta da Evolution por 15 s). O banco está perto do teto de
-  conexões: nada aqui abre conexão própria, tudo passa pelo PostgREST.
+- **Banco:** o passo do cron faz duas leituras por conexão (as da sonda, pelo
+  índice da 1120), mais três por conta e uma escrita só quando o estado muda,
+  a cada ~15 min: na instalação de referência, uns 14 pedidos por ciclo. A
+  sonda da saúde faz as mesmas duas leituras, com cache de 1 min por conta. O
+  banco está perto do teto de conexões: nada aqui abre conexão própria, tudo
+  passa pelo PostgREST, e o passo tem prazo próprio de 60 s.
+- **Recuperação depois de 24 h sem envio (limite conhecido, Codex no #460):**
+  a prova do fim do (c) só olha os envios das últimas 24 h. Se a conexão volta
+  depois de um dia inteiro sem ninguém enviar, os recibos atrasados desses
+  envios não encerram o episódio, que acaba no primeiro envio novo com
+  recibo; até lá, no máximo um "Continua — ainda sem prova" por dia útil.
 - **Falso positivo do (c) à noite:** quem envia à noite é o robô, para lead
   frio, e o celular desligado atrasa o recibo. O histórico não teve
   sequência de 5, mas o risco é maior do que de dia. Decidido (P3b): o sino
