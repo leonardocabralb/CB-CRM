@@ -52,7 +52,7 @@ chegado (ele conferiu no WhatsApp).
 | Fase | O quê | Estado |
 |---|---|---|
 | 1 | O ERROR de grupo não vira "não entregue" | Mesclada no PR #456 (04/11/2026) |
-| 2 | ✓✓ e azul em grupo, e "Dados da mensagem" (quem recebeu e quem leu) | Decidida (D1–D3 e D5, 04/11/2026); revisão independente e duas rodadas do Codex no PR #457 (abaixo); 1119 aplicada em produção em 04/11/2026; o CRM entra com o PR #457. Falta: a imagem nova, a troca na VPS e a prova num grupo de teste. D4 e D6 pendentes |
+| 2 | ✓✓ e azul em grupo, e "Dados da mensagem" (quem recebeu e quem leu) | Decidida (D1–D3 e D5, 04/11/2026); revisão independente e duas rodadas do Codex no PR #457 (abaixo); 1119 aplicada em produção em 04/11/2026; o CRM no ar com o PR #457 (04/11/2026); a imagem com o 5º patch no ar desde 05/11/2026 09:20 BRT (`docs/INFRA-VPS.md` §8). Falta: a prova num grupo de teste. D4 e D6 pendentes |
 
 ## Fase 1 — o ERROR de grupo não vira falha
 
