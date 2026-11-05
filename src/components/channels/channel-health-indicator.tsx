@@ -32,6 +32,7 @@
 import Link from 'next/link';
 import { TriangleAlert, WifiOff } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { useState } from 'react';
 
 import { ABRE_PARA_BAIXO } from '@/components/layout/popup-do-cabecalho';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -279,6 +280,9 @@ export function ChannelHealthIndicator({ className }: { className?: string }) {
   const t = useTranslations('ChannelHealth');
   const { channels, loading, falhou } = useChannelHealth();
   const { acesso } = useAuth();
+  // Aberto CONTROLADO: o cabeçalho continua montado na navegação, e o link
+  // "Ver conexões" deixaria o popover aberto por cima de Configurações.
+  const [aberto, setAberto] = useState(false);
 
   // Conta sem conexão: nada a dizer.
   if (channels.length === 0) return null;
@@ -303,7 +307,7 @@ export function ChannelHealthIndicator({ className }: { className?: string }) {
     : resumo;
 
   return (
-    <Popover>
+    <Popover open={aberto} onOpenChange={setAberto}>
       <PopoverTrigger
         aria-label={rotulo}
         title={rotulo}
@@ -329,10 +333,11 @@ export function ChannelHealthIndicator({ className }: { className?: string }) {
             <Glifo key={c.id} tone={c.tone} pulsar={c.tone === 'warn'} kind={c.kind} />
           ))
         )}
-        {/* O texto cabe do `md` para cima; com o menu lateral (`lg`), menos,
-            para o título da página não sumir. */}
+        {/* O texto cabe do `md` para cima. Com o menu lateral (`lg`) o
+            cabeçalho estreita, e o teto desce para o título da página caber
+            ("Caixa de entrada", medido de 800 a 1440 px); volta no `xl`. */}
         {curto && (
-          <span className="hidden min-w-0 max-w-56 truncate text-xs font-medium md:inline lg:max-w-60 xl:max-w-96">
+          <span className="hidden min-w-0 max-w-48 truncate text-xs font-medium md:inline lg:max-w-40 xl:max-w-96">
             {curto}
           </span>
         )}
@@ -359,6 +364,7 @@ export function ChannelHealthIndicator({ className }: { className?: string }) {
             {podeVerSecao(acesso, 'channels') && (
               <Link
                 href="/settings?tab=channels"
+                onClick={() => setAberto(false)}
                 className="inline-block px-0.5 text-xs font-medium text-primary underline-offset-2 hover:underline"
               >
                 {t('alarme.verConexoes')}

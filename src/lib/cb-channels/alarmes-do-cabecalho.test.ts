@@ -114,6 +114,17 @@ describe('alarmesDoCabecalho — o alarme no botão das conexões (E1)', () => {
     expect(alarmes(lista)).toEqual([{ canalId: 'c1', tipo: 'nao_recebe', rotulo: 'C1' }]);
   });
 
+  it('⚠️ o sem recibo AO VIVO atrás de outro motivo (fila represada: lagging; lastError) alarga do mesmo jeito', () => {
+    const lista = [
+      saude({ id: 'c1', tone: 'warn', detail: 'lagging', atrasoSeg: 8 * 60, semReciboDesde: HOJE_9H }),
+      saude({ id: 'c2', tone: 'warn', detail: 'lastError', semReciboDesde: ONTEM_20H }),
+    ];
+    expect(alarmes(lista)).toEqual([
+      { canalId: 'c1', tipo: 'sem_recibo', rotulo: 'C1', desdeIso: HOJE_9H },
+      { canalId: 'c2', tipo: 'sem_recibo', rotulo: 'C2', desdeIso: ONTEM_20H },
+    ]);
+  });
+
   it('os transitórios (stale, pairing, lastError) não acendem', () => {
     const lista = [
       saude({ id: 'c5', tone: 'warn', detail: 'stale' }),

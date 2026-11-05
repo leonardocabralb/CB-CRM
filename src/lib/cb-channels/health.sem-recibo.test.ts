@@ -78,12 +78,12 @@ const CANAIS = [
 ];
 
 /** Banco falso: a lista de conexões e o UPDATE do frescor (que não interessa aqui). */
-function bancoFalso() {
+function bancoFalso(canais: unknown[] = CANAIS) {
   const lista = {
     select: () => lista,
     eq: () => lista,
     order: () => lista,
-    then: (resolver: (r: unknown) => unknown) => Promise.resolve({ data: CANAIS, error: null }).then(resolver),
+    then: (resolver: (r: unknown) => unknown) => Promise.resolve({ data: canais, error: null }).then(resolver),
   };
   const escrita = {
     update: () => escrita,
@@ -116,6 +116,13 @@ describe('probeChannels — envios sem recibo só no WhatsApp', () => {
 
     expect(porId.get('ig')?.detail).not.toBe('sem_recibo');
     expect(porId.get('ig')?.semReciboDesde).toBeNull();
+  });
+
+  it('⚠️ o `desde` vai também ATRÁS de outro motivo (o botão das conexões o lê direto, E1)', async () => {
+    const comErro = { ...CANAIS[0], id: 'evo-erro', last_error: 'falha antiga' };
+    const saude = await probeChannels(bancoFalso([comErro]), 'conta-1');
+    expect(saude[0]).toMatchObject({ tone: 'warn', detail: 'lastError' });
+    expect(saude[0].semReciboDesde).toEqual(expect.any(String));
   });
 
   it('a leitura vale por 1 min para a conta: duas sondas seguidas leem uma vez', async () => {

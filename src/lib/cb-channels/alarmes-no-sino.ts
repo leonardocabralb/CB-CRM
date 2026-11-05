@@ -244,12 +244,15 @@ export interface EpisodioAberto {
  * do cabeçalho? É isso que faz o alarme da madrugada ser visto às 8h: a sonda
  * ao vivo apaga quando a medição envelhece, e o episódio só fecha com PROVA
  * (expirar não normaliza). As regras são as do `decidir`:
- *  · a prova (a de agora ou a guardada em `normalizou_em`) fecha já — a linha
- *    só sai no ciclo seguinte (até ~16 min), e o botão não espera por ela;
+ *  · a prova de agora fecha já — a linha só sai no ciclo seguinte (até
+ *    ~16 min), e o botão não espera por ela; a guardada em `normalizou_em`
+ *    também, MENOS se a medição acendeu de novo (o `decidir` a anula);
  *  · o (b) só conta depois de DURAR 30 min (D5): antes disso é o reinício da
  *    Evolution, que a faixa da conversa e o glifo já mostram;
- *  · o (c) aparece a qualquer hora (P3b: a tela mostra na hora; o sino espera
- *    o horário útil), e o ainda não avisado acompanha a sequência de AGORA.
+ *  · o (c) que o sino CALA (P3b: visto fora do horário útil, nunca avisado
+ *    nem devido) só aparece enquanto ACESO — guardado e apagado, seria o falso
+ *    positivo noturno do robô para lead frio, de manhã, até o 1º recibo. O
+ *    ainda não avisado acompanha a sequência de AGORA.
  */
 export function episodioAberto(
   tipo: TipoDoAlarme,
@@ -257,15 +260,16 @@ export function episodioAberto(
   medicao: Medicao,
   agoraMs: number,
 ): EpisodioAberto | null {
-  if (estado === null || estado.normalizouEmIso !== null) return null;
-  if (medicao.tipo === 'normal') return null;
+  if (estado === null || medicao.tipo === 'normal') return null;
+  const aceso = medicao.tipo === 'aceso';
+  if (estado.normalizouEmIso !== null && !aceso) return null;
   if (tipo === 'atraso') {
     return agoraMs - Date.parse(estado.desdeIso) >= DURACAO_DO_ATRASO_NO_SINO_MS
       ? { tipo, desdeIso: estado.desdeIso }
       : null;
   }
-  const desdeIso =
-    medicao.tipo === 'aceso' && estado.avisadoEmIso === null ? medicao.desdeIso : estado.desdeIso;
+  if (!aceso && estado.avisadoEmIso === null && estado.devidoEmIso === null) return null;
+  const desdeIso = aceso && estado.avisadoEmIso === null ? medicao.desdeIso : estado.desdeIso;
   return { tipo, desdeIso };
 }
 

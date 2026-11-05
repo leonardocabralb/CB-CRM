@@ -281,23 +281,35 @@ describe('episodioAberto — o que o botão das conexões mostra do sino (E1)', 
     expect(episodioAberto('atraso', null, aceso, AGORA)).toBeNull();
   });
 
-  it('a prova fecha JÁ, sem esperar o ciclo apagar a linha; a guardada também', () => {
+  it('a prova de agora fecha JÁ, sem esperar o ciclo apagar a linha', () => {
     expect(episodioAberto('sem_recibo', estado(), normal, AGORA)).toBeNull();
     expect(episodioAberto('atraso', estado(), normal, AGORA)).toBeNull();
-    const provado = estado({ normalizouEmIso: iso(AGORA - 2 * MIN) });
-    expect(episodioAberto('sem_recibo', provado, naoSei, AGORA)).toBeNull();
-    expect(episodioAberto('atraso', provado, aceso, AGORA)).toBeNull();
   });
 
-  it('⚠️ expirar não normaliza: o (c) da noite sem prova continua aberto às 8h, com o "desde" dele', () => {
-    expect(episodioAberto('sem_recibo', estado(), naoSei, AGORA)).toEqual({
+  it('⚠️ a prova GUARDADA fecha, menos se a medição acendeu de novo (o `decidir` a anula)', () => {
+    const provado = estado({ normalizouEmIso: iso(AGORA - 2 * MIN), avisadoEmIso: iso(AGORA - H) });
+    expect(episodioAberto('sem_recibo', provado, naoSei, AGORA)).toBeNull();
+    expect(episodioAberto('atraso', provado, naoSei, AGORA)).toBeNull();
+    expect(episodioAberto('atraso', provado, aceso, AGORA)).toEqual({ tipo: 'atraso', desdeIso: DESDE });
+    expect(episodioAberto('sem_recibo', provado, aceso, AGORA)).toEqual({ tipo: 'sem_recibo', desdeIso: DESDE });
+  });
+
+  it('⚠️ expirar não normaliza: o (c) AVISADO sem prova continua aberto às 8h, com o "desde" dele', () => {
+    const avisado = estado({ avisadoEmIso: iso(AGORA - 10 * H) });
+    expect(episodioAberto('sem_recibo', avisado, naoSei, AGORA)).toEqual({ tipo: 'sem_recibo', desdeIso: DESDE });
+    const devido = estado({ devidoEmIso: iso(AGORA - 10 * H) });
+    expect(episodioAberto('sem_recibo', devido, naoSei, AGORA)).toEqual({ tipo: 'sem_recibo', desdeIso: DESDE });
+  });
+
+  it('⚠️ P3b: o (c) que o sino CALA (nunca avisado nem devido) só aparece enquanto ACESO, com a sequência de agora', () => {
+    expect(episodioAberto('sem_recibo', estado(), naoSei, AGORA)).toBeNull();
+    expect(episodioAberto('sem_recibo', estado(), aceso, AGORA)).toEqual({
       tipo: 'sem_recibo',
-      desdeIso: DESDE,
+      desdeIso: iso(AGORA - 40 * MIN),
     });
   });
 
-  it('o (c) ainda não avisado acompanha a sequência de AGORA; o avisado fica com o dito (a régua do `decidir`)', () => {
-    expect(episodioAberto('sem_recibo', estado(), aceso, AGORA)?.desdeIso).toBe(iso(AGORA - 40 * MIN));
+  it('o (c) avisado e aceso fica com o "desde" já dito (a régua do `decidir`)', () => {
     const avisado = estado({ avisadoEmIso: iso(AGORA - H) });
     expect(episodioAberto('sem_recibo', avisado, aceso, AGORA)?.desdeIso).toBe(DESDE);
   });

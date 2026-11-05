@@ -11,8 +11,10 @@
 // Duas fontes, ambas pela sonda da saúde (`useChannelHealth`), sem realtime
 // novo:
 //  · o AO VIVO, com a régua da faixa da conversa (`avisoDaConexao`, que lê o
-//    `tone`/`detail` do servidor, nunca reavalia): fora do ar, não recebe e
-//    envios sem recibo;
+//    `tone`/`detail` do servidor, nunca reavalia): fora do ar e não recebe; o
+//    sem recibo pelo `semReciboDesde`, que o servidor manda sempre que a régua
+//    acende — também atrás de outro motivo (`lagging`, `lastError`), que o
+//    `detail` mostra antes (a fila represada para os recibos junto);
 //  · os EPISÓDIOS do sino ainda abertos (`episodios`, decididos no servidor por
 //    `episodioAberto`): a medição ao vivo apaga quando envelhece, e o episódio
 //    só fecha com prova. É isso que faz o alarme da madrugada ser visto às 8h.
@@ -84,12 +86,13 @@ function alarmeDaConexao(
 
   const episodios = c.episodios ?? [];
   const deRecibo = episodios.find((e) => e.tipo === 'sem_recibo') ?? null;
-  if (aoVivo?.tipo === 'sem_recibo') {
+  const reciboAoVivo = c.semReciboDesde ?? null;
+  if (reciboAoVivo !== null) {
     return {
       canalId: c.id,
       tipo: 'sem_recibo',
       rotulo: c.label,
-      desdeIso: maisAntigo(aoVivo.desdeIso, deRecibo?.desdeIso ?? null),
+      desdeIso: maisAntigo(reciboAoVivo, deRecibo?.desdeIso ?? null),
     };
   }
   if (deRecibo) return { canalId: c.id, tipo: 'sem_recibo', rotulo: c.label, desdeIso: deRecibo.desdeIso };

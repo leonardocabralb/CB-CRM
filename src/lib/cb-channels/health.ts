@@ -75,7 +75,10 @@ export interface ChannelHealth {
   atrasoMedidoEm: string | null;
   /**
    * Nível 4 (`sem-recibo.ts`): desde quando os envios desta conexão estão
-   * sem recibo (ISO). Só com o motivo `sem_recibo`; `null` no resto.
+   * sem recibo (ISO), SEMPRE que a régua acende — também atrás de outro
+   * motivo (`webhook`, `lastError`, `lagging`), que o `detail` mostra antes.
+   * A faixa da conversa e a ficha do popover só o leem com o motivo
+   * `sem_recibo`; o botão das conexões (E1) o lê direto. `null` = não acende.
    */
   semReciboDesde: string | null;
   /**
@@ -654,9 +657,10 @@ export async function probeChannels(
       webhookOk,
       atrasoSeg,
       atrasoMedidoEm: c.entrega_recebida_em,
-      // Só junto do motivo: a tela lê o `detail`, e uma data solta seria
-      // uma segunda régua.
-      semReciboDesde: detail === 'sem_recibo' && recibo ? recibo.desdeIso : null,
+      // Decidido aqui, pela mesma régua do motivo, e SEM depender dele: com
+      // a fila represada (`lagging`) os recibos param junto, e o botão das
+      // conexões (E1) não pode esperar o ciclo lento para alargar.
+      semReciboDesde: recibo ? recibo.desdeIso : null,
       episodios: episodiosDaConexao(c, estados, deEnvios?.envios ?? null, agora),
     });
   }

@@ -29,7 +29,9 @@ interface LinhaDoEstado {
  * ⚠️ Paginado (Codex, #460): o PostgREST corta em 1000 linhas sem avisar, e o
  * estado que faltasse seria lido como "não há" — o aceso tentaria nascer de
  * novo (e perderia para a chave), o normalizado nunca sairia. Página por
- * `range`: só o passo do ciclo escreve aqui, um ciclo por vez.
+ * `range`: só o passo do ciclo escreve aqui, um ciclo por vez, e ele lê antes
+ * de escrever. A sonda lê com o ciclo escrevendo: com mais de 1000 linhas na
+ * conta, uma linha pode escapar daquela leitura — e volta na seguinte (1 min).
  */
 export async function lerEstadosDosAlarmes(
   admin: SupabaseClient,
