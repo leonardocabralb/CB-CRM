@@ -4,6 +4,7 @@ import { useCan } from '@/hooks/use-can';
 
 import { useTranslations } from 'next-intl';
 
+import { ClienteIdealSettings } from './cliente-ideal-settings';
 import { CustomFieldsSettings } from './custom-fields-settings';
 import { SettingsPanelHead } from './settings-panel-head';
 import { TagManager } from './tag-manager';
@@ -27,6 +28,9 @@ export function FieldsAndTagsPanel() {
       />
       <TagManager />
       {canEditSettings ? <CustomFieldsSettings /> : null}
+      {/* NOSSO (1124): a regra do cliente ideal mora nos campos, e grava só
+          admin (as policies da 1124 = `ESCRITA_DA_SECAO.fields`). */}
+      {canEditSettings ? <ClienteIdealSettings /> : null}
     </section>
   );
 }
