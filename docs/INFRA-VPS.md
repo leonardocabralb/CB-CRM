@@ -818,9 +818,12 @@ reescrever a seção.
 
 Pedido do operador: um problema do WhatsApp chegou a correr de 1 a 4 semanas
 sem ninguém perceber. A sentinela roda **nesta máquina, de hora em hora**, só
-lendo, e avisa no **sino do CRM** os owner/admin da conta. A análise semanal
-aprofundada continua fora daqui (uma rotina no Mac do operador, que lê os
-arquivos abaixo por ssh).
+lendo, e avisa no **sino do CRM**: os avisos de UMA conexão vão aos owner/admin
+da conta e aos membros cujo perfil vê a conexão (D2), e aparecem também no
+**botão das conexões** do cabeçalho do CRM (E1, desde a Fase 4 de
+`docs/PLANO-alarmes-de-conexao.md`); os do servidor, aos owner/admin. A análise
+semanal aprofundada continua fora daqui (uma rotina no Mac do operador, que lê
+os arquivos abaixo por ssh).
 
 **Versionada em `ops/vps/saude-whatsapp/`** (`sentinela.py` e
 `saude-whatsapp.cron`). Na VPS:
@@ -829,8 +832,8 @@ arquivos abaixo por ssh).
 |---|---|
 | `/etc/cron.d/saude-whatsapp` | `5 * * * *`, com `nice -n 10 timeout 300` (a execução leva ~10 s) |
 | `/root/saude-whatsapp/sentinela.py` | cópia do versionado (700) |
-| `/root/saude-whatsapp/estado.json` | problemas ativos, último aviso de cada um e até onde a coleta leu |
-| `/root/saude-whatsapp/coleta/AAAA-MM-DD.jsonl` | uma linha por execução: o TIPO de cada linha de erro/aviso dos logs da Evolution, do CRM e do agendador, com contagem, e os recibos ERROR por (conexão, tipo, código). Nunca o conteúdo: a assinatura corta no primeiro `{`/`[` (o nó cru da mensagem vem por aí), troca o que está entre aspas por `<…>`, apaga e-mail e mascara número, id e chave; objeto impresso na linha seguinte a um ERROR vira `(objeto omitido)`. Apagadas depois de 90 dias |
+| `/root/saude-whatsapp/estado.json` | problemas ativos, último aviso de cada um, até onde a coleta leu e as quedas com `ack` das últimas 6 h por instância |
+| `/root/saude-whatsapp/coleta/AAAA-MM-DD.jsonl` | uma linha por execução: o TIPO de cada linha de erro/aviso dos logs da Evolution, do CRM e do agendador, com contagem, os recibos ERROR por (conexão, tipo, código) e as QUEDAS por (instância, código, classe do `stream:error`: só a tag e os atributos `class`/`type`/`code` do `reasonNode`, nunca id, to, from nem conteúdo — a instância vem do `Connection update received` logo depois). Nunca o conteúdo: a assinatura corta no primeiro `{`/`[` (o nó cru da mensagem vem por aí), troca o que está entre aspas por `<…>`, apaga e-mail e mascara número, id e chave; objeto impresso na linha seguinte a um ERROR vira `(objeto omitido)`. Apagadas depois de 90 dias |
 | `/root/saude-whatsapp/sentinela.log` | uma linha por execução; aparado acima de 2 MB |
 
 **O que lê:** o banco `evolution` (`Instance`, `Message`, `MessageUpdate`);
@@ -838,10 +841,14 @@ arquivos abaixo por ssh).
 do `crm_agendador` (inclusive os parados, enquanto o Docker os guardar); o
 Redis db 8 (`HSCAN … MATCH 'session-*.99'` nos hashes `evolution:instance:*`,
 uma vez por dia, às 10h de Brasília); `/proc/meminfo` e o disco; e, pelo
-PostgREST com a service role do `/root/crm.env`, `cb_channels`, `profiles` e
-`messages.message_id` (a conferência por id). **O que grava:** só
-`/root/saude-whatsapp` e linhas `whatsapp_alert` em `notifications` (1085).
-Nunca imprime segredo, telefone nem conteúdo de mensagem.
+PostgREST com a service role do `/root/crm.env`, `cb_channels`, `profiles`
+(papel e perfil dos membros ativos), `cb_perfis_de_acesso` (as conexões de cada
+perfil) e `messages.message_id` (a conferência por id). **O que grava:** só
+`/root/saude-whatsapp`, linhas `whatsapp_alert` em `notifications` (1085) e os
+alarmes de conexão abertos em `cb_alarmes_da_sentinela` (1123): upsert pela
+chave (conexão, tipo) a cada execução e, das conexões de produção, apaga o que
+a execução não confirmou. Nunca imprime segredo, telefone nem conteúdo de
+mensagem.
 
 **Os avisos** (só conexões que casam CRM × Evolution e cujo rótulo ou
 instância não tem "teste"):
@@ -852,6 +859,7 @@ instância não tem "teste"):
 | `sem_entrada:<instância>` | dia útil, janela de 2 h inteira entre 8h e 20h: 0 mensagem de cliente e ≥ 5 nossas saindo | chegou mensagem de cliente nas últimas 2 h |
 | `nao_gravadas:<instância>` | ≥ 3 mensagens de cliente (1:1, com conteúdo, fora o LID SEM telefone) das últimas 2 h, com mais de 10 min, que a Evolution tem e `messages.message_id` não — conferidas PELO ID (pega também a perda parcial) | só com PROVA: chegou mensagem na janela e todas estão no CRM (conexão quieta não decide nada). O "Normalizou" lembra que as que faltaram precisam ser importadas à mão |
 | `falhas:<instância>` | ≥ 3 ERROR do envio PRINCIPAL em 1:1 sem entrega em 24 h (a régua do CRM: `remoteJid` com "@" e sem ":") | < 3 |
+| `quedas:<instância>` | ≥ 2 quedas em 6 h com `stream:error` de nó `ack` (o servidor cobrou a confirmação de um aviso sem resposta; o incidente de 03–04/11, §8), a classe no corpo. As 6 h vêm do `estado.json`, sem repetir a mesma queda | < 2, só com a coleta da hora em dia (coleta que falhou não decide nada) |
 | `descartadas` | "error in handling message" no log da Evolution (mensagem descartada antes do banco: o caso da §8, 30/09). O log não diz de quem é: o aviso traz a conexão PROVÁVEL | é evento: no máximo um aviso a cada 6 h; o que chega dentro do intervalo, ou que o sino recusa, fica em `eventos_pendentes` e sai somado depois, para os destinatários de então |
 | `sessao99` | campo `session-<n>.99` em algum hash (§8), por `HSCAN … MATCH` (nunca `HKEYS`: o Redis é compartilhado), uma vez por dia a partir das 10h — e de novo a cada hora até dar certo no dia. ⚠️ Só chave do tipo HASH: a Evolution grava também `evolution:instance:whatsapp_web_version` como texto, e o `redis-cli` devolve o `WRONGTYPE` com código 0 — em 13/10 isso virou um laço que travou a execução das 15:05 (encerrada à mão) | 0 |
 | `replica:<serviço>` | só os vigiados — `crm_crm`, `crm_agendador`, `evolution_evolution`, `postgres_postgres`, `redis_redis`, `traefik_traefik` — com réplicas rodando ≠ esperadas, desligados (`scale …=0`, que aparece como "0/0") ou ausentes do Swarm, conferido de novo 60 s depois. Os outros serviços (n8n, Typebot…) ficam na semanal | iguais e diferentes de zero (⚠️ manutenção que escala a Evolution a 0 acende o aviso — é o esperado) |
@@ -870,11 +878,21 @@ normalização o encerra. O que deixou de ser vigiado (conexão apagada do CRM)
 sai em silêncio.
 
 **Quem recebe.** O aviso de uma conexão (`conexao:`, `sem_entrada:`,
-`nao_gravadas:`, `falhas:`) vai só aos owner/admin da conta DONA dela (a da
-medição mais recente; nunca somada a um dono anterior), do primeiro aviso ao
-"Normalizou". Os do servidor (réplica, memória, disco,
-`sessao99`, `descartadas`, `sentinela_cega`) vão a toda conta com conexão de
-produção. Em 13/10/2026 só a conta do escritório tinha conexão de produção: as
+`nao_gravadas:`, `falhas:`, `quedas:`) vai só à conta DONA dela (a da medição
+mais recente; nunca somada a um dono anterior), do primeiro aviso ao
+"Normalizou": aos owner/admin e aos membros ATIVOS cujo perfil vê a conexão
+(D2: sem perfil, ou com a lista de conexões vazia, vê todas), a mesma régua do
+sino do CRM. Conexão que saiu do CRM: só os owner/admin. Os do servidor
+(réplica, memória, disco, `sessao99`, `descartadas`, `sentinela_cega`) vão aos
+owner/admin de toda conta com conexão de produção.
+
+**O botão das conexões do CRM (1123).** Os avisos de conexão ABERTOS (vistos,
+avisados ou não, e sem a prova do fim) de `sem_entrada:`, `nao_gravadas:`,
+`falhas:` e `quedas:` viram linhas de `cb_alarmes_da_sentinela`, com o `desde` e
+o `visto_em` desta execução; o `conexao:` fica de fora (a sonda do CRM vê a
+queda ao vivo). A sonda da saúde ignora linha com `visto_em` de mais de 3 h: a
+sentinela parada, ou a VPS fora, não deixa alarme preso no botão. Falha na
+gravação vai ao `sentinela.log` e não derruba a execução. Em 13/10/2026 só a conta do escritório tinha conexão de produção: as
 outras duas contas com conexão na Evolution só têm conexão de teste.
 
 **Calibragem (13/10/2026).** O `sem_entrada` foi medido contra 5 semanas de

@@ -41,6 +41,7 @@ import {
   type EstadoDoAlarme,
 } from './alarmes-no-sino';
 import { lerEstadosDosAlarmes } from './estado-dos-alarmes';
+import { lerAlarmesDaSentinela, type AlarmeDaSentinela } from './alarmes-da-sentinela';
 import { identidadeDoCanal } from './display';
 import { InstagramApiError, criarClienteInstagram } from '@/lib/instagram/graph';
 
@@ -90,6 +91,12 @@ export interface ChannelHealth {
    * role (a régua do Asaas não precisa dele); o botão fica só com o ao vivo.
    */
   episodios: EpisodioAberto[] | null;
+  /**
+   * E1 (Fase 4): os alarmes de conexão abertos da sentinela da VPS (1123),
+   * os que ela confirmou nas últimas 3 h. `null` = não lidos (falha, ou sem a
+   * service role); vazio em toda instalação sem a sentinela.
+   */
+  sentinela: AlarmeDaSentinela[] | null;
 }
 
 /** Acima disto, "conectado" deixa de ser confiável e vira amarelo. */
@@ -433,10 +440,28 @@ async function estadosDosAlarmes(
   }
 }
 
+/** Os alarmes abertos da sentinela (1123), com o mesmo cache e a mesma regra de falha. */
+async function alarmesDaSentinelaDaConta(
+  admin: SupabaseClient,
+  accountId: string,
+  agoraMs: number,
+): Promise<Map<string, AlarmeDaSentinela[]> | null> {
+  try {
+    return await comCache(`sentinela:${accountId}`, TTL_DOS_ALARMES_MS, async () => {
+      const lidos = await lerAlarmesDaSentinela(admin, accountId, agoraMs);
+      if (lidos === null) throw new Error('alarmes da sentinela ilegíveis');
+      return lidos;
+    });
+  } catch {
+    return null;
+  }
+}
+
 /**
- * `admin` (a service role) é quem lê o estado dos alarmes (1122), fechado ao
- * navegador: a rota da saúde o passa, e a régua do Asaas, que só quer saber
- * quem envia, não. Sem ele, `episodios` sai `null`.
+ * `admin` (a service role) é quem lê o estado dos alarmes (1122) e os da
+ * sentinela (1123), fechados ao navegador: a rota da saúde o passa, e a régua
+ * do Asaas, que só quer saber quem envia, não. Sem ele, `episodios` e
+ * `sentinela` saem `null`.
  */
 export async function probeChannels(
   db: SupabaseClient,
@@ -469,6 +494,9 @@ export async function probeChannels(
   // ---- E1: o estado dos alarmes do sino, em paralelo com as sondas. Cercado
   // pela conta (a service role não tem RLS).
   const estadosPedidos = admin ? estadosDosAlarmes(admin, accountId) : Promise.resolve(null);
+  const sentinelaPedida = admin
+    ? alarmesDaSentinelaDaConta(admin, accountId, agora)
+    : Promise.resolve(null);
 
   // ---- Evolution: um fetchInstances por SERVIDOR, não por canal ----
   const servidores = new Set(
@@ -518,6 +546,7 @@ export async function probeChannels(
     },
   );
   const estados = await estadosPedidos;
+  const daSentinela = await sentinelaPedida;
 
   const saidas: ChannelHealth[] = [];
   const paraGravar: { id: string; status: CbChannelStatus }[] = [];
@@ -662,6 +691,7 @@ export async function probeChannels(
       // conexões (E1) não pode esperar o ciclo lento para alargar.
       semReciboDesde: recibo ? recibo.desdeIso : null,
       episodios: episodiosDaConexao(c, estados, deEnvios?.envios ?? null, agora),
+      sentinela: daSentinela === null ? null : (daSentinela.get(c.id) ?? []),
     });
   }
 

@@ -17,14 +17,19 @@ Cada execução:
    entrega, mensagem descartada antes do banco da Evolution (o caso da sessão
    '.99') e sessão legada '.99'. Medição que falha 3 vezes seguidas também
    vira aviso ("a sentinela não consegue medir").
-3. AVISO: problema NOVO vira notificação 'whatsapp_alert' (1085) para quem é
-   owner/admin da conta, gravada pelo PostgREST com a service role do
-   /root/crm.env. Um aviso por problema, lembrete a cada 24 h enquanto durar
-   e "Normalizou" quando passa; evento (mensagem descartada) no máximo a cada
-   6 h, guardado para a próxima execução se o sino recusar.
+3. AVISO: problema NOVO vira notificação 'whatsapp_alert' (1085), gravada
+   pelo PostgREST com a service role do /root/crm.env: o de uma conexão vai
+   aos owner/admin da conta dona dela e aos membros cujo perfil vê a conexão
+   (D2); o do servidor, aos owner/admin. Um aviso por problema, lembrete a
+   cada 24 h enquanto durar e "Normalizou" quando passa; evento (mensagem
+   descartada) no máximo a cada 6 h, guardado para a próxima execução se o
+   sino recusar.
+4. BOTÃO: os alarmes de conexão abertos vão à tabela cb_alarmes_da_sentinela
+   (1123), que o botão das conexões do CRM mostra (E1); o que fechou sai.
 
-Escreve SÓ em /root/saude-whatsapp e na tabela notifications. Nunca imprime
-segredo, telefone nem conteúdo de mensagem.
+Escreve SÓ em /root/saude-whatsapp e nas tabelas notifications e
+cb_alarmes_da_sentinela. Nunca imprime segredo, telefone nem conteúdo de
+mensagem.
 
 Modos:
   (sem argumento)  o do cron: coleta, checa, avisa e grava o estado.
@@ -36,6 +41,7 @@ Modos:
 Python 3.8 (Ubuntu 20.04), só biblioteca padrão.
 """
 import collections
+import copy
 import datetime
 import fcntl
 import glob
@@ -77,9 +83,22 @@ CEGA_DEPOIS_DE = 3
 SERVICOS_VIGIADOS = ('crm_crm', 'crm_agendador', 'evolution_evolution',
                      'postgres_postgres', 'redis_redis', 'traefik_traefik')
 # Chaves de UMA conexão (o prefixo + a instância): o aviso vai só à conta dona
-# dela. As outras chaves são do servidor e vão a toda conta com conexão de
+# dela — aos owner/admin e aos membros cujo perfil vê a conexão (D2). As outras
+# chaves são do servidor e vão aos owner/admin de toda conta com conexão de
 # produção.
-PREFIXOS_DA_CONEXAO = ('conexao:', 'sem_entrada:', 'nao_gravadas:', 'falhas:')
+PREFIXOS_DA_CONEXAO = ('conexao:', 'sem_entrada:', 'nao_gravadas:', 'falhas:', 'quedas:')
+# Os alarmes de conexão que o botão das conexões do CRM mostra (E1, 1123): as
+# chaves do CHECK da tabela, EXATAMENTE (pino `alarmes-da-sentinela-1123.test.ts`).
+# O `conexao:` fica de fora: a sonda do CRM já vê a conexão fora do ar ao vivo.
+CHAVES_DO_BOTAO = ('sem_entrada', 'nao_gravadas', 'falhas', 'quedas')
+
+# Quedas seguidas (a2, Fase 4 dos alarmes de conexão): QUEDAS_MINIMAS quedas em
+# JANELA_DAS_QUEDAS_H em que o servidor do WhatsApp cobrou a confirmação de um
+# aviso (o `stream:error` com nó `ack`). Medido no log do incidente de
+# 03–04/11/2026: 20 das 23 quedas da conexão travada, uma a cada ~50 min; nas
+# conexões sadias, nenhuma (só 428/503).
+JANELA_DAS_QUEDAS_H = 6
+QUEDAS_MINIMAS = 2
 
 # "Aberta sem receber": em dia útil, com a janela de 2 h inteira entre 8h e
 # 20h, nenhuma mensagem de cliente e pelo menos 5 nossas saindo pela conexão.
@@ -211,7 +230,7 @@ class Crm:
         if not self.chave or not env['NEXT_PUBLIC_SUPABASE_URL']:
             raise RuntimeError('URL do Supabase ou service role vazia no crm.env')
 
-    def pedir(self, metodo, caminho, corpo=None):
+    def pedir(self, metodo, caminho, corpo=None, prefer='return=minimal'):
         """(status, dados). Erro de REDE devolve status 0 — nunca lança: um
         aviso já gravado nesta execução não pode se perder do estado."""
         dados = None if corpo is None else json.dumps(corpo).encode('utf-8')
@@ -219,7 +238,7 @@ class Crm:
             'apikey': self.chave,
             'Authorization': 'Bearer ' + self.chave,
             'Content-Type': 'application/json',
-            'Prefer': 'return=minimal',
+            'Prefer': prefer,
             # O Cloudflare do Supabase recusa (1010) o user-agent padrão do urllib.
             'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) sentinela-whatsapp',
         })
@@ -281,6 +300,24 @@ def assinatura(texto, tamanho=120):
     return (prefixo + re.sub(r'\s+', ' ', texto).strip())[:tamanho]
 
 
+def classe_do_stream_error(texto):
+    """A classe de uma queda, pelo `reasonNode` da linha "stream errored out"
+    da Baileys: a TAG e os atributos class/type/code ('ack/status/media'). Só
+    nome de protocolo — nunca id, to, from nem conteúdo (o nó do ack traz
+    endereços). Sem o nó (o 503 vem sem ele), '-'."""
+    m = re.search(r'"reasonNode":\{"tag":"([A-Za-z:_-]{1,30})","attrs":\{([^}]*)\}', texto)
+    if not m:
+        return '-'
+    attrs = dict(re.findall(r'"(class|type|code)":"([A-Za-z0-9:_-]{1,30})"', m.group(2)))
+    return '/'.join((m.group(1), attrs.get('class', '-'), attrs.get('type', attrs.get('code', '-'))))
+
+
+def classe_legivel(classe):
+    """'ack/status/media' → 'ack class="status" (media)', para o texto do aviso."""
+    tag, cls, tipo = (classe.split('/') + ['-', '-'])[:3]
+    return '%s class="%s"%s' % (tag, cls, '' if tipo == '-' else ' (%s)' % tipo)
+
+
 def arquivos_de_log(nome_do_servico, desde):
     """Os json-file de TODOS os contêineres do serviço (o parado guarda o log
     de antes do reinício ou do deploy), menos os que não mudam desde `desde`."""
@@ -339,10 +376,36 @@ def coletar_evolution(desde, ate):
     historico = collections.deque(maxlen=14)
     pendente = None
     sem_texto = None  # (nível, componente) de um ERROR/WARN cujo texto vem na linha seguinte
+    # a1 (Fase 4): cada queda, por (instância, código, classe). A linha da
+    # Baileys diz a classe e não a instância; o "Connection update received" da
+    # Evolution, ~0,2 s depois, diz a instância e o código.
+    quedas = collections.Counter()
+    quedas_ack = []        # [instante, instância, classe] das quedas com nó `ack`
+    queda_pendente = None  # (instante, classe) do último "stream errored out"
+    em_update = None       # os campos do objeto "Connection update received"
     for instante, s in linhas_do_log(arquivos_de_log('evolution_evolution', desde), desde, ate):
         linhas += 1
         primeiro = primeiro or instante
         ultimo = instante
+        if '"msg":"stream errored out"' in s:
+            queda_pendente = (instante, classe_do_stream_error(s))
+        elif "message: 'Connection update received'" in s:
+            em_update = {}
+        elif em_update is not None:
+            campo = re.match(r"\s*(connection|statusCode|instanceName): '?([A-Za-z0-9_-]{1,80})'?,?\s*$", s)
+            if campo:
+                em_update[campo.group(1)] = campo.group(2)
+            elif s.strip().startswith('}'):
+                if em_update.get('connection') == 'close':
+                    inst = em_update.get('instanceName', '?')
+                    classe = '-'
+                    if queda_pendente and (de_iso(instante) - de_iso(queda_pendente[0])).total_seconds() <= 5:
+                        classe = queda_pendente[1]
+                    quedas['\t'.join((inst, em_update.get('statusCode', '?'), classe))] += 1
+                    if classe.startswith('ack/'):
+                        quedas_ack.append([instante + 'Z', inst, classe])
+                    queda_pendente = None
+                em_update = None
         if 'error in handling message' in s:
             descartadas += 1
             provavel = '?'
@@ -400,7 +463,8 @@ def coletar_evolution(desde, ate):
         assinaturas[nivel + '\t' + texto] += 1
     return {'linhas': linhas, 'cobertura': [primeiro, ultimo], 'descartadas': descartadas,
             'descartadas_por_instancia': dict(descartadas_por_instancia),
-            'assinaturas': dict(assinaturas.most_common(60)), 'recibos': dict(recibos)}
+            'assinaturas': dict(assinaturas.most_common(60)), 'recibos': dict(recibos),
+            'quedas': dict(quedas), 'quedas_ack': quedas_ack}
 
 
 def coletar_app(nome_do_servico, desde, ate):
@@ -890,7 +954,15 @@ def aplicar(estado, achados, enviados):
             pendentes[chave] = {'titulo': p['titulo'], 'contas': p['contas'], 'dados': p['dados']}
 
 
-def enviar(crm, admins, avisos):
+def canal_do_aviso(chave, canal_por_instancia):
+    """A conexão de um aviso de conexão (o id no CRM), ou None (aviso do
+    servidor, ou conexão que saiu do CRM: aí só os owner/admin recebem)."""
+    if not chave.startswith(PREFIXOS_DA_CONEXAO):
+        return None
+    return canal_por_instancia.get(chave.split(':', 1)[1])
+
+
+def enviar(crm, equipe, canal_por_instancia, avisos):
     """Grava os avisos no sino. Devolve [(chave, motivo)] dos que entraram;
     o que falhar fica para a próxima execução (o estado não muda)."""
     enviados = []
@@ -903,9 +975,10 @@ def enviar(crm, admins, avisos):
             print('  %s deixou de ser vigiado: sai dos ativos sem aviso' % chave)
             enviados.append((chave, motivo))
             continue
+        canal_id = canal_do_aviso(chave, canal_por_instancia)
         linhas = [{'account_id': conta, 'user_id': uid, 'type': TIPO_DO_AVISO,
                    'title': titulo[:200], 'body': corpo[:500]}
-                  for conta in contas for uid in admins.get(conta, [])]
+                  for conta in contas for uid in destinatarios(equipe, conta, canal_id)]
         if not linhas:
             print('  sem administrador para avisar: %s' % chave)
             continue
@@ -917,12 +990,93 @@ def enviar(crm, admins, avisos):
     return enviados
 
 
-def administradores(crm):
+def checar_quedas(estado, coleta_ok, quedas_ack, producao, achados):
+    """a2 (Fase 4): quedas seguidas pela classe. O estado guarda, por
+    instância, as quedas com nó `ack` das últimas JANELA_DAS_QUEDAS_H (a coleta
+    lê só desde a execução anterior), sem repetir a mesma. Acende com
+    QUEDAS_MINIMAS; normaliza abaixo disso, mas só com a coleta em dia: coleta
+    que falhou não decide nada (nem problema, nem normal)."""
+    corte = iso(AGORA - datetime.timedelta(hours=JANELA_DAS_QUEDAS_H))
+    janela = {}
+    for inst, lista in (estado.get('quedas_ack') or {}).items():
+        janela[inst] = [q for q in lista if q[0] >= corte]
+    for instante, inst, classe in (quedas_ack or []):
+        lista = janela.setdefault(inst, [])
+        if instante >= corte and [instante, classe] not in lista:
+            lista.append([instante, classe])
+    estado['quedas_ack'] = {inst: sorted(lista) for inst, lista in janela.items() if lista}
+    if not coleta_ok:
+        return
+    for canal in producao:
+        chave = 'quedas:' + canal['instance_name']
+        lista = estado['quedas_ack'].get(canal['instance_name']) or []
+        if len(lista) < QUEDAS_MINIMAS:
+            achados.normal(chave)
+            continue
+        classes = ', '.join(classe_legivel(c) for c in sorted({c for _, c in lista}))
+        achados.problema(chave, 'WhatsApp caindo seguido: ' + canal['label'],
+                         ('%d quedas nas últimas %d h em que o servidor do WhatsApp cobrou a confirmação de um '
+                          'aviso que ficou sem resposta (%s). A conexão volta sozinha, mas entre uma queda e '
+                          'outra a entrada para, e as mensagens dos clientes chegam em lotes, atrasadas. '
+                          'Reiniciar a conexão ou ler o QR de novo não resolve.')
+                         % (len(lista), JANELA_DAS_QUEDAS_H, classes), [canal['account_id']])
+
+
+def membros_da_equipe(crm):
+    """Os membros ATIVOS de cada conta, com o papel e as conexões que o perfil
+    vê (D2). `canais` vazio ou None = vê todas, como no CRM (`canalNoEscopo`):
+    sem perfil, ou com a lista de conexões vazia."""
+    perfis = {p['id']: (p.get('channel_ids') or []) for p in crm.ler('cb_perfis_de_acesso?select=id,channel_ids')}
     por_conta = collections.defaultdict(list)
-    for p in crm.ler('profiles?select=user_id,account_id&account_role=in.(owner,admin)&suspenso_em=is.null'):
-        if p.get('user_id') and p.get('account_id'):
-            por_conta[p['account_id']].append(p['user_id'])
+    for m in crm.ler('profiles?select=user_id,account_id,account_role,perfil_id&suspenso_em=is.null'):
+        if m.get('user_id') and m.get('account_id'):
+            por_conta[m['account_id']].append({'user_id': m['user_id'], 'papel': m.get('account_role'),
+                                               'canais': perfis.get(m.get('perfil_id'))})
     return por_conta
+
+
+def destinatarios(equipe, conta, canal_id=None):
+    """Quem recebe na conta: owner/admin sempre; com a conexão do aviso (os de
+    UMA conexão), também os membros cujo perfil a vê (D2)."""
+    ids = set()
+    for m in equipe.get(conta, []):
+        if m['papel'] in ('owner', 'admin') or (canal_id is not None and (not m['canais'] or canal_id in m['canais'])):
+            ids.add(m['user_id'])
+    return sorted(ids)
+
+
+def alarmes_do_botao(estado, producao):
+    """Os alarmes de conexão ABERTOS (vistos, avisados ou não, e sem a prova do
+    fim), como linhas da 1123 para o botão das conexões do CRM (E1)."""
+    por_instancia = {c['instance_name']: c for c in producao}
+    linhas = []
+    for chave, atual in sorted((estado.get('ativos') or {}).items()):
+        prefixo, _, inst = chave.partition(':')
+        canal = por_instancia.get(inst)
+        if prefixo not in CHAVES_DO_BOTAO or canal is None or atual.get('normalizou_em'):
+            continue
+        linhas.append({'account_id': canal['account_id'], 'channel_id': canal['id'], 'chave': prefixo,
+                       'desde': atual['desde'], 'visto_em': iso(AGORA)})
+    return linhas
+
+
+def sincronizar_o_botao(crm, linhas, producao):
+    """Grava os abertos (upsert pela chave da 1123) e apaga, das conexões de
+    produção, o que esta execução não confirmou. Devolve o erro, ou None.
+    Falha não derruba a execução: o CRM ignora linha não confirmada há 3 h."""
+    if crm is None or not producao:
+        return 'sem o CRM'
+    if linhas:
+        status, resposta = crm.pedir('POST', 'cb_alarmes_da_sentinela?on_conflict=channel_id,chave', linhas,
+                                     prefer='resolution=merge-duplicates,return=minimal')
+        if status not in (200, 201, 204):
+            return 'gravação HTTP %s %s' % (status, sem_segredo(resposta))
+    ids = ','.join(sorted(c['id'] for c in producao))
+    status, resposta = crm.pedir('DELETE', 'cb_alarmes_da_sentinela?channel_id=in.(%s)&visto_em=lt.%s'
+                                 % (ids, iso(AGORA)))
+    if status not in (200, 204):
+        return 'limpeza HTTP %s %s' % (status, sem_segredo(resposta))
+    return None
 
 
 def vigiar_a_propria_medicao(estado, achados, contas):
@@ -987,21 +1141,22 @@ def main():
     achados = Achados()
     # Sem o CRM (crm.env ausente, chave vazia, rede) não há a quem avisar, mas
     # a coleta dos logs segue: é ela que não pode ter buraco.
-    crm, canais, admins = None, [], {}
+    crm, canais, equipe = None, [], {}
     try:
         crm = Crm(ler_env(CRM_ENV))
         canais = crm.ler('cb_channels?select=id,account_id,label,instance_name'
                          '&kind=eq.evolution&instance_name=not.is.null')
-        admins = administradores(crm)
+        equipe = membros_da_equipe(crm)
     except Exception as e:
         achados.nao_medido.append('CRM: ' + sem_segredo(e))
     producao = [c for c in canais if 'teste' not in ((c.get('label') or '') + c['instance_name']).lower()]
     contas = sorted({c['account_id'] for c in producao})
+    canal_por_instancia = {c['instance_name']: c['id'] for c in producao}
 
     if teste:
-        enviados = enviar(crm, admins, [('teste', 'evento', 'Teste da sentinela do WhatsApp',
-                                         'Se você está vendo isto, os avisos do servidor chegam ao sino.',
-                                         contas)])
+        enviados = enviar(crm, equipe, canal_por_instancia,
+                          [('teste', 'evento', 'Teste da sentinela do WhatsApp',
+                            'Se você está vendo isto, os avisos do servidor chegam ao sino.', contas)])
         print('%s aviso de teste: %s%s' % (iso(AGORA), 'gravado' if enviados else 'FALHOU',
                                            ' (' + ' | '.join(achados.nao_medido) + ')' if achados.nao_medido else ''))
         return 0 if enviados else 1
@@ -1050,6 +1205,11 @@ def main():
                  'por_instancia': registro['evolution']['descartadas_por_instancia']}
         achados.problema('descartadas', 'WhatsApp descartou mensagens recebidas',
                          texto_das_descartadas(dados, rotulos), contas, evento=True, dados=dados)
+    try:
+        checar_quedas(estado, coleta_ok, registro['evolution']['quedas_ack'] if coleta_ok else [],
+                      producao, achados)
+    except Exception as e:
+        achados.nao_medido.append('quedas: ' + sem_segredo(e))
     juntar_eventos_pendentes(estado, achados, rotulos, contas)
     vigiar_a_propria_medicao(estado, achados, contas)
 
@@ -1067,6 +1227,9 @@ def main():
     registro['nao_medido'] = achados.nao_medido
 
     if simular:
+        rotulo_por_id = {c['id']: (c.get('label') or c['instance_name']) for c in producao}
+        depois = copy.deepcopy(estado)
+        aplicar(depois, achados, [])
         resumo = {}
         for fonte in ('evolution', 'crm', 'agendador'):
             dados = registro.get(fonte)
@@ -1076,13 +1239,23 @@ def main():
         print(json.dumps({'problemas': achados.problemas, 'normais': sorted(achados.normais),
                           'nao_medido': achados.nao_medido, 'janela_da_coleta': registro['janela'],
                           'avisaria': [{'chave': a[0], 'motivo': a[1], 'titulo': a[2], 'corpo': a[3],
-                                        'destinatarios': sum(len(admins.get(c, [])) for c in a[4])}
+                                        'destinatarios': sum(len(destinatarios(
+                                            equipe, c, canal_do_aviso(a[0], canal_por_instancia))) for c in a[4])}
                                        for a in avisos],
+                          'botao': [{'chave': l['chave'], 'conexao': rotulo_por_id.get(l['channel_id']),
+                                     'desde': l['desde']} for l in alarmes_do_botao(depois, producao)],
+                          'quedas_ack_6h': depois.get('quedas_ack') or {},
                           'coleta': resumo}, ensure_ascii=False, indent=1))
         return 0
 
-    enviados = enviar(crm, admins, avisos)
+    enviados = enviar(crm, equipe, canal_por_instancia, avisos)
     aplicar(estado, achados, enviados)
+    try:
+        falha_do_botao = sincronizar_o_botao(crm, alarmes_do_botao(estado, producao), producao)
+    except Exception as e:
+        falha_do_botao = sem_segredo(e)
+    if falha_do_botao:
+        print('  botão das conexões do CRM não sincronizado: %s' % falha_do_botao)
     registro['avisos'] = [list(e) for e in enviados]
     if coleta_ok:
         estado['coletado_ate'] = ate + 'Z'

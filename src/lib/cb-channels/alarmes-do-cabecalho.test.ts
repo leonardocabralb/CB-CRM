@@ -125,6 +125,56 @@ describe('alarmesDoCabecalho — o alarme no botão das conexões (E1)', () => {
     ]);
   });
 
+  it('os alarmes da SENTINELA entram, com o "desde" dela (Fase 4)', () => {
+    const lista = [
+      saude({ id: 'c1', sentinela: [{ chave: 'quedas', desdeIso: ONTEM_20H }] }),
+      saude({ id: 'c2', sentinela: [{ chave: 'sem_entrada', desdeIso: HOJE_9H }] }),
+    ];
+    expect(alarmes(lista)).toEqual([
+      { canalId: 'c1', tipo: 'quedas', rotulo: 'C1', desdeIso: ONTEM_20H },
+      { canalId: 'c2', tipo: 'sem_entrada', rotulo: 'C2', desdeIso: HOJE_9H },
+    ]);
+  });
+
+  it('UMA linha por conexão, a pior de TODAS as fontes: mensagens perdidas vencem o sem recibo; o sem recibo vence a queda', () => {
+    const perdidas = saude({
+      id: 'c1',
+      semReciboDesde: HOJE_9H,
+      sentinela: [
+        { chave: 'quedas', desdeIso: ONTEM_20H },
+        { chave: 'nao_gravadas', desdeIso: ONTEM_20H },
+      ],
+    });
+    expect(alarmes([perdidas]).map((a) => a.tipo)).toEqual(['nao_gravadas']);
+    const semRecibo = saude({ id: 'c2', semReciboDesde: HOJE_9H, sentinela: [{ chave: 'quedas', desdeIso: ONTEM_20H }] });
+    expect(alarmes([semRecibo]).map((a) => a.tipo)).toEqual(['sem_recibo']);
+    const foraDoAr = saude({ id: 'c3', tone: 'down', detail: 'closed', sentinela: [{ chave: 'nao_gravadas', desdeIso: ONTEM_20H }] });
+    expect(alarmes([foraDoAr]).map((a) => a.tipo)).toEqual(['fora_do_ar']);
+  });
+
+  it('a ordem da conta mistura as fontes pela gravidade', () => {
+    const lista = [
+      saude({ id: 'a', episodios: [{ tipo: 'atraso', desdeIso: ONTEM_20H }] }),
+      saude({ id: 'b', sentinela: [{ chave: 'falhas', desdeIso: ONTEM_20H }] }),
+      saude({ id: 'c', tone: 'warn', detail: 'webhook' }),
+      saude({ id: 'd', sentinela: [{ chave: 'sem_entrada', desdeIso: ONTEM_20H }] }),
+      saude({ id: 'e', sentinela: [{ chave: 'quedas', desdeIso: ONTEM_20H }] }),
+      saude({ id: 'f', semReciboDesde: HOJE_9H }),
+      saude({ id: 'g', sentinela: [{ chave: 'nao_gravadas', desdeIso: ONTEM_20H }] }),
+      saude({ id: 'h', tone: 'down', detail: 'closed' }),
+    ];
+    expect(alarmes(lista).map((a) => a.tipo)).toEqual([
+      'fora_do_ar',
+      'nao_gravadas',
+      'sem_recibo',
+      'quedas',
+      'sem_entrada',
+      'nao_recebe',
+      'falhas',
+      'atrasada',
+    ]);
+  });
+
   it('os transitórios (stale, pairing, lastError) não acendem', () => {
     const lista = [
       saude({ id: 'c5', tone: 'warn', detail: 'stale' }),

@@ -8,7 +8,7 @@
 // avisos dentro do botãozinho do WhatsApp". D2: owner/admin e os membros cujo
 // perfil vê a conexão.
 //
-// Duas fontes, ambas pela sonda da saúde (`useChannelHealth`), sem realtime
+// Três fontes, todas pela sonda da saúde (`useChannelHealth`), sem realtime
 // novo:
 //  · o AO VIVO, com a régua da faixa da conversa (`avisoDaConexao`, que lê o
 //    `tone`/`detail` do servidor, nunca reavalia): fora do ar e não recebe; o
@@ -17,7 +17,10 @@
 //    `detail` mostra antes (a fila represada para os recibos junto);
 //  · os EPISÓDIOS do sino ainda abertos (`episodios`, decididos no servidor por
 //    `episodioAberto`): a medição ao vivo apaga quando envelhece, e o episódio
-//    só fecha com prova. É isso que faz o alarme da madrugada ser visto às 8h.
+//    só fecha com prova. É isso que faz o alarme da madrugada ser visto às 8h;
+//  · os alarmes de conexão abertos da SENTINELA da VPS (`sentinela`, 1123,
+//    Fase 4): sem mensagem de cliente, mensagens não gravadas, falhas de
+//    entrega e quedas seguidas. Só na nossa VPS; em outra instalação, vazio.
 //
 // ⚠️ O atraso SÓ entra pelo episódio, que conta a duração (30 min, D5; e o
 // operador confirmou para o cabeçalho, 05/11/2026): o atraso ao vivo (mais de
@@ -37,6 +40,7 @@
 // sai do contexto real (`alarmes-no-sino.ts`).
 // ============================================================
 
+import type { AlarmeDaSentinela, ChaveDaSentinela } from '@/lib/cb-channels/alarmes-da-sentinela';
 import type { EpisodioAberto } from '@/lib/cb-channels/alarmes-no-sino';
 import { avisoDaConexao, type SaudeDaConexao } from '@/lib/inbox/aviso-da-conexao';
 import { canalNoEscopo } from '@/lib/perfis/escopo';
@@ -44,6 +48,7 @@ import type { ContextoDeAcesso } from '@/lib/perfis/tipos';
 
 export type SaudeNoCabecalho = SaudeDaConexao & {
   episodios?: readonly EpisodioAberto[] | null;
+  sentinela?: readonly AlarmeDaSentinela[] | null;
 };
 
 export type AlarmeDoCabecalho =
@@ -57,24 +62,35 @@ export type AlarmeDoCabecalho =
       desdeIso: string;
       /** A última medição da 1002, fresca ou não: é o que se sabe. */
       atrasoSeg: number | null;
-    };
+    }
+  | { canalId: string; tipo: ChaveDaSentinela; rotulo: string; desdeIso: string };
 
-/** O pior primeiro: o que não sai, o que sai e não volta, o que não chega, o que chega tarde. */
+/**
+ * O pior primeiro: o que não sai; o que chegou ao WhatsApp e se perdeu para o
+ * CRM; o que sai e não volta; a conexão que cai e volta; o que não chega; o
+ * envio recusado; o que chega tarde.
+ */
 const GRAVIDADE: Record<AlarmeDoCabecalho['tipo'], number> = {
   fora_do_ar: 0,
-  sem_recibo: 1,
-  nao_recebe: 2,
-  atrasada: 3,
+  nao_gravadas: 1,
+  sem_recibo: 2,
+  quedas: 3,
+  sem_entrada: 4,
+  nao_recebe: 5,
+  falhas: 6,
+  atrasada: 7,
 };
 
 function maisAntigo(a: string, b: string | null): string {
   return b !== null && Date.parse(b) < Date.parse(a) ? b : a;
 }
 
+/** Todos os motivos acesos da conexão; o botão mostra o pior. */
 function alarmeDaConexao(
   c: SaudeNoCabecalho,
   saude: readonly SaudeNoCabecalho[],
 ): AlarmeDoCabecalho | null {
+  const candidatos: AlarmeDoCabecalho[] = [];
   const aoVivo = avisoDaConexao({
     canalId: c.id,
     ehGrupo: false,
@@ -82,34 +98,39 @@ function alarmeDaConexao(
     carregando: false,
     falhou: false,
   });
-  if (aoVivo?.tipo === 'fora_do_ar') return { canalId: c.id, tipo: 'fora_do_ar', rotulo: c.label };
+  if (aoVivo?.tipo === 'fora_do_ar') candidatos.push({ canalId: c.id, tipo: 'fora_do_ar', rotulo: c.label });
+  if (aoVivo?.tipo === 'nao_recebe') candidatos.push({ canalId: c.id, tipo: 'nao_recebe', rotulo: c.label });
 
   const episodios = c.episodios ?? [];
   const deRecibo = episodios.find((e) => e.tipo === 'sem_recibo') ?? null;
   const reciboAoVivo = c.semReciboDesde ?? null;
-  if (reciboAoVivo !== null) {
-    return {
+  if (reciboAoVivo !== null || deRecibo !== null) {
+    candidatos.push({
       canalId: c.id,
       tipo: 'sem_recibo',
       rotulo: c.label,
-      desdeIso: maisAntigo(reciboAoVivo, deRecibo?.desdeIso ?? null),
-    };
+      desdeIso:
+        reciboAoVivo !== null
+          ? maisAntigo(reciboAoVivo, deRecibo?.desdeIso ?? null)
+          : (deRecibo as EpisodioAberto).desdeIso,
+    });
   }
-  if (deRecibo) return { canalId: c.id, tipo: 'sem_recibo', rotulo: c.label, desdeIso: deRecibo.desdeIso };
-
-  if (aoVivo?.tipo === 'nao_recebe') return { canalId: c.id, tipo: 'nao_recebe', rotulo: c.label };
-
   const deAtraso = episodios.find((e) => e.tipo === 'atraso') ?? null;
   if (deAtraso) {
-    return {
+    candidatos.push({
       canalId: c.id,
       tipo: 'atrasada',
       rotulo: c.label,
       desdeIso: deAtraso.desdeIso,
       atrasoSeg: c.atrasoSeg,
-    };
+    });
   }
-  return null;
+  for (const s of c.sentinela ?? []) {
+    candidatos.push({ canalId: c.id, tipo: s.chave, rotulo: c.label, desdeIso: s.desdeIso });
+  }
+
+  if (candidatos.length === 0) return null;
+  return candidatos.reduce((pior, a) => (GRAVIDADE[a.tipo] < GRAVIDADE[pior.tipo] ? a : pior));
 }
 
 export function alarmesDoCabecalho(args: {

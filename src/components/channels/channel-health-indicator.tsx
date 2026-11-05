@@ -154,6 +154,15 @@ function textoCurto(t: Tradutor, a: AlarmeDoCabecalho): string {
       return t('alarme.naoRecebe', { canal: a.rotulo });
     case 'atrasada':
       return t('alarme.atrasada', { canal: a.rotulo, quando: quandoFoi(a.desdeIso) });
+    // Os da sentinela da VPS (1123, Fase 4).
+    case 'sem_entrada':
+      return t('alarme.semEntrada', { canal: a.rotulo, quando: quandoFoi(a.desdeIso) });
+    case 'nao_gravadas':
+      return t('alarme.naoGravadas', { canal: a.rotulo, quando: quandoFoi(a.desdeIso) });
+    case 'falhas':
+      return t('alarme.falhas', { canal: a.rotulo, quando: quandoFoi(a.desdeIso) });
+    case 'quedas':
+      return t('alarme.quedas', { canal: a.rotulo, quando: quandoFoi(a.desdeIso) });
   }
 }
 
@@ -170,6 +179,14 @@ function textoLongo(t: Tradutor, a: AlarmeDoCabecalho): string {
       return a.atrasoSeg !== null
         ? t('alarme.atrasadaMedida', { tempo: duracao(a.atrasoSeg) })
         : t('alarme.atrasadaDetalhe');
+    case 'sem_entrada':
+      return t('alarme.semEntradaDetalhe');
+    case 'nao_gravadas':
+      return t('alarme.naoGravadasDetalhe');
+    case 'falhas':
+      return t('alarme.falhasDetalhe');
+    case 'quedas':
+      return t('alarme.quedasDetalhe');
   }
 }
 

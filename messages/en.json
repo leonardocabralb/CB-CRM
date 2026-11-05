@@ -6988,7 +6988,15 @@
       "atrasadaDetalhe": "Recent customer replies may not have reached the CRM yet.",
       "atrasadaMedida": "The last message measured took {tempo} to reach the CRM. Recent customer replies may not have arrived yet.",
       "maisAlertas": "{n, plural, one {and # more alert} other {and # more alerts}}",
-      "verConexoes": "View connections"
+      "verConexoes": "View connections",
+      "semEntrada": "{canal} with no customer message since {quando}",
+      "semEntradaDetalhe": "No customer message has arrived through this connection for 2 h while messages were going out. It may be up but deaf: customer replies may be held up.",
+      "naoGravadas": "{canal} with messages that did not reach the CRM since {quando}",
+      "naoGravadasDetalhe": "The WhatsApp server received customer messages that the CRM did not save. They do not come in on their own: they have to be imported by hand.",
+      "falhas": "{canal} with delivery failures since {quando}",
+      "falhasDetalhe": "Messages that WhatsApp refused in the last 24 h, without delivery. Check the conversations with a message marked as not delivered.",
+      "quedas": "{canal} dropping repeatedly since {quando}",
+      "quedasDetalhe": "The connection drops and comes back several times: between drops nothing comes in, and customer messages arrive late, in batches."
     }
   },
   "AlarmesDeConexao": {

@@ -160,6 +160,10 @@ passou na máquina). Por isso:
   `str.removeprefix` nem tipo `list[str]` em tempo de execução.
 - Ela é a coleta dos logs para a varredura semanal: o log da Evolution cobria
   ~6 h em 13/10. Desligar o cron abre buraco no histórico.
+- ⚠️ Ela grava também `cb_alarmes_da_sentinela` (1123), que o botão das
+  conexões do CRM lê: `CHAVES_DO_BOTAO` é EXATAMENTE o CHECK da tabela (pino
+  `alarmes-da-sentinela-1123.test.ts`) — chave fora dele faria o lote inteiro
+  falhar. Aplicar a migration ANTES de instalar a sentinela nova.
 
 ### Código que viaja para quem instala
 - `scripts/produto-gate.test.ts` reprova a NOSSA infraestrutura (domínio,
