@@ -18,14 +18,28 @@
 //    de dois canais" — ali o widget não decide nada, aqui a saúde de um
 //    número único é a informação mais crítica da tela.
 //  · SOME COM ZERO. Conta sem conexão nenhuma não tem o que mostrar.
+//  · COM ALARME, SE ALARGA (E1, Fase 3 dos alarmes de conexão; decisão do
+//    operador, 05/11/2026, no lugar de uma faixa fixa no topo): o fundo pega a
+//    cor do alarme e, do `md` para cima, o botão diz QUAL conexão e o quê, sem
+//    abrir o popover; o popover abre com os alarmes explicados no topo. A
+//    régua (o que conta como alarme, para quem) é `alarmes-do-cabecalho.ts`:
+//    o amarelo dos estados de passagem (reconectando, sem confirmação há
+//    pouco) e o atraso curto do reinício da Evolution NÃO alargam — só o
+//    glifo muda de cor, como sempre. No celular o texto não cabe ao lado do
+//    título: fica só o fundo colorido.
 // ============================================================
 
+import Link from 'next/link';
+import { TriangleAlert, WifiOff } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { ABRE_PARA_BAIXO } from '@/components/layout/popup-do-cabecalho';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useAuth } from '@/hooks/use-auth';
 import { useChannelHealth, type ChannelHealth, type HealthTone } from '@/hooks/use-channel-health';
+import { alarmesDoCabecalho, type AlarmeDoCabecalho } from '@/lib/cb-channels/alarmes-do-cabecalho';
 import { formatChannelPhone } from '@/lib/cb-channels/display';
+import { podeVerSecao } from '@/lib/perfis/visibilidade';
 import { cn } from '@/lib/utils';
 
 import { WhatsAppGlyph } from './whatsapp-glyph';
@@ -126,6 +140,68 @@ function duracao(seg: number): string {
   return h < 24 ? `${h} h` : `${Math.floor(h / 24)} d`;
 }
 
+type Tradutor = ReturnType<typeof useTranslations<'ChannelHealth'>>;
+
+/** A linha curta do alarme: o que o botão alargado mostra. */
+function textoCurto(t: Tradutor, a: AlarmeDoCabecalho): string {
+  switch (a.tipo) {
+    case 'fora_do_ar':
+      return t('alarme.foraDoAr', { canal: a.rotulo });
+    case 'sem_recibo':
+      return t('alarme.semRecibo', { canal: a.rotulo, quando: quandoFoi(a.desdeIso) });
+    case 'nao_recebe':
+      return t('alarme.naoRecebe', { canal: a.rotulo });
+    case 'atrasada':
+      return t('alarme.atrasada', { canal: a.rotulo, quando: quandoFoi(a.desdeIso) });
+  }
+}
+
+/** O que fazer com ele, no popover. O sem recibo manda NÃO reenviar (raiz, 8e). */
+function textoLongo(t: Tradutor, a: AlarmeDoCabecalho): string {
+  switch (a.tipo) {
+    case 'fora_do_ar':
+      return t('alarme.foraDoArDetalhe');
+    case 'sem_recibo':
+      return t('alarme.semReciboDetalhe');
+    case 'nao_recebe':
+      return t('alarme.naoRecebeDetalhe');
+    case 'atrasada':
+      return a.atrasoSeg !== null
+        ? t('alarme.atrasadaMedida', { tempo: duracao(a.atrasoSeg) })
+        : t('alarme.atrasadaDetalhe');
+  }
+}
+
+/**
+ * ⚠️ Cores que valem nos DOIS modos (o `dark:` está inerte, ver a `Ficha`): o
+ * `amber-700` da faixa da conversa e o `red-600` (contraste medido no papel:
+ * 4,8 no claro, 4,1 no escuro), sobre o fundo a 10%.
+ */
+const COR_DO_ALARME = {
+  vermelho: 'bg-red-500/10 text-red-600 ring-red-500/40 hover:bg-red-500/15',
+  ambar: 'bg-amber-500/10 text-amber-700 ring-amber-500/40 hover:bg-amber-500/15',
+} as const;
+
+function AlarmeNoPopover({ a }: { a: AlarmeDoCabecalho }) {
+  const t = useTranslations('ChannelHealth');
+  const vermelho = a.tipo === 'fora_do_ar';
+  const Icone = vermelho ? WifiOff : TriangleAlert;
+  return (
+    <div
+      className={cn(
+        'flex items-start gap-2 rounded-md px-2 py-1.5 text-xs',
+        vermelho ? COR_DO_ALARME.vermelho : COR_DO_ALARME.ambar,
+      )}
+    >
+      <Icone aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
+      <div className="min-w-0">
+        <p className="break-words font-semibold">{textoCurto(t, a)}</p>
+        <p className="mt-0.5 break-words">{textoLongo(t, a)}</p>
+      </div>
+    </div>
+  );
+}
+
 function Ficha({ c }: { c: ChannelHealth }) {
   const t = useTranslations('ChannelHealth');
   const telefone = formatChannelPhone(c.phone);
@@ -201,7 +277,8 @@ function Ficha({ c }: { c: ChannelHealth }) {
 
 export function ChannelHealthIndicator({ className }: { className?: string }) {
   const t = useTranslations('ChannelHealth');
-  const { channels } = useChannelHealth();
+  const { channels, loading, falhou } = useChannelHealth();
+  const { acesso } = useAuth();
 
   // Conta sem conexão: nada a dizer.
   if (channels.length === 0) return null;
@@ -214,13 +291,29 @@ export function ChannelHealthIndicator({ className }: { className?: string }) {
     ruins: tons.filter((x) => x !== 'ok').length,
   });
 
+  // E1: o alarme de quem recebe o aviso (D2), o pior primeiro.
+  const alarmes = alarmesDoCabecalho({ saude: channels, carregando: loading, falhou, acesso });
+  const principal = alarmes[0] ?? null;
+  const curto = principal ? textoCurto(t, principal) : null;
+  const outros = alarmes.length - 1;
+  const rotulo = principal
+    ? [curto, outros > 0 ? t('alarme.maisAlertas', { n: outros }) : null, resumo]
+        .filter(Boolean)
+        .join(' · ')
+    : resumo;
+
   return (
     <Popover>
       <PopoverTrigger
-        aria-label={resumo}
-        title={resumo}
+        aria-label={rotulo}
+        title={rotulo}
         className={cn(
-          'flex h-10 items-center gap-1 rounded-md px-1.5 transition-colors hover:bg-muted',
+          'flex h-10 min-w-0 items-center gap-1 rounded-md px-1.5 transition-colors hover:bg-muted',
+          principal &&
+            cn(
+              'gap-2 ring-1 ring-inset md:px-2.5',
+              principal.tipo === 'fora_do_ar' ? COR_DO_ALARME.vermelho : COR_DO_ALARME.ambar,
+            ),
           className,
         )}
       >
@@ -236,6 +329,18 @@ export function ChannelHealthIndicator({ className }: { className?: string }) {
             <Glifo key={c.id} tone={c.tone} pulsar={c.tone === 'warn'} kind={c.kind} />
           ))
         )}
+        {/* O texto cabe do `md` para cima; com o menu lateral (`lg`), menos,
+            para o título da página não sumir. */}
+        {curto && (
+          <span className="hidden min-w-0 max-w-56 truncate text-xs font-medium md:inline lg:max-w-60 xl:max-w-96">
+            {curto}
+          </span>
+        )}
+        {outros > 0 && (
+          <span aria-hidden="true" className="hidden shrink-0 text-xs font-semibold md:inline">
+            +{outros}
+          </span>
+        )}
       </PopoverTrigger>
       {/* Sempre para baixo, com piso na altura: no app do iPhone abria
           para cima, cortado (`popup-do-cabecalho.ts`). */}
@@ -245,6 +350,22 @@ export function ChannelHealthIndicator({ className }: { className?: string }) {
         collisionAvoidance={ABRE_PARA_BAIXO}
         className="max-h-[max(var(--available-height),16rem)] w-80 overflow-y-auto"
       >
+        {alarmes.length > 0 && (
+          <div className="mb-2 space-y-1.5 border-b border-border pb-2">
+            {alarmes.map((a) => (
+              <AlarmeNoPopover key={a.canalId} a={a} />
+            ))}
+            {/* Só para quem vê a seção: o link cairia numa tela fora do perfil. */}
+            {podeVerSecao(acesso, 'channels') && (
+              <Link
+                href="/settings?tab=channels"
+                className="inline-block px-0.5 text-xs font-medium text-primary underline-offset-2 hover:underline"
+              >
+                {t('alarme.verConexoes')}
+              </Link>
+            )}
+          </div>
+        )}
         <p className="px-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {t('title')}
         </p>

@@ -6969,7 +6969,20 @@
     "neverChecked": "ainda não verificada",
     "deliveryLag": "Entregando com {tempo} de atraso",
     "lagMeasured": "medido há {tempo}",
-    "noReceiptSince": "Sem confirmação de entrega desde {quando}"
+    "noReceiptSince": "Sem confirmação de entrega desde {quando}",
+    "alarme": {
+      "foraDoAr": "{canal} fora do ar",
+      "semRecibo": "{canal} sem confirmação de entrega desde {quando}",
+      "naoRecebe": "{canal} não está recebendo mensagens",
+      "atrasada": "{canal} recebendo com atraso desde {quando}",
+      "foraDoArDetalhe": "Nada sai nem chega por este número até ele voltar.",
+      "semReciboDetalhe": "As mensagens provavelmente chegaram, mas as respostas dos clientes podem estar presas. Não reenvie: o cliente receberia em dobro.",
+      "naoRecebeDetalhe": "Ela envia normalmente, mas o que os clientes mandam por este número não está entrando no CRM.",
+      "atrasadaDetalhe": "Respostas recentes dos clientes podem ainda não ter chegado ao CRM.",
+      "atrasadaMedida": "A última mensagem medida levou {tempo} para chegar ao CRM. Respostas recentes dos clientes podem ainda não ter chegado.",
+      "maisAlertas": "{n, plural, one {e mais # alerta} other {e mais # alertas}}",
+      "verConexoes": "Ver conexões"
+    }
   },
   "AlarmesDeConexao": {
     "semRecibo": {

@@ -124,3 +124,111 @@ describe('probeChannels — envios sem recibo só no WhatsApp', () => {
     expect(lidas.sort()).toEqual(['evo', 'meta']);
   });
 });
+
+// ============================================================
+// E1 (Fase 3): a sonda leva os episódios do sino ainda abertos, lidos com a
+// service role e cercados pela conta.
+// ============================================================
+
+const MIN = 60_000;
+
+interface LinhaDoEstadoFalsa {
+  channel_id: string;
+  tipo: 'sem_recibo' | 'atraso';
+  desde: string;
+  avisado_em?: string | null;
+  normalizou_em?: string | null;
+  devido_em?: string | null;
+}
+
+/** A service role: só a leitura do estado, com a conta conferida. */
+function adminFalso(resposta: { linhas: LinhaDoEstadoFalsa[] } | { erro: string }) {
+  const contas: string[] = [];
+  const consulta = {
+    select: () => consulta,
+    eq: (coluna: string, valor: string) => {
+      if (coluna === 'account_id') contas.push(valor);
+      return consulta;
+    },
+    order: () => consulta,
+    range: async () =>
+      'erro' in resposta
+        ? { data: null, error: { message: resposta.erro } }
+        : {
+            data: resposta.linhas.map((l) => ({
+              avisado_em: null,
+              normalizou_em: null,
+              devido_em: null,
+              detalhe: null,
+              ...l,
+            })),
+            error: null,
+          },
+  };
+  return { db: { from: () => consulta } as never, contas };
+}
+
+describe('probeChannels — os episódios abertos do sino (E1)', () => {
+  beforeEach(() => {
+    lidas.length = 0;
+    __limparCacheDeSaude();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  it('sem a service role (a régua do Asaas), `episodios` sai null', async () => {
+    const saude = await probeChannels(bancoFalso(), 'conta-1');
+    expect(saude.every((c) => c.episodios === null)).toBe(true);
+  });
+
+  it('com ela, cada conexão leva os dela, e a leitura é cercada pela conta', async () => {
+    const agora = Date.now();
+    const admin = adminFalso({
+      linhas: [
+        { channel_id: 'evo', tipo: 'sem_recibo', desde: new Date(agora - 120 * MIN).toISOString() },
+        { channel_id: 'meta', tipo: 'atraso', desde: new Date(agora - 40 * MIN).toISOString() },
+      ],
+    });
+    const saude = await probeChannels(bancoFalso(), 'conta-1', admin.db);
+    const porId = new Map(saude.map((c) => [c.id, c]));
+
+    expect(admin.contas).toEqual(['conta-1']);
+    // O (c) aceso e ainda não avisado acompanha a sequência de agora (40 min).
+    expect(porId.get('evo')?.episodios).toEqual([
+      { tipo: 'sem_recibo', desdeIso: expect.any(String) },
+    ]);
+    expect(Date.parse(porId.get('evo')!.episodios![0].desdeIso)).toBeGreaterThan(agora - 41 * MIN);
+    // O (b) sem medição ("não sei") com 40 min de episódio continua aberto.
+    expect(porId.get('meta')?.episodios).toEqual([
+      { tipo: 'atraso', desdeIso: new Date(agora - 40 * MIN).toISOString() },
+    ]);
+    expect(porId.get('ig')?.episodios).toEqual([]);
+  });
+
+  it('⚠️ a leitura que falha é "não sei" (null), nunca "nenhum", e não fica no cache', async () => {
+    const quebrado = adminFalso({ erro: 'tempo esgotado' });
+    const antes = await probeChannels(bancoFalso(), 'conta-1', quebrado.db);
+    expect(antes.every((c) => c.episodios === null)).toBe(true);
+
+    const bom = adminFalso({
+      linhas: [{ channel_id: 'meta', tipo: 'atraso', desde: new Date(Date.now() - 45 * MIN).toISOString() }],
+    });
+    const depois = await probeChannels(bancoFalso(), 'conta-1', bom.db);
+    expect(bom.contas).toEqual(['conta-1']);
+    expect(depois.find((c) => c.id === 'meta')?.episodios).toHaveLength(1);
+  });
+
+  it('a prova já guardada (`normalizou_em`) fecha o episódio na tela antes de o ciclo apagar a linha', async () => {
+    const admin = adminFalso({
+      linhas: [
+        {
+          channel_id: 'meta',
+          tipo: 'atraso',
+          desde: new Date(Date.now() - 50 * MIN).toISOString(),
+          normalizou_em: new Date(Date.now() - 2 * MIN).toISOString(),
+        },
+      ],
+    });
+    const saude = await probeChannels(bancoFalso(), 'conta-1', admin.db);
+    expect(saude.find((c) => c.id === 'meta')?.episodios).toEqual([]);
+  });
+});

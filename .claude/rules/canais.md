@@ -137,3 +137,15 @@ duplica a sessão: `.claude/rules/whatsapp-evolution.md`, "Pareamento".
 - ⚠️ **O estado não mora em `cb_channels`**: todo UPDATE ali refaz a sonda de cada aba. A tabela é fechada ao navegador e fora da publicação, e a conexão apagada leva a linha (CASCADE).
 - **As conexões se leem de TODAS as contas, de propósito**, e cada uma é tratada só com a conta dona dela; as leituras da conta (membros, perfis, estado) e a escrita são cercadas pela conta (a service role não tem RLS). A conexão vem pelo predicado (`ehEvolution`/`ehMeta`): o Instagram fica fora.
 - ⚠️ **A régua do (c) é a da sonda** (`semRecibo` + `lerEnviosRecentes`): mudar uma muda as duas. No nosso servidor, a sentinela avisa o mesmo incidente com outro texto: aceito (plano §6).
+
+### O alarme no botão das conexões do cabeçalho (E1, 05/11/2026)
+
+`alarmes-do-cabecalho.ts` (régua pura), o `ChannelHealthIndicator` e o campo `episodios` da sonda (`episodioAberto`, lido de `cb_alarmes_de_conexao` em `health.ts`). Decisão do operador: no lugar da faixa fixa no topo do plano, o botão se ALARGA com o alarme (fundo da cor dele e, do `md` para cima, "qual conexão e o quê"), e o popover abre com os alarmes explicados e "Ver conexões".
+
+- ⚠️⚠️ **Duas fontes:** o AO VIVO (a régua da faixa da conversa, `avisoDaConexao`: fora do ar, não recebe, sem recibo) e os EPISÓDIOS do sino ainda abertos. O episódio é o que faz o alarme da madrugada ser visto às 8h: a medição ao vivo apaga quando envelhece, e só a prova o fecha (a de agora, ou a guardada em `normalizou_em`; o botão não espera o ciclo apagar a linha).
+- ⚠️ **O atraso só entra pelo episódio de 30 min** (confirmado pelo operador): o atraso ao vivo acende a cada reinício da Evolution. O glifo e a faixa da conversa seguem com o ao vivo, e os estados de passagem (reconectando, frescor) só mudam a cor do glifo, nunca alargam.
+- ⚠️ **O estado é lido pela ROTA da saúde com a service role**, cercado pela conta da sessão: a tabela é fechada ao navegador. Cache de 1 min por conta (o estado só muda no ciclo lento), e a falha NÃO fica no cache: `episodios: null` = "não sei", e o botão fica só com o ao vivo. Sem a service role (a régua do Asaas chama a sonda), `null`.
+- **Recorte pelo acesso EFETIVO** (D2: owner/admin veem todas; o membro, as do perfil); sonda carregando ou que falhou não alarga nada. UMA linha por conexão, a pior; o botão mostra a pior da conta e "+N".
+- No celular o texto não cabe ao lado do título: o botão só ganha o fundo colorido. Do `lg` para cima o texto encolhe (o menu lateral come a largura) e volta no `xl`.
+- Os alarmes da sentinela entram junto da Fase 4 (decisão do operador): ela grava os episódios abertos no banco, e a sonda os leva ao botão.
+

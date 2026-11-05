@@ -32,7 +32,15 @@ import { ehUrlAlcancavel } from './webhook-url';
 import type { CbChannelStatus, CbChannelKind } from './repo';
 import { ehEvolution, ehInstagram, ehMeta } from './transporte';
 import { alarmeDeAtraso, atrasoDaFronteira } from './atraso-de-entrega';
-import { lerEnviosRecentes, semRecibo, type SemRecibo } from './sem-recibo';
+import { lerEnviosRecentes, semRecibo, type EnvioRecente, type SemRecibo } from './sem-recibo';
+import {
+  episodioAberto,
+  medirAtraso,
+  medirSemRecibo,
+  type EpisodioAberto,
+  type EstadoDoAlarme,
+} from './alarmes-no-sino';
+import { lerEstadosDosAlarmes } from './estado-dos-alarmes';
 import { identidadeDoCanal } from './display';
 import { InstagramApiError, criarClienteInstagram } from '@/lib/instagram/graph';
 
@@ -70,6 +78,15 @@ export interface ChannelHealth {
    * sem recibo (ISO). Só com o motivo `sem_recibo`; `null` no resto.
    */
   semReciboDesde: string | null;
+  /**
+   * E1 (Fase 3): os episódios do sino (1122) ainda ABERTOS nesta conexão,
+   * decididos aqui (`episodioAberto`), para o botão das conexões do
+   * cabeçalho: ele os mostra mesmo depois que a medição ao vivo apaga
+   * (expirar não normaliza). `null` =
+   * o estado não foi lido — a leitura falhou, ou a sonda veio sem a service
+   * role (a régua do Asaas não precisa dele); o botão fica só com o ao vivo.
+   */
+  episodios: EpisodioAberto[] | null;
 }
 
 /** Acima disto, "conectado" deixa de ser confiável e vira amarelo. */
@@ -92,6 +109,11 @@ const TTL_WEBHOOK_MS = 5 * 60_000;
  * sondam juntas (a rota aceita 40 por minuto por pessoa).
  */
 const TTL_SEM_RECIBO_MS = 60_000;
+/**
+ * O estado dos alarmes (1122) só muda no ciclo lento (~16 min): 1 min de cache
+ * segura as abas da conta, que sondam a cada 30 s.
+ */
+const TTL_DOS_ALARMES_MS = 60_000;
 
 // ------------------------------------------------------------
 // Cache + single-flight
@@ -356,9 +378,67 @@ interface LinhaDeCanal {
   entrega_recebida_em: string | null;
 }
 
+/**
+ * Os episódios abertos de uma conexão (E1). A medição é a do passo do sino
+ * (`avisar-alarmes.ts`), sobre os mesmos envios da régua ao vivo e a mesma
+ * fronteira da 1002. O Instagram não tem linha no estado (o ciclo não o vigia):
+ * sai sempre vazio.
+ */
+function episodiosDaConexao(
+  c: LinhaDeCanal,
+  estados: Map<string, EstadoDoAlarme> | null,
+  envios: readonly EnvioRecente[] | null,
+  agoraMs: number,
+): EpisodioAberto[] | null {
+  if (estados === null) return null;
+  const abertos: EpisodioAberto[] = [];
+  const deRecibo = estados.get(`${c.id}:sem_recibo`) ?? null;
+  const recibo = episodioAberto(
+    'sem_recibo',
+    deRecibo,
+    medirSemRecibo(envios, deRecibo?.desdeIso ?? null, agoraMs),
+    agoraMs,
+  );
+  if (recibo) abertos.push(recibo);
+  const deAtraso = estados.get(`${c.id}:atraso`) ?? null;
+  const atraso = episodioAberto(
+    'atraso',
+    deAtraso,
+    medirAtraso({ carimboIso: c.entrega_carimbo_em, recebidaIso: c.entrega_recebida_em }, agoraMs),
+    agoraMs,
+  );
+  if (atraso) abertos.push(atraso);
+  return abertos;
+}
+
+/**
+ * O estado dos alarmes da conta, com cache. `null` = não leu ("não sei"), e a
+ * falha NÃO fica no cache: a próxima sonda tenta de novo.
+ */
+async function estadosDosAlarmes(
+  admin: SupabaseClient,
+  accountId: string,
+): Promise<Map<string, EstadoDoAlarme> | null> {
+  try {
+    return await comCache(`alarmes:${accountId}`, TTL_DOS_ALARMES_MS, async () => {
+      const lidos = await lerEstadosDosAlarmes(admin, accountId);
+      if (lidos === null) throw new Error('estado dos alarmes ilegível');
+      return lidos;
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `admin` (a service role) é quem lê o estado dos alarmes (1122), fechado ao
+ * navegador: a rota da saúde o passa, e a régua do Asaas, que só quer saber
+ * quem envia, não. Sem ele, `episodios` sai `null`.
+ */
 export async function probeChannels(
   db: SupabaseClient,
   accountId: string,
+  admin: SupabaseClient | null = null,
 ): Promise<ChannelHealth[]> {
   const { data, error } = await db
     .from('cb_channels')
@@ -382,6 +462,10 @@ export async function probeChannels(
 
   const agora = Date.now();
   const agoraIso = new Date(agora).toISOString();
+
+  // ---- E1: o estado dos alarmes do sino, em paralelo com as sondas. Cercado
+  // pela conta (a service role não tem RLS).
+  const estadosPedidos = admin ? estadosDosAlarmes(admin, accountId) : Promise.resolve(null);
 
   // ---- Evolution: um fetchInstances por SERVIDOR, não por canal ----
   const servidores = new Set(
@@ -409,22 +493,28 @@ export async function probeChannels(
   // WhatsApp, com cache por CONTA (a RLS de `messages` é por conta: o mesmo
   // resultado para todo membro). O Instagram fica de fora: não manda recibo
   // de entrega. A leitura que falha é "não sei" e nunca acende.
-  const semReciboPorCanal = await comCache(
+  // Os envios ficam junto da régua: o fim de um episódio guardado (E1) é
+  // medido sobre eles, sem segunda leitura.
+  const enviosPorCanal = await comCache(
     `sem-recibo:${accountId}`,
     TTL_SEM_RECIBO_MS,
     async () => {
-      const mapa = new Map<string, SemRecibo | null>();
+      const mapa = new Map<
+        string,
+        { envios: readonly EnvioRecente[]; recibo: SemRecibo | null } | null
+      >();
       await Promise.all(
         canais
           .filter((c) => ehEvolution(c) || ehMeta(c))
           .map(async (c) => {
             const envios = await lerEnviosRecentes(db, c.id, agora);
-            mapa.set(c.id, envios ? semRecibo(envios, agora) : null);
+            mapa.set(c.id, envios ? { envios, recibo: semRecibo(envios, agora) } : null);
           }),
       );
       return mapa;
     },
   );
+  const estados = await estadosPedidos;
 
   const saidas: ChannelHealth[] = [];
   const paraGravar: { id: string; status: CbChannelStatus }[] = [];
@@ -514,7 +604,8 @@ export async function probeChannels(
       carimboIso: c.entrega_carimbo_em,
       recebidaIso: c.entrega_recebida_em,
     });
-    const recibo = semReciboPorCanal.get(c.id) ?? null;
+    const deEnvios = enviosPorCanal.get(c.id) ?? null;
+    const recibo = deEnvios?.recibo ?? null;
 
     const { tone, detail } = toneFor({
       status: c.status,
@@ -566,6 +657,7 @@ export async function probeChannels(
       // Só junto do motivo: a tela lê o `detail`, e uma data solta seria
       // uma segunda régua.
       semReciboDesde: detail === 'sem_recibo' && recibo ? recibo.desdeIso : null,
+      episodios: episodiosDaConexao(c, estados, deEnvios?.envios ?? null, agora),
     });
   }
 
