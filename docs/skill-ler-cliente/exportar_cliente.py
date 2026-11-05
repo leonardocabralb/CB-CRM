@@ -10,7 +10,8 @@ Uso:
 
 A pasta do cliente é criada dentro da pasta dos clientes com o nome dele no
 CRM. Numa segunda vez, o script acha a mesma pasta (mesmo renomeada) e baixa só
-o que é novo. Se o nome já é a pasta de outro cliente, vira "Nome (2)".
+o que é novo. Se já existe uma pasta com esse nome que não é deste cliente (de
+um homônimo, ou feita à mão), nada é gravado nela: vira "Nome (2)", com aviso.
 
 Configuração (a chave nunca vai na linha de comando nem na conversa):
     CRM_URL       endereço do CRM (ou "url" no config.json ao lado deste script)
@@ -144,6 +145,7 @@ class Api:
         self.base = base
         self._chave = chave  # nunca impressa
         self.chamadas = 0
+        self.cortes: list[str] = []
 
     def get(self, caminho: str, params: dict | None = None) -> dict:
         url = self.base + caminho
@@ -193,7 +195,11 @@ class Api:
         sair(5, f"A API não respondeu em {caminho} depois de várias tentativas.")
         return {}
 
-    def todas(self, caminho: str, params: dict | None = None, teto: int = 50000) -> list:
+    def todas(self, caminho: str, params: dict | None = None, teto: int | None = None,
+              rotulo: str = "") -> list:
+        """Todas as páginas. Sem `teto`, até o fim. Com `teto`, os mais
+        recentes até ele — e o corte vira aviso em `self.cortes`, nunca
+        silêncio (a lista vem do mais novo ao mais antigo)."""
         itens: list = []
         cursor = None
         while True:
@@ -202,8 +208,12 @@ class Api:
                 return itens
             itens.extend(pagina.get("data") or [])
             cursor = (pagina.get("meta") or {}).get("next_cursor")
-            if not cursor or len(itens) >= teto:
+            if not cursor:
                 return itens
+            if teto is not None and len(itens) >= teto:
+                self.cortes.append(f"{rotulo or caminho}: só os {teto} mais recentes; os mais antigos "
+                                   "ficaram de fora desta exportação.")
+                return itens[:teto]
 
 
 def baixar(url: str | None, destino: str) -> str | None:
@@ -314,20 +324,25 @@ def ler_controle(pasta: str) -> dict | None:
         return None
 
 
-def pasta_do_cliente(base: str, cliente: dict) -> str:
-    """A pasta que já é deste cliente (mesmo renomeada), ou uma nova com o nome
-    dele; se o nome já é a pasta de OUTRO cliente, "Nome (2)", "Nome (3)"…"""
+def pasta_do_cliente(base: str, cliente: dict) -> tuple[str, str | None]:
+    """A pasta que já é deste cliente pelo controle (mesmo renomeada), ou uma
+    NOVA com o nome dele. Pasta que já existe com esse nome e não é deste
+    cliente pelo controle (de outro cliente, ou feita à mão) nunca é usada:
+    vira "Nome (2)", "Nome (3)"… — misturar dois clientes homônimos, ou
+    sobrescrever o que alguém pôs ali, seria pior. Devolve também o caminho
+    da pasta com o nome que foi pulada, para o Claude perguntar à pessoa."""
     if not os.path.isdir(base):
         sair(2, f"A pasta dos clientes não existe: {base}")
     for item in sorted(os.listdir(base)):
         caminho = os.path.join(base, item)
         if os.path.isdir(caminho) and (ler_controle(caminho) or {}).get("cliente_id") == cliente["id"]:
-            return caminho
+            return caminho, None
     nome = nome_seguro(cliente.get("name") or cliente.get("phone") or "Cliente", 80)
-    candidato, n = os.path.join(base, nome), 2
-    while os.path.exists(candidato) and (ler_controle(candidato) or {}).get("cliente_id") not in (None, cliente["id"]):
+    primeira = candidato = os.path.join(base, nome)
+    n = 2
+    while os.path.exists(candidato):
         candidato, n = os.path.join(base, f"{nome} ({n})"), n + 1
-    return candidato
+    return candidato, (primeira if candidato != primeira else None)
 
 
 def main() -> None:
@@ -358,7 +373,11 @@ def exportar(api: Api, termo: str, base_dos_clientes: str) -> None:
     cliente = achar_cliente(api, termo)
     cid = cliente["id"]
 
-    pasta = pasta_do_cliente(base_dos_clientes, cliente)
+    pasta, pulada = pasta_do_cliente(base_dos_clientes, cliente)
+    if pulada:
+        avisos.append(f'Já existia a pasta "{os.path.basename(pulada)}", que não é desta exportação '
+                      f'(feita à mão ou de outro cliente com o mesmo nome). Nada foi gravado nela: a '
+                      f'exportação foi para "{os.path.basename(pasta)}".')
     controle_caminho = os.path.join(pasta, ".exportacao.json")
     controle = ler_controle(pasta) or {}
 
@@ -372,12 +391,14 @@ def exportar(api: Api, termo: str, base_dos_clientes: str) -> None:
     cards = opcional("Funil", lambda: api.todas("/api/v1/deals", {"contact_id": cid})) or []
     anotacoes = opcional("Anotações", lambda: api.todas("/api/v1/notes", {"contact_id": cid})) or []
     tarefas = opcional("Tarefas", lambda: api.todas("/api/v1/tasks", {"contact_id": cid})) or []
-    automacoes = opcional("Automações", lambda: api.todas(f"/api/v1/contacts/{cid}/automation-runs", teto=300)) or []
+    automacoes = opcional("Automações", lambda: api.todas(
+        f"/api/v1/contacts/{cid}/automation-runs", teto=300, rotulo="Automações")) or []
     conversas = api.todas("/api/v1/conversations", {"contact_id": cid})
     mensagens: list = []
     for conversa in conversas:
         mensagens += api.todas(f"/api/v1/conversations/{conversa['id']}/messages")
     mensagens.sort(key=lambda m: (ordem(m.get("created_at")), m.get("id") or ""))
+    avisos += api.cortes  # as mensagens não têm teto; um corte em outra lista é dito
 
     originais = os.path.join(pasta, "originais")
     os.makedirs(originais, exist_ok=True)

@@ -63,6 +63,12 @@ Rodar de novo no mesmo cliente é seguro. A conversa e o resumo do CRM são
 reescritos, os arquivos já baixados ficam, e só os novos chegam (`"novo": true`
 em `arquivos.json`).
 
+Leia sempre os `avisos` do JSON e conte-os à pessoa. Se já havia uma pasta
+com o nome do cliente que não é desta exportação (feita à mão, ou de um
+homônimo), o script não grava nela e usa "Nome (2)". Pergunte à pessoa se é
+o mesmo cliente; se for, ela decide se junta as pastas. Não junte por conta
+própria.
+
 ## 2. Ler
 
 Na pasta do cliente, leia:
