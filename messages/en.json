@@ -6976,27 +6976,24 @@
     "neverChecked": "not checked yet",
     "deliveryLag": "Delivering {tempo} behind",
     "lagMeasured": "measured {tempo} ago",
-    "noReceiptSince": "No delivery confirmation since {quando}",
     "alarme": {
       "foraDoAr": "{canal} offline",
       "semRecibo": "{canal} without delivery confirmation since {quando}",
       "naoRecebe": "{canal} not receiving messages",
       "atrasada": "{canal} receiving with a delay since {quando}",
-      "foraDoArDetalhe": "Nothing is sent or received through this number until it comes back.",
-      "semReciboDetalhe": "The messages most likely arrived, but customers' replies may be held up. Do not resend: the customer would get it twice.",
-      "naoRecebeDetalhe": "It sends normally, but what customers send to this number is not reaching the CRM.",
-      "atrasadaDetalhe": "Recent customer replies may not have reached the CRM yet.",
-      "atrasadaMedida": "The last message measured took {tempo} to reach the CRM. Recent customer replies may not have arrived yet.",
       "maisAlertas": "{n, plural, one {and # more alert} other {and # more alerts}}",
-      "verConexoes": "View connections",
       "semEntrada": "{canal} with no customer message since {quando}",
-      "semEntradaDetalhe": "No customer message has arrived through this connection for at least 2 h while messages were going out. It may be up but deaf: customer replies may be held up.",
       "naoGravadas": "{canal} with messages that did not reach the CRM since {quando}",
-      "naoGravadasDetalhe": "The WhatsApp server received customer messages that the CRM did not save. They do not come in on their own: they have to be imported by hand.",
       "falhas": "{canal} with delivery failures since {quando}",
-      "falhasDetalhe": "Messages that WhatsApp refused in the last 24 h, without delivery. Check the conversations with a message marked as not delivered.",
       "quedas": "{canal} dropping repeatedly since {quando}",
-      "quedasDetalhe": "The connection drops and comes back several times: between drops nothing comes in, and customer messages arrive late, in batches."
+      "naFicha": {
+        "semRecibo": "No delivery confirmation since {quando}. Do not resend: the customer would get it twice.",
+        "atrasada": "Receiving with a delay since {quando}: recent replies may not have arrived yet.",
+        "semEntrada": "No customer message since {quando}, while messages are going out.",
+        "naoGravadas": "Customer messages that did not reach the CRM since {quando}: they have to be imported by hand.",
+        "falhas": "Delivery failures since {quando}: check the messages marked as not delivered.",
+        "quedas": "Dropping repeatedly since {quando}: messages arrive late, in batches."
+      }
     }
   },
   "AlarmesDeConexao": {

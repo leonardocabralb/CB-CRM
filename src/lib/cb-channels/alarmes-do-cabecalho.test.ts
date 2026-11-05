@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { ContextoDeAcesso, PerfilDeAcesso } from '@/lib/perfis/tipos';
 
-import { alarmesDoCabecalho, type SaudeNoCabecalho } from './alarmes-do-cabecalho';
+import { alarmesDoCabecalho, alarmesPorConexao, type SaudeNoCabecalho } from './alarmes-do-cabecalho';
 
 const ONTEM_20H = '2026-11-04T23:10:00.000Z';
 const HOJE_9H = '2026-11-05T12:10:00.000Z';
@@ -173,6 +173,31 @@ describe('alarmesDoCabecalho — o alarme no botão das conexões (E1)', () => {
       'falhas',
       'atrasada',
     ]);
+  });
+
+  it('a FICHA de cada conexão recebe TODOS os alarmes dela, do pior para o mais leve; o botão, só o pior', () => {
+    const lista = [
+      saude({
+        id: 'c1',
+        semReciboDesde: HOJE_9H,
+        episodios: [{ tipo: 'atraso', desdeIso: ONTEM_20H }],
+        sentinela: [{ chave: 'quedas', desdeIso: ONTEM_20H }],
+      }),
+      saude({ id: 'c2' }),
+    ];
+    const porConexao = alarmesPorConexao({ saude: lista, carregando: false, falhou: false });
+    expect(porConexao.get('c1')?.map((a) => a.tipo)).toEqual(['sem_recibo', 'quedas', 'atrasada']);
+    expect(porConexao.has('c2')).toBe(false);
+    expect(alarmes(lista).map((a) => a.tipo)).toEqual(['sem_recibo']);
+  });
+
+  it('a ficha mostra os alarmes de toda conexão (o recorte D2 é só do botão) e cala com a sonda carregando ou que falhou', () => {
+    const lista = [saude({ id: 'c3', semReciboDesde: HOJE_9H })];
+    expect(alarmes(lista, SO_C1)).toEqual([]);
+    const ficha = alarmesPorConexao({ saude: lista, carregando: false, falhou: false });
+    expect(ficha.get('c3')?.map((a) => a.tipo)).toEqual(['sem_recibo']);
+    expect(alarmesPorConexao({ saude: lista, carregando: true, falhou: false }).size).toBe(0);
+    expect(alarmesPorConexao({ saude: lista, carregando: false, falhou: true }).size).toBe(0);
   });
 
   it('os transitórios (stale, pairing, lastError) não acendem', () => {

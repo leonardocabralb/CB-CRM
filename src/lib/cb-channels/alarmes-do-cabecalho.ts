@@ -28,8 +28,11 @@
 // passou em menos de 30 min (plano §3b). O glifo e a faixa da conversa
 // continuam mostrando o atraso ao vivo.
 //
-// ⚠️ UMA linha por conexão, com o pior motivo dela; a lista sai do pior para o
-// mais leve, e o botão mostra a primeira.
+// ⚠️ O botão mostra o PIOR motivo de cada conexão de quem recebe o aviso (D2,
+// `alarmesDoCabecalho`), do pior para o mais leve; a ficha de cada conexão no
+// popover mostra TODOS os dela a quem a vê ali (`alarmesPorConexao`), como as
+// outras linhas da ficha, que não têm recorte (decisão do operador,
+// 05/11/2026: os cartões no topo do popover ficaram grosseiros).
 //
 // ⚠️ Sonda carregando ou que FALHOU = sem alarme: na falha, `useChannelHealth`
 // guarda a última lista BOA, e afirmar um alarme a partir dela seria afirmar
@@ -85,11 +88,11 @@ function maisAntigo(a: string, b: string | null): string {
   return b !== null && Date.parse(b) < Date.parse(a) ? b : a;
 }
 
-/** Todos os motivos acesos da conexão; o botão mostra o pior. */
-function alarmeDaConexao(
+/** Todos os motivos acesos da conexão, do pior para o mais leve. */
+function alarmesDaConexao(
   c: SaudeNoCabecalho,
   saude: readonly SaudeNoCabecalho[],
-): AlarmeDoCabecalho | null {
+): AlarmeDoCabecalho[] {
   const candidatos: AlarmeDoCabecalho[] = [];
   const aoVivo = avisoDaConexao({
     canalId: c.id,
@@ -129,25 +132,42 @@ function alarmeDaConexao(
     candidatos.push({ canalId: c.id, tipo: s.chave, rotulo: c.label, desdeIso: s.desdeIso });
   }
 
-  if (candidatos.length === 0) return null;
-  return candidatos.reduce((pior, a) => (GRAVIDADE[a.tipo] < GRAVIDADE[pior.tipo] ? a : pior));
+  return candidatos.sort((a, b) => GRAVIDADE[a.tipo] - GRAVIDADE[b.tipo]);
 }
 
-export function alarmesDoCabecalho(args: {
+interface Entrada {
   saude: readonly SaudeNoCabecalho[];
   carregando: boolean;
   falhou: boolean;
   acesso: ContextoDeAcesso;
-}): AlarmeDoCabecalho[] {
-  const { saude, carregando, falhou, acesso } = args;
-  if (carregando || falhou) return [];
+}
+
+/**
+ * A ficha do popover: os alarmes de cada conexão, do pior para o mais leve.
+ * Sem o recorte D2 — o popover lista toda conexão da conta, e as outras
+ * linhas da ficha (o status, o atraso) também não têm recorte.
+ */
+export function alarmesPorConexao({
+  saude,
+  carregando,
+  falhou,
+}: Omit<Entrada, 'acesso'>): Map<string, AlarmeDoCabecalho[]> {
+  const porConexao = new Map<string, AlarmeDoCabecalho[]>();
+  if (carregando || falhou) return porConexao;
+  for (const c of saude) {
+    const lista = alarmesDaConexao(c, saude);
+    if (lista.length > 0) porConexao.set(c.id, lista);
+  }
+  return porConexao;
+}
+
+/** O botão: o pior alarme de cada conexão de quem recebe o aviso (D2). */
+export function alarmesDoCabecalho(entrada: Entrada): AlarmeDoCabecalho[] {
+  const { acesso } = entrada;
   // D2: owner/admin recebem o aviso de toda conexão, mesmo com perfil recortado.
   const veTodas = acesso.papel === 'owner' || acesso.papel === 'admin';
-  const alarmes: AlarmeDoCabecalho[] = [];
-  for (const c of saude) {
-    if (!veTodas && !canalNoEscopo(acesso, c.id)) continue;
-    const alarme = alarmeDaConexao(c, saude);
-    if (alarme) alarmes.push(alarme);
-  }
-  return alarmes.sort((a, b) => GRAVIDADE[a.tipo] - GRAVIDADE[b.tipo]);
+  return [...alarmesPorConexao(entrada)]
+    .filter(([canalId]) => veTodas || canalNoEscopo(acesso, canalId))
+    .map(([, lista]) => lista[0])
+    .sort((a, b) => GRAVIDADE[a.tipo] - GRAVIDADE[b.tipo]);
 }

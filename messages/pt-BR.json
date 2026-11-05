@@ -6969,27 +6969,24 @@
     "neverChecked": "ainda não verificada",
     "deliveryLag": "Entregando com {tempo} de atraso",
     "lagMeasured": "medido há {tempo}",
-    "noReceiptSince": "Sem confirmação de entrega desde {quando}",
     "alarme": {
       "foraDoAr": "{canal} fora do ar",
       "semRecibo": "{canal} sem confirmação de entrega desde {quando}",
       "naoRecebe": "{canal} não está recebendo mensagens",
       "atrasada": "{canal} recebendo com atraso desde {quando}",
-      "foraDoArDetalhe": "Nada sai nem chega por este número até ele voltar.",
-      "semReciboDetalhe": "As mensagens provavelmente chegaram, mas as respostas dos clientes podem estar presas. Não reenvie: o cliente receberia em dobro.",
-      "naoRecebeDetalhe": "Ela envia normalmente, mas o que os clientes mandam por este número não está entrando no CRM.",
-      "atrasadaDetalhe": "Respostas recentes dos clientes podem ainda não ter chegado ao CRM.",
-      "atrasadaMedida": "A última mensagem medida levou {tempo} para chegar ao CRM. Respostas recentes dos clientes podem ainda não ter chegado.",
       "maisAlertas": "{n, plural, one {e mais # alerta} other {e mais # alertas}}",
-      "verConexoes": "Ver conexões",
       "semEntrada": "{canal} sem mensagem de cliente desde {quando}",
-      "semEntradaDetalhe": "Há pelo menos 2 h nenhuma mensagem de cliente chega por esta conexão, com envios saindo. Ela pode estar de pé e surda: as respostas dos clientes podem estar presas.",
       "naoGravadas": "{canal} com mensagens que não chegaram ao CRM desde {quando}",
-      "naoGravadasDetalhe": "O servidor do WhatsApp recebeu mensagens de clientes que o CRM não gravou. Elas não entram sozinhas: precisam ser importadas à mão.",
       "falhas": "{canal} com falhas de entrega desde {quando}",
-      "falhasDetalhe": "Envios que o WhatsApp recusou nas últimas 24 h, sem entrega. Confira as conversas com mensagem marcada como não entregue.",
       "quedas": "{canal} caindo seguido desde {quando}",
-      "quedasDetalhe": "A conexão cai e volta várias vezes: entre uma queda e outra a entrada para, e as mensagens dos clientes chegam em lotes, atrasadas."
+      "naFicha": {
+        "semRecibo": "Sem confirmação de entrega desde {quando}. Não reenvie: o cliente receberia em dobro.",
+        "atrasada": "Recebendo com atraso desde {quando}: respostas recentes podem não ter chegado.",
+        "semEntrada": "Sem mensagem de cliente desde {quando}, com envios saindo.",
+        "naoGravadas": "Mensagens de clientes que não chegaram ao CRM desde {quando}: precisam ser importadas à mão.",
+        "falhas": "Falhas de entrega desde {quando}: confira as mensagens marcadas como não entregues.",
+        "quedas": "Caindo seguido desde {quando}: as mensagens chegam em lotes, atrasadas."
+      }
     }
   },
   "AlarmesDeConexao": {

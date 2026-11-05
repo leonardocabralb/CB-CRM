@@ -100,7 +100,8 @@ qualquer uma é pergunta ao operador.
   (`canais.md`, 1122).
 - Alarme de conexão na tela (05/11/2026): sem faixa fixa no topo (o operador
   achou feia); o botão das conexões do cabeçalho se ALARGA, com a cor do
-  alarme e qual conexão e o quê, e o popover abre com os alarmes explicados.
+  alarme e qual conexão e o quê; no popover, cada alarme fica na ficha da
+  própria conexão, como os outros avisos dela (sem cartões no topo).
   O atraso só aparece ali quando dura 30 min, como no sino. Os alarmes de
   conexão da sentinela da VPS também aparecem no botão (1123) e vão, no sino,
   aos owner/admin e aos membros cujo perfil vê a conexão (D2); ela avisa as
