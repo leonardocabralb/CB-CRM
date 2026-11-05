@@ -9,7 +9,10 @@
 //  · "Normalizou" só com PROVA. Medição vencida ou ausente é "não sei", e o
 //    "não sei" não encerra nada (expirar não é normalizar);
 //  · a prova vista com o aviso dela recusado fica guardada (`normalizou_em`)
-//    e sai no ciclo seguinte, mesmo sem medição nova.
+//    e sai no ciclo seguinte, mesmo sem medição nova;
+//  · "Aconteceu e já normalizou" só para o aviso que ficou DEVIDO e não entrou
+//    (`devido_em`). O episódio que nunca chegou a valer aviso — o do (c) de
+//    madrugada, o do (b) de 10 min — sai calado.
 //
 // Decisões do operador (04/11/2026, `docs/PLANO-alarmes-de-conexao.md`):
 //  · D3/P3b — o (c), "envios sem recibo", só vai ao sino em HORÁRIO ÚTIL:
@@ -18,7 +21,8 @@
 //    aceso; o que acendeu e apagou fora do horário não vai ao sino. A faixa da
 //    tela vale sempre (é a sonda, não isto). O "Normalizou" de um aviso que
 //    já saiu vai a qualquer hora: é a notícia boa de um aviso aberto;
-//  · D5 — o (b), atraso de entrega, entra no sino com 30 min, a qualquer hora;
+//  · D5 — o (b) entra no sino quando a conexão FICA atrasada 30 min: o âmbar
+//    da tela (mais de 5 min, medição fresca) aceso há 30 min, a qualquer hora;
 //  · D6 — lembrete a cada 24 h, sem modo sombra;
 //  · D2 — recebem owner/admin E os membros cujo perfil vê a conexão.
 // ============================================================
@@ -28,17 +32,24 @@ import type { AccountRole } from '@/lib/auth/roles';
 import { canalNoEscopo } from '@/lib/perfis/escopo';
 import type { PerfilDeAcesso } from '@/lib/perfis/tipos';
 
-import { LIMIAR_ATRASO_SEG, atrasoDaFronteira, medicaoAindaVale, type ParDaFronteira } from './atraso-de-entrega';
+import {
+  atrasoDaFronteira,
+  entregaAtrasada,
+  medicaoAindaVale,
+  type ParDaFronteira,
+} from './atraso-de-entrega';
 import { envioConfirmado, semRecibo, type EnvioRecente } from './sem-recibo';
 
 export type TipoDoAlarme = 'sem_recibo' | 'atraso';
 
 /**
- * O (b) acende no SINO com 30 min de atraso (D5), não com os 5 min do âmbar da
- * tela: de 17/09 a 04/11, todo atraso fora do incidente foi reinício da
- * Evolution e passou em menos de 30 min (medido, plano §3b).
+ * O (b) vai ao sino quando o episódio de atraso DURA 30 min (D5). É a DURAÇÃO,
+ * não o tamanho do atraso: de 17/09 a 04/11, todo episódio fora do incidente
+ * foi reinício da Evolution e acabou em menos de 30 min — um deles com 41 min
+ * de atraso máximo e 25 min de duração (plano §3b). No incidente, o âmbar
+ * acendeu às 02:52 e o sino receberia às ~03:30.
  */
-export const ATRASO_DO_SINO_SEG = 30 * 60;
+export const DURACAO_DO_ATRASO_NO_SINO_MS = 30 * 60_000;
 
 /** "Continua" a cada 24 h enquanto o episódio durar (D6, como a sentinela). */
 export const LEMBRETE_MS = 24 * 60 * 60_000;
@@ -93,10 +104,11 @@ export function medirSemRecibo(
 }
 
 /**
- * (b) Atraso de entrega, pela fronteira da 1002. Só a medição FRESCA (até 1 h,
- * a validade da tela) decide: com 30 min ou mais, acende; com até 5 min (o
- * limiar da tela), prova o fim. Entre os dois, ou com a medição vencida, é
- * "não sei": o episódio aberto continua, e nenhum novo começa.
+ * (b) Atraso de entrega, pela fronteira da 1002 e com a régua do âmbar da tela:
+ * medição FRESCA (até 1 h) com mais de 5 min acende; fresca com até 5 min
+ * prova o fim; vencida ou ausente é "não sei" — o episódio aberto continua, e
+ * nenhum novo começa. O `desde` é quando a mensagem medida chegou: dali o
+ * âmbar está aceso, no mínimo.
  */
 export function medirAtraso(par: ParDaFronteira, agoraMs: number): Medicao {
   const atrasoSeg = atrasoDaFronteira(par);
@@ -104,13 +116,10 @@ export function medirAtraso(par: ParDaFronteira, agoraMs: number): Medicao {
   if (atrasoSeg === null || medidoEmIso === null || !medicaoAindaVale(medidoEmIso, agoraMs)) {
     return { tipo: 'nao_sei' };
   }
-  if (atrasoSeg >= ATRASO_DO_SINO_SEG) {
-    // O episódio começa, no mínimo, quando a mensagem medida foi carimbada:
-    // desde ali ela esperava na fila.
-    return { tipo: 'aceso', desdeIso: par.carimboIso!, detalhe: { atrasoSeg, medidoEmIso } };
+  if (entregaAtrasada(atrasoSeg)) {
+    return { tipo: 'aceso', desdeIso: medidoEmIso, detalhe: { atrasoSeg, medidoEmIso } };
   }
-  if (atrasoSeg <= LIMIAR_ATRASO_SEG) return { tipo: 'normal', fimIso: medidoEmIso };
-  return { tipo: 'nao_sei' };
+  return { tipo: 'normal', fimIso: medidoEmIso };
 }
 
 /** Uma linha de `cb_alarmes_de_conexao`, já traduzida. */
@@ -120,6 +129,8 @@ export interface EstadoDoAlarme {
   avisadoEmIso: string | null;
   /** A prova do fim já veio e o aviso dela ainda não entrou. */
   normalizouEmIso: string | null;
+  /** O aviso ficou devido e não entrou (o sino recusou, ou não havia a quem). */
+  devidoEmIso: string | null;
   detalhe: DetalheDoAlarme;
 }
 
@@ -128,20 +139,21 @@ export interface EstadoDoAlarme {
  * - `lembrete`: 24 h depois do último, ainda aceso;
  * - `sem_prova`: 24 h depois do último, sem medição que diga se acabou;
  * - `normalizou`: a prova do fim de um episódio avisado;
- * - `passou`: a prova do fim de um episódio que não chegou a ir ao sino.
+ * - `passou`: a prova do fim de um episódio cujo aviso ficou devido e não entrou.
  */
 export type Motivo = 'novo' | 'lembrete' | 'sem_prova' | 'normalizou' | 'passou';
 
 export interface Passo {
   motivo: Motivo | null;
   /**
-   * O estado a gravar: com aviso, gravá-lo é a REIVINDICAÇÃO (raiz, 8e) — só
-   * quem ganha a escrita cercada manda o aviso. `null` = a linha sai.
+   * O estado a gravar. Com aviso, a escrita cercada dele é a REIVINDICAÇÃO
+   * (raiz, 8e) e vai na MESMA transação do aviso. `null` = a linha sai.
    */
   depois: EstadoDoAlarme | null;
   /**
-   * Com aviso: o estado que fica se ele NÃO entrar no sino (para o próximo
-   * ciclo tentar de novo), e o que o texto descreve. Sem aviso, `null`.
+   * Com aviso: o estado que fica se ele NÃO entrar (marcado como devido, para
+   * o fim virar "Aconteceu e já normalizou"), e o que o texto descreve. Sem
+   * aviso, `null`.
    */
   seFalhar: EstadoDoAlarme | null;
 }
@@ -157,50 +169,68 @@ export function decidir(
   const agoraIso = new Date(agoraMs).toISOString();
   // P3b: o (c) só vai ao sino em horário útil; o (b), a qualquer hora.
   const podeAvisar = tipo === 'atraso' || horarioUtil;
+
   const ficar = (e: EstadoDoAlarme | null): Passo => ({ motivo: null, depois: e, seFalhar: null });
-  const avisar = (motivo: Motivo, e: EstadoDoAlarme): Passo => ({
+  const avisar = (motivo: 'novo' | 'lembrete' | 'sem_prova', e: EstadoDoAlarme): Passo => ({
     motivo,
-    depois: { ...e, avisadoEmIso: agoraIso },
-    seFalhar: e,
+    depois: { ...e, avisadoEmIso: agoraIso, devidoEmIso: null },
+    seFalhar: { ...e, devidoEmIso: e.devidoEmIso ?? agoraIso },
   });
   const lembreteVenceu = (e: EstadoDoAlarme) =>
     e.avisadoEmIso !== null && agoraMs - Date.parse(e.avisadoEmIso) >= LEMBRETE_MS;
 
+  /** O fim com prova. O "Normalizou" vai a qualquer hora; o resto, só se devido. */
+  const encerrar = (e: EstadoDoAlarme, fimIso: string): Passo => {
+    const guardado: EstadoDoAlarme = { ...e, normalizouEmIso: fimIso };
+    if (e.avisadoEmIso !== null) return { motivo: 'normalizou', depois: null, seFalhar: guardado };
+    // Nunca valeu aviso (o (c) de madrugada, o (b) de 10 min): sai calado.
+    if (e.devidoEmIso === null) return ficar(null);
+    // Devido e recusado: "Aconteceu e já normalizou", e o do (c) espera o horário.
+    if (!podeAvisar) return ficar(guardado);
+    return { motivo: 'passou', depois: null, seFalhar: guardado };
+  };
+
+  /** O episódio aberto, aceso ou "não sei": avisa o que estiver vencido. */
+  const seguir = (e: EstadoDoAlarme, aceso: boolean): Passo => {
+    if (!podeAvisar) return ficar(e);
+    if (e.avisadoEmIso === null) {
+      const devido =
+        tipo === 'sem_recibo'
+          ? // P3b: o (c) só avisa ACESO ("se ainda estiver aceso").
+            aceso
+          : // D5: o (b) avisa o episódio que dura 30 min — expirar não normaliza.
+            agoraMs - Date.parse(e.desdeIso) >= DURACAO_DO_ATRASO_NO_SINO_MS;
+      return devido ? avisar('novo', e) : ficar(e);
+    }
+    if (lembreteVenceu(e)) return avisar(aceso ? 'lembrete' : 'sem_prova', e);
+    return ficar(e);
+  };
+
   if (medicao.tipo === 'aceso') {
-    // Voltou antes de o "Normalizou" entrar: a prova guardada deixa de valer.
     const vivo: EstadoDoAlarme = {
-      desdeIso: atual?.desdeIso ?? medicao.desdeIso,
+      // O (b) conta a duração do 1º momento visto. O (c) ainda não avisado
+      // acompanha a sequência de AGORA: a linha de uma noite sem prova não
+      // empresta o "desde" dela a um episódio da manhã. Avisado, fica o dito.
+      desdeIso:
+        atual === null
+          ? medicao.desdeIso
+          : tipo === 'atraso' || atual.avisadoEmIso !== null
+            ? atual.desdeIso
+            : medicao.desdeIso,
       avisadoEmIso: atual?.avisadoEmIso ?? null,
+      // Voltou antes de o "Normalizou" entrar: a prova guardada deixa de valer.
       normalizouEmIso: null,
+      devidoEmIso: atual?.devidoEmIso ?? null,
       detalhe: medicao.detalhe,
     };
-    if (!podeAvisar) return ficar(vivo);
-    if (vivo.avisadoEmIso === null) return avisar('novo', vivo);
-    if (lembreteVenceu(vivo)) return avisar('lembrete', vivo);
-    return ficar(vivo);
+    return seguir(vivo, true);
   }
 
   if (atual === null) return ficar(null);
-
-  if (medicao.tipo === 'normal' || atual.normalizouEmIso !== null) {
-    const fimIso =
-      atual.normalizouEmIso ?? (medicao.tipo === 'normal' ? medicao.fimIso : agoraIso);
-    const guardado: EstadoDoAlarme = { ...atual, normalizouEmIso: fimIso };
-    if (atual.avisadoEmIso !== null) return { motivo: 'normalizou', depois: null, seFalhar: guardado };
-    if (podeAvisar) return { motivo: 'passou', depois: null, seFalhar: guardado };
-    // (c) que acendeu e apagou fora do horário útil: não vai ao sino (P3b).
-    return ficar(null);
-  }
-
+  if (atual.normalizouEmIso !== null) return encerrar(atual, atual.normalizouEmIso);
+  if (medicao.tipo === 'normal') return encerrar(atual, medicao.fimIso);
   // Não sei: só a prova encerra.
-  if (!podeAvisar) return ficar(atual);
-  if (atual.avisadoEmIso === null) {
-    // O (b) visto e não avisado (o sino recusou) avisa mesmo sem medição nova,
-    // como a sentinela. O (c) só avisa ACESO (P3b: "se ainda estiver aceso").
-    return tipo === 'atraso' ? avisar('novo', atual) : ficar(atual);
-  }
-  if (lembreteVenceu(atual)) return avisar('sem_prova', atual);
-  return ficar(atual);
+  return seguir(atual, false);
 }
 
 /** Um membro da conta, com o papel e o perfil REAIS (nunca o do "Ver como"). */
@@ -213,7 +243,8 @@ export interface MembroDaConta {
 /**
  * Quem recebe o aviso de uma conexão (D2): owner/admin e os membros cujo
  * perfil vê a conexão. O recorte é o do perfil (`canalNoEscopo`): sem perfil
- * ou com a lista vazia, vê todas. O suspenso fica de fora já na leitura.
+ * ou com a lista vazia, vê todas. O suspenso fica de fora já na leitura (e a
+ * função do banco confere de novo).
  */
 export function destinatarios(membros: readonly MembroDaConta[], channelId: string): string[] {
   const ids = new Set<string>();

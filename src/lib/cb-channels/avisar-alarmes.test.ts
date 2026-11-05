@@ -9,7 +9,7 @@ vi.mock('./sem-recibo', async (original) => ({
   lerEnviosRecentes,
 }));
 
-import { avisarAlarmesDeConexao } from './avisar-alarmes';
+import { PRAZO_DOS_ALARMES_MS, avisarAlarmesDeConexao } from './avisar-alarmes';
 
 // ------------------------------------------------------------
 // Um banco em memória que avalia os filtros (e as CERCAS) de verdade.
@@ -38,6 +38,60 @@ class BancoFalso {
 
   linhas(tabela: string): Linha[] {
     return (this.tabelas[tabela] ??= []);
+  }
+
+  /**
+   * O dublê de `cb_gravar_alarme_de_conexao` (1122), com as mesmas cercas e a
+   * mesma transação: se a escrita não vale, nada muda; o aviso vai só a quem,
+   * da lista, é membro ATIVO da conta. A função de verdade é provada pela
+   * conferência da própria migration.
+   */
+  rpc(nome: string, a: Record<string, unknown>) {
+    this.chamadas.push({ tabela: `rpc:${nome}`, op: 'rpc', filtros: [`p_account_id=${String(a.p_account_id)}`] });
+    const recusa = a.p_titulo ? this.falhas['rpc.com-aviso'] : this.falhas['rpc.sem-aviso'];
+    if (recusa) return Promise.resolve({ data: null, error: { message: recusa } });
+
+    const estados = this.linhas('cb_alarmes_de_conexao');
+    const de = a.p_de as Linha | null;
+    const para = a.p_para as Linha | null;
+    const daChave = (l: Linha) =>
+      l.account_id === a.p_account_id && l.channel_id === a.p_channel_id && l.tipo === a.p_tipo;
+    const cercada = (l: Linha) =>
+      daChave(l) &&
+      igual(l.avisado_em ?? null, de?.avisado_em ?? null) &&
+      igual(l.normalizou_em ?? null, de?.normalizou_em ?? null) &&
+      igual(l.devido_em ?? null, de?.devido_em ?? null);
+
+    let valeu = false;
+    if (de === null && para !== null) {
+      if (!estados.some((l) => l.channel_id === a.p_channel_id && l.tipo === a.p_tipo)) {
+        estados.push({ account_id: a.p_account_id, channel_id: a.p_channel_id, tipo: a.p_tipo, ...para });
+        valeu = true;
+      }
+    } else if (de !== null && para === null) {
+      const antes = estados.length;
+      this.tabelas.cb_alarmes_de_conexao = estados.filter((l) => !cercada(l));
+      valeu = this.tabelas.cb_alarmes_de_conexao.length === antes - 1;
+    } else if (de !== null && para !== null) {
+      const alvo = estados.filter(cercada);
+      for (const l of alvo) Object.assign(l, para);
+      valeu = alvo.length === 1;
+    }
+    if (valeu && a.p_titulo) {
+      const lista = (a.p_destinatarios as string[]) ?? [];
+      for (const m of this.linhas('profiles')) {
+        if (m.account_id === a.p_account_id && m.suspenso_em === null && lista.includes(String(m.user_id))) {
+          this.linhas('notifications').push({
+            account_id: a.p_account_id,
+            user_id: m.user_id,
+            type: 'whatsapp_alert',
+            title: a.p_titulo,
+            body: a.p_corpo,
+          });
+        }
+      }
+    }
+    return Promise.resolve({ data: valeu, error: null });
   }
 }
 
@@ -258,19 +312,56 @@ describe('avisarAlarmesDeConexao — o passo do ciclo', () => {
     expect(avisos(banco)).toHaveLength(2); // o dono e quem atende a c1, uma vez
   });
 
-  it('⚠️ o aviso que o sino recusou devolve o estado, e o ciclo seguinte tenta de novo', async () => {
+  it('⚠️ o aviso que falhou não muda o estado junto: o episódio fica DEVIDO e o ciclo seguinte tenta de novo', async () => {
     const banco = montarBanco();
     lerEnviosRecentes.mockImplementation(async (_db: unknown, canal: string, agora: number) =>
       canal === 'c1' ? travada(agora) : [],
     );
-    banco.falhas['notifications.insert'] = 'recusado';
+    banco.falhas['rpc.com-aviso'] = 'recusado';
     await avisarAlarmesDeConexao(banco as unknown as SupabaseClient, AGORA);
     expect(avisos(banco)).toHaveLength(0);
-    expect(estadoDe(banco, 'c1', 'sem_recibo')).toMatchObject({ avisado_em: null });
+    expect(estadoDe(banco, 'c1', 'sem_recibo')).toMatchObject({ avisado_em: null, devido_em: iso(AGORA) });
 
-    delete banco.falhas['notifications.insert'];
+    delete banco.falhas['rpc.com-aviso'];
     await avisarAlarmesDeConexao(banco as unknown as SupabaseClient, AGORA + 15 * MIN);
     expect(avisos(banco)).toHaveLength(2);
+    expect(estadoDe(banco, 'c1', 'sem_recibo')).toMatchObject({ avisado_em: iso(AGORA + 15 * MIN), devido_em: null });
+  });
+
+  it('o aviso devido que nunca entrou e normalizou: "Aconteceu e já normalizou"', async () => {
+    const banco = montarBanco();
+    banco.tabelas.cb_alarmes_de_conexao = [
+      {
+        account_id: 'conta-1',
+        channel_id: 'c1',
+        tipo: 'sem_recibo',
+        desde: iso(AGORA - 3 * 60 * MIN),
+        avisado_em: null,
+        normalizou_em: null,
+        devido_em: iso(AGORA - 30 * MIN),
+        detalhe: {},
+      },
+    ];
+    lerEnviosRecentes.mockImplementation(async (_db: unknown, canal: string, agora: number) =>
+      canal === 'c1' ? [envio(agora, 2, 'z', 'delivered')] : [],
+    );
+    await avisarAlarmesDeConexao(banco as unknown as SupabaseClient, AGORA);
+    expect(String(avisos(banco)[0].title)).toMatch(/^Aconteceu e já normalizou — /);
+    expect(estadoDe(banco, 'c1', 'sem_recibo')).toBeUndefined();
+  });
+
+  it('⚠️ o aviso vai só a membro ATIVO da conta, mesmo que a lista diga outro (a função confere)', async () => {
+    const banco = montarBanco();
+    // Quem atende a c1 é suspenso DEPOIS da leitura dos membros: a lista do
+    // app ainda o traz, e a função do banco o tira.
+    banco.depoisDeLer.profiles = () => {
+      (banco.tabelas.profiles as Linha[])[1].suspenso_em = iso(AGORA - MIN);
+    };
+    lerEnviosRecentes.mockImplementation(async (_db: unknown, canal: string, agora: number) =>
+      canal === 'c1' ? travada(agora) : [],
+    );
+    await avisarAlarmesDeConexao(banco as unknown as SupabaseClient, AGORA);
+    expect(avisos(banco).map((a) => a.user_id)).toEqual(['dono']);
   });
 
   it('⚠️ só quem GANHA a escrita cercada avisa: outro escritor mudou o estado depois da leitura', async () => {
@@ -283,6 +374,7 @@ describe('avisarAlarmesDeConexao — o passo do ciclo', () => {
         desde: iso(AGORA - 60 * MIN),
         avisado_em: null,
         normalizou_em: null,
+        devido_em: null,
         detalhe: {},
       },
     ];
@@ -301,7 +393,16 @@ describe('avisarAlarmesDeConexao — o passo do ciclo', () => {
     const banco = montarBanco();
     const desde = iso(AGORA - 3 * 60 * MIN);
     banco.tabelas.cb_alarmes_de_conexao = [
-      { account_id: 'conta-1', channel_id: 'c1', tipo: 'sem_recibo', desde, avisado_em: iso(AGORA - 60 * MIN), normalizou_em: null, detalhe: {} },
+      {
+        account_id: 'conta-1',
+        channel_id: 'c1',
+        tipo: 'sem_recibo',
+        desde,
+        avisado_em: iso(AGORA - 60 * MIN),
+        normalizou_em: null,
+        devido_em: null,
+        detalhe: {},
+      },
     ];
     lerEnviosRecentes.mockImplementation(async (_db: unknown, canal: string, agora: number) =>
       canal === 'c1' ? [envio(agora, 2, 'z', 'delivered'), ...travada(agora)] : [],
@@ -312,11 +413,11 @@ describe('avisarAlarmesDeConexao — o passo do ciclo', () => {
     expect(estadoDe(banco, 'c1', 'sem_recibo')).toBeUndefined();
   });
 
-  it('de madrugada no sábado: o (b) avisa na hora; o (c) fica guardado para a abertura do horário', async () => {
+  it('de madrugada no sábado: o (b) aberto há 30 min avisa; o (c) fica guardado para a abertura do horário', async () => {
     const banco = montarBanco();
     const c1 = (banco.tabelas.cb_channels as Linha[])[0];
-    c1.entrega_carimbo_em = iso(MADRUGADA - 70 * MIN);
-    c1.entrega_recebida_em = iso(MADRUGADA - 10 * MIN); // 60 min de atraso, medido há 10 min
+    c1.entrega_carimbo_em = iso(MADRUGADA - 100 * MIN);
+    c1.entrega_recebida_em = iso(MADRUGADA - 40 * MIN); // 60 min de atraso, o âmbar aceso há 40 min
     lerEnviosRecentes.mockImplementation(async (_db: unknown, canal: string, agora: number) =>
       canal === 'c1' ? travada(agora) : [],
     );
@@ -335,6 +436,20 @@ describe('avisarAlarmesDeConexao — o passo do ciclo', () => {
     );
     await avisarAlarmesDeConexao(banco as unknown as SupabaseClient, AGORA);
     expect(avisos(banco)).toEqual([expect.objectContaining({ account_id: 'conta-2', user_id: 'dono-2' })]);
+  });
+
+  it('⚠️ o passo tem prazo próprio: passado ele, as conexões que faltam ficam para o próximo ciclo', async () => {
+    const banco = montarBanco();
+    lerEnviosRecentes.mockResolvedValue([]);
+    let relogio = 0;
+    vi.spyOn(Date, 'now').mockImplementation(() => relogio);
+    lerEnviosRecentes.mockImplementation(async () => {
+      relogio += PRAZO_DOS_ALARMES_MS + 1; // a 1ª conexão já come o prazo inteiro
+      return [];
+    });
+    await avisarAlarmesDeConexao(banco as unknown as SupabaseClient, AGORA);
+    expect(lerEnviosRecentes).toHaveBeenCalledTimes(1);
+    vi.mocked(Date.now).mockRestore();
   });
 
   it('⚠️ NUNCA lança, e sem saber quem recebe (ou o que já foi avisado) nada se decide', async () => {

@@ -93,10 +93,11 @@ qualquer uma é pergunta ao operador.
   para desligar (`canais.md`; o resto em `docs/PLANO-alarmes-de-conexao.md`).
 - Alarmes de conexão no sino (04/11/2026): o CRM grava o aviso do envio sem
   recibo só em horário útil (segunda a sexta, 8h–20h de Brasília; o que
-  acendeu e apagou à noite não vai ao sino) e o do atraso com 30 min, a
-  qualquer hora; um aviso por episódio, "Continua" a cada 24 h, "Normalizou"
-  só com prova; recebem owner/admin e os membros cujo perfil vê a conexão;
-  ligados em toda instalação, sem chave (`canais.md`, 1122).
+  acendeu e apagou à noite não vai ao sino) e o do atraso quando a conexão
+  fica 30 min recebendo com atraso, a qualquer hora; um aviso por episódio,
+  "Continua" a cada 24 h, "Normalizou" só com prova; recebem owner/admin e os
+  membros cujo perfil vê a conexão; ligados em toda instalação, sem chave
+  (`canais.md`, 1122).
 - Agentes de IA: o Playground testa o RASCUNHO da tela, conferido como o
   salvar, e compara com o salvo; a conversa não zera ao salvar. Versão
   publicada separada só depois do piloto (DC4, 26/10/2026).

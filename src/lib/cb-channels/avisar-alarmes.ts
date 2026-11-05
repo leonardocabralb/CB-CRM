@@ -11,16 +11,18 @@
 // mudar a stack e um `docker stack deploy` à mão em cada instalação
 // (`.claude/rules/deploy.md`). O passo viaja com a imagem.
 //
-// ⚠️ O aviso sai só para quem GANHA a escrita cercada do estado (raiz, 8e):
-// gravar o estado novo é a reivindicação, cercada pelo `avisado_em` e pelo
-// `normalizou_em` lidos. Se o aviso não entra no sino, o estado volta ao de
-// antes, cercado pelo que este ciclo gravou, e o próximo ciclo tenta de novo.
+// ⚠️⚠️ O estado e o aviso vão JUNTOS, numa transação só
+// (`cb_gravar_alarme_de_conexao`, 1122): a escrita cercada do estado é a
+// reivindicação (raiz, 8e) — só quem a ganha avisa — e, se o aviso não entra,
+// o estado também não muda e o próximo ciclo tenta de novo. O texto é montado
+// ANTES: nada que possa falhar fica entre a reivindicação e o aviso.
 //
-// ⚠️ Toda leitura é por CONTA (`.eq('account_id', …)`): a service role não tem
-// RLS, e o aviso de uma conexão vai só à conta dona dela.
+// ⚠️ As conexões se leem de TODAS as contas, de propósito; cada uma é tratada
+// só com a conta dona dela. As leituras da conta (membros, perfis, estado) e
+// a escrita são cercadas pela conta: a service role não tem RLS.
 //
-// NUNCA lança: o passo é isolado no ciclo, e mesmo assim cada conta roda
-// dentro do próprio try.
+// NUNCA lança: o passo é isolado no ciclo, e mesmo assim cada conta e cada
+// conexão rodam dentro do próprio try.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -54,6 +56,13 @@ const MAX_CORPO = 500;
 
 const PAGINA_DE_CANAIS = 500;
 
+/**
+ * O passo roda PRIMEIRO no ciclo e não pode comer o prazo dos outros quatro
+ * com o banco lento (o teto de conexões, `banco-no-teto-de-conexoes`): passado
+ * este tempo, as conexões que faltam ficam para o ciclo seguinte.
+ */
+export const PRAZO_DOS_ALARMES_MS = 60_000;
+
 interface LinhaDoCanal {
   id: string;
   account_id: string;
@@ -69,6 +78,7 @@ interface LinhaDoEstado {
   desde: string;
   avisado_em: string | null;
   normalizou_em: string | null;
+  devido_em: string | null;
   detalhe: DetalheDoAlarme | null;
 }
 
@@ -175,7 +185,7 @@ async function lerEstados(
 ): Promise<Map<string, EstadoDoAlarme> | null> {
   const { data, error } = await admin
     .from('cb_alarmes_de_conexao')
-    .select('channel_id, tipo, desde, avisado_em, normalizou_em, detalhe')
+    .select('channel_id, tipo, desde, avisado_em, normalizou_em, devido_em, detalhe')
     .eq('account_id', accountId);
   if (error) {
     console.warn('[alarmes] não leu o estado dos alarmes:', error.message);
@@ -187,6 +197,7 @@ async function lerEstados(
       desdeIso: l.desde,
       avisadoEmIso: l.avisado_em,
       normalizouEmIso: l.normalizou_em,
+      devidoEmIso: l.devido_em,
       detalhe: l.detalhe ?? {},
     });
   }
@@ -194,12 +205,18 @@ async function lerEstados(
 }
 
 // ------------------------------------------------------------
-// A escrita cercada do estado
+// A escrita: estado cercado + aviso, numa transação (1122)
 // ------------------------------------------------------------
 interface ChaveDoAlarme {
   accountId: string;
   channelId: string;
   tipo: TipoDoAlarme;
+}
+
+interface Aviso {
+  destinatarios: string[];
+  titulo: string;
+  corpo: string;
 }
 
 function mesmoInstante(a: string | null, b: string | null): boolean {
@@ -212,65 +229,55 @@ function mesmoEstado(a: EstadoDoAlarme, b: EstadoDoAlarme): boolean {
     mesmoInstante(a.desdeIso, b.desdeIso) &&
     mesmoInstante(a.avisadoEmIso, b.avisadoEmIso) &&
     mesmoInstante(a.normalizouEmIso, b.normalizouEmIso) &&
+    mesmoInstante(a.devidoEmIso, b.devidoEmIso) &&
     a.detalhe.atrasoSeg === b.detalhe.atrasoSeg &&
     mesmoInstante(a.detalhe.medidoEmIso ?? null, b.detalhe.medidoEmIso ?? null)
   );
 }
 
-function colunasDe(e: EstadoDoAlarme) {
+function jsonDoEstado(e: EstadoDoAlarme | null) {
+  if (e === null) return null;
   return {
     desde: e.desdeIso,
     avisado_em: e.avisadoEmIso,
     normalizou_em: e.normalizouEmIso,
+    devido_em: e.devidoEmIso,
     detalhe: e.detalhe,
   };
 }
 
 /**
- * Leva o estado de `de` (o que foi lido, ou gravado por este ciclo) para
- * `para`, cercado por `de`. `true` = a escrita valeu (ou não havia o que
- * escrever); `false` = outro escritor mudou a linha antes, ou a escrita falhou.
+ * Leva o estado de `de` (o lido) para `para`, cercado por `de`, com o aviso
+ * na mesma transação. `valeu` = a escrita (e o aviso) entraram; `erro` = a
+ * chamada falhou e NADA mudou. `valeu` falso sem erro = outro escritor mudou
+ * a linha antes.
  */
-async function gravarEstado(
+async function gravar(
   admin: SupabaseClient,
   chave: ChaveDoAlarme,
   de: EstadoDoAlarme | null,
   para: EstadoDoAlarme | null,
-): Promise<boolean> {
-  const tabela = () => admin.from('cb_alarmes_de_conexao');
+  aviso: Aviso | null,
+): Promise<{ valeu: boolean; erro: string | null }> {
+  if (de === null && para === null) return { valeu: true, erro: null };
+  if (aviso === null && de !== null && para !== null && mesmoEstado(de, para)) {
+    return { valeu: true, erro: null };
+  }
   try {
-    if (de === null && para === null) return true;
-    if (de === null) {
-      const { data, error } = await tabela()
-        .upsert(
-          { account_id: chave.accountId, channel_id: chave.channelId, tipo: chave.tipo, ...colunasDe(para!) },
-          { onConflict: 'channel_id,tipo', ignoreDuplicates: true },
-        )
-        .select('channel_id');
-      if (error) throw new Error(error.message);
-      return (data ?? []).length === 1;
-    }
-    if (para !== null && mesmoEstado(de, para)) return true;
-
-    // A cerca: a linha só muda se ainda está como `de` (raiz, 8e).
-    let consulta = (para === null ? tabela().delete() : tabela().update(colunasDe(para)))
-      .eq('account_id', chave.accountId)
-      .eq('channel_id', chave.channelId)
-      .eq('tipo', chave.tipo);
-    consulta =
-      de.avisadoEmIso === null
-        ? consulta.is('avisado_em', null)
-        : consulta.eq('avisado_em', de.avisadoEmIso);
-    consulta =
-      de.normalizouEmIso === null
-        ? consulta.is('normalizou_em', null)
-        : consulta.eq('normalizou_em', de.normalizouEmIso);
-    const { data, error } = await consulta.select('channel_id');
-    if (error) throw new Error(error.message);
-    return (data ?? []).length === 1;
+    const { data, error } = await admin.rpc('cb_gravar_alarme_de_conexao', {
+      p_account_id: chave.accountId,
+      p_channel_id: chave.channelId,
+      p_tipo: chave.tipo,
+      p_de: jsonDoEstado(de),
+      p_para: jsonDoEstado(para),
+      p_destinatarios: aviso?.destinatarios ?? [],
+      p_titulo: aviso?.titulo ?? null,
+      p_corpo: aviso?.corpo ?? null,
+    });
+    if (error) return { valeu: false, erro: error.message };
+    return { valeu: data === true, erro: null };
   } catch (err) {
-    console.warn('[alarmes] não gravou o estado de %s (%s):', chave.channelId, chave.tipo, erroDe(err));
-    return false;
+    return { valeu: false, erro: erroDe(err) };
   }
 }
 
@@ -297,21 +304,12 @@ async function aplicar(
   const passo = decidir(tipo, atual, medicao, ctx.agoraMs, ctx.horarioUtil);
 
   if (passo.motivo === null) {
-    await gravarEstado(ctx.admin, chave, atual, passo.depois);
+    const { erro } = await gravar(ctx.admin, chave, atual, passo.depois, null);
+    if (erro) console.warn('[alarmes] não gravou o estado de %s (%s):', canal.id, tipo, erro);
     return;
   }
 
-  const ids = destinatarios(ctx.membros, canal.id);
-  if (ids.length === 0) {
-    // Sem ninguém para avisar: o episódio fica guardado, como visto.
-    console.warn('[alarmes] sem destinatário para %s (%s)', canal.id, tipo);
-    await gravarEstado(ctx.admin, chave, atual, passo.seFalhar);
-    return;
-  }
-
-  // A reivindicação: só quem grava o estado novo manda o aviso.
-  if (!(await gravarEstado(ctx.admin, chave, atual, passo.depois))) return;
-
+  // O texto ANTES da escrita: nada que possa falhar fica entre ela e o aviso.
   const { titulo, corpo } = textosDoAviso(
     ctx.textos.t,
     ctx.textos.quando,
@@ -320,24 +318,24 @@ async function aplicar(
     passo.seFalhar!,
     canal.label,
   );
-  const linhas = ids.map((userId) => ({
-    account_id: ctx.accountId,
-    user_id: userId,
-    type: 'whatsapp_alert',
-    title: cortarSemPartir(titulo, MAX_TITULO),
-    body: cortarSemPartir(corpo, MAX_CORPO),
-  }));
-  let falhou: string | null = null;
-  try {
-    const { error } = await ctx.admin.from('notifications').insert(linhas);
-    falhou = error ? error.message : null;
-  } catch (err) {
-    falhou = erroDe(err);
+  const ids = destinatarios(ctx.membros, canal.id);
+  if (ids.length === 0) {
+    // Sem ninguém para avisar: o episódio fica guardado como devido.
+    console.warn('[alarmes] sem destinatário para %s (%s)', canal.id, tipo);
+    await gravar(ctx.admin, chave, atual, passo.seFalhar, null);
+    return;
   }
-  if (falhou !== null) {
-    console.warn('[alarmes] o aviso de %s (%s) não entrou no sino:', canal.id, tipo, falhou);
-    // Volta ao estado de antes do aviso, cercado pelo que este ciclo gravou.
-    await gravarEstado(ctx.admin, chave, passo.depois, passo.seFalhar);
+
+  const { erro } = await gravar(ctx.admin, chave, atual, passo.depois, {
+    destinatarios: ids,
+    titulo: cortarSemPartir(titulo, MAX_TITULO),
+    corpo: cortarSemPartir(corpo, MAX_CORPO),
+  });
+  if (erro !== null) {
+    console.warn('[alarmes] o aviso de %s (%s) não entrou no sino:', canal.id, tipo, erro);
+    // Nada mudou (a transação voltou inteira). Marca o aviso como devido, para
+    // o fim virar "Aconteceu e já normalizou"; o próximo ciclo tenta de novo.
+    await gravar(ctx.admin, chave, atual, passo.seFalhar, null);
   }
 }
 
@@ -348,6 +346,7 @@ async function avisarDaConta(
   agoraMs: number,
   horarioUtil: boolean,
   textos: Textos,
+  prazo: number,
 ): Promise<void> {
   const [membros, estados] = await Promise.all([lerMembros(admin, accountId), lerEstados(admin, accountId)]);
   // Sem saber quem recebe ou o que já foi avisado, nada se decide.
@@ -355,17 +354,25 @@ async function avisarDaConta(
   const ctx: ContextoDaConta = { admin, accountId, membros, agoraMs, horarioUtil, textos };
 
   for (const canal of canais) {
-    const deRecibo = estados.get(`${canal.id}:sem_recibo`) ?? null;
-    const deAtraso = estados.get(`${canal.id}:atraso`) ?? null;
-    const envios = await lerEnviosRecentes(admin, canal.id, agoraMs);
-    await aplicar(ctx, canal, 'sem_recibo', deRecibo, medirSemRecibo(envios, deRecibo?.desdeIso ?? null, agoraMs));
-    await aplicar(
-      ctx,
-      canal,
-      'atraso',
-      deAtraso,
-      medirAtraso({ carimboIso: canal.entrega_carimbo_em, recebidaIso: canal.entrega_recebida_em }, agoraMs),
-    );
+    if (Date.now() > prazo) {
+      console.warn('[alarmes] prazo do passo esgotado: o resto fica para o próximo ciclo');
+      return;
+    }
+    try {
+      const deRecibo = estados.get(`${canal.id}:sem_recibo`) ?? null;
+      const deAtraso = estados.get(`${canal.id}:atraso`) ?? null;
+      const envios = await lerEnviosRecentes(admin, canal.id, agoraMs);
+      await aplicar(ctx, canal, 'sem_recibo', deRecibo, medirSemRecibo(envios, deRecibo?.desdeIso ?? null, agoraMs));
+      await aplicar(
+        ctx,
+        canal,
+        'atraso',
+        deAtraso,
+        medirAtraso({ carimboIso: canal.entrega_carimbo_em, recebidaIso: canal.entrega_recebida_em }, agoraMs),
+      );
+    } catch (err) {
+      console.warn('[alarmes] a conexão %s estourou:', canal.id, erroDe(err));
+    }
   }
 }
 
@@ -374,6 +381,7 @@ export async function avisarAlarmesDeConexao(
   admin: SupabaseClient,
   agoraMs: number = Date.now(),
 ): Promise<void> {
+  const prazo = Date.now() + PRAZO_DOS_ALARMES_MS;
   try {
     const canais = await lerCanais(admin);
     if (canais === null) return;
@@ -392,7 +400,7 @@ export async function avisarAlarmesDeConexao(
     const horarioUtil = emHorarioUtil(new Date(agoraMs));
     for (const [accountId, daConta] of porConta) {
       try {
-        await avisarDaConta(admin, accountId, daConta, agoraMs, horarioUtil, textos);
+        await avisarDaConta(admin, accountId, daConta, agoraMs, horarioUtil, textos, prazo);
       } catch (err) {
         console.warn('[alarmes] a conta %s estourou:', accountId, erroDe(err));
       }

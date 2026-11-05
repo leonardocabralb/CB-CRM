@@ -4,8 +4,9 @@ import path from 'node:path';
 
 // ============================================================
 // Pinos da 1122 (o estado dos alarmes de conexão no sino). A prova no banco
-// mora no bloco DO da própria migration; aqui ficam as peças que uma
-// "simplificação" poderia tirar sem nenhum teste de tela acusar.
+// mora nos blocos DO da própria migration (a função é CHAMADA, como o
+// service_role, e desfeita); aqui ficam as peças que uma "simplificação"
+// poderia tirar sem nenhum teste de tela acusar.
 // ============================================================
 
 const sql = fs.readFileSync(path.join(__dirname, '1122_cb_alarmes_de_conexao.sql'), 'utf8');
@@ -16,7 +17,12 @@ const codigo = sql
   .filter((linha) => !linha.trim().startsWith('--'))
   .join('\n');
 
-describe('1122 — o estado dos alarmes no sino', () => {
+const funcao = codigo.slice(
+  codigo.indexOf('CREATE OR REPLACE FUNCTION public.cb_gravar_alarme_de_conexao'),
+  codigo.indexOf('REVOKE EXECUTE ON FUNCTION public.cb_gravar_alarme_de_conexao'),
+);
+
+describe('1122 — a tabela do estado', () => {
   it('⚠️ fechada ao navegador: RLS ligada, nenhuma policy, nada para anon e authenticated', () => {
     expect(codigo).toMatch(/ALTER TABLE public\.cb_alarmes_de_conexao ENABLE ROW LEVEL SECURITY/);
     expect(codigo).toMatch(
@@ -40,5 +46,48 @@ describe('1122 — o estado dos alarmes no sino', () => {
   it('⚠️ fica FORA da publicação realtime: a conferência barra a entrada nela', () => {
     expect(codigo).not.toMatch(/ALTER PUBLICATION/i);
     expect(codigo).toMatch(/pg_publication_tables/);
+  });
+});
+
+describe('1122 — o estado e o aviso numa transação só', () => {
+  it('⚠️ o aviso só entra DEPOIS de a escrita cercada valer, na mesma função (revisão: em duas escritas o alarme se perdia)', () => {
+    const contagem = funcao.indexOf('GET DIAGNOSTICS v_linhas = ROW_COUNT');
+    const recusa = funcao.indexOf('IF v_linhas <> 1 THEN');
+    const aviso = funcao.indexOf('INSERT INTO public.notifications');
+    expect(contagem).toBeGreaterThan(-1);
+    expect(contagem).toBeLessThan(recusa);
+    expect(recusa).toBeLessThan(aviso);
+  });
+
+  it('⚠️ a cerca é o avisado_em, o normalizou_em e o devido_em lidos — no UPDATE e no DELETE', () => {
+    for (const coluna of ['avisado_em', 'normalizou_em', 'devido_em']) {
+      const cerca = new RegExp(
+        `a\\.${coluna}\\s+IS NOT DISTINCT FROM \\(p_de->>'${coluna}'\\)::timestamptz`,
+        'g',
+      );
+      expect(funcao.match(cerca)).toHaveLength(2);
+    }
+    expect(funcao).toMatch(/ON CONFLICT \(channel_id, tipo\) DO NOTHING/);
+  });
+
+  it('⚠️ o aviso vai só a membro ATIVO da conta, conferido no banco', () => {
+    expect(funcao).toMatch(/FROM public\.profiles p\s+WHERE p\.account_id = p_account_id\s+AND p\.suspenso_em IS NULL/);
+  });
+
+  it('⚠️ só o servidor executa: fechada a PUBLIC, anon e authenticated, aberta ao service_role', () => {
+    expect(funcao).toMatch(/SECURITY INVOKER/);
+    expect(codigo).toMatch(
+      /REVOKE EXECUTE ON FUNCTION public\.cb_gravar_alarme_de_conexao\([^)]*\)\s+FROM PUBLIC, anon, authenticated/,
+    );
+    expect(codigo).toMatch(
+      /GRANT EXECUTE ON FUNCTION public\.cb_gravar_alarme_de_conexao\([^)]*\)\s+TO service_role/,
+    );
+  });
+
+  it('⚠️ a conferência CHAMA a função como o service_role e se desfaz pelo SQLSTATE próprio', () => {
+    expect(codigo).toMatch(/SET LOCAL ROLE service_role;/);
+    expect(codigo).toMatch(/RAISE EXCEPTION USING ERRCODE = 'P1122'/);
+    expect(codigo).toMatch(/EXCEPTION WHEN SQLSTATE 'P1122' THEN/);
+    expect(codigo).not.toMatch(/WHEN OTHERS/);
   });
 });

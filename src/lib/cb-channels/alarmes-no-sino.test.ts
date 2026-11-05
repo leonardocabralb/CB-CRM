@@ -6,7 +6,7 @@ import ptBR from '../../../messages/pt-BR.json';
 import type { PerfilDeAcesso } from '@/lib/perfis/tipos';
 
 import {
-  ATRASO_DO_SINO_SEG,
+  DURACAO_DO_ATRASO_NO_SINO_MS,
   LEMBRETE_MS,
   decidir,
   destinatarios,
@@ -83,28 +83,23 @@ describe('medirSemRecibo — (c)', () => {
   });
 });
 
-describe('medirAtraso — (b), pela fronteira da 1002', () => {
+describe('medirAtraso — (b), com a régua do âmbar da tela', () => {
   const par = (atrasoMin: number, medidoHaMin: number) => ({
     carimboIso: iso(AGORA - (medidoHaMin + atrasoMin) * MIN),
     recebidaIso: iso(AGORA - medidoHaMin * MIN),
   });
 
-  it('fresca e com 30 min ou mais → aceso, desde o carimbo da mensagem medida', () => {
+  it('fresca e com mais de 5 min → aceso, desde quando a mensagem medida chegou', () => {
     expect(medirAtraso(par(40, 10), AGORA)).toEqual({
       tipo: 'aceso',
-      desdeIso: iso(AGORA - 50 * MIN),
+      desdeIso: iso(AGORA - 10 * MIN),
       detalhe: { atrasoSeg: 40 * 60, medidoEmIso: iso(AGORA - 10 * MIN) },
     });
-    expect(medirAtraso(par(ATRASO_DO_SINO_SEG / 60, 10), AGORA).tipo).toBe('aceso');
+    expect(medirAtraso(par(6, 10), AGORA).tipo).toBe('aceso');
   });
 
   it('fresca e com até 5 min → a prova do fim', () => {
     expect(medirAtraso(par(5, 10), AGORA)).toEqual({ tipo: 'normal', fimIso: iso(AGORA - 10 * MIN) });
-  });
-
-  it('entre 5 e 30 min é "não sei": o âmbar da tela acende, o sino não', () => {
-    expect(medirAtraso(par(6, 10), AGORA)).toEqual({ tipo: 'nao_sei' });
-    expect(medirAtraso(par(29, 10), AGORA)).toEqual({ tipo: 'nao_sei' });
   });
 
   it('⚠️ EXPIRAR não é normalizar: medição com mais de 1 h não acende nem encerra', () => {
@@ -120,47 +115,144 @@ describe('medirAtraso — (b), pela fronteira da 1002', () => {
 const DESDE = iso(AGORA - 3 * H);
 
 function estado(over: Partial<EstadoDoAlarme> = {}): EstadoDoAlarme {
-  return { desdeIso: DESDE, avisadoEmIso: null, normalizouEmIso: null, detalhe: {}, ...over };
+  return {
+    desdeIso: DESDE,
+    avisadoEmIso: null,
+    normalizouEmIso: null,
+    devidoEmIso: null,
+    detalhe: {},
+    ...over,
+  };
 }
 
 const aceso: Medicao = { tipo: 'aceso', desdeIso: iso(AGORA - 40 * MIN), detalhe: {} };
 const normal: Medicao = { tipo: 'normal', fimIso: iso(AGORA - 5 * MIN) };
 const naoSei: Medicao = { tipo: 'nao_sei' };
 
-describe('decidir — um aviso por episódio, lembrete de 24 h, "Normalizou" só com prova', () => {
-  it('(c) aceso pela 1ª vez em horário útil → novo; o aviso é a escrita do estado com o carimbo', () => {
+describe('decidir — (c) envios sem recibo', () => {
+  it('aceso pela 1ª vez em horário útil → novo; se o aviso falhar, a linha fica DEVIDA', () => {
     const p = decidir('sem_recibo', null, aceso, AGORA, true);
     expect(p.motivo).toBe('novo');
-    expect(p.depois).toEqual(estado({ desdeIso: aceso.tipo === 'aceso' ? aceso.desdeIso : '', avisadoEmIso: iso(AGORA) }));
-    expect(p.seFalhar?.avisadoEmIso).toBeNull();
+    expect(p.depois).toEqual(estado({ desdeIso: iso(AGORA - 40 * MIN), avisadoEmIso: iso(AGORA) }));
+    expect(p.seFalhar).toEqual(estado({ desdeIso: iso(AGORA - 40 * MIN), devidoEmIso: iso(AGORA) }));
   });
 
-  it('⚠️ (c) aceso fora do horário útil: o episódio fica GUARDADO, sem aviso (P3b)', () => {
+  it('⚠️ aceso fora do horário útil: o episódio fica GUARDADO, sem aviso e sem devido (P3b)', () => {
     const p = decidir('sem_recibo', null, aceso, AGORA, false);
     expect(p.motivo).toBeNull();
-    expect(p.depois?.avisadoEmIso).toBeNull();
+    expect(p.depois).toEqual(estado({ desdeIso: iso(AGORA - 40 * MIN) }));
   });
 
-  it('(c) visto à noite e ainda aceso na abertura do horário → novo, com o começo de quando foi visto', () => {
-    const p = decidir('sem_recibo', estado(), aceso, AGORA, true);
+  it('visto à noite e ainda aceso na abertura do horário → novo, com o "desde" da sequência de AGORA', () => {
+    const daNoite = estado({ desdeIso: iso(AGORA - 60 * H) });
+    const p = decidir('sem_recibo', daNoite, aceso, AGORA, true);
     expect(p.motivo).toBe('novo');
-    expect(p.depois?.desdeIso).toBe(DESDE);
+    expect(p.depois?.desdeIso).toBe(iso(AGORA - 40 * MIN));
   });
 
-  it('aceso e avisado há menos de 24 h → nada; com 24 h → lembrete', () => {
+  it('⚠️ o que acendeu na sexta à noite e só teve recibo na segunda de manhã sai CALADO (P3b; revisão)', () => {
+    const sextaANoite = estado({ desdeIso: '2026-11-07T01:00:00.000Z' });
+    const segunda = Date.parse('2026-11-09T11:31:00.000Z');
+    const fim: Medicao = { tipo: 'normal', fimIso: iso(segunda) };
+    expect(decidir('sem_recibo', sextaANoite, fim, segunda, true)).toEqual({
+      motivo: null,
+      depois: null,
+      seFalhar: null,
+    });
+  });
+
+  it('aceso e avisado há menos de 24 h → nada; com 24 h → lembrete; fora do horário, espera', () => {
     const ha23h = estado({ avisadoEmIso: iso(AGORA - 23 * H) });
     expect(decidir('sem_recibo', ha23h, aceso, AGORA, true).motivo).toBeNull();
     const ha24h = estado({ avisadoEmIso: iso(AGORA - LEMBRETE_MS) });
     const p = decidir('sem_recibo', ha24h, aceso, AGORA, true);
     expect(p.motivo).toBe('lembrete');
-    expect(p.depois?.avisadoEmIso).toBe(iso(AGORA));
-  });
-
-  it('(c) o lembrete espera o horário útil', () => {
-    const ha24h = estado({ avisadoEmIso: iso(AGORA - LEMBRETE_MS) });
+    expect(p.depois?.desdeIso).toBe(DESDE);
     expect(decidir('sem_recibo', ha24h, aceso, AGORA, false).motivo).toBeNull();
   });
 
+  it('⚠️ visto e não avisado só avisa ACESO (P3b: "se ainda estiver aceso")', () => {
+    const p = decidir('sem_recibo', estado({ devidoEmIso: iso(AGORA - H) }), naoSei, AGORA, true);
+    expect(p.motivo).toBeNull();
+  });
+
+  it('o aviso devido e recusado que normaliza: "passou" em horário útil, guardado à noite', () => {
+    const devido = estado({ devidoEmIso: iso(AGORA - H) });
+    expect(decidir('sem_recibo', devido, normal, AGORA, true).motivo).toBe('passou');
+    const aNoite = decidir('sem_recibo', devido, normal, AGORA, false);
+    expect(aNoite.motivo).toBeNull();
+    expect(aNoite.depois?.normalizouEmIso).toBe(normal.tipo === 'normal' ? normal.fimIso : '');
+    // Na abertura, a prova guardada sai mesmo sem medição nova.
+    expect(decidir('sem_recibo', aNoite.depois, naoSei, AGORA, true).motivo).toBe('passou');
+  });
+
+  it('o "Normalizou" de um aviso que já saiu vai a qualquer hora', () => {
+    const avisado = estado({ avisadoEmIso: iso(AGORA - H) });
+    expect(decidir('sem_recibo', avisado, normal, AGORA, false).motivo).toBe('normalizou');
+  });
+});
+
+describe('decidir — (b) atraso: o âmbar aceso por 30 min (D5)', () => {
+  const visto = (haMin: number) => estado({ desdeIso: iso(AGORA - haMin * MIN) });
+  const amber: Medicao = { tipo: 'aceso', desdeIso: iso(AGORA - 2 * MIN), detalhe: { atrasoSeg: 600 } };
+
+  it('o 1º ciclo que vê o âmbar só abre o episódio', () => {
+    const p = decidir('atraso', null, amber, AGORA, false);
+    expect(p.motivo).toBeNull();
+    expect(p.depois?.desdeIso).toBe(iso(AGORA - 2 * MIN));
+  });
+
+  it('o episódio aberto há 30 min avisa, a qualquer hora; a duração conta do 1º momento visto', () => {
+    expect(decidir('atraso', visto(29), amber, AGORA, false).motivo).toBeNull();
+    const p = decidir('atraso', visto(DURACAO_DO_ATRASO_NO_SINO_MS / MIN), amber, AGORA, false);
+    expect(p.motivo).toBe('novo');
+    expect(p.depois?.desdeIso).toBe(iso(AGORA - 30 * MIN));
+  });
+
+  it('⚠️ o 16/10 (25 min de episódio, 41 min de atraso máximo) acaba antes dos 30 min: sai calado (revisão)', () => {
+    const p = decidir('atraso', visto(25), normal, AGORA, false);
+    expect(p).toEqual({ motivo: null, depois: null, seFalhar: null });
+  });
+
+  it('⚠️ atraso estável abaixo de 30 min por uma manhã inteira ACENDE: é a duração que conta (revisão)', () => {
+    const vinteENove: Medicao = { tipo: 'aceso', desdeIso: iso(AGORA - MIN), detalhe: { atrasoSeg: 29 * 60 } };
+    expect(decidir('atraso', visto(45), vinteENove, AGORA, true).motivo).toBe('novo');
+  });
+
+  it('⚠️ expirar não normaliza: o episódio de 40 min com a medição vencida avisa', () => {
+    expect(decidir('atraso', visto(40), naoSei, AGORA, false).motivo).toBe('novo');
+  });
+
+  it('o incidente de 03/11: o âmbar às 02:52, o sino às ~03:30', () => {
+    const doisECinquentaEDois = Date.parse('2026-11-03T05:52:00.000Z');
+    const primeiro: Medicao = {
+      tipo: 'aceso',
+      desdeIso: iso(doisECinquentaEDois),
+      detalhe: { atrasoSeg: 35_280, medidoEmIso: iso(doisECinquentaEDois) },
+    };
+    const as3h = decidir('atraso', null, primeiro, doisECinquentaEDois + 8 * MIN, false);
+    expect(as3h.motivo).toBeNull();
+    const as315 = decidir('atraso', as3h.depois, primeiro, doisECinquentaEDois + 23 * MIN, false);
+    expect(as315.motivo).toBeNull();
+    const as330 = decidir('atraso', as315.depois, primeiro, doisECinquentaEDois + 38 * MIN, false);
+    expect(as330.motivo).toBe('novo');
+  });
+
+  it('avisado: lembrete com 24 h (aceso) ou "sem prova" (não sei); a prova → normalizou', () => {
+    const avisado = estado({ avisadoEmIso: iso(AGORA - LEMBRETE_MS) });
+    expect(decidir('atraso', avisado, amber, AGORA, false).motivo).toBe('lembrete');
+    expect(decidir('atraso', avisado, naoSei, AGORA, false).motivo).toBe('sem_prova');
+    expect(decidir('atraso', avisado, normal, AGORA, false).motivo).toBe('normalizou');
+  });
+
+  it('o aviso devido e recusado que normaliza → passou, a qualquer hora', () => {
+    expect(decidir('atraso', visto(40), normal, AGORA, false).motivo).toBeNull(); // nunca devido
+    const devido = estado({ desdeIso: iso(AGORA - 40 * MIN), devidoEmIso: iso(AGORA - 5 * MIN) });
+    expect(decidir('atraso', devido, normal, AGORA, false).motivo).toBe('passou');
+  });
+});
+
+describe('decidir — o que vale para os dois', () => {
   it('⚠️ voltou antes de o "Normalizou" entrar: a prova guardada deixa de valer', () => {
     const guardado = estado({ avisadoEmIso: iso(AGORA - H), normalizouEmIso: iso(AGORA - 30 * MIN) });
     const p = decidir('sem_recibo', guardado, aceso, AGORA, true);
@@ -168,55 +260,12 @@ describe('decidir — um aviso por episódio, lembrete de 24 h, "Normalizou" só
     expect(p.depois?.normalizouEmIso).toBeNull();
   });
 
-  it('a prova do fim de um episódio avisado → normalizou, e a linha sai; se o aviso falhar, a prova fica guardada', () => {
-    const p = decidir('sem_recibo', estado({ avisadoEmIso: iso(AGORA - H) }), normal, AGORA, true);
-    expect(p.motivo).toBe('normalizou');
-    expect(p.depois).toBeNull();
-    expect(p.seFalhar?.normalizouEmIso).toBe(normal.tipo === 'normal' ? normal.fimIso : '');
-  });
-
-  it('o "Normalizou" de um aviso que já saiu vai a qualquer hora (notícia boa de um aviso aberto)', () => {
-    const p = decidir('sem_recibo', estado({ avisadoEmIso: iso(AGORA - H) }), normal, AGORA, false);
-    expect(p.motivo).toBe('normalizou');
-  });
-
-  it('⚠️ (c) que acendeu e apagou fora do horário não vai ao sino: a linha sai calada', () => {
-    const p = decidir('sem_recibo', estado(), normal, AGORA, false);
-    expect(p).toEqual({ motivo: null, depois: null, seFalhar: null });
-  });
-
-  it('episódio que não chegou ao sino e já acabou, em horário útil → passou', () => {
-    expect(decidir('sem_recibo', estado(), normal, AGORA, true).motivo).toBe('passou');
-    expect(decidir('atraso', estado(), normal, AGORA, false).motivo).toBe('passou');
-  });
-
   it('a prova guardada (o aviso dela foi recusado) sai mesmo sem medição nova, com a hora em que foi vista', () => {
     const guardado = estado({ avisadoEmIso: iso(AGORA - H), normalizouEmIso: iso(AGORA - 20 * MIN) });
     const p = decidir('atraso', guardado, naoSei, AGORA, true);
     expect(p.motivo).toBe('normalizou');
+    expect(p.depois).toBeNull();
     expect(p.seFalhar?.normalizouEmIso).toBe(iso(AGORA - 20 * MIN));
-  });
-
-  it('(b) acende a qualquer hora, até de madrugada no sábado', () => {
-    const madrugada = Date.parse('2026-11-07T06:30:00Z');
-    expect(decidir('atraso', null, aceso, madrugada, false).motivo).toBe('novo');
-  });
-
-  it('(b) visto e não avisado (o sino recusou) avisa de novo mesmo sem medição nova', () => {
-    expect(decidir('atraso', estado(), naoSei, AGORA, false).motivo).toBe('novo');
-  });
-
-  it('⚠️ (c) visto e não avisado só avisa ACESO (P3b: "se ainda estiver aceso")', () => {
-    const p = decidir('sem_recibo', estado(), naoSei, AGORA, true);
-    expect(p.motivo).toBeNull();
-    expect(p.depois).toEqual(estado());
-  });
-
-  it('"não sei" com o aviso de 24 h atrás → Continua, ainda sem prova', () => {
-    const ha24h = estado({ avisadoEmIso: iso(AGORA - LEMBRETE_MS) });
-    expect(decidir('atraso', ha24h, naoSei, AGORA, false).motivo).toBe('sem_prova');
-    expect(decidir('sem_recibo', ha24h, naoSei, AGORA, true).motivo).toBe('sem_prova');
-    expect(decidir('sem_recibo', ha24h, naoSei, AGORA, false).motivo).toBeNull();
   });
 
   it('"não sei" ou "normal" sem episódio aberto não fazem nada', () => {
