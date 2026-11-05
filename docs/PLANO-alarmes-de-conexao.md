@@ -81,6 +81,20 @@ alarme. Depois a classe na sentinela (a) e o (b) como complemento.
 - **D8 (P8): os alarmes do CRM nascem ligados em toda instalação**, sem
   chave para desligar.
 
+## Decisões do operador (05/11/2026)
+
+- **D9: sem faixa fixa no topo** (o operador achou feia). O botão das
+  conexões do cabeçalho, que já fica amarelo ou vermelho, se ALARGA com o
+  alarme: o fundo pega a cor dele e, do `md` para cima, diz qual conexão e o
+  quê, com "+N" quando há mais de uma. No popover, cada alarme fica na ficha
+  da própria conexão, como os outros avisos dela (os cartões no topo do
+  popover, da primeira versão, ficaram grosseiros). O recorte D2 vale para o
+  botão; a ficha mostra os alarmes a quem a vê.
+- **D10: o atraso entra no botão só quando dura 30 min**, como no sino (D5):
+  o atraso ao vivo acende a cada reinício da Evolution.
+- **D11: os alarmes de conexão da sentinela também aparecem no botão**, junto
+  com a Fase 4 (1123).
+
 ## Estado
 
 | Fase | O quê | Estado |
@@ -88,8 +102,9 @@ alarme. Depois a classe na sentinela (a) e o (b) como complemento.
 | 0 | Estudo e medição (este documento) | Feito em 04/11/2026 |
 | 1 | (c) no CRM: régua, índice e motivo novo na saúde da conexão (cabeçalho e faixa da conversa) | Mesclada em 04/11/2026 (PR #458, `19bf829c`); a 1120 foi aplicada antes do merge (histórico `20261104215651`; a leitura caiu de 973 ms para 7,8 ms) |
 | 2 | Avisos do próprio CRM no sino, com estado: (c) e (b) | Mesclada em 04/11/2026 (PR #460, `42fc91b2`); a 1122 foi aplicada antes do merge (histórico `20261105001553`) |
-| 3 | Faixa fixa no topo enquanto houver alarme (E1) | Decidida (D1, D2); a implementar |
-| 4 | Sentinela: instância e classe na coleta, aviso `quedas:` | Decidida (D2, D7); começa pela leitura do log do incidente |
+| 3 | O alarme na tela (E1): o botão das conexões do cabeçalho se alarga (D9, D10) | Mesclada em 05/11/2026 (PR #463, `000f429f`); o alarme na ficha da conexão, no lugar dos cartões do topo do popover, entrou com a Fase 4 |
+| 4 | Sentinela: instância e classe na coleta, aviso `quedas:`, avisos de conexão aos membros (D2) e os alarmes dela no botão (D11, 1123) | Mesclada em 05/11/2026 (PR #464, `35035595`); a 1123 foi aplicada antes do merge (histórico `20261105155154`), e a sentinela nova foi instalada na VPS às 15:52 UTC (1ª execução, 16:05 UTC: ok) |
+| 4b | Sentinela: a3 e a4 | Depois de 2 semanas da coleta nova: a partir de 19/11/2026 |
 | 5 | Aviso no celular dos administradores (E3) | Fora (D1) |
 
 ## 1. A linha do tempo, sinal por sinal
@@ -338,6 +353,10 @@ aviso das 10:05.
 **Decidido (D1 e D2):** E1 e E2. A faixa do topo aparece para os owner/admin
 e para os membros cujo perfil vê a conexão. O E3 e o E5 ficam de fora.
 
+**Mudou em 05/11/2026 (D9):** no lugar da faixa, o botão das conexões do
+cabeçalho se alarga com o alarme, e o popover o mostra na ficha da própria
+conexão.
+
 ## 4. O que viaja para quem instala (Atlas CRM)
 
 (b), (c), E1 e E2 moram no CRM e chegam a toda instalação, que não tem a
@@ -386,7 +405,8 @@ sentinela (só a nossa VPS tem). Nascem ligados, sem chave para desligar (D8).
    só com prova e "Aconteceu e já normalizou" quando o aviso não entrou a
    tempo. Recebem owner/admin e os membros cujo perfil vê a conexão (D2).
 3. **Fase 3 — a faixa E1**, para os mesmos destinatários. É ela que faz um
-   aviso de madrugada ser visto às 8h.
+   aviso de madrugada ser visto às 8h. (Virou o botão das conexões que se
+   alarga, D9.)
 4. **Fase 4 — a sentinela (a1 + a2, D7).** Primeiro conferir o formato da
    linha no log do incidente. Depois a coleta com instância e classe, e então
    o aviso `quedas:`. Os avisos de conexão passam a ir também aos membros
@@ -414,10 +434,18 @@ recibo foi medido numa hora só: a primeira semana no ar vale como conferência.
 - **Falso positivo do (c) à noite:** quem envia à noite é o robô, para lead
   frio, e o celular desligado atrasa o recibo. O histórico não teve
   sequência de 5, mas o risco é maior do que de dia. Decidido (P3b): o sino
-  do (c) só em horário útil; a faixa da tela vale sempre.
+  do (c) só em horário útil; o botão da tela vale sempre, enquanto aceso.
 - **Aviso em dobro:** no nosso servidor, a sentinela e o CRM avisariam o mesmo
   incidente com textos diferentes (`sem_entrada` da sentinela e "não confirma
-  entrega" do CRM). É aceitável, e com o E1 os dois ficam na mesma faixa.
+  entrega" do CRM). É aceitável, e com o E1 os dois ficam no mesmo botão (o
+  pior de cada conexão) e na ficha dela.
+- **Queda na virada da coleta da sentinela (limite conhecido, Codex no
+  #464; aceito pelo operador em 05/11/2026):** a coleta lê o log em janelas
+  de uma hora, com a fronteira no segundo da execução. A queda cujo erro da
+  Baileys cai antes da fronteira e o aviso da Evolution (~0,2 s depois)
+  depois fica sem a classe e não conta para o `quedas:`. Chance de ~0,006%
+  por queda (~0,1% num dia como o de 03/11); no pior caso, o aviso sai uma
+  queda depois.
 - **Quedas vistas pelo CRM** (alternativa ao a2 que viaja): o CRM já recebe
   cada `connection.update`. Gravá-los numa tabela permitiria contar as quedas
   em toda instalação. Não é recomendado agora: a contagem não separa o
