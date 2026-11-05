@@ -4050,7 +4050,8 @@
       "erroRespostas": "Couldn't read the answers recorded in this field. The ones already checked stay below.",
       "semRespostas": "No answers recorded in this field yet.",
       "fichas": "{n, plural, one {# record} other {# records}}",
-      "teto": "Showing the {teto} most common answers."
+      "teto": "Showing the {teto} most common answers.",
+      "deFora": "{n, plural, one {# answer that appears} other {# answers that appear}} in fewer than {minimo} records {n, plural, one {was} other {were}} left out: a pattern is an answer that repeats, and one from a single record is usually personal data."
     },
     "tagsAndFields": {
       "title": "Fields & tags",

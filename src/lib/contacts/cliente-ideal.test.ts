@@ -15,6 +15,7 @@ import {
   respostaMarcada,
   respostaNormalizada,
   respostasOferecidas,
+  somentePadroes,
 } from './cliente-ideal';
 
 const CAMPO_A = '11111111-1111-4111-8111-111111111111';
@@ -117,6 +118,24 @@ describe('respostasOferecidas', () => {
       { resposta: 'Menor que 150 mil reais', fichas: 0 },
       { resposta: 'Acima de 500 Mil', fichas: 0 },
     ]);
+  });
+});
+
+describe('somentePadroes', () => {
+  it('a resposta de uma ficha só fica de fora (senha, id, nome)', () => {
+    expect(
+      somentePadroes([
+        { resposta: 'Maior que 500 mil reais', fichas: 257 },
+        { resposta: 'Entre 300mil a 500 mil reais', fichas: 3 },
+        { resposta: 'senha-ficticia-123', fichas: 1 },
+      ]),
+    ).toEqual({
+      padroes: [
+        { resposta: 'Maior que 500 mil reais', fichas: 257 },
+        { resposta: 'Entre 300mil a 500 mil reais', fichas: 3 },
+      ],
+      deFora: 1,
+    });
   });
 });
 

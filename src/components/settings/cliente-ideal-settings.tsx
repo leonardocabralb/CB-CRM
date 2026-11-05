@@ -28,6 +28,7 @@ import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/hooks/use-auth';
 import { opcoesDoCampo } from '@/lib/contacts/campo-opcoes';
 import {
+  MINIMO_DE_FICHAS_DO_PADRAO,
   TETO_DE_CRITERIOS,
   TETO_DE_RESPOSTAS,
   TETO_DO_NOME_DO_PERFIL,
@@ -38,6 +39,7 @@ import {
   nomeDoPerfilValido,
   respostaMarcada,
   respostasOferecidas,
+  somentePadroes,
   type CriterioDeClienteIdeal,
   type PerfilDeClienteIdeal,
 } from '@/lib/contacts/cliente-ideal';
@@ -590,14 +592,20 @@ function RespostasDoCampo({
   }, [campo.id, supabase]);
 
   const carregando = !gravadas || gravadas.de !== campo.id;
+  // Só os PADRÕES: a resposta de uma ficha só (senha, id, nome) nunca é
+  // listada — ver `somentePadroes`.
+  const { padroes, deFora } = useMemo(
+    () => somentePadroes(gravadas && gravadas.de === campo.id && gravadas.lista ? gravadas.lista : []),
+    [gravadas, campo.id],
+  );
   const oferecidas = useMemo(
     () =>
       respostasOferecidas(
-        gravadas && gravadas.de === campo.id && gravadas.lista ? gravadas.lista : [],
+        padroes,
         campo.field_type === 'select' ? opcoesDoCampo(campo as CustomField) : [],
         criterio.respostas,
       ),
-    [gravadas, campo, criterio.respostas],
+    [padroes, campo, criterio.respostas],
   );
 
   if (carregando) {
@@ -615,8 +623,12 @@ function RespostasDoCampo({
       {gravadas.lista === null ? (
         <p className="text-xs text-destructive">{t('erroRespostas')}</p>
       ) : null}
-      {oferecidas.length === 0 && gravadas.lista !== null ? (
-        <p className="text-xs text-muted-foreground">{t('semRespostas')}</p>
+      {oferecidas.length === 0 ? (
+        // Vazio só AFIRMA "nenhuma resposta" quando a leitura voltou e nada
+        // ficou de fora; senão quem fala é o aviso de erro ou o de "de fora".
+        gravadas.lista !== null && deFora === 0 ? (
+          <p className="text-xs text-muted-foreground">{t('semRespostas')}</p>
+        ) : null
       ) : (
         <ul className="max-h-72 space-y-0.5 overflow-y-auto pr-1">
           {oferecidas.map(({ resposta, fichas }) => {
@@ -643,6 +655,11 @@ function RespostasDoCampo({
           })}
         </ul>
       )}
+      {deFora > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          {t('deFora', { n: deFora, minimo: MINIMO_DE_FICHAS_DO_PADRAO })}
+        </p>
+      ) : null}
       {gravadas.lista && gravadas.lista.length >= TETO_DE_RESPOSTAS ? (
         <p className="text-xs text-muted-foreground">{t('teto', { teto: TETO_DE_RESPOSTAS })}</p>
       ) : null}

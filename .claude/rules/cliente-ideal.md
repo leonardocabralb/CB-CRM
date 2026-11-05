@@ -52,5 +52,10 @@ Plano vivo: `docs/PLANO-cliente-ideal.md`; decisões em
   agrupadas no banco, teto de 200), mais as opções do campo Lista e as já
   marcadas que sumiram das fichas. Resposta nova do formulário aparece
   desmarcada: é ali que se confere quando a agência muda o texto.
+- ⚠️⚠️ **Só PADRÕES (resposta em 2+ fichas, `somentePadroes`)**: a tela
+  oferece QUALQUER campo, e no preview de 05/11/2026 o campo "Senha gov.br"
+  estava na lista — sem o filtro, escolhê-lo listaria as senhas de todos os
+  clientes numa tela só. A de uma ficha só é dado da pessoa e nunca é o padrão
+  de um formulário; a tela diz quantas ficaram de fora. Não tirar.
 - O erro do banco vira frase por chave LITERAL (`mensagemDoErro`): chave
   montada escapa dos portões de i18n.

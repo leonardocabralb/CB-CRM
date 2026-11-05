@@ -122,6 +122,24 @@ export function alternarResposta(
   return { ...criterio, respostas: [...criterio.respostas, resposta.trim()] };
 }
 
+/** Uma resposta só é PADRÃO quando se repete em pelo menos tantas fichas. */
+export const MINIMO_DE_FICHAS_DO_PADRAO = 2;
+
+/**
+ * Só os padrões entre as respostas gravadas. ⚠️ Não é enfeite: a tela
+ * oferece QUALQUER campo, e a resposta de uma ficha só é dado da pessoa (a
+ * senha do gov.br, um id de anúncio, um nome) — listá-la exporia o campo
+ * inteiro numa tela só, e ela nunca é o padrão de um formulário. Devolve
+ * também quantas ficaram de fora, para a tela dizer.
+ */
+export function somentePadroes(gravadas: { resposta: string; fichas: number }[]): {
+  padroes: { resposta: string; fichas: number }[];
+  deFora: number;
+} {
+  const padroes = gravadas.filter((g) => g.fichas >= MINIMO_DE_FICHAS_DO_PADRAO);
+  return { padroes, deFora: gravadas.length - padroes.length };
+}
+
 /**
  * As respostas que a tela oferece num critério: as GRAVADAS (com quantas
  * fichas), as opções do campo Lista que ninguém gravou ainda, e as já

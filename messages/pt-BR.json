@@ -4043,7 +4043,8 @@
       "erroRespostas": "Não foi possível ler as respostas gravadas neste campo. As já marcadas continuam abaixo.",
       "semRespostas": "Nenhuma resposta gravada neste campo ainda.",
       "fichas": "{n, plural, one {# ficha} other {# fichas}}",
-      "teto": "Mostrando as {teto} respostas mais comuns."
+      "teto": "Mostrando as {teto} respostas mais comuns.",
+      "deFora": "{n, plural, one {# resposta que aparece} other {# respostas que aparecem}} em menos de {minimo} fichas {n, plural, one {ficou} other {ficaram}} de fora: padrão é resposta que se repete, e a de uma ficha só costuma ser dado da pessoa."
     },
     "tagsAndFields": {
       "title": "Campos e etiquetas",

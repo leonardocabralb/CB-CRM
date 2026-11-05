@@ -10,7 +10,7 @@ O CRM marca sozinho quem cumpre a regra; ninguém marca à mão.
 | Fase | O quê | Estado |
 | --- | --- | --- |
 | 0 | Regra, mockup e decisões | ✅ 05/11: mockups mostrados (canvas "Selo de cliente ideal"); D1–D6 decididas |
-| 1 | Regra no banco (tabela + RPC) e a tela para configurá-la | 🟡 05/11: código na branch `feat/cliente-ideal` (sem push). Migration 1124 provada no replay completo (248 migrations + `verify-schema.sql`), aplicada duas vezes (idempotente) e em 8 cenários fictícios (`~/Downloads/CB-CRM/ferramentas/pg-replay/cenarios-1124/`); typecheck, lint (0 erros) e suíte (13.115 testes, Node 22) verdes. FALTA: aplicar a 1124 em produção (autorização), medir as RPCs como `authenticated` e conferir a tela no preview |
+| 1 | Regra no banco (tabela + RPC) e a tela para configurá-la | 🟡 05/11: código na branch `feat/cliente-ideal` (sem push). Migration 1124 provada no replay LOCAL completo (248 migrations + `verify-schema.sql`), duas vezes e em 8 cenários fictícios (`~/Downloads/CB-CRM/ferramentas/pg-replay/cenarios-1124/`); **APLICADA em produção** (`20261105230924`, autorizada). Medida com a RLS de usuário logado: o perfil do Bancário (escrito à mão, sem gravar) devolve 289 contatos (68 ICP + 221 ICP?) em 31 ms. Tela conferida no preview contra a produção, sem gravar: estado vazio, as respostas gravadas com a contagem, campo usado some do outro critério, Cancelar não grava (0 perfis no banco), console limpo. Achado do preview corrigido: a lista oferece só PADRÕES (resposta em 2+ fichas) — o campo "Senha gov.br" listaria as senhas. typecheck, lint (0 erros) e suíte verdes. FALTA: o perfil do Bancário gravado (pelo operador ou com "pode gravar") |
 | 2 | Selo: lista de conversas, card do funil, cabeçalho e o porquê no painel | a fazer |
 | 3 | Filtro "Só clientes ideais" na caixa de entrada e no quadro do funil | a fazer |
 | 4 | Aviso ou gatilho de automação "virou cliente ideal" | só se pedido |
@@ -155,9 +155,11 @@ configurações; a guarda de escrita é a das policies da 1124, o mesmo piso de
 liga/desliga, os campos e quantos o perfil marca hoje ("Hoje: N ICP · M
 ICP?", pela leitura paginada `lerClientesIdeais`); o editor tem nome, ligado
 e os critérios (campo, subir/descer, remover) com as respostas oferecidas:
-TODAS as gravadas naquele campo, com a contagem (`cb_respostas_do_campo`),
-mais as opções do campo Lista e as já marcadas que sumiram. Resposta nova do
-formulário aparece desmarcada. Toda escrita confere o retorno (RLS que barra
+as gravadas naquele campo que se REPETEM (2+ fichas; `somentePadroes` — a
+de uma ficha só é dado da pessoa, como a senha do gov.br, e a tela diz
+quantas ficaram de fora), com a contagem (`cb_respostas_do_campo`), mais as
+opções do campo Lista e as já marcadas que sumiram. Resposta nova do
+formulário aparece desmarcada a partir da segunda ficha. Toda escrita confere o retorno (RLS que barra
 devolve 0 linhas sem erro).
 
 ### Fase 2 — O selo
