@@ -9,10 +9,10 @@ O CRM marca sozinho quem cumpre a regra; ninguém marca à mão.
 
 | Fase | O quê | Estado |
 | --- | --- | --- |
-| 0 | Regra, mockup e decisões | 🟡 05/11: mockup mostrado; D1 decidida; D2–D5 pendentes |
+| 0 | Regra, mockup e decisões | ✅ 05/11: mockups mostrados; D1–D5 decididas |
 | 1 | Regra no banco (tabela + RPC) e a tela para configurá-la | a fazer |
 | 2 | Selo: lista de conversas, card do funil, cabeçalho e o porquê no painel | a fazer |
-| 3 | Filtro "Só clientes ideais" na caixa de entrada | a fazer |
+| 3 | Filtro "Só clientes ideais" na caixa de entrada e no quadro do funil | a fazer |
 | 4 | Aviso ou gatilho de automação "virou cliente ideal" | só se pedido |
 
 Cada fase termina com revisão, teste no preview (1440×900) e a linha desta
@@ -21,7 +21,7 @@ tabela com o resultado MEDIDO. Antes da fase seguinte, conferir se ela ainda
 
 ## A regra
 
-Cliente ideal = os três juntos:
+Cliente ideal = os dois juntos:
 
 1. **Dívida acima de R$ 500 mil** — campo "Tamanho da Divida"
    (`tamanho_da_divida`, texto livre, gravado pelo Typebot via API e pela
@@ -30,7 +30,9 @@ Cliente ideal = os três juntos:
    texto livre): em dia mas prestes a atrasar, ou atraso de até 6 meses.
    Ficam FORA "em dia e pretendo manter" (Desqualificado, decisão de
    03/11/2026) e "mais de 6 meses".
-3. **Respondeu** — o cliente mandou pelo menos uma mensagem no WhatsApp.
+
+O pedido original tinha um terceiro critério, "respondeu pelo menos uma das
+nossas mensagens"; ele SAIU da regra (D5) e virou informação no painel.
 
 As respostas existem em várias grafias (as do Typebot e as da Kommo, uma com
 espaço duplo), por isso a regra guarda as RESPOSTAS ACEITAS, não um número.
@@ -50,19 +52,36 @@ repositório: `~/Downloads/CB-CRM/cliente-ideal-2026-11-05/contagem.md`.
 
 - ✅ **D1 — "Atraso de até 3 meses" entra** (operador, 05/11/2026). Junto
   com as duas grafias dele.
-- **D2 — Ficha com dívida acima de 500 mil e "Tempo de Atraso" vazio.**
-  Recomendado: fica FORA do selo, e o painel diz o que falta ("Falta: situação
-  dos pagamentos"), para quem atende perguntar e preencher. Alternativa: um
-  segundo selo, mais fraco ("ICP?"). É a maioria das fichas com dívida grande.
-- **D3 — Selo em card Perdido ou Desqualificado.** Recomendado: mantém. O
-  selo diz quem o cliente é, não em que pé está o negócio; um ICP perdido é
-  justamente quem vale retomar.
-- **D4 — Borda dourada no card**, além da pastilha. Recomendado: ligada (o
-  ICP salta numa coluna de 20 cards). O mockup mostrou as duas formas.
-- **D5 — O que conta como "respondeu".** Recomendado: qualquer mensagem do
-  cliente, inclusive a primeira que ele mesmo mandou (anúncio de clique para o
-  WhatsApp) e a que ele apagou depois. Alternativa: só mensagem do cliente
-  DEPOIS de uma nossa.
+- ✅ **D2 — Selo mais fraco, "ICP?"** (operador, 05/11/2026), para a ficha
+  com dívida acima de 500 mil e "Tempo de Atraso" VAZIO: contorno dourado,
+  sem fundo, sem borda no card; o painel diz "Falta: situação dos pagamentos".
+  Medido: hoje são TODAS fichas trazidas da Kommo (o funil antigo não
+  perguntava a situação; o Typebot sempre pergunta), nenhuma nova em 30 dias —
+  na prática, uma lista de propostas antigas com dívida grande para revisitar.
+  Situação preenchida com outra resposta ("mais de 6 meses", "pretendo
+  manter") não ganha selo nenhum.
+- ✅ **D3 — Os selos ficam em qualquer card** (operador, 05/11/2026),
+  inclusive Perdido, Desqualificado e cliente ativo no Jurídico: o selo diz
+  quem o cliente é, não em que pé está o negócio.
+- ✅ **D4 — Borda dourada no card do ICP** (operador, 05/11/2026), além da
+  pastilha. O "ICP?" não ganha borda.
+- ✅ **D5 — O "respondeu" SAI da regra** (operador, 05/11/2026, depois da
+  análise que ele pediu): a ideia é achar quem cumpre o perfil para LIGAR e
+  provocar o contato. Medido na produção (contagens fora do repositório):
+  entre os que têm dívida e situação de ICP, os que nunca responderam estão
+  quase todos
+  parados em "Lead - Type e Forms" e "MQL 1", com conversa ENCERRADA (fora da
+  aba padrão da caixa de entrada), receberam só mensagens de automação (média
+  de 3; poucos falaram com alguém da equipe) e alguns tiveram envio falho
+  (número provavelmente sem WhatsApp); outros agendaram pelo Calendly SEM
+  escrever no WhatsApp. Os que responderam já estão sendo trabalhados (a
+  maioria chegou a reunião). **Por que sai:** responder não é perfil
+  do cliente, é estado do atendimento; com o critério, o selo esconde
+  justamente quem a equipe deveria ligar, só acende depois que o cliente
+  escreve (perde o melhor momento, logo depois do formulário) e não vê quem
+  interagiu por outro canal. O "respondeu" vira INFORMAÇÃO no painel
+  ("Nunca respondeu pelo WhatsApp · N mensagens nossas · M não entregues"),
+  e a lista de ligação passa a ser o filtro no QUADRO (Fase 3).
 
 Escolhas de desenho (mudar qualquer uma é pergunta ao operador):
 
@@ -93,22 +112,28 @@ Escolhas de desenho (mudar qualquer uma é pergunta ao operador):
 - Critério com campo APAGADO invalida a regra inteira: ninguém é ICP e a tela
   avisa. Ignorar o critério marcaria gente demais.
 
-**RPC `cb_clientes_ideais()`** → `SETOF uuid` (os contatos da conta que
-cumprem a regra), e **`cb_cliente_ideal_do_contato(p_contato uuid)`** →
-`jsonb` com cada critério (valor gravado, casou ou não) e se respondeu: é o
-porquê do painel e o "Falta:" da D2.
+**RPC `cb_clientes_ideais()`** → `(contact_id uuid, nivel text)`, com
+`nivel` = `'ideal'` (todos os critérios casam) ou `'possivel'` (a D2: o
+critério da DÍVIDA casa e o campo da situação está vazio). Na regra genérica:
+o PRIMEIRO critério casa e os demais estão vazios — a ordem dos critérios na
+tela diz qual é o principal. E **`cb_cliente_ideal_do_contato(p_contato
+uuid)`** → `jsonb` com cada critério (valor gravado, casou, vazio), o nível e
+o retrato do contato (mensagens do cliente, nossas, não entregues): é o porquê
+do painel e o "Falta:" da D2.
 
-- "Respondeu" = existe `messages.sender_type = 'customer'` numa conversa do
-  contato (grupo não tem contato e fica de fora sozinho). Faz parte de toda
-  regra, sem chave para desligar (ninguém pediu ICP sem resposta).
+- O retrato do painel (D5) conta, nas conversas do contato, as mensagens do
+  cliente (`sender_type = 'customer'`), as nossas que saíram e as que não
+  saíram (`nao_saiu`). Grupo não tem contato e fica de fora sozinho.
 - **RPC `cb_respostas_do_campo(p_campo uuid)`** → cada resposta gravada e
   quantas fichas, agrupada NO BANCO: ler `contact_custom_values` do navegador
   esbarra no corte de 1000 linhas do PostgREST (o campo da dívida já tem 833).
-- SECURITY INVOKER, se a medição como `authenticated` ficar barata; se a RLS
-  de `messages` encarecer, SECURITY DEFINER com a conta do chamador conferida
-  E a suspensão (1067, `membro-suspenso-1067.test.ts`). EXECUTE fechado para
-  `anon` e concedido de volta a quem usa (banco vazio, `supabase.md`).
-- Conferência da migration CHAMA as duas funções num subbloco desfeito por
+- SECURITY INVOKER, se a medição como `authenticated` ficar barata (a regra
+  lê só `contact_custom_values` e `custom_fields`; o retrato lê `messages` de
+  UM contato); se a RLS encarecer, SECURITY DEFINER com a conta do chamador
+  conferida E a suspensão (1067, `membro-suspenso-1067.test.ts`). EXECUTE
+  fechado para `anon` e concedido de volta a quem usa (banco vazio,
+  `supabase.md`).
+- Conferência da migration CHAMA as três funções num subbloco desfeito por
   SQLSTATE próprio (corpo plpgsql só é analisado quando roda).
 
 Por que sem gatilho nem coluna em `contacts`: nada entra na Lixeira (1097,
@@ -128,11 +153,11 @@ sem erro).
 
 ### Fase 2 — O selo
 
-Mockup mostrado ao operador em 05/11/2026 (ele seguiu para o plano; a borda
-do card é a D4): pastilha dourada SÓLIDA com diamante e o texto "ICP".
+Mockups mostrados ao operador em 05/11/2026 (o selo, o "ICP?", a borda e o
+retrato no painel): pastilha dourada SÓLIDA com diamante e o texto "ICP".
 
-- **Um hook de página**, `useClientesIdeais(resyncToken)` → `Set<string> |
-  null`, no contrato de `useSinalDeExecucoes`: `null` = não sei, o selo cala
+- **Um hook de página**, `useClientesIdeais(resyncToken)` → `Map<string,
+  'ideal' | 'possivel'> | null`, no contrato de `useSinalDeExecucoes`: `null` = não sei, o selo cala
   e o filtro neutraliza. Uma consulta por carga da tela, nunca por linha. Lê
   de novo no resync da lista e quando a ficha salva um campo (evento global,
   como `EVENTO_EXECUCOES`): sem isso, preencher "Tempo de Atraso" não acende o
@@ -142,15 +167,19 @@ do card é a D4): pastilha dourada SÓLIDA com diamante e o texto "ICP".
   estados com hora (janela de 24h, dívida no Asaas, automação, atraso); ICP
   diz quem o cliente é. Grupo nunca.
 - **Card do funil** (`deal-card.tsx`): prop PRIMITIVA `clienteIdeal?:
-  boolean` (o `memo` do card só segura com prop estável); pastilha na linha
-  do título, antes de Ganho/Perdido. Borda (D4) por `ring`, não `border-*`: o
-  `hover:border-border` do card venceria a cor no hover. O quadro
-  (`pipeline-board.tsx`) chama o hook uma vez e passa o booleano, como
-  `esperasDeAutomacao`.
+  'ideal' | 'possivel'` (o `memo` do card só segura com prop estável);
+  pastilha na linha do título, antes de Ganho/Perdido. Borda dourada (D4) só
+  no `'ideal'`, por `ring`, não `border-*`: o `hover:border-border` do card
+  venceria a cor no hover. O quadro (`pipeline-board.tsx`) chama o hook uma
+  vez e passa o valor, como `esperasDeAutomacao`.
+- **"ICP?" (D2):** a mesma pastilha só com CONTORNO dourado, sem fundo e com
+  o texto "ICP?"; `title` "Possível cliente ideal: falta a situação dos
+  pagamentos". Conferir o contraste nos dois temas antes do PR.
 - **Cabeçalho do fio** (`message-thread.tsx`): a pastilha ao lado do nome.
-- **Painel do cliente**: bloco "Cliente ideal (ICP)" com os três critérios
-  (✓ e o valor gravado); com a D2 recomendada, "Falta: …" quando a dívida
-  casa e o resto não. Componente novo em `src/components/inbox/painel/`,
+- **Painel do cliente**: bloco "Cliente ideal (ICP)" com os dois critérios
+  (✓ e o valor gravado) e o retrato da D5 ("Nunca respondeu pelo WhatsApp · 3
+  mensagens nossas · 1 não entregue"); no "ICP?", "Possível cliente ideal" com
+  "Falta: situação dos pagamentos" (D2). Componente novo em `src/components/inbox/painel/`,
   para tocar o mínimo no `contact-sidebar.tsx`. A leitura por contato
   carimba o dono (`{ de, … }`) e deriva `carregando` (efeito passivo, seção
   8c): na troca de conversa o bloco mostraria o cliente anterior, e leitura
@@ -174,15 +203,22 @@ null`, `null` neutraliza), campo em `FiltrosDoInbox` com `descreverFiltro`,
 "Inadimplentes" (fora de `casaComORecorteDoPainel`). Regras em
 `.claude/rules/inbox-lista.md`.
 
-O Kanban não tem barra de filtros hoje: o selo e a borda já separam na
-coluna. Filtro no funil só se pedido.
+**No quadro do funil, um interruptor "Só clientes ideais"** (D5): quem cumpre o perfil e nunca respondeu tem a conversa ENCERRADA (nasce
+assim pelo webhook do formulário) e fica fora da aba padrão da caixa de
+entrada, mas tem card aberto no Bancário — a lista de ligação mora no quadro.
+As colunas "Lead - Type e Forms" e "MQL 1" têm mais de cem cards e desenham 20
+por vez: só a borda não basta. O recorte se aplica à lista ENXUTA (todos os
+cards, `cartao.ts`), antes do corte por coluna; o Kanban não tem barra de
+filtros hoje, então é peça nova no cabeçalho do quadro. O "ICP?" fica fora
+dos dois filtros (se pedido, uma segunda opção).
 
 ### Fase 4 — Só se pedido
 
 Aviso no sino ou gatilho de automação "cliente virou ideal" exigem um carimbo
-`contacts.ideal_desde`, mantido por gatilho em `contact_custom_values` e
-`messages` — com o sinal `cb.lixeira` no `WHEN` e a entrada na receita da
-união (`supabase.md`). Por isso fica fora até ser pedido.
+`contacts.ideal_desde`, mantido por gatilho em `contact_custom_values` (sem
+o "respondeu", `messages` fica de fora) — com o sinal `cb.lixeira` no `WHEN`
+e a entrada na receita da união (`supabase.md`). Por isso fica fora até ser
+pedido.
 
 ## Arquivos
 
@@ -206,12 +242,13 @@ união (`supabase.md`). Por isso fica fora até ser pedido.
 
 ## Medições técnicas (05/11/2026, produção, só leitura)
 
-- A consulta da regra, com as grafias da D1, devolve os contatos certos em
-  **~17 ms** de execução (`EXPLAIN ANALYZE` como `postgres`, sem o custo de
-  cronometrar cada nó; com ele, 773 ms — a CPU compartilhada do Micro). Usa
-  `contact_custom_values_custom_field_id_idx`, a chave
-  `(contact_id, custom_field_id)` e `idx_messages_conversation`; nada de disco.
-- FALTA medir como `authenticated` (pela RLS de `messages`) antes do PR.
+- A consulta da regra, com as grafias da D1 e AINDA com o "respondeu", rodou
+  em **~17 ms** (`EXPLAIN ANALYZE` como `postgres`, sem o custo de cronometrar
+  cada nó; com ele, 773 ms — a CPU compartilhada do Micro). Usa
+  `contact_custom_values_custom_field_id_idx` e a chave
+  `(contact_id, custom_field_id)`; nada de disco. Sem o "respondeu" (D5) ela
+  deixa de ler `messages` e fica mais barata — remedir.
+- FALTA medir como `authenticated` (pela RLS) antes do PR.
 - A lista recarrega ~1.500 vezes por dia (`banco-no-teto` de 02/11): uma
   consulta a mais por carga, nunca por linha.
 
@@ -219,9 +256,9 @@ união (`supabase.md`). Por isso fica fora até ser pedido.
 
 - **Resposta nova do formulário** não entra sozinha: aparece desmarcada na
   tela da regra. Se a agência mudar o texto, alguém marca lá.
-- **O selo não acende ao vivo na primeira resposta do cliente**: só na
-  próxima carga da lista (volta à aba, atualizar). A ficha que salva um campo
-  acende na hora (o evento do hook).
+- **Campo gravado por fora (Typebot pela API, automação) não acende ao
+  vivo**: só na próxima carga da lista ou do quadro (volta à aba, atualizar).
+  A ficha que salva um campo acende na hora (o evento do hook).
 - **Teste com dado real**: o preview grava na produção. Ver o selo no lead de
   teste autorizado exige gravar os dois campos nele — pedir o "pode gravar" e
   desfazer depois; nunca abrir conversa de cliente (zera as não lidas).
@@ -230,8 +267,8 @@ união (`supabase.md`). Por isso fica fora até ser pedido.
 
 - Fase 1: replay no Postgres local (banco vazio: a conferência pula com
   NOTICE) e cenários num descartável com dado FICTÍCIO (grafias com espaço
-  duplo e maiúsculas, campo apagado, sem resposta, contato só com grupo,
-  outra conta); medir como `authenticated`.
+  duplo e maiúsculas, campo apagado, situação vazia × outra resposta, contato
+  sem mensagem, contato só em grupo, outra conta); medir como `authenticated`.
 - Fases 2 e 3: preview em 1440×900, lista a 320 px (o nome trunca, a pastilha
   fica), quadro com o card ICP e sem, painel com e sem "Falta:".
 - Sempre: `npm run typecheck`, `npm run lint`, `npm run test`.
