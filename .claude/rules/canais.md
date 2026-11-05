@@ -126,7 +126,7 @@ duplica a sessão: `.claude/rules/whatsapp-evolution.md`, "Pareamento".
 
 ### Alarmes no sino: o (c) e o (b) com estado (04/11/2026, 1122)
 
-`alarmes-no-sino.ts` (régua pura) e `avisar-alarmes.ts` (o passo do ciclo, o PRIMEIRO do `rodarManutencaoDoCiclo`, laço lento, com prazo próprio de 60 s), com o estado em `cb_alarmes_de_conexao`. Grava `whatsapp_alert` (1085) com título e corpo já escritos, no idioma da instalação, como a sentinela. Decisões D2, D5, D6 e P3b do plano.
+`alarmes-no-sino.ts` (régua pura) e `avisar-alarmes.ts` (o passo do ciclo, o PRIMEIRO do `rodarManutencaoDoCiclo`, laço lento, com prazo próprio de 60 s e as conexões em ordem EMBARALHADA a cada ciclo — com ordem fixa, o prazo deixaria sempre as mesmas de fora; Codex, #460), com o estado em `cb_alarmes_de_conexao`, lido paginado. Grava `whatsapp_alert` (1085) com título e corpo já escritos, no idioma da instalação, como a sentinela. Decisões D2, D5, D6 e P3b do plano.
 
 - ⚠️⚠️ **As regras da sentinela:** um aviso por episódio; "Continua" a cada 24 h; "Normalizou" só com PROVA (no (c), um envio confirmado depois do começo do episódio; no (b), medição FRESCA com até 5 min). "Não sei" (leitura que falhou, medição vencida, ninguém enviando) não encerra nada. A prova vista com o aviso recusado fica em `normalizou_em` e sai no ciclo seguinte.
 - ⚠️⚠️ **O (b) conta a DURAÇÃO, não o tamanho** (D5; revisão do PR): acende quando o âmbar da tela (mais de 5 min, medição fresca) está aceso há 30 min (`DURACAO_DO_ATRASO_NO_SINO_MS`), a contar do 1º momento que o ciclo o viu. Com o tamanho, o 16/10 (25 min de episódio, 41 min de atraso) viraria falso positivo, e um atraso estável de 29 min nunca chegaria ao sino.

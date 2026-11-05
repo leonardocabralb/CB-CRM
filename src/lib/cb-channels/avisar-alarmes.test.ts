@@ -9,7 +9,7 @@ vi.mock('./sem-recibo', async (original) => ({
   lerEnviosRecentes,
 }));
 
-import { PRAZO_DOS_ALARMES_MS, avisarAlarmesDeConexao } from './avisar-alarmes';
+import { PRAZO_DOS_ALARMES_MS, avisarAlarmesDeConexao, ordemDaRodada } from './avisar-alarmes';
 
 // ------------------------------------------------------------
 // Um banco em memória que avalia os filtros (e as CERCAS) de verdade.
@@ -150,6 +150,13 @@ class ConsultaFalsa implements PromiseLike<{ data: unknown; error: { message: st
     this.limite = n;
     return this;
   }
+  range(de: number, ate: number) {
+    this.descricao.push(`range:${de}-${ate}`);
+    this.inicio = de;
+    this.limite = ate - de + 1;
+    return this;
+  }
+  private inicio = 0;
 
   then<A, B>(
     ok?: ((v: { data: unknown; error: { message: string } | null }) => A | PromiseLike<A>) | null,
@@ -166,7 +173,10 @@ class ConsultaFalsa implements PromiseLike<{ data: unknown; error: { message: st
     const casa = (l: Linha) => this.filtros.every((f) => f(l));
     switch (this.op) {
       case 'select': {
-        const achadas = linhas.filter(casa).slice(0, this.limite).map((l) => ({ ...l }));
+        const achadas = linhas
+          .filter(casa)
+          .slice(this.inicio, this.inicio + this.limite)
+          .map((l) => ({ ...l }));
         this.banco.depoisDeLer[this.tabela]?.();
         return { data: achadas, error: null };
       }
@@ -450,6 +460,69 @@ describe('avisarAlarmesDeConexao — o passo do ciclo', () => {
     await avisarAlarmesDeConexao(banco as unknown as SupabaseClient, AGORA);
     expect(lerEnviosRecentes).toHaveBeenCalledTimes(1);
     vi.mocked(Date.now).mockRestore();
+  });
+
+  it('⚠️ com o prazo cortando a rodada, a ordem embaralhada deixa de fora uma conexão DIFERENTE a cada ciclo (Codex, #460)', async () => {
+    const primeiras: string[] = [];
+    for (const sorteio of [0, 0.999]) {
+      const banco = montarBanco();
+      let relogio = 0;
+      vi.spyOn(Date, 'now').mockImplementation(() => relogio);
+      lerEnviosRecentes.mockReset();
+      lerEnviosRecentes.mockImplementation(async (_db: unknown, canal: string) => {
+        primeiras.push(canal);
+        relogio += PRAZO_DOS_ALARMES_MS + 1; // a 1ª conexão come o prazo inteiro
+        return [];
+      });
+      await avisarAlarmesDeConexao(banco as unknown as SupabaseClient, AGORA, () => sorteio);
+      vi.mocked(Date.now).mockRestore();
+    }
+    expect(primeiras).toHaveLength(2);
+    expect(primeiras[0]).not.toBe(primeiras[1]);
+  });
+
+  it('ordemDaRodada embaralha sem perder nem repetir ninguém', () => {
+    const itens = ['a', 'b', 'c', 'd', 'e'];
+    for (const sorteio of [0, 0.3, 0.6, 0.999]) {
+      expect([...ordemDaRodada(itens, () => sorteio)].sort()).toEqual(itens);
+    }
+    expect(ordemDaRodada([], () => 0)).toEqual([]);
+  });
+
+  it('⚠️ o estado é lido em todas as páginas: o da 1001ª linha ainda encerra o episódio (Codex, #460)', async () => {
+    const banco = montarBanco();
+    const outros = Array.from({ length: 1000 }, (_, i) => ({
+      account_id: 'conta-1',
+      channel_id: `antiga-${String(i).padStart(4, '0')}`,
+      tipo: 'atraso',
+      desde: iso(AGORA - 9 * 60 * MIN),
+      avisado_em: null,
+      normalizou_em: null,
+      devido_em: null,
+      detalhe: {},
+    }));
+    banco.tabelas.cb_alarmes_de_conexao = [
+      ...outros,
+      {
+        account_id: 'conta-1',
+        channel_id: 'c1',
+        tipo: 'sem_recibo',
+        desde: iso(AGORA - 3 * 60 * MIN),
+        avisado_em: iso(AGORA - 60 * MIN),
+        normalizou_em: null,
+        devido_em: null,
+        detalhe: {},
+      },
+    ];
+    lerEnviosRecentes.mockImplementation(async (_db: unknown, canal: string, agora: number) =>
+      canal === 'c1' ? [envio(agora, 2, 'z', 'delivered')] : [],
+    );
+    await avisarAlarmesDeConexao(banco as unknown as SupabaseClient, AGORA);
+
+    const paginas = banco.chamadas.filter((c) => c.tabela === 'cb_alarmes_de_conexao' && c.op === 'select');
+    expect(paginas.filter((c) => c.filtros.some((f) => f.startsWith('range:'))).length).toBeGreaterThanOrEqual(2);
+    expect(String(avisos(banco)[0]?.title)).toMatch(/^Normalizou — /);
+    expect(estadoDe(banco, 'c1', 'sem_recibo')).toBeUndefined();
   });
 
   it('⚠️ NUNCA lança, e sem saber quem recebe (ou o que já foi avisado) nada se decide', async () => {

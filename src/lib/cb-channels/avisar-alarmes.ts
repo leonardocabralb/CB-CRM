@@ -21,8 +21,9 @@
 // só com a conta dona dela. As leituras da conta (membros, perfis, estado) e
 // a escrita são cercadas pela conta: a service role não tem RLS.
 //
-// NUNCA lança: o passo é isolado no ciclo, e mesmo assim cada conta e cada
-// conexão rodam dentro do próprio try.
+// NUNCA lança: o passo é isolado no ciclo, e mesmo assim cada conexão roda
+// dentro do próprio try. A ordem é embaralhada a cada ciclo, e o prazo próprio
+// corta a rodada sem deixar sempre as mesmas conexões de fora.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -55,6 +56,7 @@ const MAX_TITULO = 200;
 const MAX_CORPO = 500;
 
 const PAGINA_DE_CANAIS = 500;
+const PAGINA_DE_ESTADOS = 1000;
 
 /**
  * O passo roda PRIMEIRO no ciclo e não pode comer o prazo dos outros quatro
@@ -178,21 +180,37 @@ async function lerMembros(admin: SupabaseClient, accountId: string): Promise<Mem
     }));
 }
 
-/** O estado dos alarmes da conta, por `<canal>:<tipo>`. `null` = falhou. */
+/**
+ * O estado dos alarmes da conta, por `<canal>:<tipo>`. `null` = falhou.
+ *
+ * ⚠️ Paginado (Codex, #460): o PostgREST corta em 1000 linhas sem avisar, e o
+ * estado que faltasse seria lido como "não há" — o aceso tentaria nascer de
+ * novo (e perderia para a chave), o normalizado nunca sairia. Página por
+ * `range`: só este passo escreve aqui, um ciclo por vez.
+ */
 async function lerEstados(
   admin: SupabaseClient,
   accountId: string,
 ): Promise<Map<string, EstadoDoAlarme> | null> {
-  const { data, error } = await admin
-    .from('cb_alarmes_de_conexao')
-    .select('channel_id, tipo, desde, avisado_em, normalizou_em, devido_em, detalhe')
-    .eq('account_id', accountId);
-  if (error) {
-    console.warn('[alarmes] não leu o estado dos alarmes:', error.message);
-    return null;
+  const linhas: LinhaDoEstado[] = [];
+  for (let de = 0; ; de += PAGINA_DE_ESTADOS) {
+    const { data, error } = await admin
+      .from('cb_alarmes_de_conexao')
+      .select('channel_id, tipo, desde, avisado_em, normalizou_em, devido_em, detalhe')
+      .eq('account_id', accountId)
+      .order('channel_id', { ascending: true })
+      .order('tipo', { ascending: true })
+      .range(de, de + PAGINA_DE_ESTADOS - 1);
+    if (error) {
+      console.warn('[alarmes] não leu o estado dos alarmes:', error.message);
+      return null;
+    }
+    const lote = (data ?? []) as LinhaDoEstado[];
+    linhas.push(...lote);
+    if (lote.length < PAGINA_DE_ESTADOS) break;
   }
   const mapa = new Map<string, EstadoDoAlarme>();
-  for (const l of (data ?? []) as LinhaDoEstado[]) {
+  for (const l of linhas) {
     mapa.set(`${l.channel_id}:${l.tipo}`, {
       desdeIso: l.desde,
       avisadoEmIso: l.avisado_em,
@@ -339,47 +357,60 @@ async function aplicar(
   }
 }
 
-async function avisarDaConta(
+/**
+ * A ordem das conexões nesta rodada: embaralhada a cada ciclo (Codex, #460).
+ * Com o prazo do passo esgotando sempre no mesmo lugar, a ordem fixa deixaria
+ * as MESMAS conexões de fora para sempre, sem aviso nem "Normalizou"; embaralhada,
+ * toda conexão chega à frente em algum ciclo, sem cursor guardado.
+ */
+export function ordemDaRodada<T>(itens: readonly T[], aleatorio: () => number = Math.random): T[] {
+  const ordem = [...itens];
+  for (let i = ordem.length - 1; i > 0; i--) {
+    const j = Math.floor(aleatorio() * (i + 1));
+    [ordem[i], ordem[j]] = [ordem[j], ordem[i]];
+  }
+  return ordem;
+}
+
+interface Conta {
+  ctx: ContextoDaConta;
+  estados: Map<string, EstadoDoAlarme>;
+}
+
+/** Membros e estado da conta, lidos UMA vez por rodada. `null` = falhou. */
+async function carregarConta(
   admin: SupabaseClient,
   accountId: string,
-  canais: LinhaDoCanal[],
   agoraMs: number,
   horarioUtil: boolean,
   textos: Textos,
-  prazo: number,
-): Promise<void> {
+): Promise<Conta | null> {
   const [membros, estados] = await Promise.all([lerMembros(admin, accountId), lerEstados(admin, accountId)]);
   // Sem saber quem recebe ou o que já foi avisado, nada se decide.
-  if (membros === null || estados === null) return;
-  const ctx: ContextoDaConta = { admin, accountId, membros, agoraMs, horarioUtil, textos };
-
-  for (const canal of canais) {
-    if (Date.now() > prazo) {
-      console.warn('[alarmes] prazo do passo esgotado: o resto fica para o próximo ciclo');
-      return;
-    }
-    try {
-      const deRecibo = estados.get(`${canal.id}:sem_recibo`) ?? null;
-      const deAtraso = estados.get(`${canal.id}:atraso`) ?? null;
-      const envios = await lerEnviosRecentes(admin, canal.id, agoraMs);
-      await aplicar(ctx, canal, 'sem_recibo', deRecibo, medirSemRecibo(envios, deRecibo?.desdeIso ?? null, agoraMs));
-      await aplicar(
-        ctx,
-        canal,
-        'atraso',
-        deAtraso,
-        medirAtraso({ carimboIso: canal.entrega_carimbo_em, recebidaIso: canal.entrega_recebida_em }, agoraMs),
-      );
-    } catch (err) {
-      console.warn('[alarmes] a conexão %s estourou:', canal.id, erroDe(err));
-    }
-  }
+  if (membros === null || estados === null) return null;
+  return { ctx: { admin, accountId, membros, agoraMs, horarioUtil, textos }, estados };
 }
 
-/** NUNCA lança. `agoraMs` é injetável no teste. */
+async function avaliarConexao(conta: Conta, canal: LinhaDoCanal): Promise<void> {
+  const { ctx, estados } = conta;
+  const deRecibo = estados.get(`${canal.id}:sem_recibo`) ?? null;
+  const deAtraso = estados.get(`${canal.id}:atraso`) ?? null;
+  const envios = await lerEnviosRecentes(ctx.admin, canal.id, ctx.agoraMs);
+  await aplicar(ctx, canal, 'sem_recibo', deRecibo, medirSemRecibo(envios, deRecibo?.desdeIso ?? null, ctx.agoraMs));
+  await aplicar(
+    ctx,
+    canal,
+    'atraso',
+    deAtraso,
+    medirAtraso({ carimboIso: canal.entrega_carimbo_em, recebidaIso: canal.entrega_recebida_em }, ctx.agoraMs),
+  );
+}
+
+/** NUNCA lança. `agoraMs` e `aleatorio` são injetáveis no teste. */
 export async function avisarAlarmesDeConexao(
   admin: SupabaseClient,
   agoraMs: number = Date.now(),
+  aleatorio: () => number = Math.random,
 ): Promise<void> {
   const prazo = Date.now() + PRAZO_DOS_ALARMES_MS;
   try {
@@ -387,22 +418,27 @@ export async function avisarAlarmesDeConexao(
     if (canais === null) return;
     // O Instagram fica fora: o Direct não manda recibo de entrega, e o atraso
     // da 1002 não o mede. Pelo predicado, nunca pelo literal (raiz, 8d).
-    const porConta = new Map<string, LinhaDoCanal[]>();
-    for (const c of canais) {
-      if (!ehEvolution(c) && !ehMeta(c)) continue;
-      const daConta = porConta.get(c.account_id) ?? [];
-      daConta.push(c);
-      porConta.set(c.account_id, daConta);
-    }
-    if (porConta.size === 0) return;
+    const vigiadas = canais.filter((c) => ehEvolution(c) || ehMeta(c));
+    if (vigiadas.length === 0) return;
 
     const textos = await carregarTextos();
     const horarioUtil = emHorarioUtil(new Date(agoraMs));
-    for (const [accountId, daConta] of porConta) {
+    const contas = new Map<string, Promise<Conta | null>>();
+    for (const canal of ordemDaRodada(vigiadas, aleatorio)) {
+      if (Date.now() > prazo) {
+        console.warn('[alarmes] prazo do passo esgotado: o resto fica para o próximo ciclo');
+        return;
+      }
       try {
-        await avisarDaConta(admin, accountId, daConta, agoraMs, horarioUtil, textos, prazo);
+        let conta = contas.get(canal.account_id);
+        if (!conta) {
+          conta = carregarConta(admin, canal.account_id, agoraMs, horarioUtil, textos);
+          contas.set(canal.account_id, conta);
+        }
+        const carregada = await conta;
+        if (carregada) await avaliarConexao(carregada, canal);
       } catch (err) {
-        console.warn('[alarmes] a conta %s estourou:', accountId, erroDe(err));
+        console.warn('[alarmes] a conexão %s estourou:', canal.id, erroDe(err));
       }
     }
   } catch (err) {
