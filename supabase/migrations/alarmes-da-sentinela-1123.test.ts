@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { CHAVES_DA_SENTINELA } from '@/lib/cb-channels/alarmes-da-sentinela';
+
 // ============================================================
 // Pinos da 1123 (os alarmes de conexão abertos da sentinela da VPS, para o
 // botão das conexões). A prova no banco mora no bloco DO da própria
@@ -59,6 +61,10 @@ describe('1123 — o contrato com a sentinela', () => {
       .map((c) => c.trim().replace(/'/g, ''))
       .filter(Boolean);
     expect(chavesDaSentinela.sort()).toEqual([...chavesDoBanco].sort());
+  });
+
+  it('⚠️ e as que o CRM lê também: chave fora da lista do leitor seria descartada em silêncio', () => {
+    expect([...CHAVES_DA_SENTINELA].sort()).toEqual([...chavesDoBanco].sort());
   });
 
   it('⚠️ o `conexao:` fica fora: a sonda do CRM já vê a conexão fora do ar ao vivo', () => {

@@ -6983,7 +6983,7 @@
       "maisAlertas": "{n, plural, one {e mais # alerta} other {e mais # alertas}}",
       "verConexoes": "Ver conexões",
       "semEntrada": "{canal} sem mensagem de cliente desde {quando}",
-      "semEntradaDetalhe": "Há 2 h nenhuma mensagem de cliente chega por esta conexão, com envios saindo. Ela pode estar de pé e surda: as respostas dos clientes podem estar presas.",
+      "semEntradaDetalhe": "Há pelo menos 2 h nenhuma mensagem de cliente chega por esta conexão, com envios saindo. Ela pode estar de pé e surda: as respostas dos clientes podem estar presas.",
       "naoGravadas": "{canal} com mensagens que não chegaram ao CRM desde {quando}",
       "naoGravadasDetalhe": "O servidor do WhatsApp recebeu mensagens de clientes que o CRM não gravou. Elas não entram sozinhas: precisam ser importadas à mão.",
       "falhas": "{canal} com falhas de entrega desde {quando}",

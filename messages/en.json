@@ -6990,7 +6990,7 @@
       "maisAlertas": "{n, plural, one {and # more alert} other {and # more alerts}}",
       "verConexoes": "View connections",
       "semEntrada": "{canal} with no customer message since {quando}",
-      "semEntradaDetalhe": "No customer message has arrived through this connection for 2 h while messages were going out. It may be up but deaf: customer replies may be held up.",
+      "semEntradaDetalhe": "No customer message has arrived through this connection for at least 2 h while messages were going out. It may be up but deaf: customer replies may be held up.",
       "naoGravadas": "{canal} with messages that did not reach the CRM since {quando}",
       "naoGravadasDetalhe": "The WhatsApp server received customer messages that the CRM did not save. They do not come in on their own: they have to be imported by hand.",
       "falhas": "{canal} with delivery failures since {quando}",

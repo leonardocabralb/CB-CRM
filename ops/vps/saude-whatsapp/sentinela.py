@@ -99,6 +99,7 @@ CHAVES_DO_BOTAO = ('sem_entrada', 'nao_gravadas', 'falhas', 'quedas')
 # conexões sadias, nenhuma (só 428/503).
 JANELA_DAS_QUEDAS_H = 6
 QUEDAS_MINIMAS = 2
+PAGINA_DO_CRM = 1000
 
 # "Aberta sem receber": em dia útil, com a janela de 2 h inteira entre 8h e
 # 20h, nenhuma mensagem de cliente e pelo menos 5 nossas saindo pela conexão.
@@ -312,6 +313,23 @@ def classe_do_stream_error(texto):
     return '/'.join((m.group(1), attrs.get('class', '-'), attrs.get('type', attrs.get('code', '-'))))
 
 
+def classe_da_queda(pendentes, instante, codigo):
+    """A classe do "stream errored out" que causou ESTA queda: o mais recente
+    da fila com 0 a 5 s ANTES dela e compatível com o código (o nó `ack`, sem
+    código no CODE_MAP da Baileys, fecha sempre com 500), consumido uma vez.
+    Sem um assim, '-': a classe nunca é emprestada a outra queda (outra
+    instância caindo junto, o contêiner antigo lido depois do novo, o socket
+    substituído que não imprime "Connection update received")."""
+    quando_caiu = de_iso(instante)
+    for i in range(len(pendentes) - 1, -1, -1):
+        erro_em, classe = pendentes[i]
+        antes = (quando_caiu - de_iso(erro_em)).total_seconds()
+        if 0 <= antes <= 5 and (not classe.startswith('ack/') or codigo == '500'):
+            del pendentes[i]
+            return classe
+    return '-'
+
+
 def classe_legivel(classe):
     """'ack/status/media' → 'ack class="status" (media)', para o texto do aviso."""
     tag, cls, tipo = (classe.split('/') + ['-', '-'])[:3]
@@ -381,30 +399,31 @@ def coletar_evolution(desde, ate):
     # Evolution, ~0,2 s depois, diz a instância e o código.
     quedas = collections.Counter()
     quedas_ack = []        # [instante, instância, classe] das quedas com nó `ack`
-    queda_pendente = None  # (instante, classe) do último "stream errored out"
+    erros_pendentes = collections.deque(maxlen=8)  # (instante, classe) dos "stream errored out"
     em_update = None       # os campos do objeto "Connection update received"
     for instante, s in linhas_do_log(arquivos_de_log('evolution_evolution', desde), desde, ate):
         linhas += 1
         primeiro = primeiro or instante
         ultimo = instante
         if '"msg":"stream errored out"' in s:
-            queda_pendente = (instante, classe_do_stream_error(s))
+            classe = classe_do_stream_error(s)
+            if classe != '-':
+                erros_pendentes.append((instante, classe))
         elif "message: 'Connection update received'" in s:
             em_update = {}
         elif em_update is not None:
-            campo = re.match(r"\s*(connection|statusCode|instanceName): '?([A-Za-z0-9_-]{1,80})'?,?\s*$", s)
+            campo = (re.match(r"\s*(connection|statusCode): '?([A-Za-z0-9_-]{1,20})'?,?\s*$", s)
+                     or re.match(r"\s*(instanceName): '([^']{1,80})',?\s*$", s))
             if campo:
                 em_update[campo.group(1)] = campo.group(2)
             elif s.strip().startswith('}'):
                 if em_update.get('connection') == 'close':
                     inst = em_update.get('instanceName', '?')
-                    classe = '-'
-                    if queda_pendente and (de_iso(instante) - de_iso(queda_pendente[0])).total_seconds() <= 5:
-                        classe = queda_pendente[1]
-                    quedas['\t'.join((inst, em_update.get('statusCode', '?'), classe))] += 1
+                    codigo = em_update.get('statusCode', '?')
+                    classe = classe_da_queda(erros_pendentes, instante, codigo)
+                    quedas['\t'.join((inst, codigo, classe))] += 1
                     if classe.startswith('ack/'):
                         quedas_ack.append([instante + 'Z', inst, classe])
-                    queda_pendente = None
                 em_update = None
         if 'error in handling message' in s:
             descartadas += 1
@@ -990,12 +1009,14 @@ def enviar(crm, equipe, canal_por_instancia, avisos):
     return enviados
 
 
-def checar_quedas(estado, coleta_ok, quedas_ack, producao, achados):
+def checar_quedas(estado, coleta_ok, quedas_ack, producao, achados, conexoes, linhas_do_log):
     """a2 (Fase 4): quedas seguidas pela classe. O estado guarda, por
     instância, as quedas com nó `ack` das últimas JANELA_DAS_QUEDAS_H (a coleta
     lê só desde a execução anterior), sem repetir a mesma. Acende com
-    QUEDAS_MINIMAS; normaliza abaixo disso, mas só com a coleta em dia: coleta
-    que falhou não decide nada (nem problema, nem normal)."""
+    QUEDAS_MINIMAS. Coleta que falhou não decide nada. E abaixo do mínimo só
+    "Normalizou" com PROVA: a conexão aberta agora e o log da Evolution com
+    linhas nesta janela — Evolution parada ou conexão fechada também não têm
+    queda nenhuma, e isso não diz que voltou ("não sei" não encerra)."""
     corte = iso(AGORA - datetime.timedelta(hours=JANELA_DAS_QUEDAS_H))
     janela = {}
     for inst, lista in (estado.get('quedas_ack') or {}).items():
@@ -1011,7 +1032,9 @@ def checar_quedas(estado, coleta_ok, quedas_ack, producao, achados):
         chave = 'quedas:' + canal['instance_name']
         lista = estado['quedas_ack'].get(canal['instance_name']) or []
         if len(lista) < QUEDAS_MINIMAS:
-            achados.normal(chave)
+            aberta = conexoes is not None and (conexoes.get(canal['instance_name']) or {}).get('status') == 'open'
+            if aberta and linhas_do_log > 0:
+                achados.normal(chave)
             continue
         classes = ', '.join(classe_legivel(c) for c in sorted({c for _, c in lista}))
         achados.problema(chave, 'WhatsApp caindo seguido: ' + canal['label'],
@@ -1022,13 +1045,26 @@ def checar_quedas(estado, coleta_ok, quedas_ack, producao, achados):
                          % (len(lista), JANELA_DAS_QUEDAS_H, classes), [canal['account_id']])
 
 
+def ler_tudo(crm, caminho, ordem):
+    """Todas as páginas de uma leitura: o PostgREST corta em 1000 linhas sem
+    avisar, e o membro que ficasse de fora sumiria dos avisos (ou o perfil que
+    ficasse de fora deixaria de recortar)."""
+    linhas = []
+    while True:
+        lote = crm.ler('%s&order=%s&limit=%d&offset=%d' % (caminho, ordem, PAGINA_DO_CRM, len(linhas)))
+        linhas.extend(lote)
+        if len(lote) < PAGINA_DO_CRM:
+            return linhas
+
+
 def membros_da_equipe(crm):
     """Os membros ATIVOS de cada conta, com o papel e as conexões que o perfil
     vê (D2). `canais` vazio ou None = vê todas, como no CRM (`canalNoEscopo`):
     sem perfil, ou com a lista de conexões vazia."""
-    perfis = {p['id']: (p.get('channel_ids') or []) for p in crm.ler('cb_perfis_de_acesso?select=id,channel_ids')}
+    perfis = {p['id']: (p.get('channel_ids') or [])
+              for p in ler_tudo(crm, 'cb_perfis_de_acesso?select=id,channel_ids', 'id')}
     por_conta = collections.defaultdict(list)
-    for m in crm.ler('profiles?select=user_id,account_id,account_role,perfil_id&suspenso_em=is.null'):
+    for m in ler_tudo(crm, 'profiles?select=id,user_id,account_id,account_role,perfil_id&suspenso_em=is.null', 'id'):
         if m.get('user_id') and m.get('account_id'):
             por_conta[m['account_id']].append({'user_id': m['user_id'], 'papel': m.get('account_role'),
                                                'canais': perfis.get(m.get('perfil_id'))})
@@ -1207,7 +1243,7 @@ def main():
                          texto_das_descartadas(dados, rotulos), contas, evento=True, dados=dados)
     try:
         checar_quedas(estado, coleta_ok, registro['evolution']['quedas_ack'] if coleta_ok else [],
-                      producao, achados)
+                      producao, achados, conexoes, registro['evolution']['linhas'] if coleta_ok else 0)
     except Exception as e:
         achados.nao_medido.append('quedas: ' + sem_segredo(e))
     juntar_eventos_pendentes(estado, achados, rotulos, contas)
@@ -1250,12 +1286,6 @@ def main():
 
     enviados = enviar(crm, equipe, canal_por_instancia, avisos)
     aplicar(estado, achados, enviados)
-    try:
-        falha_do_botao = sincronizar_o_botao(crm, alarmes_do_botao(estado, producao), producao)
-    except Exception as e:
-        falha_do_botao = sem_segredo(e)
-    if falha_do_botao:
-        print('  botão das conexões do CRM não sincronizado: %s' % falha_do_botao)
     registro['avisos'] = [list(e) for e in enviados]
     if coleta_ok:
         estado['coletado_ate'] = ate + 'Z'
@@ -1265,6 +1295,15 @@ def main():
         fh.write(json.dumps(registro, ensure_ascii=False, sort_keys=True) + '\n')
     gravar_json(ARQ_ESTADO, estado)
     arrumar_a_casa()
+    # Só DEPOIS do estado gravado: são duas chamadas de rede (até 2 × 30 s), e
+    # o `timeout 300` do cron matando a execução entre os avisos e o estado
+    # faria os avisos saírem de novo na hora seguinte. O botão só lê o estado.
+    try:
+        falha_do_botao = sincronizar_o_botao(crm, alarmes_do_botao(estado, producao), producao)
+    except Exception as e:
+        falha_do_botao = sem_segredo(e)
+    if falha_do_botao:
+        print('  botão das conexões do CRM não sincronizado: %s' % falha_do_botao)
     print('%s ok: %d problema(s) %s; %d aviso(s) gravado(s)%s' % (
         iso(AGORA), len(achados.problemas), sorted(achados.problemas), len(enviados),
         ('; NÃO MEDIDO: ' + ' | '.join(achados.nao_medido)) if achados.nao_medido else ''))
