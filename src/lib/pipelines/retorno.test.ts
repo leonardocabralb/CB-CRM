@@ -58,6 +58,7 @@ describe("desserializarRetorno — registro de sessionStorage é entrada não co
       scrollTop: 0,
       rolagemDasColunas: {},
       limites: {},
+      soClientesIdeais: false,
       em: AGORA,
     });
     expect(
@@ -72,6 +73,7 @@ describe("desserializarRetorno — registro de sessionStorage é entrada não co
       scrollTop: 1024,
       rolagemDasColunas: {},
       limites: {},
+      soClientesIdeais: false,
       em: AGORA,
     });
   });
@@ -95,6 +97,16 @@ describe("desserializarRetorno — registro de sessionStorage é entrada não co
     // aba do operador quando o deploy entrou. `undefined` aqui viraria
     // `Object.keys(undefined)` no quadro.
     expect(desserializarRetorno(registro(), AGORA)?.limites).toEqual({});
+  });
+
+  it("o interruptor 'Só clientes ideais' volta junto; só `true` liga", () => {
+    expect(desserializarRetorno(registro({ soClientesIdeais: true }), AGORA)?.soClientesIdeais).toBe(true);
+    for (const lixo of ["true", 1, null, undefined]) {
+      expect(
+        desserializarRetorno(registro({ soClientesIdeais: lixo }), AGORA)?.soClientesIdeais,
+        String(lixo),
+      ).toBe(false);
+    }
   });
 
   it("teto estragado é descartado SOZINHO, sem derrubar o registro", () => {

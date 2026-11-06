@@ -35,6 +35,8 @@ import type { CamposDoCard } from "@/lib/pipelines/campos-do-card";
 import { gravarRetorno, lerRetorno } from "@/lib/pipelines/retorno";
 import { urlDoInbox } from "@/lib/inbox/url";
 import { useNegociosNaLixeira } from "@/hooks/use-negocios-na-lixeira";
+import type { MapaDeClientesIdeais } from "@/hooks/use-clientes-ideais";
+import type { NivelDeClienteIdeal } from "@/lib/contacts/cliente-ideal";
 
 /**
  * Quantos cards uma coluna desenha de uma vez.
@@ -190,6 +192,26 @@ interface PipelineBoardProps {
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
   onOpenAutomations: (stage: PipelineStage) => void;
+  /**
+   * Quem é CLIENTE IDEAL (1124) — o mapa contato → nível, lido UMA vez pela
+   * PÁGINA (o interruptor do cabeçalho também o usa). `null` = não sei: o
+   * selo cala.
+   */
+  clientesIdeais: MapaDeClientesIdeais | null;
+  /**
+   * O interruptor "Só clientes ideais" (Fase 3) está ligado? Só viaja no
+   * ponto de retorno — quem recorta é {@link negociosIdeais}.
+   */
+  soClientesIdeais: boolean;
+  /**
+   * Os cards que o interruptor deixa no quadro, ou `null` = não recorta
+   * (desligado, ou a leitura ainda não chegou ou falhou — nunca "funil
+   * vazio"). O recorte vale sobre a lista INTEIRA, antes do teto por coluna:
+   * as colunas cheias desenham 20 por vez, e só a borda dourada não bastaria.
+   */
+  negociosIdeais: ReadonlySet<string> | null;
+  /** A volta da conversa religa o interruptor (ver `RetornoDoFunil`). */
+  onRestaurarSoClientesIdeais: (ligado: boolean) => void;
 }
 
 export function PipelineBoard({
@@ -205,6 +227,10 @@ export function PipelineBoard({
   onAddDeal,
   onEditDeal,
   onOpenAutomations,
+  clientesIdeais,
+  soClientesIdeais,
+  negociosIdeais,
+  onRestaurarSoClientesIdeais,
 }: PipelineBoardProps) {
   const router = useRouter();
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
@@ -296,15 +322,22 @@ export function PipelineBoard({
     [stages],
   );
 
+  // "Só clientes ideais": o recorte cai sobre a lista INTEIRA, antes do teto
+  // por coluna — contador e soma da coluna passam a ser dos cards mostrados.
+  const visiveis = useMemo(
+    () => (negociosIdeais ? deals.filter((d) => negociosIdeais.has(d.id)) : deals),
+    [deals, negociosIdeais],
+  );
+
   const dealsByStage = useMemo(() => {
     const map = new Map<string, CardDoQuadro[]>();
     for (const stage of sortedStages) map.set(stage.id, []);
-    for (const deal of deals) {
+    for (const deal of visiveis) {
       const bucket = map.get(deal.stage_id);
       if (bucket) bucket.push(deal);
     }
     return map;
-  }, [sortedStages, deals]);
+  }, [sortedStages, visiveis]);
 
   /**
    * As duas portas de saída para o inbox (corpo do card e botão da coluna)
@@ -337,10 +370,12 @@ export function PipelineBoard({
           limitesRef.current.funil === pipelineId
             ? limitesRef.current.porEtapa
             : {},
+        // A rolagem e os tetos acima foram medidos sobre o quadro FILTRADO.
+        soClientesIdeais,
       });
       router.push(urlDoInbox({ ...destino, de: "funil" }));
     },
-    [pipelineId, quadroRef, limitesRef, router],
+    [pipelineId, quadroRef, limitesRef, router, soClientesIdeais],
   );
   const abrirConversa = useCallback(
     (conversationId: string) => navegarParaInbox({ c: conversationId }),
@@ -389,6 +424,10 @@ export function PipelineBoard({
       if (Object.keys(retorno.limites).length > 0) {
         setLimites({ funil: retorno.pipelineId, porEtapa: retorno.limites });
       }
+      // O filtro volta no mesmo quadro que os tetos. ⚠️ O recorte em si
+      // depende de uma leitura que pode chegar depois da rolagem abaixo; com
+      // o filtro, as colunas são curtas e a rolagem quase não importa.
+      if (retorno.soClientesIdeais) onRestaurarSoClientesIdeais(true);
       raf2 = requestAnimationFrame(() => {
         // ⚠️ `behavior: "instant"` é obrigatório: `.pipeline-scroll` tem
         // `scroll-behavior: smooth` no styled-jsx abaixo, e restaurar
@@ -413,7 +452,7 @@ export function PipelineBoard({
       cancelAnimationFrame(raf1);
       cancelAnimationFrame(raf2);
     };
-  }, [sortedStages, pipelineId, quadroRef]);
+  }, [sortedStages, pipelineId, quadroRef, onRestaurarSoClientesIdeais]);
 
   const sensors = useSensors(
     // 5px activation distance avoids clicks being interpreted as drags.
@@ -504,6 +543,7 @@ export function PipelineBoard({
               channels={channels}
               esperasPorContato={esperasPorContato}
               negociosNaLixeira={negociosNaLixeira}
+              clientesIdeais={clientesIdeais}
               limite={limitesDoFunil[stage.id] ?? CARDS_POR_COLUNA}
               recemSolto={etapaDoSolto === stage.id ? recemSolto : null}
               onMostrarMais={mostrarMais}
@@ -535,6 +575,9 @@ export function PipelineBoard({
               channels={channels}
               naLixeira={negociosNaLixeira.has(activeDeal.id)}
               nomeNaLixeira={negociosNaLixeira.get(activeDeal.id) ?? null}
+              clienteIdeal={
+                activeDeal.contact_id ? (clientesIdeais?.get(activeDeal.contact_id) ?? null) : null
+              }
               onEdit={() => {}}
               onAbrirConversa={() => {}}
               isOverlay
@@ -604,6 +647,7 @@ const StageColumn = memo(function StageColumn({
   channels,
   esperasPorContato,
   negociosNaLixeira,
+  clientesIdeais,
   limite,
   recemSolto,
   onMostrarMais,
@@ -625,6 +669,8 @@ const StageColumn = memo(function StageColumn({
    * quadro, como `esperasPorContato`; ao card vão primitivos (`memo`).
    */
   negociosNaLixeira: ReadonlyMap<string, string | null>;
+  /** contato → nível de cliente ideal (1124); `null` = não sei. */
+  clientesIdeais: MapaDeClientesIdeais | null;
   /** Quantos cards desta coluna desenhar — ver `CARDS_POR_COLUNA`. */
   limite: number;
   /** O último card solto no quadro, só quando ele está NESTA coluna. */
@@ -799,6 +845,7 @@ const StageColumn = memo(function StageColumn({
                 }
                 naLixeira={negociosNaLixeira.has(deal.id)}
                 nomeNaLixeira={negociosNaLixeira.get(deal.id) ?? null}
+                clienteIdeal={deal.contact_id ? (clientesIdeais?.get(deal.contact_id) ?? null) : null}
                 onEdit={onEditDeal}
                 onAbrirConversa={onAbrirConversa}
               />
@@ -850,6 +897,7 @@ const DraggableDealCard = memo(function DraggableDealCard({
   esperasDeAutomacao,
   naLixeira,
   nomeNaLixeira,
+  clienteIdeal,
   onEdit,
   onAbrirConversa,
 }: {
@@ -862,6 +910,8 @@ const DraggableDealCard = memo(function DraggableDealCard({
   /** A ficha do card está na Lixeira (B4); primitivos, pelo mesmo `memo`. */
   naLixeira: boolean;
   nomeNaLixeira: string | null;
+  /** Nível de cliente ideal (1124), primitivo pelo mesmo `memo`. */
+  clienteIdeal: NivelDeClienteIdeal | null;
   onEdit: (deal: Deal) => void;
   onAbrirConversa: (conversationId: string) => void;
 }) {
@@ -884,6 +934,7 @@ const DraggableDealCard = memo(function DraggableDealCard({
         esperasDeAutomacao={esperasDeAutomacao}
         naLixeira={naLixeira}
         nomeNaLixeira={nomeNaLixeira}
+        clienteIdeal={clienteIdeal}
         onEdit={onEdit}
         onAbrirConversa={onAbrirConversa}
       />

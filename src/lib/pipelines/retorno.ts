@@ -50,6 +50,12 @@ export interface RetornoDoFunil {
    * Vazio = nenhuma coluna expandida, que é o caso comum.
    */
   limites: Record<string, number>;
+  /**
+   * O interruptor "Só clientes ideais" (1124, Fase 3) estava ligado? Volta
+   * junto: quem liga o filtro, abre a conversa de um card e volta, cairia no
+   * quadro inteiro — com a rolagem medida sobre o quadro filtrado.
+   */
+  soClientesIdeais: boolean;
   /** Quando foi gravado (epoch ms) — o que faz o registro expirar. */
   em: number;
 }
@@ -126,6 +132,8 @@ export function desserializarRetorno(
       scrollTop: numeroOuZero(objeto.scrollTop),
       rolagemDasColunas: rolagensOuVazio(objeto.rolagemDasColunas),
       limites: limitesOuVazio(objeto.limites),
+      // Registro de antes do filtro (ou estranho) → desligado.
+      soClientesIdeais: objeto.soClientesIdeais === true,
       em: objeto.em,
     };
   } catch {
@@ -150,7 +158,8 @@ export function desserializarRetorno(
  * #231, 1ª e 2ª rodadas). Hoje a página recebe os tetos do quadro por ref e
  * as duas saídas passam o valor de verdade; exigi-lo faz o compilador cobrar
  * de quem criar a terceira. `rolagemDasColunas` é obrigatória pelo mesmo
- * motivo (as duas saídas a medem com `rolagemDasColunas` do quadro).
+ * motivo (as duas saídas a medem com `rolagemDasColunas` do quadro), e
+ * `soClientesIdeais` também.
  */
 export function gravarRetorno(retorno: Omit<RetornoDoFunil, "em">): void {
   try {

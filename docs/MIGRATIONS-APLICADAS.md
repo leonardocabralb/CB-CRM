@@ -1836,3 +1836,22 @@ nome da época em que foram aplicadas.
   `841d918d`, que passou no replay do CI. Conferida: RLS ligada e nenhuma
   policy; `anon` e `authenticated` sem leitura; `service_role` grava; o CHECK
   com as quatro chaves; zero linhas.
+
+- **1124_cb_perfis_de_cliente_ideal** — `cb_perfis_de_cliente_ideal` (perfis
+  de cliente ideal com nome por conta; critérios sobre campos personalizados,
+  CHECK pela função `cb_criterios_de_cliente_ideal_validos`), a normalização
+  `cb_resposta_normalizada` e três RPCs SECURITY INVOKER: `cb_clientes_ideais`,
+  `cb_cliente_ideal_do_contato` e `cb_respostas_do_campo`. Sem gatilho nem
+  coluna em `contacts` (calculado na leitura). `docs/PLANO-cliente-ideal.md`
+  (Fase 1), branch `feat/cliente-ideal`.
+
+  ADITIVA, ANTES do deploy: o app antigo não lê nada dela. Autorização do
+  operador em 05/11/2026 ("Aplicar 1124 em produção"), aplicada em 05/11/2026
+  (histórico `20261105230924`) pela Management API, com o arquivo idêntico ao
+  do commit `94677bc7`. ⚠️ O replay que passou foi o LOCAL completo (248
+  migrations + `verify-schema.sql`, aplicada duas vezes, 8 cenários fictícios
+  em `~/Downloads/CB-CRM/ferramentas/pg-replay/cenarios-1124/`); o do CI roda
+  quando a branch ganhar PR. Conferida: RLS ligada com as 4 policies; `anon`
+  sem leitura nem EXECUTE; `authenticated` executa as três; gatilho de
+  `updated_at`; zero perfis. Medida com a RLS de um usuário logado: o perfil
+  do Bancário escrito à mão (sem gravar) devolve 289 contatos em 31 ms.

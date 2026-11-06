@@ -28,6 +28,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, Loader2 } from 'lucide-react';
 
 import { CampoPersonalizadoInput } from '@/components/contacts/campo-personalizado-input';
+import { avisarClienteIdealMudou } from '@/lib/contacts/cliente-ideal';
 import { Label } from '@/components/ui/label';
 import {
   criarFilaDeGravacao,
@@ -116,7 +117,13 @@ export function CampoComSalvamento({
   useEffect(() => {
     const fila = criarFilaDeGravacao(
       valorInicialRef.current,
-      (v) => gravarRef.current(fieldIdRef.current, v),
+      async (v) => {
+        const ok = await gravarRef.current(fieldIdRef.current, v);
+        // O campo gravado pode acender ou apagar o selo de CLIENTE IDEAL
+        // (1124): as leituras da tela relêem na hora, sem esperar a recarga.
+        if (ok) avisarClienteIdealMudou();
+        return ok;
+      },
       // O aviso alto do erro é do dono (ele sabe o nome do cliente); aqui o
       // campo só para de dizer "gravando" — spinner eterno seria pior.
       setEstado,

@@ -538,6 +538,9 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   digitado, Lixeira de contatos, etiquetas, duplicatas e união.
 - `.claude/rules/campos-e-nome.md` — campo que salva sozinho, blocos de
   campos, e-mail espelhado, nome fixado.
+- `.claude/rules/cliente-ideal.md` — perfis de cliente ideal (1124): regra no
+  banco, "ICP?", calculado na leitura, "respondeu" fora da regra, o selo e o
+  filtro (na caixa de entrada e no quadro, que pergunta os negócios à parte).
 - `.claude/rules/integracoes-calendly.md` — ficha nasce do agendamento,
   telefone em três fontes, cadeado, cancelamento e lembretes.
 - `.claude/rules/integracoes-asaas.md` — espelho de cobranças, vínculo,
