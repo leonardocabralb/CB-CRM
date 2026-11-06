@@ -14,6 +14,11 @@
 //
 // Escrita: admin (policies da 1124, `ESCRITA_DA_SECAO.fields`). RLS que barra
 // devolve 0 linhas sem erro: toda escrita confere o retorno.
+//
+// Funis (1125, D8): cada perfil escolhe em que funis vale; nenhum = todos.
+// Funil apagado aparece como "Funil apagado", desmarcável — nunca some em
+// silêncio (sumir viraria "todos"). Catálogo que falhou: a escolha do perfil
+// não é mexida (o salvar não manda `funis`).
 // ============================================================
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -30,12 +35,17 @@ import { opcoesDoCampo } from '@/lib/contacts/campo-opcoes';
 import {
   MINIMO_DE_FICHAS_DO_PADRAO,
   TETO_DE_CRITERIOS,
+  TETO_DE_FUNIS,
   TETO_DE_RESPOSTAS,
   TETO_DO_NOME_DO_PERFIL,
+  alternarFunil,
   alternarResposta,
   contarPorPerfil,
   criteriosValidos,
+  funisDoPerfil,
+  funisParaGravar,
   lerCriterios,
+  lerFunis,
   nomeDoPerfilValido,
   respostaMarcada,
   respostasOferecidas,
@@ -54,10 +64,21 @@ type Campo = Pick<CustomField, 'id' | 'field_name' | 'field_type' | 'field_optio
 
 type Contagem = Map<string, { ideais: number; possiveis: number }>;
 
+/** Um funil da conta, para o seletor (1125). */
+type Funil = { id: string; name: string };
+
 /** O que a tela carregou, carimbado com a conta (efeito passivo, seção 8c). */
 type Carga =
   | { de: string; estado: 'erro' }
-  | { de: string; estado: 'ok'; perfis: PerfilDeClienteIdeal[]; campos: Campo[]; contagem: Contagem | null };
+  | {
+      de: string;
+      estado: 'ok';
+      perfis: PerfilDeClienteIdeal[];
+      campos: Campo[];
+      contagem: Contagem | null;
+      /** `null` = o catálogo falhou ("não sei"): a escolha dos perfis fica intocada. */
+      funis: Funil[] | null;
+    };
 
 const TABELA = 'cb_perfis_de_cliente_ideal';
 
@@ -91,10 +112,10 @@ export function ClienteIdealSettings() {
     if (!accountId) return;
     let vivo = true;
     void (async () => {
-      const [perfisRes, camposRes, ideais] = await Promise.all([
+      const [perfisRes, camposRes, ideais, funisRes] = await Promise.all([
         supabase
           .from(TABELA)
-          .select('id, account_id, nome, ativo, posicao, criterios')
+          .select('id, account_id, nome, ativo, posicao, criterios, funis')
           .eq('account_id', accountId)
           .order('posicao')
           .order('nome'),
@@ -105,6 +126,8 @@ export function ClienteIdealSettings() {
           .eq('account_id', accountId)
           .order('field_name'),
         lerClientesIdeais(supabase, accountId),
+        // Os funis da conta (a tela é de admin: todos, sem recorte de perfil).
+        supabase.from('pipelines').select('id, name').eq('account_id', accountId).order('name'),
       ]);
       if (!vivo) return;
       if (perfisRes.error || camposRes.error) {
@@ -118,6 +141,7 @@ export function ClienteIdealSettings() {
         ativo: linha.ativo === true,
         posicao: Number(linha.posicao) || 0,
         criterios: lerCriterios(linha.criterios),
+        funis: lerFunis(linha.funis),
       }));
       setCarga({
         de: accountId,
@@ -126,6 +150,7 @@ export function ClienteIdealSettings() {
         campos: (camposRes.data ?? []) as Campo[],
         // Contagem que falhou é "não sei", nunca zero.
         contagem: ideais ? contarPorPerfil(ideais) : null,
+        funis: funisRes.error ? null : ((funisRes.data ?? []) as Funil[]),
       });
     })();
     return () => {
@@ -212,6 +237,7 @@ export function ClienteIdealSettings() {
                       key={perfil.id}
                       perfil={perfil}
                       campos={atual.campos}
+                      catalogoDeFunis={atual.funis}
                       accountId={accountId}
                       posicaoNova={atual.perfis.length}
                       aoSalvar={() => {
@@ -226,6 +252,7 @@ export function ClienteIdealSettings() {
                     <LinhaDoPerfil
                       perfil={perfil}
                       campos={atual.campos}
+                      catalogoDeFunis={atual.funis}
                       contagem={atual.contagem}
                       ocupado={ocupado === perfil.id}
                       aoEditar={() => setEditando(perfil.id)}
@@ -241,6 +268,7 @@ export function ClienteIdealSettings() {
                 key="novo"
                 perfil={null}
                 campos={atual.campos}
+                catalogoDeFunis={atual.funis}
                 accountId={accountId}
                 posicaoNova={atual.perfis.length}
                 aoSalvar={() => {
@@ -265,6 +293,7 @@ export function ClienteIdealSettings() {
 function LinhaDoPerfil({
   perfil,
   campos,
+  catalogoDeFunis,
   contagem,
   ocupado,
   aoEditar,
@@ -273,6 +302,7 @@ function LinhaDoPerfil({
 }: {
   perfil: PerfilDeClienteIdeal;
   campos: Campo[];
+  catalogoDeFunis: Funil[] | null;
   contagem: Contagem | null;
   ocupado: boolean;
   aoEditar: () => void;
@@ -283,6 +313,8 @@ function LinhaDoPerfil({
   const nomes = new Map(campos.map((c) => [c.id, c.field_name]));
   const campoApagado = perfil.criterios.some((c) => !nomes.has(c.campo));
   const numeros = contagem?.get(perfil.id) ?? { ideais: 0, possiveis: 0 };
+  // Catálogo que falhou não prova nada: sem ele, nem "apagado" nem nomes.
+  const funis = catalogoDeFunis ? funisDoPerfil(perfil.funis, catalogoDeFunis) : null;
 
   return (
     <div className="flex flex-wrap items-start gap-3 rounded-lg border border-border p-3">
@@ -303,8 +335,17 @@ function LinhaDoPerfil({
         <p className="mt-0.5 text-sm text-muted-foreground">
           {perfil.criterios.map((c) => nomes.get(c.campo) ?? t('campoApagadoNome')).join(' · ')}
         </p>
+        {funis ? (
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {perfil.funis
+              ? t('funisSo', { funis: funis.nomes.map((n) => n ?? t('funilApagado')).join(', ') })
+              : t('funisTodos')}
+          </p>
+        ) : null}
         {campoApagado ? (
           <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{t('campoApagado')}</p>
+        ) : funis?.todosApagados ? (
+          <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{t('funisApagados')}</p>
         ) : perfil.ativo ? (
           <p className="mt-1 text-xs text-muted-foreground">
             {contagem
@@ -336,6 +377,7 @@ function LinhaDoPerfil({
 function EditorDePerfil({
   perfil,
   campos,
+  catalogoDeFunis,
   accountId,
   posicaoNova,
   aoSalvar,
@@ -343,6 +385,7 @@ function EditorDePerfil({
 }: {
   perfil: PerfilDeClienteIdeal | null;
   campos: Campo[];
+  catalogoDeFunis: Funil[] | null;
   accountId: string | null;
   posicaoNova: number;
   aoSalvar: () => void;
@@ -355,6 +398,8 @@ function EditorDePerfil({
   const [criterios, setCriterios] = useState<CriterioDeClienteIdeal[]>(
     perfil?.criterios.length ? perfil.criterios : [{ campo: '', respostas: [] }],
   );
+  /** Os funis marcados; vazio = todos (grava NULO). */
+  const [funis, setFunis] = useState<string[]>(perfil?.funis ?? []);
   const [salvando, setSalvando] = useState(false);
 
   const mudar = (indice: number, criterio: CriterioDeClienteIdeal) =>
@@ -384,9 +429,20 @@ function EditorDePerfil({
       toast.error(t('campoApagado'));
       return;
     }
+    if (funis.length > TETO_DE_FUNIS) {
+      toast.error(t('erroFunis', { teto: TETO_DE_FUNIS }));
+      return;
+    }
     if (!accountId) return;
     setSalvando(true);
-    const linha = { nome: nomeLimpo, ativo, criterios };
+    // Catálogo que falhou: `funis` fica de fora do salvar (o perfil mantém o
+    // que tinha; o novo nasce com todos).
+    const linha = {
+      nome: nomeLimpo,
+      ativo,
+      criterios,
+      ...(catalogoDeFunis ? { funis: funisParaGravar(funis) } : {}),
+    };
     const { data, error } = perfil
       ? await supabase.from(TABELA).update(linha).eq('id', perfil.id).select('id')
       : await supabase
@@ -444,6 +500,8 @@ function EditorDePerfil({
         ))}
       </ol>
 
+      <SeletorDeFunis catalogo={catalogoDeFunis} marcados={funis} aoMudar={setFunis} />
+
       <div className="flex flex-wrap items-center gap-2">
         {criterios.length < TETO_DE_CRITERIOS ? (
           <Button
@@ -464,6 +522,71 @@ function EditorDePerfil({
           {salvando ? t('salvando') : t('salvar')}
         </Button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * "Funis onde o selo aparece" (1125). Os do catálogo, e depois os marcados que
+ * não existem mais ("Funil apagado"), para poder desmarcá-los — largá-los em
+ * silêncio trocaria "só neste funil" por "em todos".
+ */
+function SeletorDeFunis({
+  catalogo,
+  marcados,
+  aoMudar,
+}: {
+  catalogo: Funil[] | null;
+  marcados: string[];
+  aoMudar: (funis: string[]) => void;
+}) {
+  const t = useTranslations('Settings.clienteIdeal');
+  const conhecidos = new Set((catalogo ?? []).map((f) => f.id));
+  const opcoes = [
+    ...(catalogo ?? []).map((f) => ({ id: f.id, nome: f.name, apagado: false })),
+    ...marcados.filter((id) => !conhecidos.has(id)).map((id) => ({ id, nome: t('funilApagado'), apagado: true })),
+  ];
+
+  return (
+    <div className="space-y-2 rounded-lg border border-border bg-background p-3">
+      <p className="text-sm font-medium text-foreground">{t('funisTitulo')}</p>
+      <p className="text-xs text-muted-foreground">{t('funisDica')}</p>
+      {catalogo === null ? (
+        <p className="text-xs text-destructive">{t('funisErro')}</p>
+      ) : opcoes.length === 0 ? (
+        <p className="text-xs text-muted-foreground">{t('semFunis')}</p>
+      ) : (
+        <ul className="max-h-60 space-y-0.5 overflow-y-auto pr-1">
+          {opcoes.map((f) => {
+            const marcado = marcados.includes(f.id);
+            return (
+              <li key={f.id}>
+                <label
+                  className={cn(
+                    'flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm',
+                    marcado ? 'bg-primary/10' : 'hover:bg-muted',
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={marcado}
+                    onChange={() => aoMudar(alternarFunil(marcados, f.id))}
+                    className="size-4 accent-primary"
+                  />
+                  <span
+                    className={cn(
+                      'min-w-0 flex-1 break-words',
+                      f.apagado && 'text-amber-700 dark:text-amber-300',
+                    )}
+                  >
+                    {f.nome}
+                  </span>
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }
