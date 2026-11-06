@@ -206,6 +206,8 @@
       "delinquentDisconnected": "Asaas desconectado — filtro sem efeito",
       "delinquentChecking": "Conferindo o Asaas… — filtro sem efeito até lá",
       "delinquentPending": "O Asaas ainda não terminou de sincronizar — filtro sem efeito até lá",
+      "filterIdealClients": "Só clientes ideais",
+      "idealClientsChecking": "Conferindo os clientes ideais… — filtro sem efeito até lá",
       "inadimplente": "Inadimplente no Asaas: {valor} vencido(s) há {dias} dia(s)",
       "inadimplenteProrrogado": "Inadimplente no Asaas: {valor} (vencimento prorrogado)",
       "filterOpen": "Abertas",
@@ -3892,7 +3894,11 @@
     "nuncaRespondeu": "Nunca respondeu pelo WhatsApp",
     "mensagensNossas": "{n, plural, =0 {nenhuma mensagem nossa} one {# mensagem nossa} other {# mensagens nossas}}",
     "naoSairam": "{n, plural, one {# não saiu} other {# não saíram}}",
-    "respondeu": "Respondeu · {n, plural, one {# mensagem do cliente} other {# mensagens do cliente}}"
+    "respondeu": "Respondeu · {n, plural, one {# mensagem do cliente} other {# mensagens do cliente}}",
+    "filtroDoQuadro": "Só clientes ideais",
+    "filtroDoQuadroDica": "Mostra só os cards com o selo ICP. O ICP? fica de fora.",
+    "filtroDoQuadroCarregando": "Conferindo os clientes ideais…",
+    "filtroDoQuadroFalhou": "Não foi possível conferir os clientes ideais — o quadro mostra todos os cards."
   },
   "Settings": {
     "pageTitle": "Configurações",

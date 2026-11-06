@@ -5,6 +5,8 @@ paths:
   - "src/hooks/use-clientes-ideais*"
   - "src/components/contacts/selo-de-cliente-ideal.tsx"
   - "src/components/inbox/painel/bloco-do-cliente-ideal.tsx"
+  - "src/components/pipelines/so-clientes-ideais.tsx"
+  - "src/components/pipelines/pipeline-board.tsx"
   - "supabase/migrations/1124_cb_perfis_de_cliente_ideal.sql"
 ---
 
@@ -68,6 +70,29 @@ Plano vivo: `docs/PLANO-cliente-ideal.md`; decisões em
 - **O porquê no painel** (`BlocoDoClienteIdeal`, abaixo do responsável, em
   qualquer aba) lê `cb_cliente_ideal_do_contato` por contato, carimbado com o
   dono (efeito passivo); carregando ou com falha, não desenha nada.
+
+### O filtro (Fase 3): caixa de entrada e quadro
+
+- **Só o nível `ideal`** nos dois: o "ICP?" fica de fora (se pedido, uma
+  segunda opção). A régua é o MESMO mapa do selo, nunca uma cópia.
+- **Caixa de entrada:** interruptor no painel de filtros, o molde de
+  "Inadimplentes" (`clientesIdeais` em `FiltrosDoInbox`, no contexto e nos
+  filtros salvos). Mapa `null` NEUTRALIZA (a dica diz "conferindo"); mapa sem
+  ninguém ideal recorta tudo, e é verdade. Só é oferecido com alguém ideal.
+- ⚠️⚠️ **Quadro: a lista enxuta NÃO traz `contact_id`, e não deve ganhar.**
+  Com ela, todo funil pagaria ~20% a mais por card em toda carga. O
+  interruptor pergunta à parte, SÓ ligado e no Quadro, os negócios dos
+  contatos ideais (`lerNegociosDosContatos`: lotes de 100 ids na URL, cada um
+  paginado; de todos os funis) e o quadro recorta a lista INTEIRA antes do
+  teto por coluna (`visiveis`): contador e soma da coluna passam a ser dos
+  mostrados; os números do topo seguem sendo do funil. `negociosIdeais` nulo
+  (carregando ou falhou) = não recorta; o botão mostra o giro ou o aviso.
+- **O interruptor volta no ponto de retorno** (`soClientesIdeais`, as duas
+  saídas para o inbox): a rolagem e os tetos foram medidos no quadro
+  filtrado. A releitura dos negócios segue o mapa e o TAMANHO da lista (card
+  criado ou removido com o filtro ligado).
+- O mapa do quadro é lido pela PÁGINA (o cabeçalho também o usa) e desce ao
+  quadro por prop: UMA leitura por página continua valendo.
 
 ### A tela (Configurações → Campos e etiquetas)
 

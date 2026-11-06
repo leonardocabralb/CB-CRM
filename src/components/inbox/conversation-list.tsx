@@ -702,6 +702,12 @@ export function ConversationList({
   // `conversations`, e `aplicarFiltros` é um `.filter`, que preserva a ordem.
   const ordenadas = useMemo(() => ordenarComoOBanco(conversations), [conversations]);
 
+  // A conta tem cliente ideal hoje? Só então o painel oferece o filtro.
+  const temClienteIdeal = useMemo(
+    () => clientesIdeais !== null && [...clientesIdeais.values()].includes("ideal"),
+    [clientesIdeais],
+  );
+
   const filtered = useMemo(
     () =>
       aplicarFiltros(ordenadas, filtros, {
@@ -717,6 +723,8 @@ export function ConversationList({
         agoraMs: agora,
         // `null` neutraliza o filtro "Inadimplentes" — ver `idsInadimplentes`.
         inadimplentes: idsInadimplentesDoAsaas,
+        // O MESMO mapa que desenha o selo da linha; `null` neutraliza.
+        clientesIdeais,
       }),
     [
       ordenadas,
@@ -725,6 +733,7 @@ export function ConversationList({
       agora,
       favoritas,
       idsInadimplentesDoAsaas,
+      clientesIdeais,
       etapaPorContato,
       funilPorEtapa,
       search,
@@ -1115,6 +1124,15 @@ export function ConversationList({
             inadimplencia?.conectado && !leituraAindaFresca(inadimplencia, new Date(agora))
               ? inadimplencia.atualizadoEm
               : null
+          }
+          // O interruptor "Só clientes ideais" só é oferecido com alguém
+          // ideal no mapa; `null` = não sei (recorte neutralizado).
+          clientesIdeais={
+            clientesIdeais === null
+              ? "conferindo"
+              : temClienteIdeal
+                ? "ha"
+                : "nenhum"
           }
 
           visoes={

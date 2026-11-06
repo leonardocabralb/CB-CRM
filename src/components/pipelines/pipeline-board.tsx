@@ -35,7 +35,7 @@ import type { CamposDoCard } from "@/lib/pipelines/campos-do-card";
 import { gravarRetorno, lerRetorno } from "@/lib/pipelines/retorno";
 import { urlDoInbox } from "@/lib/inbox/url";
 import { useNegociosNaLixeira } from "@/hooks/use-negocios-na-lixeira";
-import { useClientesIdeais, type MapaDeClientesIdeais } from "@/hooks/use-clientes-ideais";
+import type { MapaDeClientesIdeais } from "@/hooks/use-clientes-ideais";
 import type { NivelDeClienteIdeal } from "@/lib/contacts/cliente-ideal";
 
 /**
@@ -192,6 +192,26 @@ interface PipelineBoardProps {
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
   onOpenAutomations: (stage: PipelineStage) => void;
+  /**
+   * Quem é CLIENTE IDEAL (1124) — o mapa contato → nível, lido UMA vez pela
+   * PÁGINA (o interruptor do cabeçalho também o usa). `null` = não sei: o
+   * selo cala.
+   */
+  clientesIdeais: MapaDeClientesIdeais | null;
+  /**
+   * O interruptor "Só clientes ideais" (Fase 3) está ligado? Só viaja no
+   * ponto de retorno — quem recorta é {@link negociosIdeais}.
+   */
+  soClientesIdeais: boolean;
+  /**
+   * Os cards que o interruptor deixa no quadro, ou `null` = não recorta
+   * (desligado, ou a leitura ainda não chegou ou falhou — nunca "funil
+   * vazio"). O recorte vale sobre a lista INTEIRA, antes do teto por coluna:
+   * as colunas cheias desenham 20 por vez, e só a borda dourada não bastaria.
+   */
+  negociosIdeais: ReadonlySet<string> | null;
+  /** A volta da conversa religa o interruptor (ver `RetornoDoFunil`). */
+  onRestaurarSoClientesIdeais: (ligado: boolean) => void;
 }
 
 export function PipelineBoard({
@@ -207,6 +227,10 @@ export function PipelineBoard({
   onAddDeal,
   onEditDeal,
   onOpenAutomations,
+  clientesIdeais,
+  soClientesIdeais,
+  negociosIdeais,
+  onRestaurarSoClientesIdeais,
 }: PipelineBoardProps) {
   const router = useRouter();
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
@@ -272,10 +296,6 @@ export function PipelineBoard({
   // inteiro. O mapa é memoizado por identidade do resumo: sem isso, um objeto
   // novo a cada render derrubaria o `memo` dos ~120 cards.
   const { resumo: sinalDeExecucoes } = useSinalDeExecucoes();
-  // Quem é CLIENTE IDEAL (1124) — UMA leitura para o quadro inteiro; o mapa
-  // só muda de identidade quando a leitura volta, e ao card vai o nível
-  // (primitivo), pelo `memo`. `null` = não sei: o selo cala.
-  const clientesIdeais = useClientesIdeais();
   const esperasPorContato = useMemo(() => {
     const mapa: Record<string, number> = {};
     for (const [id, info] of Object.entries(sinalDeExecucoes?.porContato ?? {})) {
@@ -302,15 +322,22 @@ export function PipelineBoard({
     [stages],
   );
 
+  // "Só clientes ideais": o recorte cai sobre a lista INTEIRA, antes do teto
+  // por coluna — contador e soma da coluna passam a ser dos cards mostrados.
+  const visiveis = useMemo(
+    () => (negociosIdeais ? deals.filter((d) => negociosIdeais.has(d.id)) : deals),
+    [deals, negociosIdeais],
+  );
+
   const dealsByStage = useMemo(() => {
     const map = new Map<string, CardDoQuadro[]>();
     for (const stage of sortedStages) map.set(stage.id, []);
-    for (const deal of deals) {
+    for (const deal of visiveis) {
       const bucket = map.get(deal.stage_id);
       if (bucket) bucket.push(deal);
     }
     return map;
-  }, [sortedStages, deals]);
+  }, [sortedStages, visiveis]);
 
   /**
    * As duas portas de saída para o inbox (corpo do card e botão da coluna)
@@ -343,10 +370,12 @@ export function PipelineBoard({
           limitesRef.current.funil === pipelineId
             ? limitesRef.current.porEtapa
             : {},
+        // A rolagem e os tetos acima foram medidos sobre o quadro FILTRADO.
+        soClientesIdeais,
       });
       router.push(urlDoInbox({ ...destino, de: "funil" }));
     },
-    [pipelineId, quadroRef, limitesRef, router],
+    [pipelineId, quadroRef, limitesRef, router, soClientesIdeais],
   );
   const abrirConversa = useCallback(
     (conversationId: string) => navegarParaInbox({ c: conversationId }),
@@ -395,6 +424,10 @@ export function PipelineBoard({
       if (Object.keys(retorno.limites).length > 0) {
         setLimites({ funil: retorno.pipelineId, porEtapa: retorno.limites });
       }
+      // O filtro volta no mesmo quadro que os tetos. ⚠️ O recorte em si
+      // depende de uma leitura que pode chegar depois da rolagem abaixo; com
+      // o filtro, as colunas são curtas e a rolagem quase não importa.
+      if (retorno.soClientesIdeais) onRestaurarSoClientesIdeais(true);
       raf2 = requestAnimationFrame(() => {
         // ⚠️ `behavior: "instant"` é obrigatório: `.pipeline-scroll` tem
         // `scroll-behavior: smooth` no styled-jsx abaixo, e restaurar
@@ -419,7 +452,7 @@ export function PipelineBoard({
       cancelAnimationFrame(raf1);
       cancelAnimationFrame(raf2);
     };
-  }, [sortedStages, pipelineId, quadroRef]);
+  }, [sortedStages, pipelineId, quadroRef, onRestaurarSoClientesIdeais]);
 
   const sensors = useSensors(
     // 5px activation distance avoids clicks being interpreted as drags.

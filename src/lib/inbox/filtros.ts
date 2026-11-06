@@ -25,6 +25,7 @@
 import { atrasoDeResposta } from "@/lib/inbox/atraso";
 import { semAcento } from "@/lib/inbox/busca-em-mensagens";
 import { variantesDoNonoDigito } from "@/lib/contacts/telefone";
+import type { NivelDeClienteIdeal } from "@/lib/contacts/cliente-ideal";
 import {
   matchesContactFilters,
   matchesTypeFilter,
@@ -178,6 +179,20 @@ export interface FiltrosDoInbox {
    * resposta ainda) o recorte é NEUTRALIZADO, nunca aplicado sobre nada.
    */
   inadimplentes: boolean;
+  /**
+   * Só as conversas de CLIENTE IDEAL (1124, Fase 3 do plano): o contato tem o
+   * selo "ICP" sólido. O "ICP?" (possível) fica de fora — decisão do plano;
+   * se pedido, vira uma segunda opção.
+   *
+   * ⚠️ **É a MESMA régua do selo da linha** (o mapa de `useClientesIdeais`,
+   * nível `ideal`): régua própria acenderia o filtro sobre linha sem selo.
+   *
+   * ⚠️ Depende de uma LEITURA que a lista não faz sozinha — ver
+   * `ContextoDosFiltros.clientesIdeais`: sem ela o recorte é NEUTRALIZADO.
+   * Fica FORA do recorte do painel, como "Inadimplentes": vale também para a
+   * favorita que "Incluir minhas favoritas" deixa atravessar.
+   */
+  clientesIdeais: boolean;
 }
 
 export const FILTROS_VAZIOS: FiltrosDoInbox = {
@@ -195,6 +210,7 @@ export const FILTROS_VAZIOS: FiltrosDoInbox = {
   naoLidas: false,
   emAtraso: false,
   inadimplentes: false,
+  clientesIdeais: false,
 };
 
 /**
@@ -234,6 +250,7 @@ export function contarFiltrosAtivos(f: FiltrosDoInbox): number {
   if (f.naoLidas) n++;
   if (f.emAtraso) n++;
   if (f.inadimplentes) n++;
+  if (f.clientesIdeais) n++;
   return n;
 }
 
@@ -432,6 +449,16 @@ export interface ContextoDosFiltros {
    * `aplicarFiltros` em outra tela.
    */
   inadimplentes: Set<string> | null;
+  /**
+   * O mapa contato → nível de CLIENTE IDEAL (`useClientesIdeais`, o mesmo que
+   * desenha o selo da linha), ou `null`.
+   *
+   * ⚠️ `null` NEUTRALIZA o recorte, como `inadimplentes`: a leitura ainda no
+   * ar ou falhada não pode virar "nenhuma conversa". Mapa SEM ninguém ideal
+   * é resposta de verdade (a conta não tem cliente ideal hoje) e recorta.
+   * Obrigatório pela mesma razão de `achadasNoTexto`.
+   */
+  clientesIdeais: ReadonlyMap<string, NivelDeClienteIdeal> | null;
 }
 
 /**
@@ -749,7 +776,8 @@ export function aplicarFiltros(
     // ⚠️ "Incluir favoritas" é um OU com o recorte do PAINEL, e só com ele
     // (decisão do operador, 20/10/2026): a favorita da Bancário - Jurídico
     // entra no "BA - Comercial", mas os interruptores abaixo — Não lidas, Em
-    // atraso, Inadimplentes — e a busca continuam valendo para ela.
+    // atraso, Inadimplentes, Clientes ideais — e a busca continuam valendo
+    // para ela.
     const atravessaOPainel = f.incluirFavoritas && ctx.favoritas.has(c.id);
     if (!atravessaOPainel && !casaComORecorteDoPainel(c, f, ctx)) return false;
 
@@ -766,6 +794,15 @@ export function aplicarFiltros(
       f.inadimplentes &&
       ctx.inadimplentes !== null &&
       (!c.contact_id || !ctx.inadimplentes.has(c.contact_id))
+    ) {
+      return false;
+    }
+    // Ver `ContextoDosFiltros.clientesIdeais`: `null` neutraliza. Só o nível
+    // `ideal` (o "ICP?" fica de fora); grupo não tem contato e nunca casa.
+    if (
+      f.clientesIdeais &&
+      ctx.clientesIdeais !== null &&
+      (!c.contact_id || ctx.clientesIdeais.get(c.contact_id) !== "ideal")
     ) {
       return false;
     }

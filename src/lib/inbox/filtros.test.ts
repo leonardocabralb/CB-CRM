@@ -93,6 +93,7 @@ const ctx = (patch: Partial<ContextoDosFiltros> = {}): ContextoDosFiltros => ({
   recorteDeEtapaConfiavel: true,
   agoraMs: AGORA,
   inadimplentes: null,
+  clientesIdeais: null,
   ...patch,
 });
 
@@ -1090,6 +1091,43 @@ describe("recorte por inadimplência no Asaas (Fase 1b)", () => {
   });
 });
 
+describe("recorte por cliente ideal (1124, Fase 3)", () => {
+  const ideal = conversa({ id: "c-ideal", contact_id: "ct-ideal" });
+  const possivel = conversa({ id: "c-possivel", contact_id: "ct-possivel" });
+  const outro = conversa({ id: "c-outro", contact_id: "ct-outro" });
+  const mapa = new Map([
+    ["ct-ideal", "ideal" as const],
+    ["ct-possivel", "possivel" as const],
+  ]);
+  const f = { ...FILTROS_VAZIOS, clientesIdeais: true };
+
+  it("fica só o ICP sólido — o 'ICP?' e quem não casa saem", () => {
+    const ids = aplicarFiltros([ideal, possivel, outro], f, ctx({ clientesIdeais: mapa })).map((c) => c.id);
+    expect(ids).toEqual(["c-ideal"]);
+  });
+
+  it("⚠️ `null` NEUTRALIZA: leitura no ar ou falhada nunca vira 'nenhuma conversa'", () => {
+    const ids = aplicarFiltros([ideal, outro], f, ctx({ clientesIdeais: null })).map((c) => c.id);
+    expect(ids).toEqual(["c-ideal", "c-outro"]);
+  });
+
+  it("mapa sem ninguém ideal é resposta de verdade e recorta tudo", () => {
+    expect(aplicarFiltros([ideal, outro], f, ctx({ clientesIdeais: new Map() }))).toEqual([]);
+  });
+
+  it("grupo não tem contato e fica de fora", () => {
+    const ids = aplicarFiltros([ideal, grupo()], f, ctx({ clientesIdeais: mapa })).map((c) => c.id);
+    expect(ids).toEqual(["c-ideal"]);
+  });
+
+  it("conta como um filtro, desligado não recorta e não é recorte do painel", () => {
+    expect(contarFiltrosAtivos(f)).toBe(1);
+    expect(temRecorteDoPainel(f)).toBe(false);
+    const ids = aplicarFiltros([ideal, outro], FILTROS_VAZIOS, ctx({ clientesIdeais: new Map() })).map((c) => c.id);
+    expect(ids).toEqual(["c-ideal", "c-outro"]);
+  });
+});
+
 describe("incluir favoritas — a favorita atravessa o recorte do PAINEL (20/10/2026)", () => {
   // O caso do operador: "BA - Comercial" recorta por duas conexões, e o
   // cliente favoritado corre pela Bancário - Jurídico.
@@ -1133,6 +1171,13 @@ describe("incluir favoritas — a favorita atravessa o recorte do PAINEL (20/10/
       ctx({ favoritas: new Set(["fav-lida", "fav-nao-lida"]) }),
     ).map((c) => c.id);
     expect(ids).toEqual(["fav-nao-lida"]);
+  });
+
+  it("Só clientes ideais continua valendo para a favorita", () => {
+    const f = { ...baComercial, incluirFavoritas: true, clientesIdeais: true };
+    expect(
+      aplicarFiltros([juridicoFavorita], f, ctx({ favoritas, clientesIdeais: new Map() })),
+    ).toEqual([]);
   });
 
   it("Inadimplentes continua valendo para a favorita", () => {
@@ -1197,6 +1242,7 @@ describe("incluir favoritas — a favorita atravessa o recorte do PAINEL (20/10/
       { naoLidas: true },
       { emAtraso: true },
       { inadimplentes: true },
+      { clientesIdeais: true },
       { incluirFavoritas: true },
     ]) {
       expect(temRecorteDoPainel({ ...FILTROS_VAZIOS, ...patch }), JSON.stringify(patch)).toBe(false);

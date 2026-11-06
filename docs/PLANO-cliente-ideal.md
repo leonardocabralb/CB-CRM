@@ -12,7 +12,7 @@ O CRM marca sozinho quem cumpre a regra; ninguém marca à mão.
 | 0 | Regra, mockup e decisões | ✅ 05/11: mockups mostrados (canvas "Selo de cliente ideal"); D1–D6 decididas |
 | 1 | Regra no banco (tabela + RPC) e a tela para configurá-la | 🟡 05/11: código na branch `feat/cliente-ideal` (sem push). Migration 1124 provada no replay LOCAL completo (248 migrations + `verify-schema.sql`), duas vezes e em 8 cenários fictícios (`~/Downloads/CB-CRM/ferramentas/pg-replay/cenarios-1124/`); **APLICADA em produção** (`20261105230924`, autorizada). Medida com a RLS de usuário logado: o perfil do Bancário (escrito à mão, sem gravar) devolve 289 contatos (68 ICP + 221 ICP?) em 31 ms. Tela conferida no preview contra a produção, sem gravar: estado vazio, as respostas gravadas com a contagem, campo usado some do outro critério, Cancelar não grava (0 perfis no banco), console limpo. Achado do preview corrigido: a lista oferece só PADRÕES (resposta em 2+ fichas) — o campo "Senha gov.br" listaria as senhas. typecheck, lint (0 erros) e suíte verdes. **Perfil "Bancário" GRAVADO em produção pela própria tela** (05/11, com o "pode gravar"; `0e5a1321…`, 4 respostas de dívida no critério principal + 6 de situação): "Perfil salvo" e a contagem "Hoje: 68 ICP · 221 ICP?" na tela, linha única conferida no banco. Fase 1 ✅ salvo a PR (a branch ainda sem push) |
 | 2 | Selo: lista de conversas, card do funil, cabeçalho e o porquê no painel | 🟡 05/11: código na branch (sem push). typecheck, lint (0 erros, avisos iguais) e suíte (13.123 testes, Node 22) verdes. Conferido no preview contra a produção, sem abrir conversa de cliente: lista com 29 ICP + 2 ICP? na aba Abertas; quadro do Bancário com 26 ICP desenhados, todos com a borda dourada, e 12 ICP? sem borda. Achado corrigido: na LINHA da lista o selo virou só o diamante (com "ICP" escrito, o nome sumia na linha estreita); nome mais apertado agora 24 px. O porquê do painel conferido pela RPC com a RLS de usuário (um ICP que nunca respondeu, um ICP? com "Falta: Tempo de Atraso"). Cabeçalho e painel conferidos NA TELA no lead de teste (com o "pode gravar"): pôr a dívida "Maior que 500 mil reais" acendeu, sem recarregar, o "ICP?" no cabeçalho e o bloco "Possível cliente ideal · Falta: Tempo de Atraso"; pôr "Em dia, mas vai atrasar" virou "ICP" sólido e "Cliente ideal" com os dois ✓ e "Respondeu · 76 mensagens do cliente"; os dois campos devolvidos pela tela (a mesma linha da dívida com o valor original; a situação sem linha, como antes) e o selo saiu na hora. Gravar esses campos só aciona os gatilhos do e-mail espelhado, que não os tocam. Limite visto: com o painel aberto em tela de 1440 px o NOME some do cabeçalho (a barra de ícones toma a linha, já era assim) e o selo some junto; em 1920 px os dois aparecem, e o painel mostra o selo em qualquer largura. Fase 2 ✅ salvo a PR |
-| 3 | Filtro "Só clientes ideais" na caixa de entrada e no quadro do funil | a fazer |
+| 3 | Filtro "Só clientes ideais" na caixa de entrada e no quadro do funil | 🟡 06/11: código na branch (sem push). typecheck, lint (0 erros; os avisos são os antigos) e suíte (13.131 testes, Node 22) verdes. Conferido no preview contra a produção, SEM gravar e sem abrir conversa de cliente: na caixa de entrada (com o padrão "BA - Comercial"), o interruptor no painel deixa 31 de 269, as 31 com o selo "ICP" (nenhum "ICP?"), distintivo 2 e o chip marcado como alterado; desligado, 136 de 269. No quadro do Bancário - Comercial, 66 cards de cliente ideal, todos com a borda dourada (desligado, só 28 deles cabiam nos 20 primeiros de cada coluna); ir à caixa pelo "Ver as conversas desta etapa" e voltar pela faixa trouxe o interruptor LIGADO, com os 66. Console limpo. No celular o botão é só o diamante com o número; a fileira das abas do funil já passava da tela de 375 px antes dele (limite antigo, fora desta fase). Fase 3 ✅ salvo a PR |
 | 4 | Aviso ou gatilho de automação "virou cliente ideal" | só se pedido |
 
 Cada fase termina com revisão, teste no preview (1440×900) e a linha desta
@@ -223,6 +223,14 @@ cards, `cartao.ts`), antes do corte por coluna; o Kanban não tem barra de
 filtros hoje, então é peça nova no cabeçalho do quadro. O "ICP?" fica fora
 dos dois filtros (se pedido, uma segunda opção).
 
+**Como ficou (06/11):** a lista enxuta não traz o contato, e acrescentá-lo
+custaria ~20% a mais por card em toda carga de todo funil. O interruptor
+pergunta à parte, só ligado e só no Quadro, quais negócios são dos contatos
+ideais (`lerNegociosDosContatos`, lotes de 100 contatos, de todos os funis), e
+o quadro recorta a lista inteira antes do teto por coluna. O interruptor viaja
+no ponto de retorno do funil (ir à conversa e voltar o mantém ligado). Regras
+em `.claude/rules/cliente-ideal.md`.
+
 ### Fase 4 — Só se pedido
 
 Aviso no sino ou gatilho de automação "cliente virou ideal" exigem um carimbo
@@ -259,7 +267,7 @@ pedido.
   `contact_custom_values_custom_field_id_idx` e a chave
   `(contact_id, custom_field_id)`; nada de disco. Sem o "respondeu" (D5) ela
   deixa de ler `messages` e fica mais barata — remedir.
-- FALTA medir como `authenticated` (pela RLS) antes do PR.
+- Medida como `authenticated` (pela RLS) em 05/11: 289 contatos em 31 ms.
 - A lista recarrega ~1.500 vezes por dia (`banco-no-teto` de 02/11): uma
   consulta a mais por carga, nunca por linha.
 

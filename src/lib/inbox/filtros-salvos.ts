@@ -141,6 +141,8 @@ export function lerFiltroSalvo(bruto: unknown): FiltrosDoInbox {
     naoLidas: o.naoLidas === true,
     emAtraso: o.emAtraso === true,
     inadimplentes: o.inadimplentes === true,
+    // Ausente nas visões gravadas antes da 1124 → desligado.
+    clientesIdeais: o.clientesIdeais === true,
   };
 }
 
@@ -170,6 +172,7 @@ export function escreverFiltroSalvo(f: FiltrosDoInbox): Record<string, unknown> 
     naoLidas: f.naoLidas,
     emAtraso: f.emAtraso,
     inadimplentes: f.inadimplentes,
+    clientesIdeais: f.clientesIdeais,
   };
 }
 
@@ -223,6 +226,7 @@ export function mesmoFiltro(a: FiltrosDoInbox, b: FiltrosDoInbox): boolean {
     a.naoLidas === b.naoLidas &&
     a.emAtraso === b.emAtraso &&
     a.inadimplentes === b.inadimplentes &&
+    a.clientesIdeais === b.clientesIdeais &&
     etiquetasIguais &&
     (!modoImporta || a.modoDeEtiqueta === b.modoDeEtiqueta) &&
     (!inclusaoImporta || a.incluirFavoritas === b.incluirFavoritas)
@@ -254,6 +258,7 @@ export type ChaveDeRotulo =
   | "filterUnread"
   | "filterAwaiting"
   | "filterDelinquent"
+  | "filterIdealClients"
   | "favorites"
   | "favoritesIncluded"
   | "channelFilter"
@@ -522,6 +527,17 @@ export function descreverFiltro(
       chave: "inadimplentes",
       rotulo: { fonte: "i18n", chave: "filterDelinquent" },
       limpar: { inadimplentes: false },
+    });
+  }
+
+  // Idem: é uma pergunta à regra de cliente ideal (1124), não um id. Perfil
+  // desligado ou apagado só faz a resposta mudar — "ninguém é cliente ideal
+  // hoje" é verdade, não referência morta.
+  if (f.clientesIdeais) {
+    pedacos.push({
+      chave: "clientesIdeais",
+      rotulo: { fonte: "i18n", chave: "filterIdealClients" },
+      limpar: { clientesIdeais: false },
     });
   }
 

@@ -31,6 +31,7 @@ import {
   Star,
   X,
   CircleDollarSign,
+  Gem,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -139,6 +140,14 @@ interface InboxFiltersProps {
    * da linha), só não afirma que é de agora.
    */
   asaasDadosDe?: string | null;
+  /**
+   * O que a tela sabe sobre CLIENTE IDEAL (1124): `conferindo` = o mapa ainda
+   * não chegou (ou falhou) e o recorte está NEUTRALIZADO; `nenhum` = a conta
+   * não tem cliente ideal hoje (sem perfil ativo, ou ninguém casa); `ha` = há.
+   * O interruptor só é OFERECIDO com `ha` — ou já ligado por uma visão salva,
+   * para dar como desligá-lo. Ausente = `conferindo`.
+   */
+  clientesIdeais?: "conferindo" | "nenhum" | "ha";
 }
 
 /** `dd/mm hh:mm` no fuso de quem lê — a mesma forma da faixa do fio. */
@@ -166,6 +175,7 @@ export function InboxFilters({
   total,
   asaasNeutralizado = "sem_resposta",
   asaasDadosDe = null,
+  clientesIdeais = "conferindo",
 }: InboxFiltersProps) {
   const t = useTranslations("Inbox.conversationList");
   const [aberto, setAberto] = useState(false);
@@ -705,6 +715,38 @@ export function InboxFilters({
                     : asaasNeutralizado === "sem_resposta"
                       ? t("delinquentChecking")
                       : t("delinquentPending")}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* SÓ CLIENTES IDEAIS (1124, Fase 3): interruptor no painel, como
+              "Inadimplentes" (a barra não tem espaço para chip). A mesma
+              régua do selo da linha — só o "ICP" sólido; o "ICP?" fica de
+              fora. Oferecido quando a conta tem cliente ideal hoje, ou já
+              ligado, para dar como desligar. */}
+          {(clientesIdeais === "ha" || filtros.clientesIdeais) && (
+            <div>
+              <button
+                type="button"
+                onClick={() => mexer({ clientesIdeais: !filtros.clientesIdeais })}
+                aria-pressed={filtros.clientesIdeais}
+                className={cn(
+                  "inline-flex h-8 w-full items-center gap-2 rounded-md border px-2 text-xs transition-colors",
+                  // `dark:` está inerte no app: cores que servem nos dois
+                  // temas, as do selo (contorno e diamante dourados).
+                  filtros.clientesIdeais
+                    ? "border-yellow-500/60 bg-yellow-400/15 text-foreground hover:bg-yellow-400/25"
+                    : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+              >
+                <Gem className="h-3.5 w-3.5 shrink-0 text-yellow-500" aria-hidden="true" />
+                <span className="truncate">{t("filterIdealClients")}</span>
+              </button>
+              {/* Ligado e sem efeito: a tela diz por quê. */}
+              {filtros.clientesIdeais && clientesIdeais === "conferindo" && (
+                <p className="mt-1 px-0.5 text-[11px] text-muted-foreground">
+                  {t("idealClientsChecking")}
                 </p>
               )}
             </div>

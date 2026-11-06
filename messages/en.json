@@ -213,6 +213,8 @@
       "delinquentDisconnected": "Asaas disconnected — filter has no effect",
       "delinquentChecking": "Checking Asaas… — filter has no effect until then",
       "delinquentPending": "Asaas has not finished syncing — filter has no effect until then",
+      "filterIdealClients": "Ideal clients only",
+      "idealClientsChecking": "Checking ideal clients… — filter has no effect until then",
       "inadimplente": "Delinquent on Asaas: {valor} past due for {dias} day(s)",
       "inadimplenteProrrogado": "Delinquent on Asaas: {valor} (due date extended)",
       "filterOpen": "Open",
@@ -3899,7 +3901,11 @@
     "nuncaRespondeu": "Never replied on WhatsApp",
     "mensagensNossas": "{n, plural, =0 {no messages from us} one {# message from us} other {# messages from us}}",
     "naoSairam": "{n, plural, one {# not sent} other {# not sent}}",
-    "respondeu": "Replied · {n, plural, one {# message from the customer} other {# messages from the customer}}"
+    "respondeu": "Replied · {n, plural, one {# message from the customer} other {# messages from the customer}}",
+    "filtroDoQuadro": "Ideal clients only",
+    "filtroDoQuadroDica": "Shows only the cards with the ICP badge. ICP? is left out.",
+    "filtroDoQuadroCarregando": "Checking ideal clients…",
+    "filtroDoQuadroFalhou": "Could not check ideal clients — the board shows every card."
   },
   "Settings": {
     "pageTitle": "Settings",

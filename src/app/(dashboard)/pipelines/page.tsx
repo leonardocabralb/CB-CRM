@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect, useRef, useCallback } from "react";
+import { Suspense, useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { buscarPaginado } from "@/lib/supabase/paginar";
@@ -82,6 +82,8 @@ import {
 import { gravarRetorno, lerRetorno } from "@/lib/pipelines/retorno";
 import { lerUrlDoFunil } from "@/lib/pipelines/url";
 import { CamposDoCardPopover } from "@/components/pipelines/campos-do-card-popover";
+import { SoClientesIdeais } from "@/components/pipelines/so-clientes-ideais";
+import { useClientesIdeais, useNegociosDeClientesIdeais } from "@/hooks/use-clientes-ideais";
 import { etapasPadrao } from "@/lib/pipelines/etapas-padrao";
 
 // Pipeline creation is admin-class (settings-tier write under
@@ -186,6 +188,12 @@ function PipelinesPageInner() {
    * de lá.
    */
   const limitesDoQuadroRef = useRef<TetosDoQuadro>({ funil: "", porEtapa: {} });
+  /**
+   * "Só clientes ideais" (1124, Fase 3). Estado da PÁGINA porque o
+   * interruptor mora no cabeçalho; volta da conversa pelo ponto de retorno
+   * (o quadro o religa — ver `RetornoDoFunil.soClientesIdeais`).
+   */
+  const [soClientesIdeais, setSoClientesIdeais] = useState(false);
   const salvarRetornoDoQuadro = useCallback(() => {
     const tetos = limitesDoQuadroRef.current;
     gravarRetorno({
@@ -194,8 +202,9 @@ function PipelinesPageInner() {
       scrollTop: quadroRef.current?.closest("main")?.scrollTop ?? 0,
       rolagemDasColunas: rolagemDasColunas(quadroRef.current),
       limites: tetos.funil === selectedPipelineId ? tetos.porEtapa : {},
+      soClientesIdeais,
     });
-  }, [selectedPipelineId]);
+  }, [selectedPipelineId, soClientesIdeais]);
 
   // Automações de funil da conta inteira (Fase 5). Não é por funil de
   // propósito: a regra de gatilho VAZIO vale para toda etapa de todo funil, e
@@ -224,6 +233,26 @@ function PipelinesPageInner() {
   // proibida que sobrevivesse até o efeito rodar mostraria o Desempenho da
   // conta inteira a quem acabou de perder o acesso.
   const vista = vistaVigente(vistaEscolhida, poderesDoFunil);
+
+  // CLIENTE IDEAL (1124): UMA leitura do mapa para a página — o selo dos
+  // cards e o interruptor do cabeçalho. Os negócios só são perguntados com o
+  // interruptor ligado e no Quadro (a lista enxuta não traz o contato).
+  const clientesIdeais = useClientesIdeais();
+  const temClienteIdeal = useMemo(
+    () => clientesIdeais !== null && [...clientesIdeais.values()].includes("ideal"),
+    [clientesIdeais],
+  );
+  const negociosIdeais = useNegociosDeClientesIdeais(
+    clientesIdeais,
+    soClientesIdeais && vista === "leads",
+    deals.length,
+  );
+  const idsIdeais = negociosIdeais.ids;
+  const quantosIdeais = useMemo(
+    () => (idsIdeais ? deals.filter((d) => idsIdeais.has(d.id)).length : null),
+    [deals, idsIdeais],
+  );
+  const alternarSoClientesIdeais = useCallback(() => setSoClientesIdeais((v) => !v), []);
 
   // Dialog / sheet state
   const [newPipelineOpen, setNewPipelineOpen] = useState(false);
@@ -1121,6 +1150,16 @@ function PipelinesPageInner() {
           {vista === "leads" && pipelines.length > 0 && (
             <CamposDoCardPopover campos={campos} onChange={trocarCampos} />
           )}
+          {/* "Só clientes ideais" (1124): só com alguém ideal na conta, ou já
+              ligado (para dar como desligar). */}
+          {vista === "leads" && pipelines.length > 0 && (temClienteIdeal || soClientesIdeais) && (
+            <SoClientesIdeais
+              ligado={soClientesIdeais}
+              onAlternar={alternarSoClientesIdeais}
+              quantos={quantosIdeais}
+              falhou={negociosIdeais.falhou}
+            />
+          )}
           {/* Leads | Automações — as duas leituras do mesmo funil. */}
           {/* Com uma aba só não há o que alternar — a barra viraria um
               botão aceso permanente, como o seletor de canal com uma
@@ -1258,6 +1297,10 @@ function PipelinesPageInner() {
             // mudança, e a grade mostra tudo que a caixa mostrava mais o
             // resto do funil.
             onOpenAutomations={() => setVista("automacoes")}
+            clientesIdeais={clientesIdeais}
+            soClientesIdeais={soClientesIdeais}
+            negociosIdeais={idsIdeais}
+            onRestaurarSoClientesIdeais={setSoClientesIdeais}
           />
         </>
       )}
