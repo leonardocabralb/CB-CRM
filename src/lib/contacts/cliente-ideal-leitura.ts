@@ -6,6 +6,10 @@
 // cara de certo. A função devolve uma linha por contato; a ordem por
 // `contact_id` é pedida de fora também, para as páginas não se sobreporem.
 // `null` = a leitura falhou ("não sei"), nunca lista vazia.
+//
+// `funil` (1125): o QUADRO de um funil pergunta só pelos perfis que valem
+// nele; nulo (caixa de entrada, tela da regra) = os perfis com o recorte de
+// funis deles.
 // ------------------------------------------------------------
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -17,11 +21,14 @@ const PAGINA = 1000;
 export async function lerClientesIdeais(
   supabase: SupabaseClient,
   conta: string,
+  funil: string | null = null,
 ): Promise<ClienteIdeal[] | null> {
   const todos: ClienteIdeal[] = [];
+  // Sem funil, o corpo é o de sempre (`p_funil` tem DEFAULT no banco).
+  const args = funil ? { p_conta: conta, p_funil: funil } : { p_conta: conta };
   for (let de = 0; ; de += PAGINA) {
     const { data, error } = await supabase
-      .rpc('cb_clientes_ideais', { p_conta: conta })
+      .rpc('cb_clientes_ideais', args)
       .order('contact_id')
       .range(de, de + PAGINA - 1);
     if (error) return null;

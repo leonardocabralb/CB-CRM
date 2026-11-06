@@ -246,7 +246,12 @@ function PipelinesPageInner() {
   // CLIENTE IDEAL (1124): UMA leitura do mapa para a página — o selo dos
   // cards e o interruptor do cabeçalho. Os negócios só são perguntados com o
   // interruptor ligado e no Quadro (a lista enxuta não traz o contato).
-  const clientesIdeais = useClientesIdeais();
+  // ⚠️ Do FUNIL aberto (1125, D8): perfil marcado só para o Comercial não
+  // pinta selo nem oferece o interruptor no quadro do Jurídico. E relê a
+  // cada releitura dos cards (`leiturasDosNegocios`): com funis no perfil,
+  // ser cliente ideal depende de TER negócio no funil, e o card criado ou
+  // transferido aqui mudaria o selo só na recarga de 5 min (Codex, PR #469).
+  const clientesIdeais = useClientesIdeais(leiturasDosNegocios, selectedPipelineId || null);
   const temClienteIdeal = useMemo(
     () => clientesIdeais !== null && [...clientesIdeais.values()].includes("ideal"),
     [clientesIdeais],
@@ -255,6 +260,7 @@ function PipelinesPageInner() {
     clientesIdeais,
     soClientesIdeais && vista === "leads",
     leiturasDosNegocios,
+    selectedPipelineId || null,
   );
   const idsIdeais = negociosIdeais.ids;
   const quantosIdeais = useMemo(
