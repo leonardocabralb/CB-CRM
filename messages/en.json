@@ -3905,7 +3905,9 @@
     "filtroDoQuadro": "Ideal clients only",
     "filtroDoQuadroDica": "Shows only the cards with the ICP badge. ICP? is left out.",
     "filtroDoQuadroCarregando": "Checking ideal clients…",
-    "filtroDoQuadroFalhou": "Could not check ideal clients — the board shows every card."
+    "filtroDoQuadroFalhou": "Could not check ideal clients — the board shows every card.",
+    "verPorque": "Show the criteria and the customer's messages",
+    "esconderPorque": "Hide the criteria"
   },
   "Settings": {
     "pageTitle": "Settings",

@@ -22,7 +22,9 @@ qualquer uma é pergunta ao operador.
   personalizados (todos os critérios casam; em cada um, basta uma resposta
   marcada); "ICP?" quando o principal casa e os outros estão em branco; selo
   em qualquer card, perdido inclusive, e borda dourada só no ICP; "respondeu"
-  NÃO é critério, vira retrato no painel (`cliente-ideal.md`).
+  NÃO é critério, vira retrato no painel; no painel, o bloco nasce RECOLHIDO
+  (selo, título e perfil; o porquê abre no clique, 06/11/2026)
+  (`cliente-ideal.md`).
 - Funil comercial: "por período" é o padrão (18/09/2026); taxa acima de 100%
   aparece como é; transferido conta no funil de origem. Degrau `pasta` depois
   do contrato, opcional, e "fechado" o inclui; painel por funil; "custo por

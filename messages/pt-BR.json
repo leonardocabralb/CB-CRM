@@ -3898,7 +3898,9 @@
     "filtroDoQuadro": "Só clientes ideais",
     "filtroDoQuadroDica": "Mostra só os cards com o selo ICP. O ICP? fica de fora.",
     "filtroDoQuadroCarregando": "Conferindo os clientes ideais…",
-    "filtroDoQuadroFalhou": "Não foi possível conferir os clientes ideais — o quadro mostra todos os cards."
+    "filtroDoQuadroFalhou": "Não foi possível conferir os clientes ideais — o quadro mostra todos os cards.",
+    "verPorque": "Ver os critérios e as mensagens do cliente",
+    "esconderPorque": "Esconder os critérios"
   },
   "Settings": {
     "pageTitle": "Configurações",

@@ -70,6 +70,10 @@ Plano vivo: `docs/PLANO-cliente-ideal.md`; decisões em
 - **O porquê no painel** (`BlocoDoClienteIdeal`, abaixo do responsável, em
   qualquer aba) lê `cb_cliente_ideal_do_contato` por contato, carimbado com o
   dono (efeito passivo); carregando ou com falha, não desenha nada.
+- ⚠️ **O bloco nasce RECOLHIDO** (D7, decisão do operador): fechado, uma
+  linha com selo, título e perfil; critérios, "Falta:" e o retrato abrem no
+  clique. O aberto guarda DE QUAL contato (`abertoDe`): o próximo cliente
+  abre fechado, sem remontar o painel (só o último aberto é lembrado).
 
 ### O filtro (Fase 3): caixa de entrada e quadro
 
