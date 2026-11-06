@@ -31,8 +31,9 @@ gatilho "Situação mudou no Atlas" (Fase 4). Plano, fases e decisões do operad
   toda mensagem por `semSegredo`.
 - **A chave é do ESCRITÓRIO**, não da pessoa: gerada pelo admin do Atlas,
   colada uma vez no cartão, guardada cifrada em `cb_atlas_config` (FECHADA ao
-  navegador, sem policy — pino `atlas-1071.test.ts`). Nenhuma rota a devolve,
-  nem mascarada. As permissões também são do escritório, no Atlas: conectar
+  navegador, sem policy — pino `atlas-1071.test.ts`). Dela só saem os 4
+  últimos caracteres (`credencial-das-integracoes.md`, 1127; o "Testar agora"
+  de lá é o antigo "Conferir de novo"). As permissões também são do escritório, no Atlas: conectar
   recusa (`permissoes_faltando`, com a lista) sem Consultar, Criar e
   Atualizar clientes.
 - **Conectar = `whoami`**, que não grava nada no Atlas. Nunca sondar

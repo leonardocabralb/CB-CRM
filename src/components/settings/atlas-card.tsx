@@ -12,13 +12,16 @@ import type { CartaoDoAtlas, ContagemDosVinculos, MudancaNoCartao } from "@/lib/
 import { ESTADOS_NA_FILA, RESULTADOS_DA_MUDANCA } from "@/lib/atlas/gatilho";
 import { cn } from "@/lib/utils";
 
+import { CredencialDaIntegracao } from "./credencial-da-integracao";
 import { SettingsChip } from "./settings-chip";
 
 /**
  * O cartão "Atlas" da aba Integrações (1071; Fase 0 de
  * docs/PLANO-integracao-atlas.md). O admin COLA a chave de API que gerou no
- * Atlas (o campo nasce vazio sempre — nenhuma chave volta da rota); o CRM a
- * prova pelo `whoami` do Atlas, confere as permissões e a guarda cifrada.
+ * Atlas (o campo nasce vazio sempre — da chave só saem os 4 últimos
+ * caracteres, no bloco "Chave guardada", 1127); o CRM a prova pelo `whoami`
+ * do Atlas, confere as permissões e a guarda cifrada. O MESMO campo conecta
+ * e troca a chave; o "Testar agora" do bloco é o antigo "Conferir de novo".
  *
  * Mesmo esqueleto do `zapsign-card.tsx`: só admin chega aqui.
  *
@@ -75,6 +78,13 @@ export const CODIGOS_CONHECIDOS = [
 ] as const;
 
 /**
+ * Os erros que só uma chave nova resolve: com eles o campo já vem aberto. O
+ * `sem_permissao` NÃO: a saída dele é ligar a permissão no Atlas e testar de
+ * novo (a mesma chave).
+ */
+const ERROS_DA_CHAVE = new Set(["chave_invalida", "api_fora_do_plano", "chave_ilegivel"]);
+
+/**
  * As permissões do Atlas que os passos usam. O texto de cada uma é o rótulo
  * que a tela do Atlas mostra (só em português: no `en.json`, o rótulo vai com
  * a tradução ao lado, como os rótulos do painel da Meta). As três últimas são
@@ -106,9 +116,10 @@ export function AtlasCard() {
   const [falhou, setFalhou] = useState(false);
   const [aberto, setAberto] = useState(false);
   const [chave, setChave] = useState("");
+  /** conectado e com o campo da chave nova aberto por "Trocar chave" */
+  const [trocando, setTrocando] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [desconectando, setDesconectando] = useState(false);
-  const [conferindo, setConferindo] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const vivoRef = useRef(true);
   const cartaoRef = useRef<CartaoDoAtlas | null>(null);
@@ -172,6 +183,7 @@ export function AtlasCard() {
         return;
       }
       setChave("");
+      setTrocando(false);
       toast.success(t("atlas.conectado"));
       await carregar();
     } catch {
@@ -179,29 +191,6 @@ export function AtlasCard() {
       if (vivoRef.current) setErro(t("atlas.semMotivo"));
     } finally {
       if (vivoRef.current) setSalvando(false);
-    }
-  };
-
-  // "Conferir de novo": o whoami com a chave guardada — a saída do aviso de
-  // permissão desligada sem colar a chave outra vez (o Atlas a mostra uma vez só).
-  const conferir = async () => {
-    if (conferindo) return;
-    setConferindo(true);
-    try {
-      const res = await fetch("/api/cb/atlas", { method: "PATCH" });
-      const corpo = (await res.json().catch(() => ({}))) as { error?: string; faltando?: string[] };
-      if (res.ok) toast.success(t("atlas.conferidoOk"));
-      else
-        toast.error(
-          corpo.error === "permissoes_faltando" && corpo.faltando?.length
-            ? t("atlas.faltando", { permissoes: corpo.faltando.map(nomeDaPermissao).join(", ") })
-            : t("falha", { motivo: corpo.error ? motivo(corpo.error) : t("atlas.semMotivo") }),
-        );
-      await carregar();
-    } catch {
-      toast.error(t("falha", { motivo: t("atlas.semMotivo") }));
-    } finally {
-      if (vivoRef.current) setConferindo(false);
     }
   };
 
@@ -262,6 +251,56 @@ export function AtlasCard() {
             ? (["err", t("chipErro")] as const)
             : (["muted", t("chipNaoConectado")] as const);
 
+  const conectado = cartao !== null && cartao.estado !== "nao_conectado";
+  const erroDaChave = cartao?.estado === "erro" && cartao.erro !== null && ERROS_DA_CHAVE.has(cartao.erro);
+  const mostrarCampo = erroDaChave || trocando;
+  const campoDaChave = (
+    <div className="grid gap-3 sm:max-w-md">
+      <div className="space-y-1">
+        <Label htmlFor="atlas-chave">{conectado ? t("credencial.campoNova") : t("atlas.campoChave")}</Label>
+        <Input
+          id="atlas-chave"
+          type="password"
+          value={chave}
+          onChange={(e) => setChave(e.target.value)}
+          placeholder={t("atlas.chaveVazia")}
+          autoComplete="off"
+        />
+        <p className="text-xs text-muted-foreground">{t("atlas.chaveDica")}</p>
+        <p className="text-xs text-muted-foreground">{t("atlas.permissoesDica")}</p>
+        {!conectado && <p className="text-xs text-muted-foreground">{t("atlas.permissoesOpcionaisDica")}</p>}
+        {conectado && <p className="text-xs text-muted-foreground">{t("credencial.trocaDica")}</p>}
+      </div>
+      {erro && <p className="text-xs text-destructive">{t("falha", { motivo: erro })}</p>}
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" size="sm" onClick={() => void conectar()} disabled={salvando || !chave.trim()}>
+          {salvando ? t("atlas.conectando") : conectado ? t("credencial.salvarNova") : t("atlas.conectar")}
+        </Button>
+        {anteriores !== null && anteriores > 0 && (
+          <Button type="button" size="sm" variant="outline" onClick={() => void conectar(true)} disabled={salvando || !chave.trim()}>
+            {t("atlas.apagarVinculos", { n: anteriores })}
+          </Button>
+        )}
+        {trocando && !erroDaChave && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={salvando}
+            onClick={() => {
+              setTrocando(false);
+              setChave("");
+              setErro(null);
+              setAnteriores(null);
+            }}
+          >
+            {t("credencial.cancelarTroca")}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="rounded-lg border border-border bg-card">
       <button type="button" onClick={() => setAberto((a) => !a)} aria-expanded={aberto} className="flex w-full items-center gap-3 p-4 text-left">
@@ -286,33 +325,7 @@ export function AtlasCard() {
           ) : cartao.estado === "nao_conectado" ? (
             <>
               <p className="max-w-[62ch] text-muted-foreground">{t("atlas.desc")}</p>
-              <div className="grid gap-3 sm:max-w-md">
-                <div className="space-y-1">
-                  <Label htmlFor="atlas-chave">{t("atlas.campoChave")}</Label>
-                  <Input
-                    id="atlas-chave"
-                    type="password"
-                    value={chave}
-                    onChange={(e) => setChave(e.target.value)}
-                    placeholder={t("atlas.chaveVazia")}
-                    autoComplete="off"
-                  />
-                  <p className="text-xs text-muted-foreground">{t("atlas.chaveDica")}</p>
-                  <p className="text-xs text-muted-foreground">{t("atlas.permissoesDica")}</p>
-                  <p className="text-xs text-muted-foreground">{t("atlas.permissoesOpcionaisDica")}</p>
-                </div>
-                {erro && <p className="text-xs text-destructive">{t("falha", { motivo: erro })}</p>}
-                <div className="flex flex-wrap gap-2">
-                  <Button type="button" size="sm" onClick={() => void conectar()} disabled={salvando || !chave.trim()}>
-                    {salvando ? t("atlas.conectando") : t("atlas.conectar")}
-                  </Button>
-                  {anteriores !== null && anteriores > 0 && (
-                    <Button type="button" size="sm" variant="outline" onClick={() => void conectar(true)} disabled={salvando || !chave.trim()}>
-                      {t("atlas.apagarVinculos", { n: anteriores })}
-                    </Button>
-                  )}
-                </div>
-              </div>
+              {campoDaChave}
             </>
           ) : (
             <>
@@ -321,17 +334,24 @@ export function AtlasCard() {
                   {cartao.escritorio ? t("atlas.escritorio", { nome: cartao.escritorio }) : t("atlas.semEscritorio")}
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {cartao.estado === "erro" && (
-                    <Button type="button" variant="outline" size="sm" onClick={() => void conferir()} disabled={conferindo}>
-                      {conferindo ? t("atlas.conferindo") : t("atlas.conferir")}
-                    </Button>
-                  )}
                   <Button type="button" variant="outline" size="sm" onClick={() => void desconectar()} disabled={desconectando}>
                     {t("atlas.desconectar")}
                   </Button>
                 </div>
               </div>
               {cartao.erro && <p className="text-xs text-destructive">{t("falha", { motivo: motivo(cartao.erro) })}</p>}
+              {/* "Testar agora" é o antigo "Conferir de novo" (o `whoami` com a
+                  chave guardada), agora sempre à mão: é a saída do aviso de
+                  permissão desligada sem colar a chave outra vez. */}
+              <CredencialDaIntegracao
+                de="atlas"
+                versao={cartao}
+                motivo={motivo}
+                aoTestar={() => void carregar()}
+                aoTrocar={() => setTrocando(true)}
+                trocando={mostrarCampo}
+              />
+              {mostrarCampo && <div className="rounded-md border border-border p-3">{campoDaChave}</div>}
               <p className="max-w-[62ch] text-xs text-muted-foreground">{t("atlas.comoFunciona")}</p>
               {/* O nó Atlas das automações: as opcionais não são conferidas
                   aqui (o cartão não guarda o `whoami`) — desligadas, só o

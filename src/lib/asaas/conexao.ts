@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { registrarTeste, type ResultadoDoTeste } from "@/lib/integracoes/credencial";
 import { decrypt, encrypt } from "@/lib/whatsapp/encryption";
 
 import { AsaasError, criarClienteAsaas, type AmbienteDoAsaas, type ClienteAsaas } from "./cliente";
@@ -22,8 +23,8 @@ export function filtroDoCadeadoLivre(agoraMs: number = Date.now()): string {
 
 /**
  * Conectar e desconectar o Asaas — I/O. A chave é TESTADA na hora (uma
- * listagem de UM cliente), gravada cifrada, e nunca mais sai: nenhuma rota
- * a devolve, nem mascarada.
+ * listagem de UM cliente), gravada cifrada, e nunca mais sai inteira: a tela
+ * vê só os 4 últimos caracteres (`src/lib/integracoes/credencial.ts`, 1127).
  *
  * ⚠️ **Só produção.** `conectarAsaas` grava sempre `ambiente = 'producao'`,
  * e a coluna existe para outras instalações. O motivo está na 992 e na §3.7
@@ -180,6 +181,9 @@ export async function conectarAsaas(
       chave_expira_em: opcoes.expiraEm || null,
       status: "conectado",
       last_error: null,
+      // A listagem respondeu agora: gravada E testada (1127).
+      conectado_em: agora,
+      conferido_em: agora,
       created_by: userId,
       updated_at: agora,
     },
@@ -249,6 +253,36 @@ export async function desconectarAsaas(
   const { error } = await admin.from("cb_asaas_config").delete().eq("account_id", accountId);
   if (error) return { ok: false, codigo: "db_error" };
   return webhookNaoApagado ? { ok: true, webhookNaoApagado: true } : { ok: true };
+}
+
+/**
+ * "Testar agora" (1127): a chave GUARDADA ainda responde? UMA listagem de um
+ * cliente (a cota é da conta do Asaas, dividida com outro sistema). Prova a
+ * chave, o ambiente e a permissão de Clientes — não a de Cobranças, por isso
+ * o `sem_permissao` gravado por um ciclo NÃO é limpo daqui (ele pode ser de
+ * `/payments`). O 403 de bloqueio por cota chega como `limite` (`cliente.ts`)
+ * e não mexe em nada. A chave que não decifra já é marcada por
+ * `clienteDaConta`.
+ */
+const MARCA_DO_TESTE = ["chave_invalida", "ambiente_errado", "sem_permissao"];
+const LIMPA_DO_TESTE = ["chave_invalida", "ambiente_errado", "chave_ilegivel"];
+
+export async function conferirChave(
+  admin: SupabaseClient,
+  accountId: string,
+  opcoes: { cliente?: FabricaDeCliente } = {},
+): Promise<ResultadoDoTeste> {
+  const conexao = await clienteDaConta(admin, accountId, opcoes);
+  if (!conexao.ok) return { ok: false, codigo: conexao.codigo };
+  let resultado: ResultadoDoTeste;
+  try {
+    await conexao.cliente.listar("/customers", { limit: 1 });
+    resultado = { ok: true };
+  } catch (e) {
+    resultado = { ok: false, codigo: codigoDaFalha(e) };
+  }
+  await registrarTeste(admin, "cb_asaas_config", accountId, resultado, { marca: MARCA_DO_TESTE, limpa: LIMPA_DO_TESTE });
+  return resultado;
 }
 
 export type ConfigLida =

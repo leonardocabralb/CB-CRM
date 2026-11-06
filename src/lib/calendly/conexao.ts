@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { ehUrlAlcancavel } from "@/lib/cb-channels/webhook-url";
+import { registrarTeste, type ResultadoDoTeste } from "@/lib/integracoes/credencial";
 import { decrypt, encrypt } from "@/lib/whatsapp/encryption";
 
 import { gerarChaveDeAssinatura, gerarTokenDeWebhook } from "./assinatura";
@@ -178,6 +179,9 @@ export async function conectarCalendly(
       webhook_state: assinatura?.estado ?? null,
       status: assinatura ? "conectado" : "erro",
       last_error: assinatura ? null : webhookErro,
+      // O token respondeu em `/users/me` agora: gravado E testado (1127).
+      conectado_em: agora,
+      conferido_em: agora,
       created_by: userId,
       updated_at: agora,
     },
@@ -243,6 +247,42 @@ export async function reassinarWebhook(
       .update({ webhook_uri: null, webhook_scope: null, webhook_state: null, status: "erro", last_error: codigo, updated_at: new Date().toISOString() })
       .eq("account_id", accountId);
     return { ok: false, codigo };
+  }
+}
+
+/**
+ * "Testar agora" (1127): o token GUARDADO ainda responde em `/users/me`? Nada
+ * é gravado no Calendly. Só o erro do TOKEN entra e sai daqui: o de webhook
+ * (`assinatura_incompleta`, plano sem webhooks…) é de outra coisa, e quem o
+ * resolve é o "Reassinar".
+ */
+const CODIGOS_DO_TOKEN = ["token_invalido", "chave_ilegivel"];
+
+export async function conferirToken(
+  admin: SupabaseClient,
+  accountId: string,
+  opcoes: { cliente?: FabricaDeCliente } = {},
+): Promise<ResultadoDoTeste> {
+  const { data, error } = await admin.from("cb_calendly_config").select("access_token").eq("account_id", accountId).maybeSingle();
+  if (error) return { ok: false, codigo: "db_error" };
+  if (!data) return { ok: false, codigo: "nao_conectado" };
+  const resultado = await testarTokenGuardado(data.access_token, opcoes.cliente ?? criarClienteCalendly);
+  await registrarTeste(admin, "cb_calendly_config", accountId, resultado, { marca: CODIGOS_DO_TOKEN, limpa: CODIGOS_DO_TOKEN });
+  return resultado;
+}
+
+async function testarTokenGuardado(cifrado: unknown, fabrica: FabricaDeCliente): Promise<ResultadoDoTeste> {
+  let token: string;
+  try {
+    token = decrypt(cifrado as string);
+  } catch {
+    return { ok: false, codigo: "chave_ilegivel" };
+  }
+  try {
+    await fabrica(token).usuarioAtual();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, codigo: codigoDe(e) };
   }
 }
 

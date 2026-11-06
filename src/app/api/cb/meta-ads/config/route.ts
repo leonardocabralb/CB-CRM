@@ -52,6 +52,9 @@ export async function PUT(request: Request) {
         status: "conectado",
         last_error: null,
         last_sync_at: null,
+        // O token leu a conta agora: gravado E testado (1127).
+        conectado_em: agora,
+        conferido_em: agora,
         created_by: ctx.userId,
         updated_at: agora,
       },

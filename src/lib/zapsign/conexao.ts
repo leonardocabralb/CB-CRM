@@ -275,6 +275,31 @@ export async function desconectarZapSign(
 }
 
 /**
+ * "Testar agora" (1127): o token GUARDADO ainda responde? A mesma prova da
+ * conexão (`GET /templates/?page=1`, nada é gravado no ZapSign), e o
+ * resultado vai para `registrarConferencia`, a régua de sempre.
+ */
+export async function conferirToken(
+  admin: SupabaseClient,
+  accountId: string,
+  opcoes: { cliente?: FabricaDeCliente } = {},
+): Promise<{ ok: true } | { ok: false; codigo: CodigoDaConexao }> {
+  const { data, error } = await admin.from("cb_zapsign_config").select("api_token").eq("account_id", accountId).maybeSingle();
+  if (error) return { ok: false, codigo: "db_error" };
+  if (!data) return { ok: false, codigo: "nao_conectado" };
+  const token = decifrar(data.api_token);
+  if (!token) return { ok: false, codigo: "token_ilegivel" };
+  try {
+    await fabricaDe(opcoes)(token).modelos(1);
+  } catch (e) {
+    await registrarConferencia(admin, accountId, codigoDe(e));
+    return { ok: false, codigo: codigoDe(e) };
+  }
+  await registrarConferencia(admin, accountId, null);
+  return { ok: true };
+}
+
+/**
  * O token ainda vale? Chamada quando a tela lista os modelos: 401/403 marca a
  * conexão em erro (`token_invalido`); sucesso carimba `conferido_em` e limpa
  * SÓ esse código — outro erro gravado é de outra coisa. Nunca lança.

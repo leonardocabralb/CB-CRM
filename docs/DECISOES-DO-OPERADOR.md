@@ -173,3 +173,8 @@ qualquer uma é pergunta ao operador.
   a chave; validade sugerida de 90 dias só com funcionário (a de integração
   sugere "sem validade"); sem registro das chamadas por enquanto; sem MCP
   (`api-v1.md`).
+- Chave de integração na tela (06/11/2026): cada cartão de Integrações
+  (tl;dv, Calendly, Meta Ads, Asaas, ZapSign, Atlas e as chaves de IA) mostra
+  os 4 ÚLTIMOS caracteres da chave guardada, quando e por quem foi gravada,
+  "Testar agora" e "Trocar chave" sem desconectar — antes nenhuma rota
+  devolvia a chave, nem mascarada (`credencial-das-integracoes.md`, 1127).

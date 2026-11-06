@@ -3,18 +3,26 @@ import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { ehUrlAlcancavel } from "@/lib/cb-channels/webhook-url";
-import { encrypt } from "@/lib/whatsapp/encryption";
+import { registrarTeste, type ResultadoDoTeste } from "@/lib/integracoes/credencial";
+import { decrypt, encrypt } from "@/lib/whatsapp/encryption";
 
 import { criarClienteTldv, TldvError, type ClienteTldv } from "./cliente";
 
 /**
- * Conectar e desconectar o tl;dv — I/O. A chave é TESTADA na hora (uma
- * listagem de uma reunião), gravada cifrada, e a conta ganha o token de
+ * Conectar, testar e desconectar o tl;dv — I/O. A chave é TESTADA na hora
+ * (uma listagem de uma reunião), gravada cifrada, e a conta ganha o token de
  * webhook que o operador cola no painel do tl;dv. Reconectar (trocar a
  * chave) MANTÉM o token: a URL já colada lá continua valendo.
  */
 
 export type CodigoDaConexao = "chave_invalida" | "sem_permissao" | "limite" | "rede" | "tldv_error" | "db_error" | "nao_conectado";
+
+/**
+ * O que o "Testar agora" prova (1127): a listagem respondeu = a chave vale e
+ * tem acesso à API. `sem_permissao` NA LISTAGEM é a chave sem API (plano); o
+ * 403 da TRANSCRIÇÃO é por reunião e nunca chega aqui.
+ */
+const CODIGOS_DA_CHAVE = ["chave_invalida", "sem_permissao", "chave_ilegivel"];
 
 export type ResultadoDaConexao = { ok: true } | { ok: false; codigo: CodigoDaConexao };
 
@@ -66,6 +74,8 @@ export async function conectarTldv(
       webhook_token: (existente?.webhook_token as string | undefined) ?? gerarTokenDeWebhook(),
       status: "conectado",
       last_error: null,
+      conectado_em: agora,
+      conferido_em: agora,
       created_by: userId,
       updated_at: agora,
     },
@@ -73,6 +83,40 @@ export async function conectarTldv(
   );
   if (error) return { ok: false, codigo: "db_error" };
   return { ok: true };
+}
+
+/**
+ * "Testar agora" (1127): a chave GUARDADA ainda responde? Uma listagem de uma
+ * reunião; nada é gravado no tl;dv. O resultado vai para a conexão pela régua
+ * de `registrarTeste`.
+ */
+export async function conferirTldv(
+  admin: SupabaseClient,
+  accountId: string,
+  opcoes: { cliente?: FabricaDeCliente } = {},
+): Promise<ResultadoDoTeste> {
+  const { data, error } = await admin.from("cb_tldv_config").select("api_key").eq("account_id", accountId).maybeSingle();
+  if (error) return { ok: false, codigo: "db_error" };
+  if (!data) return { ok: false, codigo: "nao_conectado" };
+  const resultado = await testarChaveGuardada(data.api_key, opcoes.cliente ?? criarClienteTldv);
+  await registrarTeste(admin, "cb_tldv_config", accountId, resultado, { marca: CODIGOS_DA_CHAVE, limpa: CODIGOS_DA_CHAVE });
+  return resultado;
+}
+
+async function testarChaveGuardada(cifrada: unknown, fabrica: FabricaDeCliente): Promise<ResultadoDoTeste> {
+  let chave: string;
+  try {
+    chave = decrypt(cifrada as string);
+  } catch {
+    return { ok: false, codigo: "chave_ilegivel" };
+  }
+  try {
+    await fabrica(chave).listarReunioes({ porPagina: 1 });
+    return { ok: true };
+  } catch (e) {
+    const codigo = e instanceof TldvError ? e.codigo : "tldv_error";
+    return { ok: false, codigo: codigo === "nao_encontrado" ? "tldv_error" : codigo };
+  }
 }
 
 /** Apaga a config. As reuniões já importadas FICAM — são histórico do cliente. */
