@@ -99,7 +99,7 @@ export async function conferirTldv(
   if (error) return { ok: false, codigo: "db_error" };
   if (!data) return { ok: false, codigo: "nao_conectado" };
   const resultado = await testarChaveGuardada(data.api_key, opcoes.cliente ?? criarClienteTldv);
-  await registrarTeste(admin, "cb_tldv_config", accountId, resultado, { marca: CODIGOS_DA_CHAVE, limpa: CODIGOS_DA_CHAVE });
+  await registrarTeste(admin, "cb_tldv_config", accountId, resultado, { marca: CODIGOS_DA_CHAVE, limpa: CODIGOS_DA_CHAVE }, { coluna: "api_key", valor: String(data.api_key) });
   return resultado;
 }
 

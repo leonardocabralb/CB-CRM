@@ -346,7 +346,12 @@ export function AtlasCard() {
               <CredencialDaIntegracao
                 de="atlas"
                 versao={cartao}
-                motivo={motivo}
+                // Diz QUAIS permissões faltam, como o antigo "Conferir de novo".
+                motivo={(codigo, { faltando }) =>
+                  codigo === "permissoes_faltando" && faltando?.length
+                    ? t("atlas.faltando", { permissoes: faltando.map(nomeDaPermissao).join(", ") })
+                    : motivo(codigo)
+                }
                 aoTestar={() => void carregar()}
                 aoTrocar={() => setTrocando(true)}
                 trocando={mostrarCampo}

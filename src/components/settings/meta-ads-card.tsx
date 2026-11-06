@@ -147,9 +147,19 @@ export function MetaAdsCard() {
       const novas = corpo.contas;
       setLista({ de, contas: novas });
       // Buscando de novo, a escolha feita continua se a conta ainda veio.
-      // Senão: uma conta só já vem escolhida; mais de uma, o operador escolhe.
+      // Senão, na TROCA do token, a conta já conectada vem escolhida (1127):
+      // "Trocar chave" não pode virar troca de conta por um clique distraído
+      // (o PUT grava a conta e zera a sincronização). Senão: uma conta só já
+      // vem escolhida; mais de uma, o operador escolhe.
+      const daConexao = dadosRef.current?.cartao.conta?.id ?? null;
       setContaEscolhida((atual) =>
-        novas.some((c) => c.id === atual) ? atual : novas.length === 1 ? novas[0].id : "",
+        novas.some((c) => c.id === atual)
+          ? atual
+          : daConexao && novas.some((c) => c.id === daConexao)
+            ? daConexao
+            : novas.length === 1
+              ? novas[0].id
+              : "",
       );
     } catch {
       if (vivoRef.current) setErro(motivo("rede"));

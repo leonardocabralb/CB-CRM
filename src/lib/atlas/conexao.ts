@@ -11,7 +11,8 @@ import { ambienteDoAtlas, noAmbiente } from "./enderecos";
  * Conectar = provar a chave com o `whoami` do Atlas (SÓ LEITURA: nada é
  * gravado lá), conferir que as permissões que o passo "Criar cliente no
  * Atlas" usa estão ligadas no escritório, e só então gravar a chave CIFRADA.
- * A chave nunca volta por rota nenhuma, nem mascarada.
+ * A chave nunca volta inteira por rota nenhuma: a tela vê só os 4 últimos
+ * caracteres (`src/lib/integracoes/credencial.ts`, 1127).
  *
  * ⚠️ Chave de OUTRO escritório do Atlas é RECUSADA enquanto houver fichas
  * ligadas, NESTE ambiente, a clientes do escritório anterior

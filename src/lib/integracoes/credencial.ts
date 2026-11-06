@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { ambienteDoAtlas, noAmbiente } from "@/lib/atlas/enderecos";
 import { decrypt } from "@/lib/whatsapp/encryption";
 
 /**
@@ -100,11 +101,14 @@ export async function lerCredencial(
   de: Integracao,
 ): Promise<Credencial | null | "db_error"> {
   const fonte = FONTES[de];
-  const { data, error } = await admin
+  const consulta = admin
     .from(fonte.tabela)
     .select(`${fonte.coluna}, conectado_em, conferido_em, created_by`)
-    .eq("account_id", accountId)
-    .maybeSingle();
+    .eq("account_id", accountId);
+  // ⚠️ Atlas: só a conexão DESTE ambiente (`integracoes-atlas.md`, 1072): a
+  // instância apontada para o staging não decifra a chave da produção nem para
+  // mostrar o final.
+  const { data, error } = await (de === "atlas" ? noAmbiente(consulta, ambienteDoAtlas()) : consulta).maybeSingle();
   if (error) return "db_error";
   if (!data) return null;
   const linha = data as unknown as Record<string, unknown>;
@@ -132,6 +136,11 @@ export type ResultadoDoTeste = { ok: true } | { ok: false; codigo: string; falta
  * - rede, limite, erro do provedor → nada muda: não é resposta sobre a chave.
  * Nunca lança; falha de escrita fica no log (o resultado do teste já é a
  * resposta que a tela precisa).
+ *
+ * ⚠️ `cerca`: a coluna da chave e o texto cifrado que o teste LEU. Toda
+ * escrita vai cercada por ele: trocada a chave no meio do teste, o 401 da
+ * chave ANTIGA não marca a conexão NOVA em erro (e nem o sucesso dela carimba
+ * a nova como testada) — a cerca de posse de sempre (CLAUDE.md 8e).
  */
 export async function registrarTeste(
   admin: SupabaseClient,
@@ -139,24 +148,21 @@ export async function registrarTeste(
   accountId: string,
   resultado: ResultadoDoTeste,
   codigos: { marca: readonly string[]; limpa: readonly string[] },
+  cerca: { coluna: string; valor: string },
 ): Promise<void> {
   const agora = new Date().toISOString();
+  const daChaveTestada = (patch: Record<string, unknown>) =>
+    admin.from(tabela).update(patch).eq("account_id", accountId).eq(cerca.coluna, cerca.valor);
   if (resultado.ok) {
-    const { error } = await admin.from(tabela).update({ conferido_em: agora }).eq("account_id", accountId);
+    const { error } = await daChaveTestada({ conferido_em: agora });
     if (error) console.error(`[credencial] ${tabela}: não foi possível carimbar o teste:`, error.message);
-    const { error: erroLimpeza } = await admin
-      .from(tabela)
-      .update({ status: "conectado", last_error: null, updated_at: agora })
-      .eq("account_id", accountId)
+    const { error: erroLimpeza } = await daChaveTestada({ status: "conectado", last_error: null, updated_at: agora })
       .eq("status", "erro")
       .in("last_error", [...codigos.limpa]);
     if (erroLimpeza) console.error(`[credencial] ${tabela}: não foi possível limpar o erro da chave:`, erroLimpeza.message);
     return;
   }
   if (!codigos.marca.includes(resultado.codigo)) return;
-  const { error } = await admin
-    .from(tabela)
-    .update({ status: "erro", last_error: resultado.codigo, updated_at: agora })
-    .eq("account_id", accountId);
+  const { error } = await daChaveTestada({ status: "erro", last_error: resultado.codigo, updated_at: agora });
   if (error) console.error(`[credencial] ${tabela}: não foi possível marcar a chave recusada:`, error.message);
 }

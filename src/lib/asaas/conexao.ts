@@ -272,6 +272,10 @@ export async function conferirChave(
   accountId: string,
   opcoes: { cliente?: FabricaDeCliente } = {},
 ): Promise<ResultadoDoTeste> {
+  // A cifra que o teste usa é a CERCA das escritas (`registrarTeste`).
+  const { data: lida, error } = await admin.from("cb_asaas_config").select("api_key").eq("account_id", accountId).maybeSingle();
+  if (error) return { ok: false, codigo: "db_error" };
+  if (!lida) return { ok: false, codigo: "nao_conectado" };
   const conexao = await clienteDaConta(admin, accountId, opcoes);
   if (!conexao.ok) return { ok: false, codigo: conexao.codigo };
   let resultado: ResultadoDoTeste;
@@ -281,7 +285,7 @@ export async function conferirChave(
   } catch (e) {
     resultado = { ok: false, codigo: codigoDaFalha(e) };
   }
-  await registrarTeste(admin, "cb_asaas_config", accountId, resultado, { marca: MARCA_DO_TESTE, limpa: LIMPA_DO_TESTE });
+  await registrarTeste(admin, "cb_asaas_config", accountId, resultado, { marca: MARCA_DO_TESTE, limpa: LIMPA_DO_TESTE }, { coluna: "api_key", valor: String(lida.api_key) });
   return resultado;
 }
 

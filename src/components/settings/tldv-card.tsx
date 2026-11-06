@@ -24,8 +24,8 @@ import { SettingsChip } from "./settings-chip";
  * o cliente de cada uma, que o operador vincula aqui quando o e-mail do
  * convidado não bastou.
  *
- * Só admin chega aqui (a aba inteira é admin). Nenhuma chave volta da rota;
- * o campo nasce vazio sempre.
+ * Só admin chega aqui (a aba inteira é admin). Da chave só saem os 4 últimos
+ * caracteres (o bloco "Chave guardada", 1127); o campo nasce vazio sempre.
  *
  * ⚠️ O MESMO campo conecta e TROCA a chave (o PUT faz upsert e mantém o
  * token do webhook). Em erro ele já vem aberto; conectado, abre por "Trocar

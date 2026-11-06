@@ -4659,7 +4659,7 @@
         "testar": "Test now",
         "testando": "Testing…",
         "testeOk": "The key responded just now.",
-        "testeFalhou": "The key did not respond: {motivo}.",
+        "testeFalhou": "The test did not pass: {motivo}.",
         "testeMuitoSeguido": "Too many tests in a row. Wait a minute and try again.",
         "testeSemResposta": "Could not test right now. Check your connection and try again.",
         "trocar": "Replace key",

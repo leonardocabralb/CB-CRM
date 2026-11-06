@@ -34,7 +34,8 @@ async function lerDaRota(de: string): Promise<{ credencial: Credencial | null } 
  * - `versao`: muda quando o cartão relê o estado dele (conectou, trocou,
  *   sincronizou) — o bloco relê junto.
  * - `motivo`: a tradução do código de falha, do PRÓPRIO cartão (cada
- *   integração tem os seus códigos).
+ *   integração tem os seus códigos); recebe também o `faltando` da resposta
+ *   (as permissões do Atlas que faltam, para dizer QUAIS).
  * - `aoTestar`: o cartão relê o estado (o teste pode ter tirado ou posto a
  *   conexão em erro).
  * - `aoTrocar`: abre o campo da chave no cartão; ausente = sem o botão.
@@ -52,7 +53,7 @@ export function CredencialDaIntegracao({
 }: {
   de: string;
   versao?: unknown;
-  motivo?: (codigo: string) => string;
+  motivo?: (codigo: string, detalhe: { faltando?: string[] }) => string;
   aoTestar?: () => void;
   aoTrocar?: () => void;
   trocando?: boolean;
@@ -96,13 +97,16 @@ export function CredencialDaIntegracao({
     setResultado(null);
     try {
       const res = await fetch(`/api/cb/integracoes/credencial?de=${encodeURIComponent(de)}`, { method: "POST" });
-      const corpo = (await res.json().catch(() => ({}))) as { error?: string };
+      const corpo = (await res.json().catch(() => ({}))) as { error?: string; faltando?: unknown };
       if (!vivoRef.current) return;
       if (res.ok) setResultado({ de: alvo, ok: true, texto: t("credencial.testeOk") });
       else if (res.status === 429) setResultado({ de: alvo, ok: false, texto: t("credencial.testeMuitoSeguido") });
       else {
         const codigo = corpo.error ?? "";
-        setResultado({ de: alvo, ok: false, texto: t("credencial.testeFalhou", { motivo: motivo ? motivo(codigo) : codigo }) });
+        const faltando = Array.isArray(corpo.faltando) ? corpo.faltando.filter((p): p is string => typeof p === "string") : undefined;
+        // O ponto final é da frase do bloco: o do motivo sai, senão ficam dois.
+        const texto = (motivo ? motivo(codigo, { faltando }) : codigo).trim().replace(/\.$/, "");
+        setResultado({ de: alvo, ok: false, texto: t("credencial.testeFalhou", { motivo: texto }) });
       }
       await carregar();
       aoTestar?.();

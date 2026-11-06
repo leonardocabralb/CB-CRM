@@ -13,11 +13,11 @@ integração desconectada, e conectada não havia como saber QUAL chave estava
 guardada, desde quando, nem testá-la. Trocar exigia "Desconectar", que em
 algumas integrações refaz o webhook.
 
-## O que foi feito (branch `fix/tldv-trocar-chave`)
+## O que foi feito (branch `feat/credencial-das-integracoes`)
 
 | Peça | Onde |
 | --- | --- |
-| Migration ADITIVA: `conectado_em` e `conferido_em` em tl;dv, Calendly, Meta Ads e Asaas (Atlas e ZapSign já tinham) | `supabase/migrations/1127_cb_credencial_das_integracoes.sql` + pino |
+| Migration ADITIVA: `conectado_em` e `conferido_em` em tl;dv, Calendly, Meta Ads e Asaas (Atlas e ZapSign já tinham), e `chave_gravada_em` em `cb_ia_chaves` | `supabase/migrations/1127_cb_credencial_das_integracoes.sql` + pino |
 | Os 4 últimos caracteres, quem gravou, a régua do teste | `src/lib/integracoes/credencial.ts` (+ teste) |
 | "Testar agora" com a chave guardada, por integração | `conferirTldv`, `conferirToken` (Calendly e ZapSign), `conferirChave` (Asaas), `conferirMetaAds` (`src/lib/meta-ads/conexao.ts`, novo), `conferirConexao` (Atlas, já existia) |
 | Rota única: GET (a credencial) e POST (o teste) | `src/app/api/cb/integracoes/credencial/route.ts` |
@@ -35,8 +35,14 @@ algumas integrações refaz o webhook.
 - **D2 — Meta Ads e chaves de IA entram junto** (decisão do operador).
 - **D3 — data de quem já está conectado**: `NULL`, "data não registrada". A
   data da chave atual não existe em lugar nenhum (`created_at` é a da
-  primeira conexão).
-- **D4 — o teste só limpa o erro que prova resolvido** (ver a regra).
+  primeira conexão). Nas chaves de IA idem: `updated_at` é o dia da cópia da
+  1047, com o autor da config antiga — daí a coluna própria
+  `chave_gravada_em` (revisão do PR).
+- **D4 — o teste só limpa o erro que prova resolvido** e leva a cerca da
+  cifra lida (ver a regra).
+- **D5 — Calendly com o token antigo revogado**: a troca gera URL de webhook
+  NOVA quando a assinatura antiga não pôde ser apagada (revisão do PR: a
+  mesma URL travaria a assinatura nova e mataria a entrega por 24 h).
 
 ## Falta
 

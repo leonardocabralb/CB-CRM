@@ -24,9 +24,14 @@ describe('1127 — as colunas da credencial', () => {
     });
   }
 
+  it('cb_ia_chaves ganha chave_gravada_em (o updated_at é o dia da cópia da 1047)', () => {
+    expect(codigo).toMatch(/ALTER TABLE public\.cb_ia_chaves\s+ADD COLUMN IF NOT EXISTS chave_gravada_em timestamptz;/);
+    expect(codigo).toContain("table_name = 'cb_ia_chaves' AND column_name = 'chave_gravada_em'");
+  });
+
   it('⚠️ sem DEFAULT: a data da chave atual não existe em lugar nenhum, e inventá-la mentiria na tela', () => {
-    expect(codigo).not.toMatch(/conectado_em timestamptz[^,;]*DEFAULT/i);
-    expect(codigo).not.toMatch(/UPDATE public\.cb_\w+_config/i);
+    expect(codigo).not.toMatch(/(conectado_em|chave_gravada_em) timestamptz[^,;]*DEFAULT/i);
+    expect(codigo).not.toMatch(/UPDATE public\.cb_\w+/i);
   });
 
   it('⚠️ as tabelas seguem fechadas ao navegador: nada é concedido a anon nem a authenticated', () => {

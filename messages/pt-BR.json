@@ -4652,7 +4652,7 @@
         "testar": "Testar agora",
         "testando": "Testando…",
         "testeOk": "A chave respondeu agora.",
-        "testeFalhou": "A chave não respondeu: {motivo}.",
+        "testeFalhou": "O teste não passou: {motivo}.",
         "testeMuitoSeguido": "Muitos testes seguidos. Espere um minuto e tente de novo.",
         "testeSemResposta": "Não foi possível testar agora. Confira a sua conexão e tente de novo.",
         "trocar": "Trocar chave",

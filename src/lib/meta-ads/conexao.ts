@@ -30,7 +30,7 @@ export async function conferirMetaAds(
   if (error) return { ok: false, codigo: "db_error" };
   if (!data) return { ok: false, codigo: "nao_conectado" };
   const resultado = await testarTokenGuardado(data.access_token, String(data.ad_account_id), opcoes.cliente ?? ((t) => criarClienteMeta(t)));
-  await registrarTeste(admin, "cb_meta_ads_config", accountId, resultado, { marca: CODIGOS_DO_TOKEN, limpa: CODIGOS_DO_TOKEN });
+  await registrarTeste(admin, "cb_meta_ads_config", accountId, resultado, { marca: CODIGOS_DO_TOKEN, limpa: CODIGOS_DO_TOKEN }, { coluna: "access_token", valor: String(data.access_token) });
   return resultado;
 }
 

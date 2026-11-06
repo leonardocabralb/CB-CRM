@@ -72,19 +72,24 @@ function dubleDoBanco() {
 }
 
 const CODIGOS = { marca: ["chave_invalida", "chave_ilegivel"], limpa: ["chave_invalida", "chave_ilegivel"] };
+const CERCA = { coluna: "api_key", valor: "cifra-ficticia-lida" };
+const DA_CHAVE_TESTADA: [string, string, unknown][] = [
+  ["eq", "account_id", "conta-1"],
+  ["eq", "api_key", "cifra-ficticia-lida"],
+];
 
 describe("registrarTeste — o que o 'Testar agora' grava na conexão", () => {
   it("respondeu: carimba conferido_em e só limpa o erro que o teste PROVA resolvido", async () => {
     const { admin, escritas } = dubleDoBanco();
-    await registrarTeste(admin, "cb_tldv_config", "conta-1", { ok: true }, CODIGOS);
+    await registrarTeste(admin, "cb_tldv_config", "conta-1", { ok: true }, CODIGOS, CERCA);
     expect(escritas).toHaveLength(2);
     expect(Object.keys(escritas[0].patch)).toEqual(["conferido_em"]);
-    expect(escritas[0].filtros).toEqual([["eq", "account_id", "conta-1"]]);
+    expect(escritas[0].filtros).toEqual(DA_CHAVE_TESTADA);
     // ⚠️ A volta a "conectado" é CERCADA: erro de rede de uma sincronização
     // (outra coisa) não se apaga de carona.
     expect(escritas[1].patch).toMatchObject({ status: "conectado", last_error: null });
     expect(escritas[1].filtros).toEqual([
-      ["eq", "account_id", "conta-1"],
+      ...DA_CHAVE_TESTADA,
       ["eq", "status", "erro"],
       ["in", "last_error", ["chave_invalida", "chave_ilegivel"]],
     ]);
@@ -92,18 +97,43 @@ describe("registrarTeste — o que o 'Testar agora' grava na conexão", () => {
 
   it("recusou por causa da chave: a conexão vai a erro com o código", async () => {
     const { admin, escritas } = dubleDoBanco();
-    await registrarTeste(admin, "cb_tldv_config", "conta-1", { ok: false, codigo: "chave_invalida" }, CODIGOS);
+    await registrarTeste(admin, "cb_tldv_config", "conta-1", { ok: false, codigo: "chave_invalida" }, CODIGOS, CERCA);
     expect(escritas).toEqual([
-      { tabela: "cb_tldv_config", patch: expect.objectContaining({ status: "erro", last_error: "chave_invalida" }), filtros: [["eq", "account_id", "conta-1"]] },
+      { tabela: "cb_tldv_config", patch: expect.objectContaining({ status: "erro", last_error: "chave_invalida" }), filtros: DA_CHAVE_TESTADA },
     ]);
+  });
+
+  it("⚠️ toda escrita leva a CERCA da cifra lida: trocada a chave no meio, o 401 da antiga não marca a nova", async () => {
+    const { admin, escritas } = dubleDoBanco();
+    await registrarTeste(admin, "cb_tldv_config", "conta-1", { ok: false, codigo: "chave_invalida" }, CODIGOS, CERCA);
+    await registrarTeste(admin, "cb_tldv_config", "conta-1", { ok: true }, CODIGOS, CERCA);
+    for (const e of escritas) expect(e.filtros).toContainEqual(["eq", "api_key", "cifra-ficticia-lida"]);
   });
 
   it("rede, limite ou erro do provedor não dizem nada sobre a chave: nada muda", async () => {
     const { admin, escritas } = dubleDoBanco();
     for (const codigo of ["rede", "limite", "tldv_error", "db_error"]) {
-      await registrarTeste(admin, "cb_tldv_config", "conta-1", { ok: false, codigo }, CODIGOS);
+      await registrarTeste(admin, "cb_tldv_config", "conta-1", { ok: false, codigo }, CODIGOS, CERCA);
     }
     expect(escritas).toEqual([]);
+  });
+});
+
+// Pino: a data da chave de IA vem da coluna da 1127, nunca de `updated_at` —
+// a 1047 copiou as chaves com `now()` e o autor da config antiga, e a tela
+// diria "gravada no dia da migration por quem criou a config".
+describe("chaves de IA: 'gravada em' é chave_gravada_em", () => {
+  const fonte = fs.readFileSync(path.resolve(__dirname, "../ia-chaves/repo.ts"), "utf8");
+  const credencial = fonte.slice(fonte.indexOf("export async function credencialDoProvedor"), fonte.indexOf("export async function gravarChave"));
+  const gravar = fonte.slice(fonte.indexOf("export async function gravarChave"));
+
+  it("credencialDoProvedor lê chave_gravada_em e não updated_at", () => {
+    expect(credencial).toMatch(/select\('api_key, chave_gravada_em, atualizada_por'\)/);
+    expect(credencial).not.toMatch(/updated_at/);
+  });
+
+  it("gravarChave carimba chave_gravada_em", () => {
+    expect(gravar).toMatch(/chave_gravada_em: agora/);
   });
 });
 

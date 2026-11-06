@@ -158,26 +158,32 @@ export async function lerEstado(accountId: string): Promise<EstadoDaChave[]> {
 
 /**
  * O bloco "Chave guardada" do cartão do provedor (1127): os 4 últimos
- * caracteres, quando foi gravada (`updated_at` só muda em `gravarChave`) e o
- * id de quem gravou. `null` = não há chave. Erro de leitura lança, como o
- * resto do repositório.
+ * caracteres, quando foi gravada e o id de quem gravou. `null` = não há chave.
+ * Erro de leitura lança, como o resto do repositório.
+ *
+ * ⚠️ A data é `chave_gravada_em` (só `gravarChave` a escreve), NUNCA
+ * `updated_at`: a 1047 copiou as chaves com `now()` e o autor da linha
+ * antiga de `ai_configs`, e a tela diria "gravada no dia da migration por
+ * quem criou a config". Sem a coluna (chave anterior à 1127), nem data nem
+ * autor são afirmados.
  */
 export async function credencialDoProvedor(
   accountId: string,
   provedor: AiProvider,
-): Promise<{ final: string | null; ilegivel: boolean; gravadaEm: string; autorId: string | null } | null> {
+): Promise<{ final: string | null; ilegivel: boolean; gravadaEm: string | null; autorId: string | null } | null> {
   const { data, error } = await supabaseAdmin()
     .from('cb_ia_chaves')
-    .select('api_key, updated_at, atualizada_por')
+    .select('api_key, chave_gravada_em, atualizada_por')
     .eq('account_id', accountId)
     .eq('provedor', provedor)
     .maybeSingle()
   if (error) throw new Error(`[ia-chaves] leitura da credencial falhou: ${error.message}`)
   if (!data?.api_key) return null
+  const gravadaEm = typeof data.chave_gravada_em === 'string' ? data.chave_gravada_em : null
   return {
     ...finalDaCifrada(data.api_key),
-    gravadaEm: data.updated_at as string,
-    autorId: typeof data.atualizada_por === 'string' ? data.atualizada_por : null,
+    gravadaEm,
+    autorId: gravadaEm && typeof data.atualizada_por === 'string' ? data.atualizada_por : null,
   }
 }
 
@@ -237,6 +243,8 @@ export async function gravarChave(
         ...(soDaBase ? { embeddings_api_key: cifradaNova } : {}),
         atualizada_por: userId,
         updated_at: agora,
+        // O "gravada em" do bloco da tela (1127): só daqui.
+        chave_gravada_em: agora,
       },
       { onConflict: 'account_id,provedor' },
     )

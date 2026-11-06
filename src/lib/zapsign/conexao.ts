@@ -288,7 +288,18 @@ export async function conferirToken(
   if (error) return { ok: false, codigo: "db_error" };
   if (!data) return { ok: false, codigo: "nao_conectado" };
   const token = decifrar(data.api_token);
-  if (!token) return { ok: false, codigo: "token_ilegivel" };
+  if (!token) {
+    // Marca, como as outras integrações (`chave_ilegivel`): sem isto o cartão
+    // seguia verde e o campo do token não abria sozinho. Cercado pela cifra
+    // lida: uma troca no meio não é marcada.
+    const { error: erroMarca } = await admin
+      .from("cb_zapsign_config")
+      .update({ status: "erro", last_error: "token_ilegivel", updated_at: new Date().toISOString() })
+      .eq("account_id", accountId)
+      .eq("api_token", String(data.api_token));
+    if (erroMarca) console.error("[zapsign] não foi possível marcar o token ilegível:", erroMarca.message);
+    return { ok: false, codigo: "token_ilegivel" };
+  }
   try {
     await fabricaDe(opcoes)(token).modelos(1);
   } catch (e) {

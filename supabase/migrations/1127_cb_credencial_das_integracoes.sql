@@ -7,7 +7,8 @@
 -- foi gravada, por QUEM, e quando foi testada pela última vez — com "Testar
 -- agora" (a chave guardada, uma leitura só) e "Trocar chave" (sem
 -- desconectar). O Atlas e o ZapSign já guardavam as duas datas (1071/1057);
--- tl;dv, Calendly, Meta Ads e Asaas ganham as MESMAS colunas aqui:
+-- tl;dv, Calendly, Meta Ads e Asaas ganham as MESMAS colunas aqui (e as
+-- chaves de IA, `cb_ia_chaves.chave_gravada_em` — ver abaixo):
 --   conectado_em  quando a chave ATUAL foi gravada (toda conexão e toda
 --                 troca reescrevem)
 --   conferido_em  a última vez que a chave guardada respondeu (ao gravar e
@@ -43,6 +44,15 @@ ALTER TABLE public.cb_asaas_config
   ADD COLUMN IF NOT EXISTS conectado_em timestamptz,
   ADD COLUMN IF NOT EXISTS conferido_em timestamptz;
 
+-- As chaves de IA (1047): `updated_at` NÃO serve de "gravada em". A 1047
+-- copiou as chaves de `ai_configs` com `now()` e o autor da linha antiga, e
+-- o gatilho temporário dela (até a 1048) reescrevia `updated_at` sem trocar
+-- o autor: a tela diria "gravada em <dia da 1047> por <quem criou a config>".
+-- `chave_gravada_em` é escrita SÓ por `gravarChave` (a tela); NULL = chave
+-- anterior à 1127, e então o autor também não é afirmado.
+ALTER TABLE public.cb_ia_chaves
+  ADD COLUMN IF NOT EXISTS chave_gravada_em timestamptz;
+
 COMMENT ON COLUMN public.cb_tldv_config.conectado_em IS 'Quando a chave atual foi gravada (conectar e trocar reescrevem). NULL = gravada antes da 1127.';
 COMMENT ON COLUMN public.cb_tldv_config.conferido_em IS 'Última vez que a chave guardada respondeu (ao gravar e no "Testar agora").';
 COMMENT ON COLUMN public.cb_calendly_config.conectado_em IS 'Quando o token atual foi gravado (conectar e trocar reescrevem). NULL = gravado antes da 1127.';
@@ -51,6 +61,7 @@ COMMENT ON COLUMN public.cb_meta_ads_config.conectado_em IS 'Quando o token atua
 COMMENT ON COLUMN public.cb_meta_ads_config.conferido_em IS 'Última vez que o token guardado respondeu (ao gravar e no "Testar agora").';
 COMMENT ON COLUMN public.cb_asaas_config.conectado_em IS 'Quando a chave atual foi gravada (conectar e trocar reescrevem). NULL = gravada antes da 1127.';
 COMMENT ON COLUMN public.cb_asaas_config.conferido_em IS 'Última vez que a chave guardada respondeu (ao gravar e no "Testar agora").';
+COMMENT ON COLUMN public.cb_ia_chaves.chave_gravada_em IS 'Quando a chave atual foi gravada pela tela (gravarChave). NULL = gravada antes da 1127 (cópia da 1047): data e autor não são afirmados.';
 
 -- ------------------------------------------------------------
 -- Conferência: as seis tabelas de config têm as duas colunas, em
@@ -82,5 +93,16 @@ BEGIN
       RAISE EXCEPTION '1127: service_role não lê nem grava %', v_tabela;
     END IF;
   END LOOP;
+
+  SELECT data_type INTO v_tipo
+    FROM information_schema.columns
+   WHERE table_schema = 'public' AND table_name = 'cb_ia_chaves' AND column_name = 'chave_gravada_em';
+  IF v_tipo IS DISTINCT FROM 'timestamp with time zone' THEN
+    RAISE EXCEPTION '1127: cb_ia_chaves.chave_gravada_em ausente ou com tipo errado (%)', v_tipo;
+  END IF;
+  IF has_table_privilege('anon', 'public.cb_ia_chaves', 'SELECT')
+     OR has_table_privilege('authenticated', 'public.cb_ia_chaves', 'SELECT') THEN
+    RAISE EXCEPTION '1127: cb_ia_chaves ficou legível ao navegador: ela guarda as chaves cifradas';
+  END IF;
 END
 $$;
