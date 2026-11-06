@@ -87,6 +87,10 @@ repositório: `~/Downloads/CB-CRM/cliente-ideal-2026-11-05/contagem.md`.
   pedir a regra configurável): cada perfil (ex.: Bancário, Trabalhista) tem
   seus campos e respostas; quem casa com qualquer perfil ganha o selo, e o
   painel diz qual perfil.
+- ✅ **D7 — O bloco do painel nasce RECOLHIDO** (operador, 06/11/2026, depois
+  de ver no ar: "pode ocupar menos espaço"): fechado, só o selo, "Cliente
+  ideal" e o perfil (~32 px, era ~120); os critérios e as mensagens do
+  cliente abrem no clique.
 - ✅ **D8 — O perfil escolhe em que FUNIS vale** (operador, 06/11/2026: "no
   bancário jurídico eu não quero essa tag ocupando espaço"): "Funis onde o
   selo aparece", nenhum = todos. Com funis, só conta quem tem negócio num
