@@ -12,6 +12,7 @@ import type { CampanhaDoMetaAds, CartaoDoMetaAds } from "@/lib/meta-ads/cartao";
 import type { ContaDisponivel } from "@/lib/meta-ads/cliente";
 import { cn } from "@/lib/utils";
 
+import { CredencialDaIntegracao } from "./credencial-da-integracao";
 import { SettingsChip, StatusDot, type ChipVariant } from "./settings-chip";
 
 /**
@@ -21,9 +22,14 @@ import { SettingsChip, StatusDot, type ChipVariant } from "./settings-chip";
  * rota), mostra a última sincronização e a tabela campanha → funil — é essa
  * atribuição que amarra o gasto ao Desempenho.
  *
- * Só admin chega aqui (a aba inteira é admin). Nenhum token volta da rota;
- * o campo do token nasce vazio sempre.
+ * Só admin chega aqui (a aba inteira é admin). Do token só saem os 4 últimos
+ * caracteres (o bloco "Chave guardada", 1127); o campo nasce vazio sempre. O
+ * MESMO formulário conecta e troca o token ("Trocar chave"; já aberto quando
+ * o erro é do token).
  */
+
+/** Os erros que só um token novo (ou outra conta) resolve: com eles o formulário já vem aberto. */
+const ERROS_DO_TOKEN = new Set(["token_invalido", "sem_permissao", "conta_nao_encontrada", "chave_ilegivel"]);
 
 interface Resposta {
   cartao: CartaoDoMetaAds;
@@ -49,6 +55,8 @@ export function MetaAdsCard() {
   const [falhou, setFalhou] = useState(false);
   const [aberto, setAberto] = useState(false);
   const [token, setToken] = useState("");
+  /** conectado e com o formulário do token novo aberto por "Trocar chave" */
+  const [trocando, setTrocando] = useState(false);
   // ⚠️ A lista é DO TOKEN que a buscou (carimbo `de`): trocado o token — ou
   // editado enquanto a busca corria —, ela deixa de valer no mesmo render,
   // sem esperar limpeza, e conectar uma conta de outro token fica impossível.
@@ -139,9 +147,19 @@ export function MetaAdsCard() {
       const novas = corpo.contas;
       setLista({ de, contas: novas });
       // Buscando de novo, a escolha feita continua se a conta ainda veio.
-      // Senão: uma conta só já vem escolhida; mais de uma, o operador escolhe.
+      // Senão, na TROCA do token, a conta já conectada vem escolhida (1127):
+      // "Trocar chave" não pode virar troca de conta por um clique distraído
+      // (o PUT grava a conta e zera a sincronização). Senão: uma conta só já
+      // vem escolhida; mais de uma, o operador escolhe.
+      const daConexao = dadosRef.current?.cartao.conta?.id ?? null;
       setContaEscolhida((atual) =>
-        novas.some((c) => c.id === atual) ? atual : novas.length === 1 ? novas[0].id : "",
+        novas.some((c) => c.id === atual)
+          ? atual
+          : daConexao && novas.some((c) => c.id === daConexao)
+            ? daConexao
+            : novas.length === 1
+              ? novas[0].id
+              : "",
       );
     } catch {
       if (vivoRef.current) setErro(motivo("rede"));
@@ -166,6 +184,7 @@ export function MetaAdsCard() {
       }
       setToken("");
       setLista(null);
+      setTrocando(false);
       toast.success(t("metaAds.conectado"));
       // a primeira sincronização (90 dias) roda em `after()` na rota
       setTimeout(() => void carregar(), 2500);
@@ -253,6 +272,91 @@ export function MetaAdsCard() {
             ? (["err", t("chipErro")] as const)
             : (["muted", t("chipNaoConectado")] as const);
 
+  const conectado = cartao !== undefined && cartao.estado !== "nao_conectado";
+  const erroDoToken = cartao?.estado === "erro" && cartao.erro !== null && ERROS_DO_TOKEN.has(cartao.erro);
+  const mostrarCampo = erroDoToken || trocando;
+  const formularioDoToken = (
+    <div className="grid gap-3 sm:max-w-md">
+      <div className="space-y-1">
+        <Label htmlFor="meta-ads-token">{conectado ? t("credencial.campoNova") : t("metaAds.campoToken")}</Label>
+        <Input
+          id="meta-ads-token"
+          type="password"
+          value={token}
+          onChange={(e) => {
+            setToken(e.target.value);
+            setErro(null);
+          }}
+          placeholder={t("metaAds.tokenVazio")}
+          autoComplete="off"
+        />
+        <p className="text-xs text-muted-foreground">{t("metaAds.tokenDica")}</p>
+        {conectado && <p className="text-xs text-muted-foreground">{t("credencial.trocaDica")}</p>}
+      </div>
+      {contas && contas.length === 0 && <p className="text-xs text-amber-600">{t("metaAds.semContas")}</p>}
+      {contas && contas.length > 0 && (
+        <div className="space-y-1">
+          <Label htmlFor="meta-ads-conta">{t("metaAds.campoConta")}</Label>
+          <select
+            id="meta-ads-conta"
+            value={escolhida}
+            onChange={(e) => setContaEscolhida(e.target.value)}
+            className="h-8 w-full min-w-0 rounded-lg border border-input bg-card px-2 text-sm text-foreground"
+          >
+            {escolhida === "" && (
+              <option value="" disabled>
+                {t("metaAds.escolherConta")}
+              </option>
+            )}
+            {contas.map((c) => (
+              <option key={c.id} value={c.id}>
+                {`${c.nome} (${c.id}) · ${c.moeda}${c.ativa ? "" : ` · ${t("metaAds.contaInativa")}`}`}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground">{t("metaAds.contasDoToken", { n: contas.length })}</p>
+        </div>
+      )}
+      {erro && <p className="text-xs text-destructive">{t("falha", { motivo: erro })}</p>}
+      {/* "Buscar contas" fica mesmo com a lista na tela: a conta
+          atribuída na Meta DEPOIS da busca só aparece buscando de
+          novo, e o campo do id digitado não existe mais (Codex,
+          PR #407). */}
+      <div className="flex flex-wrap gap-2">
+        {contas && contas.length > 0 && (
+          <Button type="button" size="sm" onClick={() => void conectar()} disabled={salvando || !escolhida}>
+            {salvando ? t("metaAds.conectando") : conectado ? t("credencial.salvarNova") : t("metaAds.conectar")}
+          </Button>
+        )}
+        <Button
+          type="button"
+          size="sm"
+          variant={contas && contas.length > 0 ? "outline" : "default"}
+          onClick={() => void buscarContas()}
+          disabled={buscando || salvando || !tokenLimpo}
+        >
+          {buscando ? t("metaAds.buscandoContas") : t("metaAds.buscarContas")}
+        </Button>
+        {trocando && !erroDoToken && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={salvando}
+            onClick={() => {
+              setTrocando(false);
+              setToken("");
+              setLista(null);
+              setErro(null);
+            }}
+          >
+            {t("credencial.cancelarTroca")}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="rounded-lg border border-border bg-card">
       <button
@@ -281,70 +385,7 @@ export function MetaAdsCard() {
           ) : cartao.estado === "nao_conectado" ? (
             <>
               <p className="max-w-[62ch] text-muted-foreground">{t("metaAds.desc")}</p>
-              <div className="grid gap-3 sm:max-w-md">
-                <div className="space-y-1">
-                  <Label htmlFor="meta-ads-token">{t("metaAds.campoToken")}</Label>
-                  <Input
-                    id="meta-ads-token"
-                    type="password"
-                    value={token}
-                    onChange={(e) => {
-                      setToken(e.target.value);
-                      setErro(null);
-                    }}
-                    placeholder={t("metaAds.tokenVazio")}
-                    autoComplete="off"
-                  />
-                  <p className="text-xs text-muted-foreground">{t("metaAds.tokenDica")}</p>
-                </div>
-                {contas && contas.length === 0 && (
-                  <p className="text-xs text-amber-600">{t("metaAds.semContas")}</p>
-                )}
-                {contas && contas.length > 0 && (
-                  <div className="space-y-1">
-                    <Label htmlFor="meta-ads-conta">{t("metaAds.campoConta")}</Label>
-                    <select
-                      id="meta-ads-conta"
-                      value={escolhida}
-                      onChange={(e) => setContaEscolhida(e.target.value)}
-                      className="h-8 w-full min-w-0 rounded-lg border border-input bg-card px-2 text-sm text-foreground"
-                    >
-                      {escolhida === "" && (
-                        <option value="" disabled>
-                          {t("metaAds.escolherConta")}
-                        </option>
-                      )}
-                      {contas.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {`${c.nome} (${c.id}) · ${c.moeda}${c.ativa ? "" : ` · ${t("metaAds.contaInativa")}`}`}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-muted-foreground">{t("metaAds.contasDoToken", { n: contas.length })}</p>
-                  </div>
-                )}
-                {erro && <p className="text-xs text-destructive">{t("falha", { motivo: erro })}</p>}
-                {/* "Buscar contas" fica mesmo com a lista na tela: a conta
-                    atribuída na Meta DEPOIS da busca só aparece buscando de
-                    novo, e o campo do id digitado não existe mais (Codex,
-                    PR #407). */}
-                <div className="flex flex-wrap gap-2">
-                  {contas && contas.length > 0 && (
-                    <Button type="button" size="sm" onClick={() => void conectar()} disabled={salvando || !escolhida}>
-                      {salvando ? t("metaAds.conectando") : t("metaAds.conectar")}
-                    </Button>
-                  )}
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={contas && contas.length > 0 ? "outline" : "default"}
-                    onClick={() => void buscarContas()}
-                    disabled={buscando || salvando || !tokenLimpo}
-                  >
-                    {buscando ? t("metaAds.buscandoContas") : t("metaAds.buscarContas")}
-                  </Button>
-                </div>
-              </div>
+              {formularioDoToken}
             </>
           ) : (
             <>
@@ -372,6 +413,15 @@ export function MetaAdsCard() {
                 </div>
               </div>
               {cartao.erro && <p className="text-xs text-destructive">{t("falha", { motivo: motivo(cartao.erro) })}</p>}
+              <CredencialDaIntegracao
+                de="meta_ads"
+                versao={dados}
+                motivo={motivo}
+                aoTestar={() => void carregar()}
+                aoTrocar={() => setTrocando(true)}
+                trocando={mostrarCampo}
+              />
+              {mostrarCampo && <div className="rounded-md border border-border p-3">{formularioDoToken}</div>}
               {cartao.semFunil > 0 && (
                 <p className="text-xs text-amber-600 dark:text-amber-400">{t("metaAds.semFunil", { n: cartao.semFunil })}</p>
               )}

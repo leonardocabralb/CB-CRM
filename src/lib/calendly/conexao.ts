@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { ehUrlAlcancavel } from "@/lib/cb-channels/webhook-url";
+import { registrarTeste, type ResultadoDoTeste } from "@/lib/integracoes/credencial";
 import { decrypt, encrypt } from "@/lib/whatsapp/encryption";
 
 import { gerarChaveDeAssinatura, gerarTokenDeWebhook } from "./assinatura";
@@ -98,16 +99,19 @@ async function assinarWebhook(
   return { uri: a.uri, escopo: "user", estado: a.estado };
 }
 
-async function apagarSeExistir(cliente: ClienteCalendly, uri: string | null | undefined): Promise<void> {
-  if (!uri) return;
+/** Apaga a assinatura; devolve se ela SUMIU (apagada agora ou já inexistente, 404). */
+async function apagarSeExistir(cliente: ClienteCalendly, uri: string | null | undefined): Promise<boolean> {
+  if (!uri) return true;
   try {
     await cliente.apagarAssinatura(uri);
+    return true;
   } catch (e) {
-    // Assinatura já apagada (404) ou Calendly fora do ar: a nova assinatura
-    // segue; a velha, se ainda existir, aponta para o MESMO token de webhook
-    // e a rota a aceita com a chave nova? Não — a chave muda. Ela vai bater
-    // em 401 até o Calendly desativá-la (24h). Registrado, não fatal.
+    if (e instanceof CalendlyError && e.codigo === "nao_encontrado") return true;
+    // Token antigo revogado ou Calendly fora do ar: a velha continua viva,
+    // assinada com a chave ANTIGA — na rota ela bate em 401 até o Calendly
+    // desativá-la (24h). Registrado, não fatal.
     console.warn("[calendly] não foi possível apagar a assinatura antiga:", e instanceof Error ? e.message : e);
+    return false;
   }
 }
 
@@ -130,21 +134,31 @@ export async function conectarCalendly(
     return { ok: false, codigo: codigoDe(e) };
   }
 
-  // Reconectar mantém o token da URL (a assinatura antiga, se ficar viva,
-  // continua apontando para uma rota que existe) e apaga a assinatura antiga.
+  // Reconectar (e "Trocar chave", 1127) apaga a assinatura antiga e mantém o
+  // token da URL — MAS só quando a antiga sumiu. ⚠️ Com o token antigo
+  // revogado (o caso típico da troca) a antiga NÃO se apaga e segue viva na
+  // MESMA URL: o Calendly recusa a nova ("Hook with this url already
+  // exists"), o "Reassinar" bate no mesmo muro, e a velha, assinada com a
+  // chave antiga, vira 401 até ser desativada — 24 h de agendamentos
+  // perdidos (revisão do PR da 1127). Nesse caso a URL nasce NOVA: a velha
+  // passa a bater numa rota que não existe e é desativada, e a nova assina
+  // sem conflito — o mesmo que "Desconectar" e conectar faziam.
   const { data: anterior } = await admin
     .from("cb_calendly_config")
     .select("webhook_token, webhook_uri, access_token")
     .eq("account_id", accountId)
     .maybeSingle();
-  if (anterior?.webhook_uri && typeof anterior.access_token === "string") {
+  let antigaSumiu = true;
+  if (anterior?.webhook_uri) {
     try {
-      await apagarSeExistir((opcoes.cliente ?? criarClienteCalendly)(decrypt(anterior.access_token)), anterior.webhook_uri);
+      antigaSumiu = await apagarSeExistir((opcoes.cliente ?? criarClienteCalendly)(decrypt(String(anterior.access_token))), anterior.webhook_uri);
     } catch {
-      /* token antigo ilegível: a assinatura antiga fica para o Calendly desativar */
+      // token antigo ilegível: a assinatura antiga fica para o Calendly desativar
+      antigaSumiu = false;
     }
   }
-  const webhookToken = typeof anterior?.webhook_token === "string" && anterior.webhook_token ? anterior.webhook_token : gerarTokenDeWebhook();
+  const webhookToken =
+    antigaSumiu && typeof anterior?.webhook_token === "string" && anterior.webhook_token ? anterior.webhook_token : gerarTokenDeWebhook();
   const signingKey = gerarChaveDeAssinatura();
 
   let assinatura: { uri: string; escopo: EscopoDaAssinatura; estado: "active" | "disabled" } | null = null;
@@ -178,6 +192,9 @@ export async function conectarCalendly(
       webhook_state: assinatura?.estado ?? null,
       status: assinatura ? "conectado" : "erro",
       last_error: assinatura ? null : webhookErro,
+      // O token respondeu em `/users/me` agora: gravado E testado (1127).
+      conectado_em: agora,
+      conferido_em: agora,
       created_by: userId,
       updated_at: agora,
     },
@@ -243,6 +260,42 @@ export async function reassinarWebhook(
       .update({ webhook_uri: null, webhook_scope: null, webhook_state: null, status: "erro", last_error: codigo, updated_at: new Date().toISOString() })
       .eq("account_id", accountId);
     return { ok: false, codigo };
+  }
+}
+
+/**
+ * "Testar agora" (1127): o token GUARDADO ainda responde em `/users/me`? Nada
+ * é gravado no Calendly. Só o erro do TOKEN entra e sai daqui: o de webhook
+ * (`assinatura_incompleta`, plano sem webhooks…) é de outra coisa, e quem o
+ * resolve é o "Reassinar".
+ */
+const CODIGOS_DO_TOKEN = ["token_invalido", "chave_ilegivel"];
+
+export async function conferirToken(
+  admin: SupabaseClient,
+  accountId: string,
+  opcoes: { cliente?: FabricaDeCliente } = {},
+): Promise<ResultadoDoTeste> {
+  const { data, error } = await admin.from("cb_calendly_config").select("access_token").eq("account_id", accountId).maybeSingle();
+  if (error) return { ok: false, codigo: "db_error" };
+  if (!data) return { ok: false, codigo: "nao_conectado" };
+  const resultado = await testarTokenGuardado(data.access_token, opcoes.cliente ?? criarClienteCalendly);
+  await registrarTeste(admin, "cb_calendly_config", accountId, resultado, { marca: CODIGOS_DO_TOKEN, limpa: CODIGOS_DO_TOKEN }, { coluna: "access_token", valor: String(data.access_token) });
+  return resultado;
+}
+
+async function testarTokenGuardado(cifrado: unknown, fabrica: FabricaDeCliente): Promise<ResultadoDoTeste> {
+  let token: string;
+  try {
+    token = decrypt(cifrado as string);
+  } catch {
+    return { ok: false, codigo: "chave_ilegivel" };
+  }
+  try {
+    await fabrica(token).usuarioAtual();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, codigo: codigoDe(e) };
   }
 }
 

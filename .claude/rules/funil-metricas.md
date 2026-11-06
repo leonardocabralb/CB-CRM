@@ -316,8 +316,8 @@ investimento/CAC no Desempenho.
 
 - ⚠️⚠️ **`cb_meta_ads_config` NÃO tem SELECT para `authenticated`**: nem a
   linha nem o token cifrado passam pelo PostgREST. A tela lê pela rota
-  `GET /api/cb/meta-ads` (admin, service role), e **o token não sai de rota
-  nenhuma, nem mascarado**. Campanhas e gastos têm SELECT — é deles que o
+  `GET /api/cb/meta-ads` (admin, service role), e **do token só saem os 4
+  últimos caracteres** (`credencial-das-integracoes.md`, 1127). Campanhas e gastos têm SELECT — é deles que o
   Desempenho monta o investimento sob RLS.
 - ⚠️⚠️ **A mensagem da Meta ECOA O TOKEN, e ela vai para o LOG.** Devolver só o
   código ao navegador não basta. Código novo precisa das duas funções de

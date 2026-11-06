@@ -11,7 +11,8 @@ import { ambienteDoAtlas, noAmbiente } from "./enderecos";
  * Conectar = provar a chave com o `whoami` do Atlas (SÓ LEITURA: nada é
  * gravado lá), conferir que as permissões que o passo "Criar cliente no
  * Atlas" usa estão ligadas no escritório, e só então gravar a chave CIFRADA.
- * A chave nunca volta por rota nenhuma, nem mascarada.
+ * A chave nunca volta inteira por rota nenhuma: a tela vê só os 4 últimos
+ * caracteres (`src/lib/integracoes/credencial.ts`, 1127).
  *
  * ⚠️ Chave de OUTRO escritório do Atlas é RECUSADA enquanto houver fichas
  * ligadas, NESTE ambiente, a clientes do escritório anterior
@@ -218,7 +219,7 @@ export async function lerChaveDoAtlas(
  * passo falhando. O próximo sucesso limpa — menos `sem_permissao`: um
  * sucesso prova só a permissão que ele usou (vincular prova Consultar;
  * reativar, Atualizar), nunca as três. Esse aviso só sai por `conferirConexao`
- * (o botão "Conferir de novo" do cartão, que refaz o `whoami`) ou reconectando.
+ * (o "Testar agora" do cartão, que refaz o `whoami`) ou reconectando.
  */
 const CODIGOS_DA_CHAVE: CodigoDaConexao[] = ["chave_invalida", "api_fora_do_plano", "chave_ilegivel", "sem_permissao"];
 const LIMPOS_POR_SUCESSO = CODIGOS_DA_CHAVE.filter((c) => c !== "sem_permissao");
@@ -258,7 +259,8 @@ export async function registrarConferencia(
 }
 
 /**
- * "Conferir de novo" (o cartão, admin): refaz o `whoami` com a chave GUARDADA
+ * "Testar agora" (o cartão, admin; era o "Conferir de novo" — 1127, pela rota
+ * `/api/cb/integracoes/credencial`): refaz o `whoami` com a chave GUARDADA
  * — nada é gravado no Atlas — e reescreve o estado da conexão deste ambiente.
  * É a única saída do `sem_permissao` sem colar a chave outra vez (o Atlas a
  * mostra uma vez só).

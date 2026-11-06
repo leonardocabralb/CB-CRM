@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
 import { cartaoDoAtlas, contagemVazia, type ConfigDoAtlas, type ContagemDosVinculos } from "@/lib/atlas/cartao";
-import { conectarAtlas, conferirConexao, desconectarAtlas } from "@/lib/atlas/conexao";
+import { conectarAtlas, desconectarAtlas } from "@/lib/atlas/conexao";
 import { ambienteDoAtlas, noAmbiente } from "@/lib/atlas/enderecos";
 import { CASOU_POR, ORIGENS_DO_VINCULO } from "@/lib/atlas/leitura";
 import { ultimasMudancasDoCartao } from "@/lib/atlas/mudancas";
@@ -25,9 +25,9 @@ import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit
  *   o passo usa, e com `outro_escritorio` (e `vinculosAnteriores`) quando há
  *   fichas ligadas ao escritório anterior NESTE ambiente — o admin confirma
  *   no cartão e reenvia com `apagarVinculosAnteriores: true`.
- * PATCH — "Conferir de novo": refaz o `whoami` com a chave GUARDADA (nada é
- *   gravado no Atlas). É a saída do aviso de permissão desligada sem colar a
- *   chave outra vez.
+ * O "Testar agora" (o antigo "Conferir de novo": o `whoami` com a chave
+ *   GUARDADA) mora em `/api/cb/integracoes/credencial?de=atlas` (1127), com o
+ *   das outras integrações.
  * DELETE — desconecta. Os vínculos das fichas ficam (o mesmo escritório,
  *   reconectado, os reaproveita).
  *
@@ -87,23 +87,6 @@ export async function POST(request: Request) {
         },
         { status },
       );
-    }
-    return NextResponse.json({ ok: true, escritorio: r.escritorio });
-  } catch (err) {
-    return toErrorResponse(err);
-  }
-}
-
-export async function PATCH() {
-  try {
-    const ctx = await requireRole("admin");
-    const limit = checkRateLimit(`cb:atlas:config:${ctx.userId}`, RATE_LIMITS.adminAction);
-    if (!limit.success) return rateLimitResponse(limit);
-
-    const r = await conferirConexao(supabaseAdmin(), ctx.accountId);
-    if (!r.ok) {
-      const status = r.codigo === "db_error" ? 500 : r.codigo === "outro_ambiente" ? 409 : 400;
-      return NextResponse.json({ error: r.codigo, ...(r.faltando ? { faltando: r.faltando } : {}) }, { status });
     }
     return NextResponse.json({ ok: true, escritorio: r.escritorio });
   } catch (err) {

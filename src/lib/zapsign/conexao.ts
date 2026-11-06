@@ -275,27 +275,75 @@ export async function desconectarZapSign(
 }
 
 /**
+ * "Testar agora" (1127): o token GUARDADO ainda responde? A mesma prova da
+ * conexão (`GET /templates/?page=1`, nada é gravado no ZapSign), e o
+ * resultado vai para `registrarConferencia`, a régua de sempre.
+ */
+export async function conferirToken(
+  admin: SupabaseClient,
+  accountId: string,
+  opcoes: { cliente?: FabricaDeCliente } = {},
+): Promise<{ ok: true } | { ok: false; codigo: CodigoDaConexao }> {
+  const { data, error } = await admin.from("cb_zapsign_config").select("api_token").eq("account_id", accountId).maybeSingle();
+  if (error) return { ok: false, codigo: "db_error" };
+  if (!data) return { ok: false, codigo: "nao_conectado" };
+  const token = decifrar(data.api_token);
+  if (!token) {
+    // Marca, como as outras integrações (`chave_ilegivel`): sem isto o cartão
+    // seguia verde e o campo do token não abria sozinho. Cercado pela cifra
+    // lida: uma troca no meio não é marcada.
+    const { error: erroMarca } = await admin
+      .from("cb_zapsign_config")
+      .update({ status: "erro", last_error: "token_ilegivel", updated_at: new Date().toISOString() })
+      .eq("account_id", accountId)
+      .eq("api_token", String(data.api_token));
+    if (erroMarca) console.error("[zapsign] não foi possível marcar o token ilegível:", erroMarca.message);
+    return { ok: false, codigo: "token_ilegivel" };
+  }
+  // A cifra lida é a CERCA das escritas (Codex, PR #470): trocado o token
+  // enquanto o ZapSign responde, o 401 do antigo não marca o novo em erro.
+  const cerca = String(data.api_token);
+  try {
+    await fabricaDe(opcoes)(token).modelos(1);
+  } catch (e) {
+    await registrarConferencia(admin, accountId, codigoDe(e), cerca);
+    return { ok: false, codigo: codigoDe(e) };
+  }
+  await registrarConferencia(admin, accountId, null, cerca);
+  return { ok: true };
+}
+
+/**
  * O token ainda vale? Chamada quando a tela lista os modelos: 401/403 marca a
  * conexão em erro (`token_invalido`); sucesso carimba `conferido_em` e limpa
  * SÓ esse código — outro erro gravado é de outra coisa. Nunca lança.
+ *
+ * `cifraDoToken`: o texto cifrado do token que foi TESTADO. Com ele, toda
+ * escrita é cercada por `api_token` — a troca do token no meio do teste não é
+ * marcada com o resultado do antigo (o "Testar agora", 1127).
  */
-export async function registrarConferencia(admin: SupabaseClient, accountId: string, codigo: CodigoDoErroZapSign | null): Promise<void> {
+export async function registrarConferencia(
+  admin: SupabaseClient,
+  accountId: string,
+  codigo: CodigoDoErroZapSign | null,
+  cifraDoToken?: string,
+): Promise<void> {
   const agora = new Date().toISOString();
+  const daConexao = (patch: Record<string, unknown>) => {
+    const q = admin.from("cb_zapsign_config").update(patch).eq("account_id", accountId);
+    return cifraDoToken === undefined ? q : q.eq("api_token", cifraDoToken);
+  };
   const escrita =
     codigo === "token_invalido"
-      ? admin.from("cb_zapsign_config").update({ status: "erro", last_error: "token_invalido", updated_at: agora }).eq("account_id", accountId)
+      ? daConexao({ status: "erro", last_error: "token_invalido", updated_at: agora })
       : codigo === null
-        ? admin.from("cb_zapsign_config").update({ conferido_em: agora }).eq("account_id", accountId)
+        ? daConexao({ conferido_em: agora })
         : null;
   if (!escrita) return;
   const { error } = await escrita;
   if (error) console.error("[zapsign] não foi possível registrar a conferência do token:", error.message);
   if (codigo === null) {
-    const { error: erroLimpeza } = await admin
-      .from("cb_zapsign_config")
-      .update({ status: "conectado", last_error: null, updated_at: agora })
-      .eq("account_id", accountId)
-      .eq("last_error", "token_invalido");
+    const { error: erroLimpeza } = await daConexao({ status: "conectado", last_error: null, updated_at: agora }).eq("last_error", "token_invalido");
     if (erroLimpeza) console.error("[zapsign] não foi possível limpar o aviso de token inválido:", erroLimpeza.message);
   }
 }

@@ -205,7 +205,7 @@ bolha, ao Radar e ao agente de IA.
 - ⚠️ **`?ping=0` existe porque cada ping é geração PAGA**: a tela carrega em
   dois tempos, o botão repete só os pings, e o `useEffect` tem guarda
   (`disparouRef`) contra o StrictMode.
-- **Nenhuma chave sai das rotas de STATUS e de chaves, nem mascarada**: a
+- **Chave só pela credencial (4 finais, 1127); status e chaves, nada**: a
   falha volta como CÓDIGO, nunca `AiError.message` (a OpenAI ecoa a chave).
   ⚠️ O SAVE do modelo do Radar devolve a mensagem do provedor ("modelo não
   encontrado") — EXCETO `code === 'invalid_key'`, texto genérico (manter).

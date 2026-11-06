@@ -1895,3 +1895,21 @@ nome da época em que foram aplicadas.
   roda quando a branch ganhar PR. Conferida: a função existe; `anon` sem
   EXECUTE; `authenticated` e `service_role` executam. Medida com a RLS de um
   usuário logado: 11 grupos e 56 nomes em ~0,3 s (só na primeira busca).
+
+- **1127_cb_credencial_das_integracoes** — `conectado_em` e `conferido_em` em
+  `cb_tldv_config`, `cb_calendly_config`, `cb_meta_ads_config` e
+  `cb_asaas_config` (Atlas e ZapSign já tinham), e `chave_gravada_em` em
+  `cb_ia_chaves`: o bloco "Chave guardada" dos cartões de Integrações (os 4
+  últimos caracteres, quando e por quem foi gravada, "Testar agora", "Trocar
+  chave"). Linhas existentes ficam NULL de propósito ("data não registrada").
+  `docs/PLANO-credencial-das-integracoes.md`, PR #470.
+
+  ADITIVA, ANTES do deploy: o app antigo não lê nem grava as colunas; o novo
+  grava em toda conexão e troca (sem elas, o PostgREST recusaria). Autorização
+  do operador em 06/11/2026 ("Pode gravar", à pergunta de aplicar a 1127 em
+  produção), aplicada em 06/11/2026 (histórico `20261106234316`) pela
+  Management API, com o arquivo idêntico ao do commit `2135fe83`, cujo replay
+  do CI ("Apply to a clean database") passou. Também o replay LOCAL completo
+  (249 migrations + `verify-schema.sql`, aplicada duas vezes). Conferida: as 13
+  colunas em `timestamptz`; as seis configs e `cb_ia_chaves` seguem sem leitura
+  para `anon`/`authenticated`.

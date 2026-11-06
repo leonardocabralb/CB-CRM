@@ -12,18 +12,23 @@ import type { CartaoDoZapSign, EventoDoZapSign } from "@/lib/zapsign/cartao";
 import { CASADO_POR, EVENTOS_POR_PAGINA, RESULTADOS_DO_EVENTO, RESULTADOS_REPROCESSAVEIS } from "@/lib/zapsign/log";
 import { cn } from "@/lib/utils";
 
+import { CredencialDaIntegracao } from "./credencial-da-integracao";
 import { SettingsChip } from "./settings-chip";
 
 /**
  * O cartão "ZapSign" da aba Integrações (1057). O operador COLA o token da
- * API (o campo nasce vazio sempre — nenhum token volta da rota); o CRM o
- * prova, lê o plano e cria o webhook `doc_signed`. Mostra o estado do
- * webhook (com "Reativar"), os modelos da conta e o log de assinaturas com o
- * que aconteceu a cada uma — é por ele que "o cliente assinou e o card não
- * andou" tem resposta, e é dele que sai o "Processar de novo".
+ * API (o campo nasce vazio sempre — do token só saem os 4 últimos
+ * caracteres, no bloco "Chave guardada", 1127); o CRM o prova, lê o plano e
+ * cria o webhook `doc_signed`. Mostra o estado do webhook (com "Reativar"),
+ * os modelos da conta e o log de assinaturas com o que aconteceu a cada uma —
+ * é por ele que "o cliente assinou e o card não andou" tem resposta, e é dele
+ * que sai o "Processar de novo". O MESMO campo conecta e troca o token.
  *
  * Mesmo esqueleto do `calendly-card.tsx`: só admin chega aqui.
  */
+
+/** Os erros que só um token novo resolve: com eles o campo já vem aberto. */
+const ERROS_DO_TOKEN = new Set(["token_invalido", "token_ilegivel"]);
 
 interface Resposta {
   cartao: CartaoDoZapSign;
@@ -69,6 +74,8 @@ export function ZapSignCard() {
   const [falhou, setFalhou] = useState(false);
   const [aberto, setAberto] = useState(false);
   const [token, setToken] = useState("");
+  /** conectado e com o campo do token novo aberto por "Trocar chave" */
+  const [trocando, setTrocando] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [reativando, setReativando] = useState(false);
   const [desconectando, setDesconectando] = useState(false);
@@ -149,6 +156,9 @@ export function ZapSignCard() {
         return;
       }
       setToken("");
+      setTrocando(false);
+      // Trocado o token, os modelos listados eram da conta (talvez) anterior.
+      setModelos(null);
       if (corpo.webhookErro) toast.warning(t("zapsign.conectadoSemWebhook"));
       else toast.success(t("zapsign.conectado"));
       await carregar();
@@ -266,6 +276,49 @@ export function ZapSignCard() {
   const eventos = pagina === 1 || !paginaCarregada ? (dados?.eventos ?? []) : paginaCarregada.eventos;
   const total = dados?.totalEventos ?? 0;
 
+  const conectado = cartao !== undefined && cartao.estado !== "nao_conectado";
+  const erroDoToken = cartao?.estado === "erro" && cartao.erro !== null && ERROS_DO_TOKEN.has(cartao.erro);
+  const mostrarCampo = erroDoToken || trocando;
+  const campoDoToken = (
+    <div className="grid gap-3 sm:max-w-md">
+      <div className="space-y-1">
+        <Label htmlFor="zapsign-token">{conectado ? t("credencial.campoNova") : t("zapsign.campoToken")}</Label>
+        <Input
+          id="zapsign-token"
+          type="password"
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+          placeholder={t("zapsign.tokenVazio")}
+          autoComplete="off"
+        />
+        <p className="text-xs text-muted-foreground">{t("zapsign.tokenDica")}</p>
+        <p className="text-xs text-muted-foreground">{t("zapsign.planoDica")}</p>
+        {conectado && <p className="text-xs text-muted-foreground">{t("credencial.trocaDica")}</p>}
+      </div>
+      {erro && <p className="text-xs text-destructive">{t("falha", { motivo: erro })}</p>}
+      <div className="flex items-center gap-2">
+        <Button type="button" size="sm" onClick={() => void conectar()} disabled={salvando || !token.trim()}>
+          {salvando ? t("zapsign.conectando") : conectado ? t("credencial.salvarNova") : t("zapsign.conectar")}
+        </Button>
+        {trocando && !erroDoToken && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={salvando}
+            onClick={() => {
+              setTrocando(false);
+              setToken("");
+              setErro(null);
+            }}
+          >
+            {t("credencial.cancelarTroca")}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="rounded-lg border border-border bg-card">
       <button type="button" onClick={() => setAberto((a) => !a)} aria-expanded={aberto} className="flex w-full items-center gap-3 p-4 text-left">
@@ -290,27 +343,7 @@ export function ZapSignCard() {
             <>
               <p className="max-w-[62ch] text-muted-foreground">{t("zapsign.desc")}</p>
               {dados && !dados.origemAlcancavel && <p className="text-xs text-destructive">{t("zapsign.motivo.url_inalcancavel")}</p>}
-              <div className="grid gap-3 sm:max-w-md">
-                <div className="space-y-1">
-                  <Label htmlFor="zapsign-token">{t("zapsign.campoToken")}</Label>
-                  <Input
-                    id="zapsign-token"
-                    type="password"
-                    value={token}
-                    onChange={(e) => setToken(e.target.value)}
-                    placeholder={t("zapsign.tokenVazio")}
-                    autoComplete="off"
-                  />
-                  <p className="text-xs text-muted-foreground">{t("zapsign.tokenDica")}</p>
-                  <p className="text-xs text-muted-foreground">{t("zapsign.planoDica")}</p>
-                </div>
-                {erro && <p className="text-xs text-destructive">{t("falha", { motivo: erro })}</p>}
-                <div>
-                  <Button type="button" size="sm" onClick={() => void conectar()} disabled={salvando || !token.trim()}>
-                    {salvando ? t("zapsign.conectando") : t("zapsign.conectar")}
-                  </Button>
-                </div>
-              </div>
+              {campoDoToken}
             </>
           ) : (
             <>
@@ -338,6 +371,15 @@ export function ZapSignCard() {
                 <p className="text-xs text-destructive">{t("zapsign.webhookInativo")}</p>
               )}
               {cartao.erro && <p className="text-xs text-destructive">{t("falha", { motivo: motivo(cartao.erro) })}</p>}
+              <CredencialDaIntegracao
+                de="zapsign"
+                versao={dados}
+                motivo={motivo}
+                aoTestar={() => void carregar()}
+                aoTrocar={() => setTrocando(true)}
+                trocando={mostrarCampo}
+              />
+              {mostrarCampo && <div className="rounded-md border border-border p-3">{campoDoToken}</div>}
               {cartao.webhook !== "ativo" && dados && !dados.podeCriarAqui && (
                 <p className="text-xs text-muted-foreground">{t("zapsign.reativarSoNoEndereco")}</p>
               )}

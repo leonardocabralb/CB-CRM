@@ -14,6 +14,7 @@ import { EVENTOS_POR_PAGINA } from "@/lib/calendly/log";
 import { formatarTelefone } from "@/lib/contacts/telefone";
 import { cn } from "@/lib/utils";
 
+import { CredencialDaIntegracao } from "./credencial-da-integracao";
 import { SettingsChip } from "./settings-chip";
 
 /**
@@ -23,9 +24,15 @@ import { SettingsChip } from "./settings-chip";
  * últimos agendamentos recebidos com o que aconteceu a cada um — é por
  * essa lista que "marquei e nada aconteceu" tem resposta.
  *
- * Mesmo esqueleto do `meta-ads-card.tsx`: só admin chega aqui, nenhum
- * segredo volta da rota, o campo do token nasce vazio sempre.
+ * Mesmo esqueleto do `meta-ads-card.tsx`: só admin chega aqui, do token só
+ * saem os 4 últimos caracteres (o bloco "Chave guardada", 1127), o campo do
+ * token nasce vazio sempre. O MESMO campo conecta e troca o token ("Trocar
+ * chave"; já aberto quando o erro é do token — o de webhook se resolve no
+ * "Reassinar").
  */
+
+/** Os erros que só um token novo resolve: com eles o campo já vem aberto. */
+const ERROS_DO_TOKEN = new Set(["token_invalido", "chave_ilegivel"]);
 
 interface Resposta {
   cartao: CartaoDoCalendly;
@@ -65,6 +72,8 @@ export function CalendlyCard() {
   const [falhou, setFalhou] = useState(false);
   const [aberto, setAberto] = useState(false);
   const [token, setToken] = useState("");
+  /** conectado e com o campo do token novo aberto por "Trocar chave" */
+  const [trocando, setTrocando] = useState(false);
   const [pergunta, setPergunta] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [reassinando, setReassinando] = useState(false);
@@ -134,6 +143,7 @@ export function CalendlyCard() {
         return;
       }
       setToken("");
+      setTrocando(false);
       if (corpo.webhookErro) toast.warning(t("calendly.conectadoSemWebhook"));
       else toast.success(t("calendly.conectado"));
       await carregar();
@@ -270,6 +280,49 @@ export function CalendlyCard() {
             ? (["err", t("chipErro")] as const)
             : (["muted", t("chipNaoConectado")] as const);
 
+  const conectado = cartao !== undefined && cartao.estado !== "nao_conectado";
+  const erroDoToken = cartao?.estado === "erro" && cartao.erro !== null && ERROS_DO_TOKEN.has(cartao.erro);
+  const mostrarCampo = erroDoToken || trocando;
+  const campoDoToken = (
+    <div className="grid gap-3 sm:max-w-md">
+      <div className="space-y-1">
+        <Label htmlFor="calendly-token">{conectado ? t("credencial.campoNova") : t("calendly.campoToken")}</Label>
+        <Input
+          id="calendly-token"
+          type="password"
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+          placeholder={t("calendly.tokenVazio")}
+          autoComplete="off"
+        />
+        <p className="text-xs text-muted-foreground">{t("calendly.tokenDica")}</p>
+        <p className="text-xs text-muted-foreground">{t("calendly.planoDica")}</p>
+        {conectado && <p className="text-xs text-muted-foreground">{t("credencial.trocaDica")}</p>}
+      </div>
+      {erro && <p className="text-xs text-destructive">{t("falha", { motivo: erro })}</p>}
+      <div className="flex items-center gap-2">
+        <Button type="button" size="sm" onClick={() => void conectar()} disabled={salvando || !token}>
+          {salvando ? t("calendly.conectando") : conectado ? t("credencial.salvarNova") : t("calendly.conectar")}
+        </Button>
+        {trocando && !erroDoToken && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={salvando}
+            onClick={() => {
+              setTrocando(false);
+              setToken("");
+              setErro(null);
+            }}
+          >
+            {t("credencial.cancelarTroca")}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+
   const rotuloDoResultado = (r: string) =>
     RESULTADOS.has(r) ? t(`calendly.resultado.${r}` as Parameters<typeof t>[0]) : r;
   const rotuloDaOrigem = (o: string | null) =>
@@ -306,27 +359,7 @@ export function CalendlyCard() {
               {dados && !dados.origemAlcancavel && (
                 <p className="text-xs text-destructive">{t("calendly.urlInalcancavel")}</p>
               )}
-              <div className="grid gap-3 sm:max-w-md">
-                <div className="space-y-1">
-                  <Label htmlFor="calendly-token">{t("calendly.campoToken")}</Label>
-                  <Input
-                    id="calendly-token"
-                    type="password"
-                    value={token}
-                    onChange={(e) => setToken(e.target.value)}
-                    placeholder={t("calendly.tokenVazio")}
-                    autoComplete="off"
-                  />
-                  <p className="text-xs text-muted-foreground">{t("calendly.tokenDica")}</p>
-                  <p className="text-xs text-muted-foreground">{t("calendly.planoDica")}</p>
-                </div>
-                {erro && <p className="text-xs text-destructive">{t("falha", { motivo: erro })}</p>}
-                <div>
-                  <Button type="button" size="sm" onClick={() => void conectar()} disabled={salvando || !token}>
-                    {salvando ? t("calendly.conectando") : t("calendly.conectar")}
-                  </Button>
-                </div>
-              </div>
+              {campoDoToken}
             </>
           ) : (
             <>
@@ -370,6 +403,15 @@ export function CalendlyCard() {
               {cartao.erro && cartao.erro !== "webhook_desativado" && (
                 <p className="text-xs text-destructive">{t("falha", { motivo: motivo(cartao.erro) })}</p>
               )}
+              <CredencialDaIntegracao
+                de="calendly"
+                versao={dados}
+                motivo={motivo}
+                aoTestar={() => void carregar()}
+                aoTrocar={() => setTrocando(true)}
+                trocando={mostrarCampo}
+              />
+              {mostrarCampo && <div className="rounded-md border border-border p-3">{campoDoToken}</div>}
               {dados && !dados.origemAlcancavel && (
                 <p className="text-xs text-destructive">{t("calendly.urlInalcancavel")}</p>
               )}

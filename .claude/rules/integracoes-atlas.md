@@ -31,8 +31,9 @@ gatilho "Situação mudou no Atlas" (Fase 4). Plano, fases e decisões do operad
   toda mensagem por `semSegredo`.
 - **A chave é do ESCRITÓRIO**, não da pessoa: gerada pelo admin do Atlas,
   colada uma vez no cartão, guardada cifrada em `cb_atlas_config` (FECHADA ao
-  navegador, sem policy — pino `atlas-1071.test.ts`). Nenhuma rota a devolve,
-  nem mascarada. As permissões também são do escritório, no Atlas: conectar
+  navegador, sem policy — pino `atlas-1071.test.ts`). Dela só saem os 4
+  últimos caracteres (`credencial-das-integracoes.md`, 1127; o "Testar agora"
+  de lá é o antigo "Conferir de novo"). As permissões também são do escritório, no Atlas: conectar
   recusa (`permissoes_faltando`, com a lista) sem Consultar, Criar e
   Atualizar clientes.
 - **Conectar = `whoami`**, que não grava nada no Atlas. Nunca sondar
@@ -93,7 +94,7 @@ gatilho "Situação mudou no Atlas" (Fase 4). Plano, fases e decisões do operad
   que ocupa a chave da ficha. A marca na conexão (`registrarConferencia`) vai
   com a MESMA cerca de posse, antes do fechamento: a chave velha recusada não
   põe a conexão nova em erro. Chave ilegível ANTES do cadeado (sem cerca) não
-  escreve nada — quem marca é o passo e o "Conferir de novo". Recolhimento de
+  escreve nada — quem marca é o passo e o "Testar agora". Recolhimento de
   10 min, com teste cobrando a margem sobre prazo + timeout.
 - **Dois passos, cada um com cursor PRÓPRIO gravado a cada página**:
   mudanças (`statusChangedSince` = última leitura − 5 min, fixo em
@@ -289,8 +290,8 @@ gatilho "Situação mudou no Atlas" (Fase 4). Plano, fases e decisões do operad
   ilegível ou permissão desligada no Atlas marca a conexão em erro
   (`registrarConferencia`), e o cartão diz o motivo; o próximo sucesso limpa
   — menos `sem_permissao`: um sucesso prova só a permissão que usou. Ele sai
-  pelo "Conferir de novo" do cartão (`PATCH /api/cb/atlas`, refaz o `whoami`
-  com a chave guardada) ou reconectando.
+  pelo "Testar agora" do cartão (`POST /api/cb/integracoes/credencial?de=atlas`,
+  refaz o `whoami` com a chave guardada) ou reconectando.
 - **Vínculo 1:1** (`cb_atlas_clientes`): o cliente do Atlas já ligado a
   OUTRA ficha não é roubado (`ligado_a_outra_ficha`). Lido por membro (forma
   da 1032), escrito só pelo servidor; `contact_id` SET NULL — a tabela está

@@ -10,12 +10,14 @@
 // isso as funções não recebem o cliente: quem chama passa só a conta, que
 // já conferiu (requireRole, webhook, cron).
 //
-// ⚠️ A chave decifrada nunca sai de rota nenhuma, nem mascarada: `lerEstado`
-// devolve só se existe e quando mudou.
+// ⚠️ A chave decifrada nunca sai INTEIRA de rota nenhuma: `lerEstado` devolve
+// só se existe e quando mudou, e `credencialDoProvedor` (1127, decisão do
+// operador de 06/11/2026) só os 4 últimos caracteres, quando e por quem.
 // ============================================================
 
 import { supabaseAdmin } from '@/lib/ai/admin-client'
 import type { AiProvider } from '@/lib/ai/types'
+import { finalDaCifrada } from '@/lib/integracoes/credencial'
 import { decrypt, encrypt } from '@/lib/whatsapp/encryption'
 
 export const PROVEDORES: readonly AiProvider[] = ['gemini', 'openai', 'anthropic']
@@ -155,6 +157,37 @@ export async function lerEstado(accountId: string): Promise<EstadoDaChave[]> {
 }
 
 /**
+ * O bloco "Chave guardada" do cartão do provedor (1127): os 4 últimos
+ * caracteres, quando foi gravada e o id de quem gravou. `null` = não há chave.
+ * Erro de leitura lança, como o resto do repositório.
+ *
+ * ⚠️ A data é `chave_gravada_em` (só `gravarChave` a escreve), NUNCA
+ * `updated_at`: a 1047 copiou as chaves com `now()` e o autor da linha
+ * antiga de `ai_configs`, e a tela diria "gravada no dia da migration por
+ * quem criou a config". Sem a coluna (chave anterior à 1127), nem data nem
+ * autor são afirmados.
+ */
+export async function credencialDoProvedor(
+  accountId: string,
+  provedor: AiProvider,
+): Promise<{ final: string | null; ilegivel: boolean; gravadaEm: string | null; autorId: string | null } | null> {
+  const { data, error } = await supabaseAdmin()
+    .from('cb_ia_chaves')
+    .select('api_key, chave_gravada_em, atualizada_por')
+    .eq('account_id', accountId)
+    .eq('provedor', provedor)
+    .maybeSingle()
+  if (error) throw new Error(`[ia-chaves] leitura da credencial falhou: ${error.message}`)
+  if (!data?.api_key) return null
+  const gravadaEm = typeof data.chave_gravada_em === 'string' ? data.chave_gravada_em : null
+  return {
+    ...finalDaCifrada(data.api_key),
+    gravadaEm,
+    autorId: gravadaEm && typeof data.atualizada_por === 'string' ? data.atualizada_por : null,
+  }
+}
+
+/**
  * Grava (ou troca) a chave do provedor. A chave já foi VALIDADA por quem chama.
  * `serveEmbeddings` (só OpenAI) é o resultado da conferência do embedding
  * feita AGORA, com esta chave: toda gravação o reescreve, senão a recusa da
@@ -210,6 +243,8 @@ export async function gravarChave(
         ...(soDaBase ? { embeddings_api_key: cifradaNova } : {}),
         atualizada_por: userId,
         updated_at: agora,
+        // O "gravada em" do bloco da tela (1127): só daqui.
+        chave_gravada_em: agora,
       },
       { onConflict: 'account_id,provedor' },
     )

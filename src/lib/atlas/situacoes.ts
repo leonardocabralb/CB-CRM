@@ -709,7 +709,7 @@ export async function sincronizarSituacoes(admin: SupabaseClient, accountId: str
     if (conexao.codigo === "chave_ilegivel") {
       // SEM escrita: antes do cadeado não há cerca, e uma reconexão no meio
       // levaria o "ilegível" da chave velha para a conexão NOVA. Quem marca a
-      // conexão é o passo "Criar cliente" e o "Conferir de novo" (que leem a
+      // conexão é o passo "Criar cliente" e o "Testar agora" (que leem a
       // chave e escrevem na hora); a leitura só registra no log.
       console.warn(`[atlas] leitura da conta ${accountId}: a chave guardada não pôde ser decifrada`);
       return { ok: false, codigo: "chave_ilegivel" };

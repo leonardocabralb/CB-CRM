@@ -552,6 +552,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   Atlas, gatilho "Situação mudou no Atlas" (1073).
 - `.claude/rules/integracoes-atlas-acoes.md` — o nó Atlas do construtor e as
   ações: atualizar cliente, tarefa, transcrição, onboarding.
+- `.claude/rules/credencial-das-integracoes.md` — o bloco "Chave guardada"
+  dos cartões (1127): só os 4 últimos caracteres, datas, testar e trocar.
 - `.claude/rules/ia.md` — Radar, transcrição de áudio, chaves e modelos por
   módulo (Integrações).
 - `.claude/rules/ia-agentes.md` — o que cada agente de IA vê (acesso, blocos)

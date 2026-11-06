@@ -21,6 +21,7 @@ import { CalendlyCard } from './calendly-card';
 import { TldvCard } from './tldv-card';
 import { AtlasCard } from './atlas-card';
 import { ZapSignCard } from './zapsign-card';
+import { CredencialDaIntegracao } from './credencial-da-integracao';
 import { SettingsChip, type ChipVariant } from './settings-chip';
 import { SettingsPanelHead } from './settings-panel-head';
 import { cn } from '@/lib/utils';
@@ -551,7 +552,8 @@ function Bolinha({ ok }: { ok: boolean | null }) {
 
 /**
  * A chave DESTE provedor (`/api/cb/ia/chaves`, 1047): gravar (ou trocar) e
- * apagar. A chave nunca volta do servidor — o campo só diz se há uma.
+ * apagar. A chave nunca volta INTEIRA do servidor — o bloco "Chave guardada"
+ * (1127) mostra só os 4 últimos caracteres, quando e por quem.
  *
  * ⚠️ Apagar pede confirmação e DIZ O QUE PARA, a partir dos usos do próprio
  * cartão: o "Remover" antigo da tela de Agentes apagava, sem aviso, a chave
@@ -665,7 +667,12 @@ function FormularioDaChave({
         <p className="max-w-[62ch] text-xs text-muted-foreground">
           {t('naoConfiguradaDica')}
         </p>
-      ) : null}
+      ) : (
+        // Os 4 últimos caracteres, quando e por quem (1127). Sem "Testar
+        // agora" aqui: o cartão já pinga cada modelo, e o campo abaixo é a
+        // troca.
+        <CredencialDaIntegracao de={`ia_${provedor}`} versao={cartao} />
+      )}
       <div className="space-y-1.5 sm:max-w-md">
         <Label htmlFor={`chave-${provedor}`} className="text-muted-foreground">
           {t('campoChave')}

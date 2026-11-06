@@ -17,7 +17,15 @@ import { cn } from "@/lib/utils";
 
 import { AsaasListas } from "./asaas-listas";
 import { AsaasRegua } from "./asaas-regua";
+import { CredencialDaIntegracao } from "./credencial-da-integracao";
 import { SettingsChip } from "./settings-chip";
+
+/**
+ * Os erros que só uma chave nova resolve: com eles o formulário já vem aberto
+ * (1127). `conta_trocada` entra: a chave guardada enxerga outra conta, e a
+ * saída é colar a da conta certa (a de outra conta é recusada ao gravar).
+ */
+const ERROS_DA_CHAVE = new Set(["chave_invalida", "ambiente_errado", "chave_ilegivel", "conta_trocada"]);
 
 /**
  * O cartão "Asaas" da aba Integrações (992/994). Guarda a chave da API
@@ -35,8 +43,9 @@ import { SettingsChip } from "./settings-chip";
  * de pé), mas o resumo é ESCONDIDO e o chip vira vermelho — número velho
  * com cara de número atual é o mesmo erro (achado da revisão do PR #201).
  *
- * Só admin chega aqui (a aba inteira é admin). Nenhuma chave volta da rota;
- * o campo nasce vazio sempre.
+ * Só admin chega aqui (a aba inteira é admin). Da chave só saem os 4 últimos
+ * caracteres (o bloco "Chave guardada", 1127); o campo nasce vazio sempre. O
+ * MESMO formulário conecta e troca a chave ("Trocar chave").
  */
 
 interface Resposta {
@@ -82,6 +91,8 @@ export function AsaasCard() {
   const [falhou, setFalhou] = useState(false);
   const [aberto, setAberto] = useState(false);
   const [chave, setChave] = useState("");
+  /** conectado e com o formulário da chave nova aberto por "Trocar chave" */
+  const [trocando, setTrocando] = useState(false);
   const [nome, setNome] = useState("");
   const [validade, setValidade] = useState("");
   const [salvando, setSalvando] = useState(false);
@@ -145,6 +156,9 @@ export function AsaasCard() {
         return;
       }
       setChave("");
+      setNome("");
+      setValidade("");
+      setTrocando(false);
       toast.success(t("asaas.conectado"));
       avisarAsaasMudou();
       // a primeira sincronização roda em `after()` na rota
@@ -274,6 +288,60 @@ export function AsaasCard() {
 
   const quando = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
 
+  const conectado = cartao !== null && cartao.estado !== "nao_conectado";
+  const erroDaChave = cartao?.estado === "erro" && cartao.erro !== null && ERROS_DA_CHAVE.has(cartao.erro);
+  const mostrarCampo = erroDaChave || trocando;
+  const formularioDaChave = (
+    <div className="grid gap-3 sm:max-w-md">
+      <div className="space-y-1">
+        <Label htmlFor="asaas-chave">{conectado ? t("credencial.campoNova") : t("asaas.campoChave")}</Label>
+        <Input
+          id="asaas-chave"
+          type="password"
+          value={chave}
+          onChange={(e) => setChave(e.target.value)}
+          placeholder={t("asaas.chaveVazia")}
+          autoComplete="off"
+        />
+        <p className="text-xs text-muted-foreground">{t("asaas.chaveDica")}</p>
+        {conectado && <p className="text-xs text-muted-foreground">{t("credencial.trocaDica")}</p>}
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="asaas-nome">{t("asaas.campoNome")}</Label>
+        <Input id="asaas-nome" value={nome} onChange={(e) => setNome(e.target.value)} placeholder={t("asaas.nomePlaceholder")} autoComplete="off" />
+        <p className="text-xs text-muted-foreground">{t("asaas.nomeDica")}</p>
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="asaas-validade">{t("asaas.campoValidade")}</Label>
+        <Input id="asaas-validade" type="date" value={validade} onChange={(e) => setValidade(e.target.value)} />
+        <p className="text-xs text-muted-foreground">{t("asaas.validadeDica")}</p>
+      </div>
+      {erro && <p className="text-xs text-destructive">{t("falha", { motivo: erro })}</p>}
+      <div className="flex items-center gap-2">
+        <Button type="button" size="sm" onClick={() => void conectar()} disabled={salvando || !chave.trim()}>
+          {salvando ? t("asaas.conectando") : conectado ? t("credencial.salvarNova") : t("asaas.conectar")}
+        </Button>
+        {trocando && !erroDaChave && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={salvando}
+            onClick={() => {
+              setTrocando(false);
+              setChave("");
+              setNome("");
+              setValidade("");
+              setErro(null);
+            }}
+          >
+            {t("credencial.cancelarTroca")}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="rounded-lg border border-border bg-card">
       <button type="button" onClick={() => setAberto((a) => !a)} aria-expanded={aberto} className="flex w-full items-center gap-3 p-4 text-left">
@@ -302,36 +370,7 @@ export function AsaasCard() {
                   {t("asaas.espelhoGuardado", { clientes: dados.guardado.clientes, cobrancas: dados.guardado.cobrancas })}
                 </p>
               )}
-              <div className="grid gap-3 sm:max-w-md">
-                <div className="space-y-1">
-                  <Label htmlFor="asaas-chave">{t("asaas.campoChave")}</Label>
-                  <Input
-                    id="asaas-chave"
-                    type="password"
-                    value={chave}
-                    onChange={(e) => setChave(e.target.value)}
-                    placeholder={t("asaas.chaveVazia")}
-                    autoComplete="off"
-                  />
-                  <p className="text-xs text-muted-foreground">{t("asaas.chaveDica")}</p>
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="asaas-nome">{t("asaas.campoNome")}</Label>
-                  <Input id="asaas-nome" value={nome} onChange={(e) => setNome(e.target.value)} placeholder={t("asaas.nomePlaceholder")} autoComplete="off" />
-                  <p className="text-xs text-muted-foreground">{t("asaas.nomeDica")}</p>
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="asaas-validade">{t("asaas.campoValidade")}</Label>
-                  <Input id="asaas-validade" type="date" value={validade} onChange={(e) => setValidade(e.target.value)} />
-                  <p className="text-xs text-muted-foreground">{t("asaas.validadeDica")}</p>
-                </div>
-                {erro && <p className="text-xs text-destructive">{t("falha", { motivo: erro })}</p>}
-                <div>
-                  <Button type="button" size="sm" onClick={() => void conectar()} disabled={salvando || !chave.trim()}>
-                    {salvando ? t("asaas.conectando") : t("asaas.conectar")}
-                  </Button>
-                </div>
-              </div>
+              {formularioDaChave}
             </>
           ) : (
             <>
@@ -368,9 +407,19 @@ export function AsaasCard() {
                 </p>
               )}
               {cartao.erro && <p className="text-xs text-destructive">{t("falha", { motivo: motivo(cartao.erro) })}</p>}
-              {erro && <p className="text-xs text-destructive">{t("falha", { motivo: erro })}</p>}
+              {erro && !mostrarCampo && <p className="text-xs text-destructive">{t("falha", { motivo: erro })}</p>}
 
               {falhou && <p className="text-xs text-destructive">{t("recarregarFalhou")}</p>}
+
+              <CredencialDaIntegracao
+                de="asaas"
+                versao={versao}
+                motivo={motivo}
+                aoTestar={() => void carregar()}
+                aoTrocar={() => setTrocando(true)}
+                trocando={mostrarCampo}
+              />
+              {mostrarCampo && <div className="rounded-md border border-border p-3">{formularioDaChave}</div>}
 
               {dados && (
                 <BlocoDoWebhook

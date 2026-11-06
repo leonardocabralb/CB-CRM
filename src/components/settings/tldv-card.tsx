@@ -14,6 +14,7 @@ import type { CartaoDoTldv } from "@/lib/tldv/cartao";
 import { formatarDuracao } from "@/lib/tldv/texto";
 import { cn } from "@/lib/utils";
 
+import { CredencialDaIntegracao } from "./credencial-da-integracao";
 import { SettingsChip } from "./settings-chip";
 
 /**
@@ -23,8 +24,13 @@ import { SettingsChip } from "./settings-chip";
  * o cliente de cada uma, que o operador vincula aqui quando o e-mail do
  * convidado não bastou.
  *
- * Só admin chega aqui (a aba inteira é admin). Nenhuma chave volta da rota;
- * o campo nasce vazio sempre.
+ * Só admin chega aqui (a aba inteira é admin). Da chave só saem os 4 últimos
+ * caracteres (o bloco "Chave guardada", 1127); o campo nasce vazio sempre.
+ *
+ * ⚠️ O MESMO campo conecta e TROCA a chave (o PUT faz upsert e mantém o
+ * token do webhook). Em erro ele já vem aberto; conectado, abre por "Trocar
+ * chave". Sem isso, a chave recusada (a conta do tl;dv trocada) só saía por
+ * "Desconectar", e o cartão não mostrava onde colar a nova.
  */
 
 interface ReuniaoNoCartao {
@@ -49,6 +55,8 @@ interface Resposta {
 }
 
 const CODIGOS_CONHECIDOS = new Set(["chave_invalida", "sem_permissao", "limite", "rede", "tldv_error", "db_error", "chave_ilegivel", "nao_conectado"]);
+/** Os erros que só uma chave nova resolve: com eles o campo já vem aberto. */
+const ERROS_DA_CHAVE = new Set(["chave_invalida", "sem_permissao", "chave_ilegivel"]);
 const STATUS_CONHECIDOS = new Set(["pendente", "pronta", "sem_transcricao", "falhou"]);
 
 export function TldvCard() {
@@ -57,6 +65,8 @@ export function TldvCard() {
   const [falhou, setFalhou] = useState(false);
   const [aberto, setAberto] = useState(false);
   const [chave, setChave] = useState("");
+  /** conectado e com o campo da chave nova aberto por "Trocar chave" */
+  const [trocando, setTrocando] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
   const [desconectando, setDesconectando] = useState(false);
@@ -115,6 +125,7 @@ export function TldvCard() {
         return;
       }
       setChave("");
+      setTrocando(false);
       toast.success(t("tldv.conectado"));
       // a primeira sincronização (30 dias) roda em `after()` na rota
       setTimeout(() => void carregar(), 4000);
@@ -198,6 +209,47 @@ export function TldvCard() {
             ? (["err", t("chipErro")] as const)
             : (["muted", t("chipNaoConectado")] as const);
 
+  // O campo da chave: conectar, e TROCAR (conectado: aberto por "Trocar chave";
+  // com o erro da CHAVE: já aberto, é a saída dela — o de rede ou de limite
+  // não se resolve com chave nova).
+  const conectado = cartao !== undefined && cartao.estado !== "nao_conectado";
+  const erroDaChave = cartao?.estado === "erro" && cartao.erro !== null && ERROS_DA_CHAVE.has(cartao.erro);
+  const mostrarCampo = erroDaChave || trocando;
+  const cancelarTroca = () => {
+    setTrocando(false);
+    setChave("");
+    setErro(null);
+  };
+  const campoDaChave = (
+    <div className="grid gap-3 sm:max-w-md">
+      <div className="space-y-1">
+        <Label htmlFor="tldv-chave">{conectado ? t("credencial.campoNova") : t("tldv.campoChave")}</Label>
+        <Input
+          id="tldv-chave"
+          type="password"
+          value={chave}
+          onChange={(e) => setChave(e.target.value)}
+          placeholder={t("tldv.chaveVazia")}
+          autoComplete="off"
+        />
+        <p className="text-xs text-muted-foreground">{t("tldv.chaveDica")}</p>
+        {conectado && <p className="text-xs text-muted-foreground">{t("credencial.trocaDica")}</p>}
+      </div>
+      {erro && <p className="text-xs text-destructive">{t("falha", { motivo: erro })}</p>}
+      <div className="flex items-center gap-2">
+        <Button type="button" size="sm" onClick={() => void conectar()} disabled={salvando || !chave.trim()}>
+          {salvando ? t("tldv.conectando") : conectado ? t("credencial.salvarNova") : t("tldv.conectar")}
+        </Button>
+        {/* com o erro da chave o campo é o único caminho: nada a cancelar */}
+        {trocando && !erroDaChave && (
+          <Button type="button" variant="ghost" size="sm" onClick={cancelarTroca} disabled={salvando}>
+            {t("credencial.cancelarTroca")}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="rounded-lg border border-border bg-card">
       <button type="button" onClick={() => setAberto((a) => !a)} aria-expanded={aberto} className="flex w-full items-center gap-3 p-4 text-left">
@@ -221,26 +273,7 @@ export function TldvCard() {
           ) : cartao.estado === "nao_conectado" ? (
             <>
               <p className="max-w-[62ch] text-muted-foreground">{t("tldv.desc")}</p>
-              <div className="grid gap-3 sm:max-w-md">
-                <div className="space-y-1">
-                  <Label htmlFor="tldv-chave">{t("tldv.campoChave")}</Label>
-                  <Input
-                    id="tldv-chave"
-                    type="password"
-                    value={chave}
-                    onChange={(e) => setChave(e.target.value)}
-                    placeholder={t("tldv.chaveVazia")}
-                    autoComplete="off"
-                  />
-                  <p className="text-xs text-muted-foreground">{t("tldv.chaveDica")}</p>
-                </div>
-                {erro && <p className="text-xs text-destructive">{t("falha", { motivo: erro })}</p>}
-                <div>
-                  <Button type="button" size="sm" onClick={() => void conectar()} disabled={salvando || !chave.trim()}>
-                    {salvando ? t("tldv.conectando") : t("tldv.conectar")}
-                  </Button>
-                </div>
-              </div>
+              {campoDaChave}
             </>
           ) : (
             <>
@@ -250,7 +283,7 @@ export function TldvCard() {
                   {" · "}
                   {cartao.ultimaSync ? t("tldv.ultimaSync", { quando: new Date(cartao.ultimaSync).toLocaleString(undefined) }) : t("tldv.nuncaSincronizado")}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Button type="button" variant="outline" size="sm" onClick={() => void sincronizar()} disabled={sincronizando}>
                     <RefreshCw className={cn("size-4", sincronizando && "animate-spin")} />
                     {sincronizando ? t("tldv.sincronizando") : t("tldv.sincronizar")}
@@ -261,6 +294,15 @@ export function TldvCard() {
                 </div>
               </div>
               {cartao.erro && <p className="text-xs text-destructive">{t("falha", { motivo: motivo(cartao.erro) })}</p>}
+              <CredencialDaIntegracao
+                de="tldv"
+                versao={dados}
+                motivo={motivo}
+                aoTestar={() => void carregar()}
+                aoTrocar={() => setTrocando(true)}
+                trocando={mostrarCampo}
+              />
+              {mostrarCampo && <div className="rounded-md border border-border p-3">{campoDaChave}</div>}
               {cartao.contagem.semCliente > 0 && (
                 <p className="text-xs text-amber-600 dark:text-amber-400">{t("tldv.semCliente", { n: cartao.contagem.semCliente })}</p>
               )}

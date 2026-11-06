@@ -7,7 +7,8 @@ vi.mock("@/lib/whatsapp/encryption", () => ({
   encrypt: (v: string) => v,
 }));
 
-import { EVENTOS_ASSINADOS, conferirAssinatura } from "./conexao";
+import { CalendlyError } from "./cliente";
+import { EVENTOS_ASSINADOS, conectarCalendly, conferirAssinatura } from "./conexao";
 
 // ------------------------------------------------------------
 // ⚠️ A LISTA DE EVENTOS É FIXADA NA CRIAÇÃO da assinatura, lá no Calendly.
@@ -80,6 +81,81 @@ describe("conferirAssinatura — assinatura incompleta", () => {
 
   it("os dois eventos são assinados — o cancelamento não pode sair da lista", () => {
     expect(EVENTOS_ASSINADOS).toEqual(["invitee.created", "invitee.canceled"]);
+  });
+});
+
+// ------------------------------------------------------------
+// ⚠️ "Trocar chave" (1127) reconecta sem desconectar. Com o token antigo
+// REVOGADO a assinatura antiga não se apaga e segue viva na mesma URL: o
+// Calendly recusaria a nova ("url already exists") e a velha, assinada com a
+// chave antiga, viraria 401 até ser desativada — 24 h de agendamentos
+// perdidos. Por isso a URL só é reaproveitada quando a antiga SUMIU.
+// ------------------------------------------------------------
+describe("conectarCalendly — a URL do webhook na troca do token", () => {
+  function bancoComUpsert(anterior: Record<string, unknown> | null) {
+    const upserts: Record<string, unknown>[] = [];
+    const db = {
+      from() {
+        const b: Record<string, unknown> = {
+          select: () => b,
+          eq: () => b,
+          maybeSingle: async () => ({ data: anterior, error: null }),
+          upsert: async (v: Record<string, unknown>) => {
+            upserts.push(v);
+            return { error: null };
+          },
+        };
+        return b;
+      },
+    } as unknown as SupabaseClient;
+    return { db, upserts };
+  }
+
+  const ANTERIOR = {
+    webhook_token: "url-antiga-ficticia-0001",
+    webhook_uri: "https://api.calendly.com/webhook_subscriptions/W1",
+    access_token: "token-antigo-ficticio",
+  };
+
+  const clienteQue = (apagar: () => Promise<void>) =>
+    () =>
+      ({
+        usuarioAtual: async () => ({ uri: "u", organizationUri: "o", nome: "Escritório", email: "contato@exemplo.test", schedulingUrl: null }),
+        apagarAssinatura: apagar,
+        criarAssinatura: async () => ({ uri: "https://api.calendly.com/webhook_subscriptions/W2", estado: "active", eventos: [...EVENTOS_ASSINADOS] }),
+      }) as never;
+
+  const conectar = (db: SupabaseClient, apagar: () => Promise<void>) =>
+    conectarCalendly(db, "conta-1", "user-1", "token-novo-ficticio", "https://crm.exemplo.test", { cliente: clienteQue(apagar) });
+
+  it("⚠️ a antiga não se apagou (token antigo revogado): a URL nasce NOVA", async () => {
+    const { db, upserts } = bancoComUpsert(ANTERIOR);
+    const r = await conectar(db, async () => {
+      throw new CalendlyError("token_invalido", "401");
+    });
+    expect(r.ok).toBe(true);
+    expect(upserts).toHaveLength(1);
+    expect(upserts[0].webhook_token).not.toBe(ANTERIOR.webhook_token);
+  });
+
+  it("a antiga foi apagada: a URL continua a mesma", async () => {
+    const { db, upserts } = bancoComUpsert(ANTERIOR);
+    await conectar(db, async () => {});
+    expect(upserts[0].webhook_token).toBe(ANTERIOR.webhook_token);
+  });
+
+  it("a antiga já não existia (404): a URL continua a mesma", async () => {
+    const { db, upserts } = bancoComUpsert(ANTERIOR);
+    await conectar(db, async () => {
+      throw new CalendlyError("nao_encontrado", "404", 404);
+    });
+    expect(upserts[0].webhook_token).toBe(ANTERIOR.webhook_token);
+  });
+
+  it("a troca carimba quando o token foi gravado e testado", async () => {
+    const { db, upserts } = bancoComUpsert(ANTERIOR);
+    await conectar(db, async () => {});
+    expect(upserts[0]).toEqual(expect.objectContaining({ conectado_em: expect.any(String), conferido_em: expect.any(String) }));
   });
 });
 
