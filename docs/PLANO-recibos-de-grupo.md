@@ -52,7 +52,7 @@ chegado (ele conferiu no WhatsApp).
 | Fase | O quê | Estado |
 |---|---|---|
 | 1 | O ERROR de grupo não vira "não entregue" | Mesclada no PR #456 (04/11/2026) |
-| 2 | ✓✓ e azul em grupo, e "Dados da mensagem" (quem recebeu e quem leu) | Decidida (D1–D3 e D5, 04/11/2026); revisão independente e duas rodadas do Codex no PR #457 (abaixo); 1119 aplicada em produção em 04/11/2026; o CRM no ar com o PR #457 (04/11/2026); a imagem com o 5º patch no ar desde 05/11/2026 09:20 BRT (`docs/INFRA-VPS.md` §8). Falta: a prova num grupo de teste. D4 e D6 pendentes |
+| 2 | ✓✓ e azul em grupo, e "Dados da mensagem" (quem recebeu e quem leu) | Decidida (D1–D3 e D5, 04/11/2026); revisão independente e duas rodadas do Codex no PR #457 (abaixo); 1119 aplicada em produção em 04/11/2026; o CRM no ar com o PR #457 (04/11/2026); a imagem com o 5º patch no ar desde 05/11/2026 09:20 BRT (`docs/INFRA-VPS.md` §8); **provada em produção** em 05/11/2026 (no fim deste plano); D4 gravada em 05/11/2026; portada ao Atlas CRM na v0.10.5 (`atlas-crm-dev` #38 e #39). Falta: ver o azul acender num envio real. D6 pendente |
 
 ## Fase 1 — o ERROR de grupo não vira falha
 
@@ -68,8 +68,8 @@ fica em ✓, sem aviso.
   (Recibo de status) e `docs/DECISOES-DO-OPERADOR.md`.
 - Não muda contrato documentado (`docs/webhooks.md` não fala de falha nem de
   grupo; o portão `doc-acompanha` não cobra a rota).
-- **Fica para decisão (D4):** as 10 de grupo já `failed` dos últimos 30 dias
-  continuam vermelhas. Voltar para `sent` é escrita em produção.
+- **D4, gravada em 05/11/2026:** as 10 de grupo que estavam `failed` voltaram
+  para `sent` (ver as decisões, abaixo).
 
 ## Fase 2 — ✓✓ e azul em grupo
 
@@ -208,8 +208,13 @@ leram, e "Dados da mensagem" diz quem recebeu e quem leu, com hora.
 - **D3. Integradores — DECIDIDA:** o `message.status_updated` passa a sair
   para mensagem de grupo, documentado (`docs/webhooks.md`,
   `docs/public-api.md`).
-- **D4. As 10 vermelhas antigas — PENDENTE:** voltar para `sent` é escrita em
-  produção, só com o "pode gravar".
+- **D4. As 10 vermelhas antigas — GRAVADA em 05/11/2026, com o "pode
+  gravar":** as 10 mensagens de grupo da equipe que estavam `failed` pelo
+  ERROR 479 (4 de uma conexão e 6 de outra, de 08/10 a 04/11) voltaram para
+  `sent`. O ✓ diz que saíram, sem afirmar entrega: são de antes do recibo de
+  grupo. SQL pelo id, com trava de contagem (aborta se não forem exatamente
+  10), pela Management API. Nenhum gatilho de `messages` dispara em UPDATE de
+  status. Depois, nenhuma mensagem de grupo da equipe ficou `failed`.
 - **D5. Grupo grande — DECIDIDA:** sem teto agora; o volume está registrado
   no README da imagem e no guia de instalação (um aviso por recibo).
 - **D6. Prazo dos recibos e o "Excluir agora" — PENDENTE** (revisão de
@@ -284,3 +289,27 @@ leram, e "Dados da mensagem" diz quem recebeu e quem leu, com hora.
    contaria como leitura de fora a cada envio).
 4. "Dados da mensagem": o nome (a ficha, se houver) e as horas.
 5. Com um segundo celular de fora: ✓✓ só depois do segundo.
+
+### Resultado (05/11/2026, em produção)
+
+Num grupo INTERNO do escritório, liberado pelo operador: 7 participantes, 5
+de fora e 2 números de conexão do CRM.
+
+- **Denominador:** uma mensagem do operador, mandada do celular particular,
+  fez a conferência gravar o denominador (5) 7 s depois da chegada.
+- **Entrega:** o envio pelo CRM às 14:03 BRT recebeu os 5 recibos de entrega
+  em 8 s, todos com a ficha, e a bolha passou a ✓✓ (`delivered`).
+- **Números do escritório:** nenhum recibo dos 2 números de conexão do grupo
+  virou linha, nem o do que enviou nem o do outro.
+- **"Dados da mensagem":** mostrou "Recebida por 5 de 5 · lida por 1", com
+  nome e hora de cada um.
+- **Leitura:** 4 de 5 tinham lido às 19:28, e a bolha segue em ✓✓ até o 5º
+  ler (D1). O azul acendendo ainda não foi visto.
+- **O passo 5 não deu para ver:** os 5 entregaram em 8 s, então a bolha
+  esperando o último não apareceu. Os testes de D1 cobrem isso.
+- **Limite visto:** às 10:15, uma conexão nossa mandou pelo celular uma
+  mensagem a outro grupo onde também está a outra conexão. Os 4 recibos
+  foram gravados, mas a linha da mensagem é `customer`, porque a outra
+  conexão gravou a chegada primeiro. Não muda nada na tela, já que bolha
+  recebida não tem tique. É o caso da mensagem entre dois números da conta
+  (`whatsapp-evolution.md`).

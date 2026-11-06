@@ -453,7 +453,10 @@ ERROR (`messageStubParameters`).
   em diante): NÃO saiu, e o texto precisa ser reenviado à mão. Troca em
   horário de expediente custa isso: antes do expediente, ou com a equipe
   avisada para não enviar no minuto da troca.
-- **Falta:** a prova num grupo de TESTE (roteiro no fim do plano).
+- **Prova (14:03 BRT):** uma mensagem pelo CRM num grupo interno liberado
+  pelo operador chegou a ✓✓ em 8 s, com os 5 participantes de fora. Nenhum
+  recibo dos números do escritório virou linha. Os detalhes estão no fim de
+  `docs/PLANO-recibos-de-grupo.md`.
 
 ### 2026-11-04 — o `<status>` sem ack: queda a cada 50 min e entrada 23 h atrasada
 
