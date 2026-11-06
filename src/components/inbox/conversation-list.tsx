@@ -86,6 +86,9 @@ import { tipoNaoSuportado } from "@/lib/inbox/tipo-nao-suportado";
 import { useTextoDoRascunho } from "@/hooks/use-rascunho-da-conversa";
 import { useQuantosAnexosNoRascunho } from "@/hooks/use-anexos-da-conversa";
 import { anexosDaConversa } from "./message-composer";
+import { SeloDeClienteIdeal } from "@/components/contacts/selo-de-cliente-ideal";
+import type { MapaDeClientesIdeais } from "@/hooks/use-clientes-ideais";
+import type { NivelDeClienteIdeal } from "@/lib/contacts/cliente-ideal";
 import {
   EVENTO_CONVERSAR_COM_CONTATO,
   lerPedidoDeConversa,
@@ -155,6 +158,12 @@ interface ConversationListProps {
    * neutralizado (`ContextoDosFiltros.inadimplentes`).
    */
   inadimplencia?: RespostaDoResumo | null;
+  /**
+   * Quem é CLIENTE IDEAL (1124) — o mapa contato → nível da página
+   * (`useClientesIdeais`), o mesmo do cabeçalho do fio. `null` = não sei: o
+   * selo cala, nada afirma "não é cliente ideal".
+   */
+  clientesIdeais?: MapaDeClientesIdeais | null;
 }
 
 // Situação da conversa na LINHA (pedido do operador, 2026-09-03 — "hoje a
@@ -185,6 +194,7 @@ export function ConversationList({
   verInicial = null,
   jornadaDoFunil = false,
   inadimplencia = null,
+  clientesIdeais = null,
 }: ConversationListProps) {
   const t = useTranslations("Inbox.conversationList");
   const [novaConversaAberta, setNovaConversaAberta] = useState(false);
@@ -1169,6 +1179,8 @@ export function ConversationList({
                   sinalDeExecucoes?.porContato[conv.contact_id ?? ""]?.esperas ?? 0
                 }
                 divida={dividasDoAsaas?.get(conv.contact_id ?? "") ?? null}
+                // Grupo não tem contato e nunca ganha selo.
+                clienteIdeal={conv.contact_id ? (clientesIdeais?.get(conv.contact_id) ?? null) : null}
                 // Numa conta de um número só a bolinha não decide nada e só
                 // ocupa espaço — mesma régua do seletor e do filtro de canal.
                 // ⚠️ `canalDaConversa`, nunca `conversation.channel_id`: em
@@ -1233,6 +1245,11 @@ interface ConversationItemProps {
    */
   divida: ResumoDeDivida | null;
   /**
+   * O nível de CLIENTE IDEAL do contato desta linha (1124), ou `null` — não
+   * é, ou ainda não se sabe: o selo cala nos dois casos.
+   */
+  clienteIdeal: NivelDeClienteIdeal | null;
+  /**
    * O número por onde esta linha RESPONDE (o canal da conversa, senão o
    * padrão da conta — a resolução do fio), para o selo da janela de 24h.
    * `null` = desconhecido (canais carregando, consulta falhou, conta sem
@@ -1268,6 +1285,7 @@ function ConversationItem({
   agora,
   esperasDeAutomacao,
   divida,
+  clienteIdeal,
   canalDeSaidaDaLinha,
   t,
 }: ConversationItemProps) {
@@ -1397,6 +1415,12 @@ function ConversationItem({
               <span className="truncate text-sm font-medium text-foreground">
                 {displayName}
               </span>
+              {/* O CLIENTE IDEAL (1124) mora junto do NOME, não junto da
+                  hora: a direita da linha é dos estados com relógio (janela,
+                  dívida, automação, atraso); o selo diz QUEM é o cliente.
+                  COMPACTO (só o diamante): com o texto, a linha estreita
+                  espremia o nome até sumir (medido no preview). */}
+              {clienteIdeal && <SeloDeClienteIdeal nivel={clienteIdeal} compacto />}
             </span>
             <span className="flex shrink-0 items-center gap-1">
               {/* O alerta de atraso, colado à hora: âmbar até 30 min e

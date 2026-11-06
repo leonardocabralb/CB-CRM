@@ -35,6 +35,8 @@ import type { CamposDoCard } from "@/lib/pipelines/campos-do-card";
 import { gravarRetorno, lerRetorno } from "@/lib/pipelines/retorno";
 import { urlDoInbox } from "@/lib/inbox/url";
 import { useNegociosNaLixeira } from "@/hooks/use-negocios-na-lixeira";
+import { useClientesIdeais, type MapaDeClientesIdeais } from "@/hooks/use-clientes-ideais";
+import type { NivelDeClienteIdeal } from "@/lib/contacts/cliente-ideal";
 
 /**
  * Quantos cards uma coluna desenha de uma vez.
@@ -270,6 +272,10 @@ export function PipelineBoard({
   // inteiro. O mapa é memoizado por identidade do resumo: sem isso, um objeto
   // novo a cada render derrubaria o `memo` dos ~120 cards.
   const { resumo: sinalDeExecucoes } = useSinalDeExecucoes();
+  // Quem é CLIENTE IDEAL (1124) — UMA leitura para o quadro inteiro; o mapa
+  // só muda de identidade quando a leitura volta, e ao card vai o nível
+  // (primitivo), pelo `memo`. `null` = não sei: o selo cala.
+  const clientesIdeais = useClientesIdeais();
   const esperasPorContato = useMemo(() => {
     const mapa: Record<string, number> = {};
     for (const [id, info] of Object.entries(sinalDeExecucoes?.porContato ?? {})) {
@@ -504,6 +510,7 @@ export function PipelineBoard({
               channels={channels}
               esperasPorContato={esperasPorContato}
               negociosNaLixeira={negociosNaLixeira}
+              clientesIdeais={clientesIdeais}
               limite={limitesDoFunil[stage.id] ?? CARDS_POR_COLUNA}
               recemSolto={etapaDoSolto === stage.id ? recemSolto : null}
               onMostrarMais={mostrarMais}
@@ -535,6 +542,9 @@ export function PipelineBoard({
               channels={channels}
               naLixeira={negociosNaLixeira.has(activeDeal.id)}
               nomeNaLixeira={negociosNaLixeira.get(activeDeal.id) ?? null}
+              clienteIdeal={
+                activeDeal.contact_id ? (clientesIdeais?.get(activeDeal.contact_id) ?? null) : null
+              }
               onEdit={() => {}}
               onAbrirConversa={() => {}}
               isOverlay
@@ -604,6 +614,7 @@ const StageColumn = memo(function StageColumn({
   channels,
   esperasPorContato,
   negociosNaLixeira,
+  clientesIdeais,
   limite,
   recemSolto,
   onMostrarMais,
@@ -625,6 +636,8 @@ const StageColumn = memo(function StageColumn({
    * quadro, como `esperasPorContato`; ao card vão primitivos (`memo`).
    */
   negociosNaLixeira: ReadonlyMap<string, string | null>;
+  /** contato → nível de cliente ideal (1124); `null` = não sei. */
+  clientesIdeais: MapaDeClientesIdeais | null;
   /** Quantos cards desta coluna desenhar — ver `CARDS_POR_COLUNA`. */
   limite: number;
   /** O último card solto no quadro, só quando ele está NESTA coluna. */
@@ -799,6 +812,7 @@ const StageColumn = memo(function StageColumn({
                 }
                 naLixeira={negociosNaLixeira.has(deal.id)}
                 nomeNaLixeira={negociosNaLixeira.get(deal.id) ?? null}
+                clienteIdeal={deal.contact_id ? (clientesIdeais?.get(deal.contact_id) ?? null) : null}
                 onEdit={onEditDeal}
                 onAbrirConversa={onAbrirConversa}
               />
@@ -850,6 +864,7 @@ const DraggableDealCard = memo(function DraggableDealCard({
   esperasDeAutomacao,
   naLixeira,
   nomeNaLixeira,
+  clienteIdeal,
   onEdit,
   onAbrirConversa,
 }: {
@@ -862,6 +877,8 @@ const DraggableDealCard = memo(function DraggableDealCard({
   /** A ficha do card está na Lixeira (B4); primitivos, pelo mesmo `memo`. */
   naLixeira: boolean;
   nomeNaLixeira: string | null;
+  /** Nível de cliente ideal (1124), primitivo pelo mesmo `memo`. */
+  clienteIdeal: NivelDeClienteIdeal | null;
   onEdit: (deal: Deal) => void;
   onAbrirConversa: (conversationId: string) => void;
 }) {
@@ -884,6 +901,7 @@ const DraggableDealCard = memo(function DraggableDealCard({
         esperasDeAutomacao={esperasDeAutomacao}
         naLixeira={naLixeira}
         nomeNaLixeira={nomeNaLixeira}
+        clienteIdeal={clienteIdeal}
         onEdit={onEdit}
         onAbrirConversa={onAbrirConversa}
       />

@@ -8,9 +8,11 @@ import {
   TETO_DE_RESPOSTAS,
   TETO_DO_NOME_DO_PERFIL,
   alternarResposta,
+  camposQueFaltam,
   contarPorPerfil,
   criteriosValidos,
   lerCriterios,
+  lerDetalheDoClienteIdeal,
   nomeDoPerfilValido,
   respostaMarcada,
   respostaNormalizada,
@@ -136,6 +138,36 @@ describe('somentePadroes', () => {
       ],
       deFora: 1,
     });
+  });
+});
+
+describe('lerDetalheDoClienteIdeal e camposQueFaltam', () => {
+  it('lê a resposta de cb_cliente_ideal_do_contato', () => {
+    const detalhe = lerDetalheDoClienteIdeal({
+      nivel: 'possivel',
+      perfil: { id: 'p1', nome: 'Perfil Ficticio' },
+      criterios: [
+        { campo_id: CAMPO_A, campo: 'Tamanho da Divida', valor: 'Maior que 1M', casa: true },
+        { campo_id: CAMPO_B, campo: 'Tempo de Atraso', valor: null, casa: false },
+      ],
+      retrato: { do_cliente: 0, nossas: 3, nao_sairam: 1 },
+    });
+    expect(detalhe).toEqual({
+      nivel: 'possivel',
+      perfil: { id: 'p1', nome: 'Perfil Ficticio' },
+      criterios: [
+        { campoId: CAMPO_A, campo: 'Tamanho da Divida', valor: 'Maior que 1M', casa: true },
+        { campoId: CAMPO_B, campo: 'Tempo de Atraso', valor: null, casa: false },
+      ],
+      retrato: { doCliente: 0, nossas: 3, naoSairam: 1 },
+    });
+    expect(camposQueFaltam(detalhe!)).toEqual(['Tempo de Atraso']);
+  });
+
+  it('quem não é ideal tem nível nulo; forma estranha é "não sei"', () => {
+    expect(lerDetalheDoClienteIdeal({ nivel: null, perfil: null, criterios: [], retrato: {} })?.nivel).toBeNull();
+    expect(lerDetalheDoClienteIdeal(null)).toBeNull();
+    expect(lerDetalheDoClienteIdeal('x')).toBeNull();
   });
 });
 

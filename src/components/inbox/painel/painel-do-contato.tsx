@@ -57,6 +57,7 @@ import type { AlvoDoSalto } from '@/lib/inbox/salto-no-fio';
 import { FotoAmpliavel } from '@/components/inbox/painel/foto-ampliavel';
 import { OrigemDoContato } from '@/components/inbox/painel/origem-do-contato';
 import { ResponsavelMenu } from '@/components/inbox/painel/responsavel-menu';
+import { BlocoDoClienteIdeal } from '@/components/inbox/painel/bloco-do-cliente-ideal';
 import { CopiarLinkDaConversa } from '@/components/inbox/copiar-link-da-conversa';
 import { useExecucoesDoContato } from '@/hooks/use-execucoes-do-contato';
 import { useHistoricoDeExecucoes } from '@/hooks/use-execucoes-do-fio';
@@ -1320,6 +1321,11 @@ export function PainelDoContato({
           />
         </div>
       )}
+
+      {/* CLIENTE IDEAL (1124, Fase 2): o porquê do selo e o retrato do
+          contato, em qualquer aba. Só aparece para quem é ideal ou possível;
+          carregando ou com falha, nada (nunca "não é"). */}
+      <BlocoDoClienteIdeal contactId={contact.id} resyncToken={resyncToken} />
 
       {/* Abas só-ícone. `title` + `aria-label` em cada gatilho: ícone sem nome
           acessível é um botão mudo para leitor de tela.

@@ -13,6 +13,8 @@ import { stripWhatsAppFormat } from "@/lib/inbox/whatsapp-format";
 import { identidadeDoContato, nomeDoContato } from "@/lib/contacts/identidade";
 import { ehPreviaDeLigacao } from "@/lib/whatsapp/ligacoes/previa";
 import { tipoNaoSuportado } from "@/lib/inbox/tipo-nao-suportado";
+import { SeloDeClienteIdeal } from "@/components/contacts/selo-de-cliente-ideal";
+import type { NivelDeClienteIdeal } from "@/lib/contacts/cliente-ideal";
 
 interface DealCardProps {
   deal: DealDoQuadro;
@@ -40,6 +42,12 @@ interface DealCardProps {
   naLixeira?: boolean;
   /** O nome da ficha na Lixeira, quando ela tinha um. */
   nomeNaLixeira?: string | null;
+  /**
+   * O nível de CLIENTE IDEAL do contato (1124). Primitivo, pelo `memo`.
+   * Ausente = não é, ou não se sabe: o selo cala. ICP ganha também a borda
+   * dourada (D4); o "ICP?" só a pastilha.
+   */
+  clienteIdeal?: NivelDeClienteIdeal | null;
   onEdit: (deal: Deal) => void;
   /** Clique no corpo do card, quando há conversa para abrir. */
   onAbrirConversa: (conversationId: string) => void;
@@ -83,6 +91,7 @@ export const DealCard = memo(function DealCard({
   esperasDeAutomacao = 0,
   naLixeira = false,
   nomeNaLixeira = null,
+  clienteIdeal = null,
   channels,
   onEdit,
   onAbrirConversa,
@@ -140,12 +149,15 @@ export const DealCard = memo(function DealCard({
     // `<button>` é HTML inválido e o navegador desmonta a árvore sozinho.
     // Mesmo padrão da estrela de favoritar na lista do inbox: irmãos num
     // wrapper `relative`, com a linha do título reservando a faixa (pr-7).
+    // A borda dourada do CLIENTE IDEAL (1124, D4) é `ring`, não `border-*`: o
+    // `hover:border-border` venceria a cor no hover. Só o ICP; o "ICP?" fica
+    // na pastilha.
     <div
       className={`relative rounded-xl border border-border/50 bg-muted/70 shadow-sm transition-all ${
         isOverlay
           ? "shadow-xl"
           : "hover:-translate-y-0.5 hover:border-border hover:bg-muted hover:shadow-lg"
-      }`}
+      } ${clienteIdeal === "ideal" ? "ring-2 ring-yellow-400" : ""}`}
     >
       {/* 4px left accent bar using stage color. `pointer-events-none` é
           load-bearing: como irmã POSICIONADA do botão, sem ele a barra ganha
@@ -175,6 +187,9 @@ export const DealCard = memo(function DealCard({
           <h4 className="flex-1 text-sm font-semibold leading-snug text-foreground break-words">
             {deal.title}
           </h4>
+          {/* CLIENTE IDEAL (1124): antes de Ganho/Perdido; fica em QUALQUER
+              card, perdido inclusive (D3: diz quem o cliente é). */}
+          {clienteIdeal && <SeloDeClienteIdeal nivel={clienteIdeal} className="mt-0.5" />}
           {deal.status === "won" && (
             <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">
               <Check className="h-3 w-3" />

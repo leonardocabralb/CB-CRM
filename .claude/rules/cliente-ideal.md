@@ -2,6 +2,9 @@
 paths:
   - "src/lib/contacts/cliente-ideal*"
   - "src/components/settings/cliente-ideal-settings.tsx"
+  - "src/hooks/use-clientes-ideais*"
+  - "src/components/contacts/selo-de-cliente-ideal.tsx"
+  - "src/components/inbox/painel/bloco-do-cliente-ideal.tsx"
   - "supabase/migrations/1124_cb_perfis_de_cliente_ideal.sql"
 ---
 
@@ -42,6 +45,26 @@ Plano vivo: `docs/PLANO-cliente-ideal.md`; decisões em
 - ⚠️ **Leitura do navegador PAGINADA** (`lerClientesIdeais`): o PostgREST
   corta em 1000. `null` = "não sei" (selo cala, contagem diz indisponível),
   nunca lista vazia.
+
+### O selo (Fase 2): lista, card, cabeçalho e painel
+
+- ⚠️ **UMA leitura por página** (`useClientesIdeais`): a caixa de entrada a
+  passa à lista e ao fio; o quadro, aos cards. Ao card e à linha vai o NÍVEL
+  (primitivo), nunca o mapa: o `memo` dos ~120 cards só segura com prop
+  estável. O fio recebe o nível derivado NO RENDER pelo contato aberto (o
+  mapa é da conta: a troca de conversa não mostra o selo do anterior).
+- **Relê** no `resyncToken`, a cada 5 min com a aba visível (o Typebot grava
+  pela API, sem evento na tela) e no `EVENTO_CLIENTE_IDEAL`, disparado pela
+  fila do `CampoComSalvamento` quando a ficha grava um campo. Recarga que
+  falha mantém a anterior.
+- ⚠️ **Na LINHA da lista o selo é COMPACTO (só o diamante)**: com "ICP"
+  escrito, a linha com raio e atraso espremia o NOME até sumir (medido no
+  preview, 05/11/2026). No card e no cabeçalho, com o texto.
+- **Borda dourada só no ICP, por `ring`** (o `hover:border-border` venceria um
+  `border-*`); o "ICP?" é só contorno, sem borda no card. Grupo nunca tem selo.
+- **O porquê no painel** (`BlocoDoClienteIdeal`, abaixo do responsável, em
+  qualquer aba) lê `cb_cliente_ideal_do_contato` por contato, carimbado com o
+  dono (efeito passivo); carregando ou com falha, não desenha nada.
 
 ### A tela (Configurações → Campos e etiquetas)
 

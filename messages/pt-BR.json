@@ -3880,6 +3880,20 @@
       "statusArchived": "Arquivado"
     }
   },
+  "ClienteIdeal": {
+    "selo": "ICP",
+    "seloPossivel": "ICP?",
+    "dicaIdeal": "Cliente ideal (ICP)",
+    "dicaPossivel": "Possível cliente ideal: o critério principal casa e falta preencher outro",
+    "tituloIdeal": "Cliente ideal",
+    "tituloPossivel": "Possível cliente ideal",
+    "perfil": "Perfil {nome}",
+    "falta": "Falta: {campo}",
+    "nuncaRespondeu": "Nunca respondeu pelo WhatsApp",
+    "mensagensNossas": "{n, plural, =0 {nenhuma mensagem nossa} one {# mensagem nossa} other {# mensagens nossas}}",
+    "naoSairam": "{n, plural, one {# não saiu} other {# não saíram}}",
+    "respondeu": "Respondeu · {n, plural, one {# mensagem do cliente} other {# mensagens do cliente}}"
+  },
   "Settings": {
     "pageTitle": "Configurações",
     "pageDesc": "Tudo em um só lugar — sua conta e seu espaço de trabalho. Escolha uma seção para gerenciar.",

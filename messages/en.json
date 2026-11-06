@@ -3887,6 +3887,20 @@
       "statusArchived": "Archived"
     }
   },
+  "ClienteIdeal": {
+    "selo": "ICP",
+    "seloPossivel": "ICP?",
+    "dicaIdeal": "Ideal customer (ICP)",
+    "dicaPossivel": "Possible ideal customer: the main criterion matches and another is still blank",
+    "tituloIdeal": "Ideal customer",
+    "tituloPossivel": "Possible ideal customer",
+    "perfil": "Profile {nome}",
+    "falta": "Missing: {campo}",
+    "nuncaRespondeu": "Never replied on WhatsApp",
+    "mensagensNossas": "{n, plural, =0 {no messages from us} one {# message from us} other {# messages from us}}",
+    "naoSairam": "{n, plural, one {# not sent} other {# not sent}}",
+    "respondeu": "Replied · {n, plural, one {# message from the customer} other {# messages from the customer}}"
+  },
   "Settings": {
     "pageTitle": "Settings",
     "pageDesc": "Everything in one place — your account and your workspace. Pick a section to manage it.",

@@ -22,6 +22,8 @@ import { AvisoDeFichaNaLixeira } from "@/components/contacts/lixeira/aviso-de-fi
 import { ScheduledBar } from "./scheduled-bar";
 import { FaixaDeSituacaoDoCliente } from "./faixa-de-situacao-do-cliente";
 import { FaixaDeInadimplencia } from "./faixa-de-inadimplencia";
+import { SeloDeClienteIdeal } from "@/components/contacts/selo-de-cliente-ideal";
+import type { NivelDeClienteIdeal } from "@/lib/contacts/cliente-ideal";
 import { FaixaDeNoShow } from "./faixa-de-no-show";
 import { dividaDoContato, leituraAindaFresca, type RespostaDoResumo } from "@/lib/asaas/aviso-na-conversa";
 import { ExecutarAutomacaoDialog } from "./executar-automacao-dialog";
@@ -252,6 +254,11 @@ interface MessageThreadProps {
    * a faixa cala, sem afirmar "em dia".
    */
   inadimplencia?: RespostaDoResumo | null;
+  /**
+   * O nível de CLIENTE IDEAL do contato aberto (1124), derivado pela página
+   * do mapa da conta. `null` = não é, ou não se sabe: o selo cala.
+   */
+  clienteIdeal?: NivelDeClienteIdeal | null;
   /**
    * Abrir a conversa de OUTRA ficha a partir do fio — o "Abrir conversa" do
    * "Comparar" da possível duplicata (1088). É o mesmo pulo da aba
@@ -548,6 +555,7 @@ export function MessageThread({
   termoDaBusca = "",
   saltoPedido = null,
   inadimplencia = null,
+  clienteIdeal = null,
   onAbrirConversaRelacionada,
 }: MessageThreadProps) {
   const t = useTranslations("Inbox.messageThread");
@@ -2901,6 +2909,9 @@ export function MessageThread({
               <span className="flex min-w-0 items-center gap-1.5 truncate text-sm font-semibold text-foreground">
                 {ehGrupo && <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
                 <span className="truncate">{displayName}</span>
+                {/* O selo do CLIENTE IDEAL (1124), o mesmo da linha da lista.
+                    Grupo não tem contato e nunca o recebe. */}
+                {!ehGrupo && clienteIdeal && <SeloDeClienteIdeal nivel={clienteIdeal} />}
               </span>
               {subtituloDoCabecalho && (
                 <span className="block truncate text-xs text-muted-foreground">

@@ -44,6 +44,69 @@ export interface ClienteIdeal {
   perfil_id: string;
 }
 
+/**
+ * Evento global "o cliente ideal pode ter mudado": a ficha gravou um campo,
+ * ou a regra mudou em Configurações. As leituras da caixa de entrada, do
+ * quadro e do painel relêem — sem ele, preencher a situação na ficha não
+ * acendia o selo até a próxima recarga.
+ */
+export const EVENTO_CLIENTE_IDEAL = 'cb:cliente-ideal-mudou';
+
+export function avisarClienteIdealMudou(): void {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(EVENTO_CLIENTE_IDEAL));
+}
+
+/** O porquê do painel: a resposta de `cb_cliente_ideal_do_contato`. */
+export interface DetalheDoClienteIdeal {
+  /** `null` = não é cliente ideal por nenhum perfil. */
+  nivel: NivelDeClienteIdeal | null;
+  perfil: { id: string; nome: string } | null;
+  criterios: { campoId: string; campo: string; valor: string | null; casa: boolean }[];
+  /** O retrato do contato (D5): o "respondeu" virou informação, não critério. */
+  retrato: { doCliente: number; nossas: number; naoSairam: number };
+}
+
+/**
+ * Lê a resposta de `cb_cliente_ideal_do_contato`. `null` = a forma não é a
+ * esperada (tratada como "não sei", nunca como "não é cliente ideal").
+ */
+export function lerDetalheDoClienteIdeal(bruto: unknown): DetalheDoClienteIdeal | null {
+  if (typeof bruto !== 'object' || bruto === null) return null;
+  const j = bruto as Record<string, unknown>;
+  const nivel = j.nivel === 'ideal' || j.nivel === 'possivel' ? j.nivel : null;
+  const perfilBruto = j.perfil as Record<string, unknown> | null | undefined;
+  const perfil =
+    perfilBruto && typeof perfilBruto.id === 'string' && typeof perfilBruto.nome === 'string'
+      ? { id: perfilBruto.id, nome: perfilBruto.nome }
+      : null;
+  const criterios = Array.isArray(j.criterios)
+    ? j.criterios
+        .filter((c): c is Record<string, unknown> => typeof c === 'object' && c !== null)
+        .map((c) => ({
+          campoId: String(c.campo_id ?? ''),
+          campo: String(c.campo ?? ''),
+          valor: typeof c.valor === 'string' ? c.valor : null,
+          casa: c.casa === true,
+        }))
+    : [];
+  const r = (j.retrato ?? {}) as Record<string, unknown>;
+  return {
+    nivel,
+    perfil,
+    criterios,
+    retrato: {
+      doCliente: Number(r.do_cliente) || 0,
+      nossas: Number(r.nossas) || 0,
+      naoSairam: Number(r.nao_sairam) || 0,
+    },
+  };
+}
+
+/** Os campos que faltam preencher (o "Falta:" do ICP?): critério sem valor. */
+export function camposQueFaltam(detalhe: DetalheDoClienteIdeal): string[] {
+  return detalhe.criterios.filter((c) => c.valor === null).map((c) => c.campo);
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /**

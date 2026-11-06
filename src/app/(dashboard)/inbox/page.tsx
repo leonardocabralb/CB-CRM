@@ -19,6 +19,7 @@ import { useMarcarConversaAberta } from "@/hooks/use-conversa-aberta";
 import { useAbaVisivel } from "@/hooks/use-aba-visivel";
 import { useModoAnonimo } from "@/hooks/use-modo-anonimo";
 import { useInadimplencia } from "@/hooks/use-inadimplencia";
+import { useClientesIdeais } from "@/hooks/use-clientes-ideais";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { ConversaForaDaArea } from "@/components/inbox/conversa-fora-da-area";
 import { useAuth } from "@/hooks/use-auth";
@@ -196,6 +197,11 @@ function InboxPageInner() {
    * único caminho entre eles. `null` = não sei; nada afirma "em dia".
    */
   const { resumo: inadimplencia } = useInadimplencia(resyncToken);
+  /**
+   * Quem é CLIENTE IDEAL (1124): a mesma régua — UMA leitura para a lista
+   * (selo na linha) e para o fio (selo no cabeçalho). `null` = não sei.
+   */
+  const clientesIdeais = useClientesIdeais(resyncToken);
 
   /**
    * O termo da busca, espelhado da lista para o fio.
@@ -1420,6 +1426,7 @@ function InboxPageInner() {
             onTermoDeBusca={setTermoDaBusca}
             onConversaAberta={handleConversaAberta}
             inadimplencia={inadimplencia}
+            clientesIdeais={clientesIdeais}
           />
         </div>
 
@@ -1466,6 +1473,9 @@ function InboxPageInner() {
             termoDaBusca={termoDaBusca}
             saltoPedido={saltoPedido}
             inadimplencia={inadimplencia}
+            // Derivado no RENDER pelo contato de agora: o mapa é da conta, então
+            // a troca de conversa nunca mostra o selo do cliente anterior.
+            clienteIdeal={activeContact ? (clientesIdeais?.get(activeContact.id) ?? null) : null}
             // O "Abrir conversa" do "Comparar" da possível duplicata (1088):
             // o mesmo pulo da aba Relacionados, com a faixa "Voltar para".
             onAbrirConversaRelacionada={handleAbrirConversaRelacionada}
