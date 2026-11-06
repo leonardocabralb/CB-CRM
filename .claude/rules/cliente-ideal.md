@@ -102,10 +102,14 @@ Plano vivo: `docs/PLANO-cliente-ideal.md`; decisões em
   escopo vazio = todos); vazio não existe (o CHECK recusa, a tela grava
   nulo). Com funis, o contato só conta para o perfil se tiver NEGÓCIO, em
   qualquer situação, num deles; sem negócio nenhum, fica de fora.
-- ⚠️ **O QUADRO passa o funil** (`useClientesIdeais(0, selectedPipelineId)` →
-  `p_funil`): só valem os perfis daquele funil, e o card do Jurídico fica sem
-  selo mesmo que o contato tenha card no Comercial. Caixa de entrada, painel e
-  a contagem da tela pedem SEM funil. O mapa e os negócios do interruptor são
+- ⚠️ **O QUADRO passa o funil** (`useClientesIdeais(leiturasDosNegocios,
+  selectedPipelineId)` → `p_funil`): só valem os perfis daquele funil, e o
+  card do Jurídico fica sem selo mesmo que o contato tenha card no Comercial.
+  O mapa relê a cada releitura dos cards: com funis, ter negócio no funil
+  decide o perfil, e card criado ou transferido mudaria o selo só em 5 min.
+  Caixa de entrada, painel e a contagem da tela pedem SEM funil; ali, card
+  criado ou transferido pelo painel acende ou apaga o selo na recarga de 5
+  min ou na volta à aba (limite conhecido). O mapa e os negócios do interruptor são
   carimbados com conta E funil: na troca de funil, `null` até a leitura
   voltar, nunca o recorte do funil anterior.
 - ⚠️ **Funil apagado não casa com nada** (todos apagados = o perfil não marca

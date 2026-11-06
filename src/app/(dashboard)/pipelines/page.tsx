@@ -247,8 +247,11 @@ function PipelinesPageInner() {
   // cards e o interruptor do cabeçalho. Os negócios só são perguntados com o
   // interruptor ligado e no Quadro (a lista enxuta não traz o contato).
   // ⚠️ Do FUNIL aberto (1125, D8): perfil marcado só para o Comercial não
-  // pinta selo nem oferece o interruptor no quadro do Jurídico.
-  const clientesIdeais = useClientesIdeais(0, selectedPipelineId || null);
+  // pinta selo nem oferece o interruptor no quadro do Jurídico. E relê a
+  // cada releitura dos cards (`leiturasDosNegocios`): com funis no perfil,
+  // ser cliente ideal depende de TER negócio no funil, e o card criado ou
+  // transferido aqui mudaria o selo só na recarga de 5 min (Codex, PR #469).
+  const clientesIdeais = useClientesIdeais(leiturasDosNegocios, selectedPipelineId || null);
   const temClienteIdeal = useMemo(
     () => clientesIdeais !== null && [...clientesIdeais.values()].includes("ideal"),
     [clientesIdeais],

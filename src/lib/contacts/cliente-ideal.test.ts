@@ -248,7 +248,8 @@ describe('o quadro relê os cards ideais a cada releitura da lista (Codex, PR #4
   });
 
   it('o mapa e os negócios do quadro são do FUNIL aberto (1125)', () => {
-    expect(pagina).toMatch(/useClientesIdeais\(0, selectedPipelineId \|\| null\)/);
+    // E relê com os cards: ter negócio no funil decide o perfil (Codex, #469).
+    expect(pagina).toMatch(/useClientesIdeais\(leiturasDosNegocios, selectedPipelineId \|\| null\)/);
     const chamada = pagina.match(/useNegociosDeClientesIdeais\(([\s\S]*?)\);/);
     expect(chamada?.[1]).toMatch(/selectedPipelineId \|\| null,?\s*$/);
   });
