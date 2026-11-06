@@ -18,6 +18,8 @@ export const TETO_DO_NOME_DO_PERFIL = 40;
 export const TETO_DE_CRITERIOS = 10;
 /** Espelho do teto de respostas por critério e do LIMIT de `cb_respostas_do_campo`. */
 export const TETO_DE_RESPOSTAS = 200;
+/** Espelho do CHECK de `funis` (1125). */
+export const TETO_DE_FUNIS = 50;
 
 export type NivelDeClienteIdeal = 'ideal' | 'possivel';
 
@@ -35,6 +37,12 @@ export interface PerfilDeClienteIdeal {
   ativo: boolean;
   posicao: number;
   criterios: CriterioDeClienteIdeal[];
+  /**
+   * Os funis onde o perfil vale (1125, D8). `null` = todos. Com funis, o
+   * contato só conta se tiver negócio num deles, e no quadro de outro funil
+   * o perfil não marca ninguém. Quem decide é `cb_clientes_ideais`.
+   */
+  funis: string[] | null;
 }
 
 /** Uma linha de `cb_clientes_ideais`. */
@@ -162,6 +170,45 @@ export function lerCriterios(bruto: unknown): CriterioDeClienteIdeal[] {
     });
   }
   return saida;
+}
+
+/**
+ * Lê `funis` de uma linha do banco: lista vazia ou ausente = `null` (todos),
+ * como o CHECK da 1125 grava. Tolerante: descarta o que não é texto.
+ */
+export function lerFunis(bruto: unknown): string[] | null {
+  if (!Array.isArray(bruto)) return null;
+  const ids = bruto.filter((id): id is string => typeof id === 'string' && id !== '');
+  return ids.length > 0 ? ids : null;
+}
+
+/**
+ * O que a tela grava: nenhum marcado = `null` (todos). O CHECK recusa a
+ * lista vazia — "nenhum" nunca vira "ninguém".
+ */
+export function funisParaGravar(marcados: string[]): string[] | null {
+  const unicos = [...new Set(marcados)];
+  return unicos.length > 0 ? unicos : null;
+}
+
+/** Marca ou desmarca um funil na lista do editor. */
+export function alternarFunil(marcados: string[], funil: string): string[] {
+  return marcados.includes(funil) ? marcados.filter((f) => f !== funil) : [...marcados, funil];
+}
+
+/**
+ * Os funis do perfil para a tela: o nome de cada um, e `null` no lugar do
+ * que não existe mais no catálogo ("Funil apagado"). `todosApagados` = o
+ * perfil não marca ninguém (a 1125 não casa funil apagado com nada).
+ */
+export function funisDoPerfil(
+  funis: string[] | null,
+  catalogo: { id: string; name: string }[],
+): { nomes: (string | null)[]; todosApagados: boolean } {
+  if (!funis) return { nomes: [], todosApagados: false };
+  const porId = new Map(catalogo.map((f) => [f.id, f.name]));
+  const nomes = funis.map((id) => porId.get(id) ?? null);
+  return { nomes, todosApagados: nomes.every((n) => n === null) };
 }
 
 /** A resposta já conta (ela ou outra grafia da mesma resposta)? */

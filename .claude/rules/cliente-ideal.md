@@ -8,6 +8,7 @@ paths:
   - "src/components/pipelines/so-clientes-ideais.tsx"
   - "src/components/pipelines/pipeline-board.tsx"
   - "supabase/migrations/1124_cb_perfis_de_cliente_ideal.sql"
+  - "supabase/migrations/1125_cb_cliente_ideal_por_funil.sql"
 ---
 
 # Cliente ideal (ICP) — regras
@@ -19,7 +20,7 @@ Plano vivo: `docs/PLANO-cliente-ideal.md`; decisões em
 
 ### A regra mora no BANCO (1124)
 
-- ⚠️⚠️ **Quem decide é `cb_clientes_ideais(p_conta, p_contato)`**, sempre
+- ⚠️⚠️ **Quem decide é `cb_clientes_ideais(p_conta, p_contato, p_funil)`**, sempre
   comparando respostas NORMALIZADAS (`cb_resposta_normalizada`: espaço
   repetido vira um, apara, minúsculas). Nada de regra em TS: o espelho
   `respostaNormalizada`/`criteriosValidos` (`src/lib/contacts/cliente-ideal.ts`)
@@ -94,6 +95,25 @@ Plano vivo: `docs/PLANO-cliente-ideal.md`; decisões em
   tamanho dela, que não muda quando se troca o contato de um card.
 - O mapa do quadro é lido pela PÁGINA (o cabeçalho também o usa) e desce ao
   quadro por prop: UMA leitura por página continua valendo.
+
+### Por funil (1125, D8)
+
+- **`cb_perfis_de_cliente_ideal.funis`: NULO = todos os funis** (a regra do
+  escopo vazio = todos); vazio não existe (o CHECK recusa, a tela grava
+  nulo). Com funis, o contato só conta para o perfil se tiver NEGÓCIO, em
+  qualquer situação, num deles; sem negócio nenhum, fica de fora.
+- ⚠️ **O QUADRO passa o funil** (`useClientesIdeais(0, selectedPipelineId)` →
+  `p_funil`): só valem os perfis daquele funil, e o card do Jurídico fica sem
+  selo mesmo que o contato tenha card no Comercial. Caixa de entrada, painel e
+  a contagem da tela pedem SEM funil. O mapa e os negócios do interruptor são
+  carimbados com conta E funil: na troca de funil, `null` até a leitura
+  voltar, nunca o recorte do funil anterior.
+- ⚠️ **Funil apagado não casa com nada** (todos apagados = o perfil não marca
+  ninguém; a linha avisa). Na tela ele aparece como "Funil apagado",
+  desmarcável: largá-lo em silêncio viraria "todos". Catálogo de funis que
+  falhou: o salvar não manda `funis` (a escolha fica como estava).
+- ⚠️ **A 1125 vai ANTES do deploy**: o app novo lê a coluna e manda `p_funil`;
+  sem ela a tela da regra não carrega e o quadro fica sem selo.
 
 ### A tela (Configurações → Campos e etiquetas)
 
