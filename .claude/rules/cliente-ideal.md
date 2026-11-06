@@ -59,7 +59,10 @@ Plano vivo: `docs/PLANO-cliente-ideal.md`; decisões em
   falha mantém a anterior.
 - ⚠️ **Na LINHA da lista o selo é COMPACTO (só o diamante)**: com "ICP"
   escrito, a linha com raio e atraso espremia o NOME até sumir (medido no
-  preview, 05/11/2026). No card e no cabeçalho, com o texto.
+  preview, 05/11/2026). No card e no cabeçalho, com o texto. No cabeçalho
+  ele mora DENTRO do nome: com o painel aberto em tela de ~1440 px o nome já
+  some (a barra de ícones toma a linha) e o selo some junto — o bloco do
+  painel cobre. Tirá-lo do nome o faria vazar por cima dos ícones.
 - **Borda dourada só no ICP, por `ring`** (o `hover:border-border` venceria um
   `border-*`); o "ICP?" é só contorno, sem borda no card. Grupo nunca tem selo.
 - **O porquê no painel** (`BlocoDoClienteIdeal`, abaixo do responsável, em
