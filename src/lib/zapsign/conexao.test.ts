@@ -9,7 +9,7 @@ vi.mock("@/lib/whatsapp/encryption", () => ({
 }));
 
 import { ZapSignError, type ClienteZapSign } from "./cliente";
-import { conectarZapSign, desconectarZapSign, reativarWebhook, urlDoWebhook } from "./conexao";
+import { conectarZapSign, conferirToken, desconectarZapSign, reativarWebhook, urlDoWebhook } from "./conexao";
 import { criarBanco, type Banco } from "./duble.test-helper";
 
 // Tokens de TESTE — nenhum token real do ZapSign.
@@ -173,5 +173,38 @@ describe("desconectarZapSign", () => {
     await conectarZapSign(banco.cliente, CONTA, "u1", TOKEN, publico);
     falhaDoApagar = new ZapSignError("rede", "fetch failed");
     expect(await desconectarZapSign(banco.cliente, CONTA, { cliente: fabrica })).toEqual({ ok: true, webhookNaoApagado: true });
+  });
+});
+
+describe("conferirToken — o 'Testar agora' (1127)", () => {
+  it("token recusado: a conexão vai a erro; respondeu: carimba e limpa", async () => {
+    await conectarZapSign(banco.cliente, CONTA, "u1", TOKEN, publico);
+    falhaDosModelos = new ZapSignError("token_invalido", "401", 401);
+    expect(await conferirToken(banco.cliente, CONTA, { cliente: fabrica })).toEqual({ ok: false, codigo: "token_invalido" });
+    expect(config()).toMatchObject({ status: "erro", last_error: "token_invalido" });
+    falhaDosModelos = null;
+    expect(await conferirToken(banco.cliente, CONTA, { cliente: fabrica })).toEqual({ ok: true });
+    expect(config()).toMatchObject({ status: "conectado", last_error: null });
+  });
+
+  it("⚠️ trocado o token no meio do teste, o 401 do ANTIGO não marca o novo (Codex, PR #470)", async () => {
+    await conectarZapSign(banco.cliente, CONTA, "u1", TOKEN, publico);
+    const trocaNoMeio = (token: string): ClienteZapSign => ({
+      ...fabrica(token),
+      modelos: async () => {
+        // A troca grava o token novo enquanto o ZapSign responde ao antigo.
+        config().api_token = `cifrado:${OUTRO_TOKEN}`;
+        throw new ZapSignError("token_invalido", "401", 401);
+      },
+    });
+    expect(await conferirToken(banco.cliente, CONTA, { cliente: trocaNoMeio })).toEqual({ ok: false, codigo: "token_invalido" });
+    expect(config()).toMatchObject({ api_token: `cifrado:${OUTRO_TOKEN}`, status: "conectado", last_error: null });
+  });
+
+  it("token ilegível: marca a conexão em erro (o campo do token abre sozinho)", async () => {
+    await conectarZapSign(banco.cliente, CONTA, "u1", TOKEN, publico);
+    config().api_token = "nao-e-cifra";
+    expect(await conferirToken(banco.cliente, CONTA, { cliente: fabrica })).toEqual({ ok: false, codigo: "token_ilegivel" });
+    expect(config()).toMatchObject({ status: "erro", last_error: "token_ilegivel" });
   });
 });
