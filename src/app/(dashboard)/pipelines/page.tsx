@@ -142,6 +142,15 @@ function PipelinesPageInner() {
   // não tem etapa" — os dois são `[]` (Codex, PR #121).
   const [etapasDe, setEtapasDe] = useState<string>("");
   const [deals, setDeals] = useState<CardDoQuadro[]>([]);
+  /**
+   * Quantas vezes a lista INTEIRA de negócios foi relida e gravada (a carga do
+   * funil, o `refreshDeals` de depois de salvar, a volta ao app). É a versão
+   * que faz o "Só clientes ideais" (1124) reler quais cards são de cliente
+   * ideal: trocar o contato de um card não muda o tamanho da lista, e com o
+   * tamanho como versão o card seguia no quadro filtrado sem o selo (Codex,
+   * PR #466).
+   */
+  const [leiturasDosNegocios, setLeiturasDosNegocios] = useState(0);
   const [loading, setLoading] = useState(true);
 
   /**
@@ -245,7 +254,7 @@ function PipelinesPageInner() {
   const negociosIdeais = useNegociosDeClientesIdeais(
     clientesIdeais,
     soClientesIdeais && vista === "leads",
-    deals.length,
+    leiturasDosNegocios,
   );
   const idsIdeais = negociosIdeais.ids;
   const quantosIdeais = useMemo(
@@ -651,6 +660,7 @@ function PipelinesPageInner() {
       );
       for (const id of aposentar) movidosRef.current.delete(id);
       setDeals((prev) => manterMovimentosLocais(negocios, prev, manter));
+      setLeiturasDosNegocios((v) => v + 1);
     },
     [],
   );
@@ -874,6 +884,7 @@ function PipelinesPageInner() {
       if (etapas && negocios) {
         setStages(etapas);
         setDeals(negocios);
+        setLeiturasDosNegocios((v) => v + 1);
       }
     })();
   });

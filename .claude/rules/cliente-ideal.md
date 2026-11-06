@@ -89,8 +89,9 @@ Plano vivo: `docs/PLANO-cliente-ideal.md`; decisões em
   (carregando ou falhou) = não recorta; o botão mostra o giro ou o aviso.
 - **O interruptor volta no ponto de retorno** (`soClientesIdeais`, as duas
   saídas para o inbox): a rolagem e os tetos foram medidos no quadro
-  filtrado. A releitura dos negócios segue o mapa e o TAMANHO da lista (card
-  criado ou removido com o filtro ligado).
+  filtrado. A releitura dos negócios segue o mapa e as RELEITURAS da lista
+  inteira (`leiturasDosNegocios`: carga, salvamento, volta ao app) — nunca o
+  tamanho dela, que não muda quando se troca o contato de um card.
 - O mapa do quadro é lido pela PÁGINA (o cabeçalho também o usa) e desce ao
   quadro por prop: UMA leitura por página continua valendo.
 

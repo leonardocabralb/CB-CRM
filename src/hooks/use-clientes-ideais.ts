@@ -123,8 +123,10 @@ export function useClienteIdealDoContato(
  * `ligado` — ver `lerNegociosDosContatos`.
  *
  * Relê quando o mapa muda (a recarga de 5 min, a ficha que grava um campo) e
- * quando `versaoDosNegocios` muda (a página passa o tamanho da lista: card
- * criado ou removido). A releitura que falha MANTÉM a anterior; sem anterior,
+ * quando `versaoDosNegocios` muda: a página conta as releituras da lista
+ * INTEIRA (carga, salvamento, volta ao app). ⚠️ Nunca o tamanho da lista:
+ * trocar o contato de um card não o muda (Codex, PR #466). A releitura que
+ * falha MANTÉM a anterior; sem anterior,
  * `falhou` — e o quadro, com `ids` nulo, não recorta (nunca "funil vazio").
  * Desligado, ou com o mapa ainda desconhecido, `ids` é nulo.
  */

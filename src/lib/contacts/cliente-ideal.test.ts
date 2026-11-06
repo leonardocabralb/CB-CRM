@@ -189,3 +189,22 @@ describe('lerCriterios e contarPorPerfil', () => {
     expect(contagem.get('p2')).toEqual({ ideais: 1, possiveis: 0 });
   });
 });
+
+describe('o quadro relê os cards ideais a cada releitura da lista (Codex, PR #466)', () => {
+  const pagina = readFileSync(
+    join(process.cwd(), 'src/app/(dashboard)/pipelines/page.tsx'),
+    'utf8',
+  );
+
+  it('a versão é o contador de releituras, nunca o tamanho da lista', () => {
+    // Trocar o contato de um card não muda `deals.length`: com ele como
+    // versão, o card seguia no quadro filtrado sem o selo.
+    const chamada = pagina.match(/useNegociosDeClientesIdeais\(([\s\S]*?)\);/);
+    expect(chamada?.[1]).toMatch(/,\s*leiturasDosNegocios,?\s*$/);
+  });
+
+  it('as duas portas que relêem a lista inteira contam a releitura', () => {
+    // `gravarNegocios` (carga do funil e `refreshDeals`) e a volta ao app.
+    expect(pagina.match(/setLeiturasDosNegocios\(\(v\) => v \+ 1\)/g)?.length).toBe(2);
+  });
+});
