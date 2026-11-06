@@ -22,7 +22,11 @@ qualquer uma é pergunta ao operador.
   personalizados (todos os critérios casam; em cada um, basta uma resposta
   marcada); "ICP?" quando o principal casa e os outros estão em branco; selo
   em qualquer card, perdido inclusive, e borda dourada só no ICP; "respondeu"
-  NÃO é critério, vira retrato no painel (`cliente-ideal.md`).
+  NÃO é critério, vira retrato no painel; o perfil escolhe em que funis vale
+  (nenhum = todos; só conta quem tem negócio num deles, 06/11/2026); no
+  painel, o bloco nasce RECOLHIDO (selo, título e perfil; o porquê abre no
+  clique, 06/11/2026)
+  (`cliente-ideal.md`).
 - Funil comercial: "por período" é o padrão (18/09/2026); taxa acima de 100%
   aparece como é; transferido conta no funil de origem. Degrau `pasta` depois
   do contrato, opcional, e "fechado" o inclui; painel por funil; "custo por
@@ -33,6 +37,10 @@ qualquer uma é pergunta ao operador.
   Em 30/10/2026: o participante com conversa no CRM abre a conversa pelo
   grupo, e o grupo aparece (e abre) na ficha do cliente que está nele, com a
   faixa de volta; guarda-se só o vínculo com a FICHA (`grupos.md`, 1117).
+- Grupos (06/11/2026): o apelido interno é o título, mas o nome do WhatsApp
+  fica à vista sob ele (cabeçalho, painel, `title` da linha); a busca acha o
+  grupo pelo nome de quem está nele, só pelos nomes que o CRM guarda
+  (`grupos.md`, 1126).
 - "Não entregue" da Evolution: o ERROR de reenvio a aparelho secundário do
   cliente (05/10/2026) e o ERROR de mensagem de GRUPO (04/11/2026) não pintam
   a bolha de vermelho; custo aceito, a falha real de grupo fica em ✓

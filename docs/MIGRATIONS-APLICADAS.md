@@ -1855,3 +1855,43 @@ nome da época em que foram aplicadas.
   sem leitura nem EXECUTE; `authenticated` executa as três; gatilho de
   `updated_at`; zero perfis. Medida com a RLS de um usuário logado: o perfil
   do Bancário escrito à mão (sem gravar) devolve 289 contatos em 31 ms.
+
+- **1125_cb_cliente_ideal_por_funil** — `cb_perfis_de_cliente_ideal.funis
+  uuid[]` (NULO = todos os funis; CHECK `cb_perfis_de_cliente_ideal_funis_ck`:
+  1 a 50, sem nulo dentro) e a `cb_clientes_ideais` recriada com o parâmetro
+  `p_funil` (DROP da de dois parâmetros + CREATE, com DEFAULT: o app de antes
+  segue chamando só com `p_conta`). Com funis, o contato só conta se tiver
+  negócio num deles; o quadro de um funil passa o `p_funil`. O painel herda o
+  recorte. `docs/PLANO-cliente-ideal.md` (D8), branch
+  `feat/cliente-ideal-por-funil`.
+
+  ADITIVA, ANTES do deploy: sem ela a tela da regra (que lê `funis`) não
+  carrega e o quadro (que manda `p_funil`) fica sem selo. Autorização do
+  operador em 06/11/2026 ("Aplicar a 1125"), aplicada em 06/11/2026 (histórico
+  `20261106193320`, DEPOIS da 1126, que é de grupos e não a toca) pela
+  Management API, com o arquivo idêntico ao do commit `6d011497`. ⚠️ O replay
+  que passou foi o LOCAL completo (249 migrations + `verify-schema.sql`,
+  aplicada duas vezes, 7 cenários fictícios em
+  `~/Downloads/CB-CRM/ferramentas/pg-replay/cenarios-1125/`); o do CI roda
+  quando a branch ganhar PR. Conferida: UMA `cb_clientes_ideais(uuid, uuid,
+  uuid)`; coluna e CHECK; `anon` sem EXECUTE, `authenticated` com. Medida com
+  a RLS de um usuário logado: sem funis marcados, as contagens não mudaram
+  (70 ICP · 221 ICP?, sem funil e com o do Comercial ou do Jurídico).
+
+- **1126_cb_nomes_nos_grupos** — a RPC SECURITY INVOKER `cb_nomes_nos_grupos(p_conta)`:
+  uma linha por grupo com os nomes que o CRM guarda de quem está nele (as
+  fichas ligadas pela 1117 e o `messages.group_sender_name`), para a busca da
+  caixa de entrada achar o grupo pelo nome de um participante. Branch
+  `feat/grupo-nome-real-e-participantes`. Aplicada ANTES da 1125 (que veio
+  em outra branch e não a toca); no repositório, a PR da 1125 (#469) entrou
+  primeiro, para manter a ordem dos números.
+
+  ADITIVA, ANTES do deploy: o app antigo não chama a RPC. Autorização do
+  operador em 06/11/2026 ("Aplicar a 1126"), aplicada em 06/11/2026
+  (histórico `20261106192513`) pela Management API, com o arquivo idêntico ao
+  do commit `5651cbda`. ⚠️ O replay que passou foi o LOCAL completo (249
+  migrations + `verify-schema.sql`, aplicada duas vezes, 3 cenários fictícios
+  em `~/Downloads/CB-CRM/ferramentas/pg-replay-grupos/cenarios-1126/`); o do CI
+  roda quando a branch ganhar PR. Conferida: a função existe; `anon` sem
+  EXECUTE; `authenticated` e `service_role` executam. Medida com a RLS de um
+  usuário logado: 11 grupos e 56 nomes em ~0,3 s (só na primeira busca).

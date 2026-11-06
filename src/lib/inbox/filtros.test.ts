@@ -10,6 +10,7 @@ import {
   contarFiltrosAtivos,
   FILTROS_VAZIOS,
   mapaDeEtapasPorContato,
+  participanteQueCasa,
   SEM_ETAPA,
   SEM_RESPONSAVEL,
   funisDoFiltro,
@@ -94,6 +95,7 @@ const ctx = (patch: Partial<ContextoDosFiltros> = {}): ContextoDosFiltros => ({
   agoraMs: AGORA,
   inadimplentes: null,
   clientesIdeais: null,
+  nomesNosGrupos: null,
   ...patch,
 });
 
@@ -1088,6 +1090,37 @@ describe("recorte por inadimplência no Asaas (Fase 1b)", () => {
     expect(contarFiltrosAtivos(f)).toBe(1);
     const ids = aplicarFiltros([devendo, emDia], FILTROS_VAZIOS, ctx({ inadimplentes: new Set() })).map((c) => c.id);
     expect(ids).toEqual(["c-deve", "c-em-dia"]);
+  });
+});
+
+describe("busca pelo nome de quem está no grupo (1126)", () => {
+  const g1 = grupo({ id: "conv-g1", group_id: "g1", last_message_text: "Reunião marcada" });
+  const g2 = grupo({ id: "conv-g2", group_id: "g2", last_message_text: "Ok" });
+  const nomes = new Map([
+    ["g1", ["Ana Fictícia", "Bruno Ficticio"]],
+    ["g2", ["Carla Ficticia"]],
+  ]);
+
+  it("acha o grupo pelo nome de um participante, sem acento e sem caixa", () => {
+    expect(participanteQueCasa(g1, "  ana ficticia ", nomes)).toBe("Ana Fictícia");
+    const ids = aplicarFiltros([g1, g2], FILTROS_VAZIOS, ctx({ busca: "bruno", nomesNosGrupos: nomes })).map((c) => c.id);
+    expect(ids).toEqual(["conv-g1"]);
+  });
+
+  it("⚠️ `null` (sem leitura ainda) só deixa de somar — nunca recorta a busca de sempre", () => {
+    expect(participanteQueCasa(g1, "ana", null)).toBeNull();
+    const ids = aplicarFiltros([g1, g2], FILTROS_VAZIOS, ctx({ busca: "reunião", nomesNosGrupos: null })).map((c) => c.id);
+    expect(ids).toEqual(["conv-g1"]);
+  });
+
+  it("conversa 1:1 e busca vazia não casam por participante", () => {
+    expect(participanteQueCasa(conversa({ id: "c" }), "ana", nomes)).toBeNull();
+    expect(participanteQueCasa(g1, "   ", nomes)).toBeNull();
+  });
+
+  it("os outros filtros continuam valendo para o grupo achado pelo participante", () => {
+    const f = { ...FILTROS_VAZIOS, naoLidas: true };
+    expect(aplicarFiltros([g1], f, ctx({ busca: "bruno", nomesNosGrupos: nomes }))).toEqual([]);
   });
 });
 

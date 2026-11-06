@@ -5,6 +5,7 @@ import {
   corDoRemetente,
   ehConversaDeGrupo,
   nomeDoGrupo,
+  nomeRealSobApelido,
   podeBaixarAnexo,
   podeRenomearNoWhatsApp,
   tituloDaConversa,
@@ -12,6 +13,25 @@ import {
 
 const grupo = (p: Partial<CbGroup>) => p as CbGroup;
 const conv = (p: Partial<Conversation>) => p as Conversation;
+
+describe('nomeRealSobApelido — o nome do WhatsApp sob o apelido (06/11/2026)', () => {
+  it('com apelido e nome real diferentes, devolve o nome real', () => {
+    expect(nomeRealSobApelido(grupo({ alias: 'Caso Silva', subject: 'Família Silva' }))).toBe('Família Silva');
+  });
+
+  it('sem apelido não há o que mostrar embaixo (o título já é o nome real)', () => {
+    expect(nomeRealSobApelido(grupo({ alias: null, subject: 'Família Silva' }))).toBeNull();
+    expect(nomeRealSobApelido(grupo({ alias: '   ', subject: 'Família Silva' }))).toBeNull();
+  });
+
+  it('sem nome real (grupo ainda não sincronizado), nada', () => {
+    expect(nomeRealSobApelido(grupo({ alias: 'Caso Silva', subject: null }))).toBeNull();
+  });
+
+  it('apelido igual ao nome (caixa e espaço à parte) não repete o nome', () => {
+    expect(nomeRealSobApelido(grupo({ alias: ' família  SILVA ', subject: 'Família Silva' }))).toBeNull();
+  });
+});
 
 describe('nomeDoGrupo', () => {
   it('apelido interno vence o nome real', () => {

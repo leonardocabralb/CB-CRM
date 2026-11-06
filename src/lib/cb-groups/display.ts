@@ -36,6 +36,23 @@ export function nomeDoGrupo(
 }
 
 /**
+ * O nome REAL do grupo para mostrar SOB o apelido (pedido do operador,
+ * 06/11/2026: "o apelido não pode substituir por completo o nome do grupo").
+ * Só quando há apelido E nome real, e os dois diferem (sem contar caixa e
+ * espaço): repetir o mesmo nome em cinza embaixo seria ruído. Nulo = não
+ * mostrar nada.
+ */
+export function nomeRealSobApelido(
+  grupo: Pick<CbGroup, 'alias' | 'subject'> | null | undefined,
+): string | null {
+  const apelido = grupo?.alias?.trim();
+  const nome = grupo?.subject?.trim();
+  if (!apelido || !nome) return null;
+  const igual = (s: string) => s.replace(/\s+/g, ' ').toLocaleLowerCase();
+  return igual(apelido) === igual(nome) ? null : nome;
+}
+
+/**
  * Título da conversa, seja ela de grupo ou de contato. Existe para a lista e
  * o cabeçalho não repetirem a mesma cadeia de `??` em quatro lugares e
  * discordarem entre si com o tempo.

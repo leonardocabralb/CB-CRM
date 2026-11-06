@@ -95,10 +95,14 @@ describe('a marca "Rascunho" na lista de conversas (21/10/2026)', () => {
 
   it('o trecho da busca vence o rascunho, e o rascunho vence a última mensagem', () => {
     const l = lista();
-    const achado = l.indexOf('{achado ? (');
+    // Os dois achados da BUSCA vêm primeiro: o participante do grupo (1126) e
+    // o trecho do corpo das mensagens. Depois o rascunho, depois a última.
+    const participante = l.indexOf('{participanteAchado ? (');
+    const achado = l.indexOf(') : achado ? (');
     const rascunho = l.indexOf(') : textoDoRascunho || anexosDoRascunho > 0 ? (');
     const ultima = l.indexOf('ehPreviaDeLigacao(conversation.last_message_text)');
-    expect(achado).toBeGreaterThan(-1);
+    expect(participante).toBeGreaterThan(-1);
+    expect(achado).toBeGreaterThan(participante);
     expect(rascunho).toBeGreaterThan(achado);
     expect(ultima).toBeGreaterThan(rascunho);
   });

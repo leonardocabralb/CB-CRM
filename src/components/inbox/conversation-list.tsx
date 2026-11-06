@@ -11,10 +11,12 @@ import { buscarPaginado, buscarPorChave, PAGINA } from "@/lib/supabase/paginar";
 import {
   aplicarFiltros,
   canalDaConversa,
+  casaComABusca,
   casaComASituacao,
   contarFiltrosAtivos,
   FILTROS_VAZIOS,
   mapaDeEtapasPorContato,
+  participanteQueCasa,
   recorteTemDoisNiveis,
   type FiltrosDoInbox,
 } from "@/lib/inbox/filtros";
@@ -35,7 +37,7 @@ import {
   limparOrfaos,
   type CatalogosDoFiltro,
 } from "@/lib/inbox/filtros-salvos";
-import { tituloDaConversa } from "@/lib/cb-groups/display";
+import { nomeRealSobApelido, tituloDaConversa } from "@/lib/cb-groups/display";
 import { stripWhatsAppFormat } from "@/lib/inbox/whatsapp-format";
 import { cn } from "@/lib/utils";
 import type {
@@ -72,6 +74,7 @@ import { Button } from "@/components/ui/button";
 import { NovaConversaDialog } from "@/components/inbox/nova-conversa-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useBuscaEmMensagens } from "@/hooks/use-busca-em-mensagens";
+import { useNomesNosGrupos } from "@/hooks/use-nomes-nos-grupos";
 import { useSinalDeExecucoes } from "@/hooks/use-sinal-de-execucoes";
 import { dividasPorContato, idsInadimplentes, leituraAindaFresca, motivoDaNeutralizacao, type RespostaDoResumo } from "@/lib/asaas/aviso-na-conversa";
 import { dinheiro, type ResumoDeDivida } from "@/lib/asaas/inadimplencia";
@@ -532,6 +535,9 @@ export function ConversationList({
     falhou: falhouBuscaNoTexto,
     termoAplicado,
   } = useBuscaEmMensagens(search, buscarNasMensagens);
+  // Os nomes de quem está em cada grupo (1126), lidos só quando há busca: a
+  // terceira fonte do OU da busca (`participanteQueCasa`).
+  const nomesNosGrupos = useNomesNosGrupos(search.trim() !== "", resyncToken);
 
   // Espelha o termo assentado para quem estiver fora da lista (o fio da
   // conversa, que precisa dele para destacar as mensagens que casaram).
@@ -725,6 +731,8 @@ export function ConversationList({
         inadimplentes: idsInadimplentesDoAsaas,
         // O MESMO mapa que desenha o selo da linha; `null` neutraliza.
         clientesIdeais,
+        // `null` (sem busca ainda, ou falhou) só deixa de somar.
+        nomesNosGrupos,
       }),
     [
       ordenadas,
@@ -734,6 +742,7 @@ export function ConversationList({
       favoritas,
       idsInadimplentesDoAsaas,
       clientesIdeais,
+      nomesNosGrupos,
       etapaPorContato,
       funilPorEtapa,
       search,
@@ -1192,6 +1201,13 @@ export function ConversationList({
                 onToggleFavorita={handleToggleFavorita}
                 favoritaHabilitada={favoritasProntas}
                 achado={achadosNoTexto.get(conv.id)}
+                // O grupo que entrou no resultado SÓ pelo nome de quem está
+                // nele diz quem casou, no lugar da prévia (1126).
+                participanteAchado={
+                  conv.group_id && search.trim() && !casaComABusca(conv, search)
+                    ? participanteQueCasa(conv, search, nomesNosGrupos)
+                    : null
+                }
                 agora={agora}
                 esperasDeAutomacao={
                   sinalDeExecucoes?.porContato[conv.contact_id ?? ""]?.esperas ?? 0
@@ -1242,6 +1258,11 @@ interface ConversationItemProps {
    * (RPC 929). `undefined` no uso normal, sem busca.
    */
   achado?: AchadoNoTexto;
+  /**
+   * O participante do grupo cujo nome casou com a busca, quando foi SÓ por
+   * ele que o grupo entrou no resultado (1126). Nulo no uso normal.
+   */
+  participanteAchado: string | null;
   /**
    * Cor da conexão desta conversa, ou `null` — conta de um número só, canal
    * apagado, ou lista de canais ainda carregando. Sem cor não se desenha
@@ -1299,6 +1320,7 @@ function ConversationItem({
   onToggleFavorita,
   favoritaHabilitada,
   achado,
+  participanteAchado,
   corDoCanalDaLinha,
   agora,
   esperasDeAutomacao,
@@ -1430,7 +1452,13 @@ function ConversationItem({
                   )}
                 />
               )}
-              <span className="truncate text-sm font-medium text-foreground">
+              {/* Grupo com apelido: o nome do WhatsApp no `title` (06/11/2026)
+                  — a linha não tem espaço para os dois; o cabeçalho e o painel
+                  mostram por escrito. */}
+              <span
+                className="truncate text-sm font-medium text-foreground"
+                title={ehGrupo ? (nomeRealSobApelido(conversation.group) ?? undefined) : undefined}
+              >
                 {displayName}
               </span>
               {/* O CLIENTE IDEAL (1124) mora junto do NOME, não junto da
@@ -1524,7 +1552,14 @@ function ConversationItem({
                 que não contém o termo — e o operador lê aquilo como defeito da
                 busca. Por isso, quando o achado veio do corpo, a prévia dá
                 lugar ao trecho que casou de verdade. */}
-            {achado ? (
+            {participanteAchado ? (
+              <p className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+                <Users className="h-3 w-3 shrink-0 text-primary" aria-hidden="true" />
+                <span className="truncate">
+                  {t("participantMatch", { nome: participanteAchado })}
+                </span>
+              </p>
+            ) : achado ? (
               <p className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
                 <MessageSquareText className="h-3 w-3 shrink-0 text-primary" />
                 <span className="truncate">
