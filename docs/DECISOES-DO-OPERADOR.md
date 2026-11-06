@@ -23,7 +23,9 @@ qualquer uma é pergunta ao operador.
   marcada); "ICP?" quando o principal casa e os outros estão em branco; selo
   em qualquer card, perdido inclusive, e borda dourada só no ICP; "respondeu"
   NÃO é critério, vira retrato no painel; o perfil escolhe em que funis vale
-  (nenhum = todos; só conta quem tem negócio num deles, 06/11/2026)
+  (nenhum = todos; só conta quem tem negócio num deles, 06/11/2026); no
+  painel, o bloco nasce RECOLHIDO (selo, título e perfil; o porquê abre no
+  clique, 06/11/2026)
   (`cliente-ideal.md`).
 - Funil comercial: "por período" é o padrão (18/09/2026); taxa acima de 100%
   aparece como é; transferido conta no funil de origem. Degrau `pasta` depois
