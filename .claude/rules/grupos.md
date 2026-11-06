@@ -10,6 +10,8 @@ paths:
   - "supabase/migrations/1117_cb_grupos_dos_contatos.sql"
   - "supabase/migrations/1119_cb_recibos_do_grupo.sql"
   - "src/components/inbox/dados-da-mensagem-do-grupo*"
+  - "src/hooks/use-nomes-nos-grupos*"
+  - "supabase/migrations/1126_cb_nomes_nos_grupos.sql"
 ---
 
 # Grupos de WhatsApp — regras
@@ -204,3 +206,26 @@ própria conversa. `cb_grupos_dos_contatos` e `fichas-do-grupo.ts`.
   WhatsApp" da aba Relacionados (`useGruposDoContato`, `{ de }`) abre o grupo
   com a faixa "Voltar para" o cliente; a etiqueta da aba soma os dois só
   quando os dois responderam. A ficha de `/contatos` não mostra os grupos.
+
+### Apelido × nome do WhatsApp; a busca por participante (1126)
+
+Pedido do operador (06/11/2026): o apelido interno não pode esconder o nome
+real do grupo, e a busca acha o grupo pelo nome das pessoas.
+
+- **O apelido continua sendo o TÍTULO** (`nomeDoGrupo`), e o nome do WhatsApp
+  fica à vista sob ele por `nomeRealSobApelido` (só com apelido E nome, e
+  diferentes, sem contar caixa e espaço): na linha cinza do cabeçalho do fio
+  e do topo do painel ("Nome · N participantes"), rotulado na aba Informações
+  e no `title` da linha da lista (a linha não tem espaço para os dois).
+- ⚠️ **A busca por participante só conhece os nomes que o CRM GUARDA**
+  (`cb_nomes_nos_grupos`): as fichas ligadas (1117) e o nome com que cada um
+  escreveu no grupo (`messages.group_sender_name`). Quem nunca escreveu e não
+  tem ficha não é achado — a lista inteira não é guardada (D4, acima). É a
+  terceira fonte do OU da busca (`participanteQueCasa`, `inbox-lista.md`).
+- ⚠️ **Os nomes só são lidos com TERMO de busca** (`useNomesNosGrupos`): a
+  lista recarrega ~1.500 vezes por dia e o banco já esteve no teto de
+  conexões. Lidos uma vez; a volta à aba (`resyncToken`) faz a próxima busca
+  reler. `null` não recorta nada, só deixa de somar.
+- A linha do grupo achado SÓ pelo participante troca a prévia por
+  "Participante: Fulano" (antes do trecho do corpo das mensagens): sem isso o
+  grupo apareceria no resultado sem dizer por quê.

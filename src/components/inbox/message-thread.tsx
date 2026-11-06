@@ -110,7 +110,7 @@ import {
   WifiOff,
   X,
 } from "lucide-react";
-import { nomeDoGrupo } from "@/lib/cb-groups/display";
+import { nomeDoGrupo, nomeRealSobApelido } from "@/lib/cb-groups/display";
 import { identidadeDoCanal } from "@/lib/cb-channels/display";
 import type { CbChannel } from "@/lib/cb-channels/repo";
 import { format, isToday, isYesterday } from "date-fns";
@@ -2839,10 +2839,15 @@ export function MessageThread({
   // Linha de baixo do cabeçalho: no 1:1 é o telefone; num grupo, quantas
   // pessoas estão nele — que é a informação equivalente ("com quem eu estou
   // falando"). Fica vazia enquanto a sincronização não trouxe o número.
+  // Grupo com APELIDO leva antes o nome real do WhatsApp (pedido do operador,
+  // 06/11/2026): o apelido não pode esconder a que grupo ele corresponde.
   const subtituloDoCabecalho = ehGrupo
-    ? grupo?.participant_count
-      ? t("groupParticipants", { count: grupo.participant_count })
-      : ""
+    ? [
+        nomeRealSobApelido(grupo),
+        grupo?.participant_count ? t("groupParticipants", { count: grupo.participant_count }) : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
     : (identidadeDoContato(contact ?? {}) ?? "");
   const messageGroups = groupTimelineByDate(
     intercalar(messages, leadEvents, notas, execucoesDoFio)
