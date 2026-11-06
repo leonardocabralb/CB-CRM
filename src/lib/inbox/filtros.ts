@@ -459,6 +459,16 @@ export interface ContextoDosFiltros {
    * Obrigatório pela mesma razão de `achadasNoTexto`.
    */
   clientesIdeais: ReadonlyMap<string, NivelDeClienteIdeal> | null;
+  /**
+   * Os nomes de quem está em cada grupo (1126: as fichas ligadas e quem
+   * escreveu), `group_id` → nomes, ou `null` = ainda não sei. A busca acha o
+   * grupo pelo nome de um participante (pedido do operador, 06/11/2026).
+   *
+   * ⚠️ Obrigatório pela mesma razão de `achadasNoTexto`: esquecê-lo não daria
+   * erro, a busca por participante sumiria em silêncio. `null` não recorta
+   * nada — só deixa de SOMAR.
+   */
+  nomesNosGrupos: ReadonlyMap<string, readonly string[]> | null;
 }
 
 /**
@@ -529,6 +539,26 @@ export function casaComABusca(conversation: Conversation, busca: string): boolea
     grupo.includes(q) ||
     ultima.includes(q)
   );
+}
+
+/**
+ * O participante do GRUPO cujo nome casa com a busca, ou `null` (1126).
+ *
+ * É uma terceira fonte do OU da busca, ao lado de `casaComABusca` e do corpo
+ * das mensagens: ver `aplicarFiltros`. Devolve o NOME (a linha da lista o
+ * mostra no lugar da prévia, senão o grupo apareceria no resultado sem dizer
+ * por quê). Mesma normalização de `casaComABusca` (`semAcento`).
+ */
+export function participanteQueCasa(
+  conversation: Conversation,
+  busca: string,
+  nomesNosGrupos: ReadonlyMap<string, readonly string[]> | null,
+): string | null {
+  if (!conversation.group_id || !nomesNosGrupos) return null;
+  const q = semAcento(busca.trim());
+  if (!q) return null;
+  const nomes = nomesNosGrupos.get(conversation.group_id);
+  return nomes?.find((n) => semAcento(n).includes(q)) ?? null;
 }
 
 /**
@@ -807,9 +837,10 @@ export function aplicarFiltros(
       return false;
     }
 
-    // ⚠️ A busca é a ÚLTIMA pergunta, e é um OU entre duas fontes: o que esta
-    // máquina já sabe (nome, telefone, grupo, última mensagem) e o que o banco
-    // achou dentro do histórico (RPC 929).
+    // ⚠️ A busca é a ÚLTIMA pergunta, e é um OU entre três fontes: o que esta
+    // máquina já sabe (nome, telefone, grupo, última mensagem), o que o banco
+    // achou dentro do histórico (RPC 929) e o nome de quem está no grupo
+    // (1126).
     //
     // ⚠️ O OU vale só AQUI DENTRO. Uma conversa achada pelo corpo continua
     // tendo de passar por todos os filtros acima — buscar "contrato" com o
@@ -817,6 +848,11 @@ export function aplicarFiltros(
     // todas que falam em contrato. Tirar esta linha de dentro do `.filter()`
     // faria a busca ATROPELAR o painel, que é o oposto do combinado (E lógico
     // entre todos os filtros).
-    return casaComABusca(c, ctx.busca) || ctx.achadasNoTexto.has(c.id);
+    // O nome de um participante do grupo (1126) é a terceira fonte do mesmo OU.
+    return (
+      casaComABusca(c, ctx.busca) ||
+      ctx.achadasNoTexto.has(c.id) ||
+      participanteQueCasa(c, ctx.busca, ctx.nomesNosGrupos) !== null
+    );
   });
 }

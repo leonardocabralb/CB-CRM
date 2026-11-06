@@ -1877,3 +1877,21 @@ nome da época em que foram aplicadas.
   uuid)`; coluna e CHECK; `anon` sem EXECUTE, `authenticated` com. Medida com
   a RLS de um usuário logado: sem funis marcados, as contagens não mudaram
   (70 ICP · 221 ICP?, sem funil e com o do Comercial ou do Jurídico).
+
+- **1126_cb_nomes_nos_grupos** — a RPC SECURITY INVOKER `cb_nomes_nos_grupos(p_conta)`:
+  uma linha por grupo com os nomes que o CRM guarda de quem está nele (as
+  fichas ligadas pela 1117 e o `messages.group_sender_name`), para a busca da
+  caixa de entrada achar o grupo pelo nome de um participante. Branch
+  `feat/grupo-nome-real-e-participantes`. Aplicada ANTES da 1125 (que veio
+  em outra branch e não a toca); no repositório, a PR da 1125 (#469) entrou
+  primeiro, para manter a ordem dos números.
+
+  ADITIVA, ANTES do deploy: o app antigo não chama a RPC. Autorização do
+  operador em 06/11/2026 ("Aplicar a 1126"), aplicada em 06/11/2026
+  (histórico `20261106192513`) pela Management API, com o arquivo idêntico ao
+  do commit `5651cbda`. ⚠️ O replay que passou foi o LOCAL completo (249
+  migrations + `verify-schema.sql`, aplicada duas vezes, 3 cenários fictícios
+  em `~/Downloads/CB-CRM/ferramentas/pg-replay-grupos/cenarios-1126/`); o do CI
+  roda quando a branch ganhar PR. Conferida: a função existe; `anon` sem
+  EXECUTE; `authenticated` e `service_role` executam. Medida com a RLS de um
+  usuário logado: 11 grupos e 56 nomes em ~0,3 s (só na primeira busca).

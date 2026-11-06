@@ -37,6 +37,10 @@ qualquer uma é pergunta ao operador.
   Em 30/10/2026: o participante com conversa no CRM abre a conversa pelo
   grupo, e o grupo aparece (e abre) na ficha do cliente que está nele, com a
   faixa de volta; guarda-se só o vínculo com a FICHA (`grupos.md`, 1117).
+- Grupos (06/11/2026): o apelido interno é o título, mas o nome do WhatsApp
+  fica à vista sob ele (cabeçalho, painel, `title` da linha); a busca acha o
+  grupo pelo nome de quem está nele, só pelos nomes que o CRM guarda
+  (`grupos.md`, 1126).
 - "Não entregue" da Evolution: o ERROR de reenvio a aparelho secundário do
   cliente (05/10/2026) e o ERROR de mensagem de GRUPO (04/11/2026) não pintam
   a bolha de vermelho; custo aceito, a falha real de grupo fica em ✓

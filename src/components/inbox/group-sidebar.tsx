@@ -55,7 +55,7 @@ import { useConversationNotes } from "@/hooks/use-conversation-notes";
 import { useEdicaoDeNota } from "@/hooks/use-edicao-de-nota";
 import { useParticipantesDoGrupo } from "@/hooks/use-participantes-do-grupo";
 import { CartaoDeNota } from "@/components/inbox/cartao-de-nota";
-import { nomeDoGrupo, podeRenomearNoWhatsApp } from "@/lib/cb-groups/display";
+import { nomeDoGrupo, nomeRealSobApelido, podeRenomearNoWhatsApp } from "@/lib/cb-groups/display";
 import { pedirConversaComContato } from "@/lib/inbox/conversar-com-contato";
 import { ParticipantesDoGrupo } from "@/components/inbox/painel/participantes-do-grupo";
 import { TituloDeSecao } from "@/components/inbox/painel/painel-do-contato";
@@ -245,6 +245,8 @@ export function GroupSidebar({
   }
 
   const nome = nomeDoGrupo(grupo, t("noName"));
+  // Com apelido, o nome do WhatsApp fica à vista sob ele (06/11/2026).
+  const nomeNoWhatsApp = nomeRealSobApelido(grupo);
   const canal = channels.find((c) => c.id === grupo.channel_id);
   // Ao vivo quando a leitura voltou; até lá (ou se ela falhou), o gravado.
   const podeRenomear = participantes.dados
@@ -269,9 +271,16 @@ export function GroupSidebar({
             <h3 className="truncate text-sm font-semibold text-foreground">
               {nome}
             </h3>
-            {grupo.participant_count != null && (
-              <p className="truncate text-xs text-muted-foreground">
-                {t("participants", { count: grupo.participant_count })}
+            {(nomeNoWhatsApp || grupo.participant_count != null) && (
+              <p className="truncate text-xs text-muted-foreground" title={nomeNoWhatsApp ?? undefined}>
+                {[
+                  nomeNoWhatsApp,
+                  grupo.participant_count != null
+                    ? t("participants", { count: grupo.participant_count })
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               </p>
             )}
           </div>
@@ -329,9 +338,12 @@ export function GroupSidebar({
         <div className="p-4">
           {/* Com apelido, o nome REAL vira legenda: o operador precisa
               conseguir dizer a que grupo do WhatsApp aquele apelido
-              corresponde. */}
-          {grupo.alias && grupo.subject && (
-            <p className="text-xs text-muted-foreground">{grupo.subject}</p>
+              corresponde. Com rótulo (06/11/2026): solta, a linha passava
+              despercebida e o apelido parecia ter trocado o nome do grupo. */}
+          {nomeNoWhatsApp && (
+            <p className="text-xs text-muted-foreground">
+              {t("realNameCaption", { nome: nomeNoWhatsApp })}
+            </p>
           )}
           <div className="mt-2 flex flex-wrap gap-1">
             {grupo.is_announce && (
