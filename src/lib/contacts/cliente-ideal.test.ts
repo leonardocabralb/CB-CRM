@@ -5,13 +5,18 @@ import { describe, expect, it } from 'vitest';
 
 import {
   TETO_DE_CRITERIOS,
+  TETO_DE_FUNIS,
   TETO_DE_RESPOSTAS,
   TETO_DO_NOME_DO_PERFIL,
+  alternarFunil,
   alternarResposta,
   camposQueFaltam,
   contarPorPerfil,
   criteriosValidos,
+  funisDoPerfil,
+  funisParaGravar,
   lerCriterios,
+  lerFunis,
   lerDetalheDoClienteIdeal,
   nomeDoPerfilValido,
   respostaMarcada,
@@ -40,6 +45,42 @@ describe('o espelho da 1124', () => {
     expect(SQL).toContain(`jsonb_array_length(p) > ${TETO_DE_CRITERIOS}`);
     expect(SQL).toContain(`jsonb_array_length(v_criterio -> 'respostas') > ${TETO_DE_RESPOSTAS}`);
     expect(SQL).toContain(`LIMIT ${TETO_DE_RESPOSTAS}`);
+  });
+});
+
+const SQL_1125 = readFileSync(
+  join(process.cwd(), 'supabase/migrations/1125_cb_cliente_ideal_por_funil.sql'),
+  'utf8',
+);
+
+describe('o espelho da 1125 (funis do perfil, D8)', () => {
+  it('usa o mesmo teto e a mesma forma do CHECK', () => {
+    expect(SQL_1125).toContain(`cardinality(funis) BETWEEN 1 AND ${TETO_DE_FUNIS}`);
+    expect(SQL_1125).toContain('funis IS NULL OR');
+  });
+
+  it('o quadro de um funil só pega os perfis daquele funil', () => {
+    expect(SQL_1125).toContain('p_funil IS NULL OR p.funis IS NULL OR p_funil = ANY (p.funis)');
+  });
+
+  it('lista vazia ou ausente é NULO (todos), nunca "ninguém"', () => {
+    expect(lerFunis(null)).toBeNull();
+    expect(lerFunis([])).toBeNull();
+    expect(lerFunis(['f1', 2, '', 'f2'])).toEqual(['f1', 'f2']);
+    expect(funisParaGravar([])).toBeNull();
+    expect(funisParaGravar(['f1', 'f1', 'f2'])).toEqual(['f1', 'f2']);
+  });
+
+  it('alterna um funil no editor', () => {
+    expect(alternarFunil(['f1'], 'f2')).toEqual(['f1', 'f2']);
+    expect(alternarFunil(['f1', 'f2'], 'f1')).toEqual(['f2']);
+  });
+
+  it('dá nome aos funis e acusa quando todos foram apagados', () => {
+    const catalogo = [{ id: 'f1', name: 'Comercial' }];
+    expect(funisDoPerfil(null, catalogo)).toEqual({ nomes: [], todosApagados: false });
+    expect(funisDoPerfil(['f1', 'x'], catalogo)).toEqual({ nomes: ['Comercial', null], todosApagados: false });
+    expect(funisDoPerfil(['x'], catalogo)).toEqual({ nomes: [null], todosApagados: true });
   });
 });
 
@@ -200,7 +241,17 @@ describe('o quadro relê os cards ideais a cada releitura da lista (Codex, PR #4
     // Trocar o contato de um card não muda `deals.length`: com ele como
     // versão, o card seguia no quadro filtrado sem o selo.
     const chamada = pagina.match(/useNegociosDeClientesIdeais\(([\s\S]*?)\);/);
-    expect(chamada?.[1]).toMatch(/,\s*leiturasDosNegocios,?\s*$/);
+    // O 3º argumento (o 4º é o funil, 1125).
+    const args = (chamada?.[1] ?? '').split(',').map((a) => a.trim());
+    expect(args[2]).toBe('leiturasDosNegocios');
+    expect(chamada?.[1]).not.toMatch(/deals\.length/);
+  });
+
+  it('o mapa e os negócios do quadro são do FUNIL aberto (1125)', () => {
+    // E relê com os cards: ter negócio no funil decide o perfil (Codex, #469).
+    expect(pagina).toMatch(/useClientesIdeais\(leiturasDosNegocios, selectedPipelineId \|\| null\)/);
+    const chamada = pagina.match(/useNegociosDeClientesIdeais\(([\s\S]*?)\);/);
+    expect(chamada?.[1]).toMatch(/selectedPipelineId \|\| null,?\s*$/);
   });
 
   it('as duas portas que relêem a lista inteira contam a releitura', () => {

@@ -52,29 +52,40 @@ function useVersaoDoClienteIdeal(): number {
   return versao;
 }
 
-export function useClientesIdeais(resyncToken: number = 0): MapaDeClientesIdeais | null {
+/**
+ * O mapa contato → nível. `funil` (1125): o quadro de UM funil passa o dele —
+ * só valem os perfis daquele funil, e o card do Jurídico fica sem selo mesmo
+ * que o contato tenha card no Comercial. Nulo = caixa de entrada e painel.
+ */
+export function useClientesIdeais(
+  resyncToken: number = 0,
+  funil: string | null = null,
+): MapaDeClientesIdeais | null {
   const { accountId } = useAuth();
   const versao = useVersaoDoClienteIdeal();
-  // Carimbado com a conta: a de outra conta (troca com a tela aberta) não vale.
+  // ⚠️ Carimbado com a conta E o funil: o mapa de outra conta, ou do funil
+  // de antes da troca, marcaria os cards errados — é `null` até a leitura
+  // deste voltar.
+  const dono = accountId ? `${accountId}|${funil ?? ''}` : null;
   const [leitura, setLeitura] = useState<{ de: string; mapa: Map<string, NivelDeClienteIdeal> } | null>(
     null,
   );
 
   useEffect(() => {
-    if (!accountId) return;
+    if (!accountId || !dono) return;
     let cancelado = false;
     void (async () => {
-      const linhas = await lerClientesIdeais(createClient(), accountId);
-      // Falha: a leitura anterior fica (ver o cabeçalho).
+      const linhas = await lerClientesIdeais(createClient(), accountId, funil);
+      // Falha: a leitura anterior DESTE dono fica (ver o cabeçalho).
       if (cancelado || !linhas) return;
-      setLeitura({ de: accountId, mapa: new Map(linhas.map((l) => [l.contact_id, l.nivel])) });
+      setLeitura({ de: dono, mapa: new Map(linhas.map((l) => [l.contact_id, l.nivel])) });
     })();
     return () => {
       cancelado = true;
     };
-  }, [accountId, versao, resyncToken]);
+  }, [accountId, dono, funil, versao, resyncToken]);
 
-  return leitura && leitura.de === accountId ? leitura.mapa : null;
+  return leitura && leitura.de === dono ? leitura.mapa : null;
 }
 
 /**
@@ -134,8 +145,11 @@ export function useNegociosDeClientesIdeais(
   mapa: MapaDeClientesIdeais | null,
   ligado: boolean,
   versaoDosNegocios: number,
+  /** O funil do mapa (1125): carimba a leitura, como o próprio mapa. */
+  funil: string | null = null,
 ): { ids: ReadonlySet<string> | null; falhou: boolean } {
   const { accountId } = useAuth();
+  const dono = accountId ? `${accountId}|${funil ?? ''}` : null;
   const contatos = useMemo(
     () =>
       mapa === null
@@ -143,8 +157,9 @@ export function useNegociosDeClientesIdeais(
         : [...mapa].filter(([, nivel]) => nivel === "ideal").map(([id]) => id),
     [mapa],
   );
-  // Carimbada com a conta: os negócios de outra conta (troca com a tela
-  // aberta) esvaziariam o quadro até a releitura voltar.
+  // Carimbada com a conta E o funil: os negócios de outra conta (troca com a
+  // tela aberta) esvaziariam o quadro, e os do funil de antes da troca o
+  // recortariam pelos perfis errados, até a releitura voltar.
   const [leitura, setLeitura] = useState<{
     de: string;
     ids: Set<string> | null;
@@ -152,24 +167,24 @@ export function useNegociosDeClientesIdeais(
   } | null>(null);
 
   useEffect(() => {
-    if (!ligado || contatos === null || !accountId) return;
+    if (!ligado || contatos === null || !dono) return;
     let cancelado = false;
     void (async () => {
       const ids = await lerNegociosDosContatos(createClient(), contatos);
       if (cancelado) return;
       setLeitura((anterior) => {
-        if (ids) return { de: accountId, ids, falhou: false };
-        // A releitura que falha mantém a anterior DESTA conta.
-        if (anterior?.de === accountId && anterior.ids) return anterior;
-        return { de: accountId, ids: null, falhou: true };
+        if (ids) return { de: dono, ids, falhou: false };
+        // A releitura que falha mantém a anterior DESTE dono.
+        if (anterior?.de === dono && anterior.ids) return anterior;
+        return { de: dono, ids: null, falhou: true };
       });
     })();
     return () => {
       cancelado = true;
     };
-  }, [ligado, contatos, versaoDosNegocios, accountId]);
+  }, [ligado, contatos, versaoDosNegocios, dono]);
 
-  if (!ligado || contatos === null || !leitura || leitura.de !== accountId) {
+  if (!ligado || contatos === null || !leitura || leitura.de !== dono) {
     return { ids: null, falhou: false };
   }
   return { ids: leitura.ids, falhou: leitura.falhou };
