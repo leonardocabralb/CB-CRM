@@ -46,8 +46,8 @@ algumas integrações refaz o webhook.
 
 ## Falta
 
-- [ ] Replay verde do CI no commit exato, depois APLICAR a 1127 na produção
-  (com o "pode gravar" do operador) ANTES do merge — é aditiva.
+- [x] Replay verde do CI no commit exato (`2135fe83`) e a 1127 APLICADA na
+  produção ANTES do merge (06/11/2026, histórico `20261106234316`).
 - [ ] Conferir o bloco na tela de produção depois do deploy (as seis
   integrações + IA) e colar a chave nova do tl;dv pelo "Trocar chave".
 - [ ] Levar para o Atlas CRM (dev e distribuição) e para a instalação do
