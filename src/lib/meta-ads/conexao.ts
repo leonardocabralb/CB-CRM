@@ -9,13 +9,19 @@ import { criarClienteMeta, MetaAdsError, type ClienteMeta } from "./cliente";
  * "Testar agora" do Meta Ads (1127): o token GUARDADO ainda lê a conta de
  * anúncios gravada? A mesma prova do conectar (`GET /act_<id>?fields=name,
  * currency`), só leitura. O resultado vai para a conexão pela régua de
- * `registrarTeste`: os três códigos do TOKEN (e o da cifra) entram e saem
- * daqui; `limite`, `rede` e `meta_error` não dizem nada sobre o token.
+ * `registrarTeste`: os códigos do TOKEN (e o da cifra) entram por aqui;
+ * `limite`, `rede` e `meta_error` não dizem nada sobre o token.
+ *
+ * ⚠️ `sem_permissao` entra, mas NÃO sai por aqui: a sincronização o grava
+ * quando falha em `/campaigns` ou `/insights`, e ler a conta não prova que
+ * essas leituras voltaram. Quem o limpa é a próxima sincronização que passa
+ * (o cron sincroniza toda conexão, com erro ou sem).
  *
  * ⚠️ A mensagem da Meta ecoa o token: aqui só o CÓDIGO sai (`MetaAdsError`
  * já passou a mensagem por `semSegredo`, e ela nem é lida).
  */
-const CODIGOS_DO_TOKEN = ["token_invalido", "sem_permissao", "conta_nao_encontrada", "chave_ilegivel"];
+const MARCA_DO_TESTE = ["token_invalido", "sem_permissao", "conta_nao_encontrada", "chave_ilegivel"];
+const LIMPA_DO_TESTE = ["token_invalido", "conta_nao_encontrada", "chave_ilegivel"];
 
 export async function conferirMetaAds(
   admin: SupabaseClient,
@@ -30,7 +36,7 @@ export async function conferirMetaAds(
   if (error) return { ok: false, codigo: "db_error" };
   if (!data) return { ok: false, codigo: "nao_conectado" };
   const resultado = await testarTokenGuardado(data.access_token, String(data.ad_account_id), opcoes.cliente ?? ((t) => criarClienteMeta(t)));
-  await registrarTeste(admin, "cb_meta_ads_config", accountId, resultado, { marca: CODIGOS_DO_TOKEN, limpa: CODIGOS_DO_TOKEN }, { coluna: "access_token", valor: String(data.access_token) });
+  await registrarTeste(admin, "cb_meta_ads_config", accountId, resultado, { marca: MARCA_DO_TESTE, limpa: LIMPA_DO_TESTE }, { coluna: "access_token", valor: String(data.access_token) });
   return resultado;
 }
 

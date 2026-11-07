@@ -31,7 +31,9 @@ na regra dela.
   (`registrarTeste`): a volta a `conectado` é cercada por `status = 'erro'` e
   `last_error IN (limpa)`; recusa da chave marca (`marca`); rede, limite e erro
   do provedor não mudam nada. O do Asaas não limpa `sem_permissao` (a listagem
-  de clientes não prova a permissão de Cobranças); Atlas e ZapSign seguem o
+  de clientes não prova a permissão de Cobranças), nem o do Meta Ads (ler a
+  conta não prova `/campaigns` e `/insights`; a sincronização que passa o
+  limpa); Atlas e ZapSign seguem o
   `registrarConferencia` deles. É UMA leitura no provedor, nada gravado lá.
   ⚠️ Toda escrita leva a CERCA da cifra lida (`cerca`): trocada a chave no
   meio, o 401 da antiga não marca a nova. A falha diz "o teste não passou"
