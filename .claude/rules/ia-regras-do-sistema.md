@@ -51,25 +51,28 @@ assinado (o webhook do ZapSign move o card).
   toda leitura de agente (turno, tela, Playground) falha.
 - ⚠️⚠️ **Ligada, TROCA duas regras, na MESMA posição** (`regrasDoSistema`,
   `REGRAS_DO_FECHAMENTO`): `sem_preco` → `honorarios` (apresenta honorários,
-  pagamento e condições SÓ como escritos nas instruções ou na base; nunca
-  inventa, estima, arredonda, muda ou negocia; condição diferente = passa
-  para a equipe com os dois marcadores) e `sem_compromisso` → `fechamento`
-  (convida a assinar pelo link escrito, responde objeções com a verdade; a
-  contratação só se confirma pela assinatura e quem confirma é a equipe —
-  nunca "contrato fechado/confirmado", "caso aceito"; nada diferente das
-  condições escritas; sem falsa urgência). As outras DEZ não mudam uma letra
-  (teste): `sem_promessa`, `identidade`, `legalidade`, `verdade`,
-  `privacidade` seguem valendo. O cabeçalho e o canário também não.
+  pagamento e condições SÓ como escritos nas instruções, nas regras do agente
+  ou na base — as três fontes do administrador no pedido; nunca inventa,
+  estima, arredonda, muda ou negocia; condição diferente = passa para a
+  equipe com os dois marcadores) e `sem_compromisso` → `fechamento` (convida
+  a assinar pelo link escrito, responde objeções com a verdade; a contratação
+  só acontece pela assinatura — o agente não fecha nem confirma acordo, NEM
+  nas condições escritas; nunca "contrato fechado/confirmado", "caso aceito";
+  quem diz que assinou ouve que a assinatura "será confirmada", sem promessa
+  de contato da equipe, que pediria o `[[TRANSFERIR]]`; sem falsa urgência).
+  As outras DEZ não mudam uma letra (teste): `sem_promessa`, `identidade`,
+  `legalidade`, `verdade`, `privacidade` seguem valendo. O cabeçalho e o
+  canário também não.
 - ⚠️ **`conduzFechamento` é argumento OBRIGATÓRIO de `montarPedidoDoAgente`**
   (e da retomada, que herda os argumentos): chamador novo que o esqueça não
   compila. O turno passa o do agente; o Playground, o do RASCUNHO
   (`aplicarAlteracao` aplica a chave; ela NÃO está em `NAO_MUDAM_A_RESPOSTA`).
 - **As travas continuam com o bloco trocado** (teste): todo
   `TRECHOS_DO_PEDIDO` segue no pedido, o pedido inteiro vaza, e o link do
-  contrato não é "link inventado" porque está no pedido (instruções ou base).
-  A "equipe prometida" fica quieta em frase condicional ("assim que você
-  assinar, nossa equipe…"); "nossa equipe entrará em contato" sem condição
-  ainda transfere.
+  contrato escrito não é "link inventado" porque está no pedido (outro link
+  é). A "equipe prometida" fica quieta em frase condicional ("assim que você
+  assinar, nossa equipe…") e no "será confirmada"; "nossa equipe entrará em
+  contato" sem condição ainda transfere.
 - **A tela** (Configuração, logo abaixo do cartão das regras): interruptor
   com a explicação; mudar avisa em âmbar ANTES do Salvar o que passa a valer
   e o que continua proibido; o cartão mostra a lista do RASCUNHO, com as duas

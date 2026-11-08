@@ -47,7 +47,9 @@ BEGIN
   IF v_tipo IS DISTINCT FROM 'boolean' OR v_nula IS DISTINCT FROM 'NO' OR v_padrao IS DISTINCT FROM 'false' THEN
     RAISE EXCEPTION '1128: cb_ia_agentes.conduz_fechamento fora da forma (tipo %, nula %, padrão %)', v_tipo, v_nula, v_padrao;
   END IF;
-  IF NOT has_column_privilege('service_role', 'public.cb_ia_agentes', 'conduz_fechamento', 'SELECT, UPDATE') THEN
+  -- Uma chamada por privilégio: com a lista ('SELECT, UPDATE'), basta UM dos dois.
+  IF NOT has_column_privilege('service_role', 'public.cb_ia_agentes', 'conduz_fechamento', 'SELECT')
+     OR NOT has_column_privilege('service_role', 'public.cb_ia_agentes', 'conduz_fechamento', 'UPDATE') THEN
     RAISE EXCEPTION '1128: service_role não lê nem grava cb_ia_agentes.conduz_fechamento';
   END IF;
   IF has_table_privilege('anon', 'public.cb_ia_agentes', 'SELECT') THEN

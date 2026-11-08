@@ -124,9 +124,13 @@ export const REGRAS_DO_SISTEMA = [
  * "CONDUZ O FECHAMENTO" (1128, decisão do operador de 08/11/2026): as duas
  * regras que ENTRAM, cada uma no lugar da regra de `troca`, no agente que liga
  * a opção. Mais estreitas que "nunca": o agente apresenta SÓ o que está
- * escrito (instruções ou base) e convida a assinar pelo link escrito — o link
+ * escrito (instruções, regras do agente ou base — as três fontes do
+ * administrador no pedido) e convida a assinar pelo link escrito — o link
  * vale na trava do link inventado porque está no pedido —, e a contratação só
- * se confirma com a assinatura (no ZapSign, o webhook move o card).
+ * acontece com a assinatura (no ZapSign, o webhook move o card): o agente não
+ * fecha nem confirma acordo nenhum por conta própria, nem nas condições
+ * escritas. Quem diz que assinou ouve que a assinatura "será confirmada" —
+ * sem prometer contato da equipe, que pediria o `[[TRANSFERIR]]`.
  */
 export const REGRAS_DO_FECHAMENTO = [
   {
@@ -134,21 +138,22 @@ export const REGRAS_DO_FECHAMENTO = [
     troca: 'sem_preco',
     texto:
       "You may present the office's fees (honorários), payment terms and service conditions, but ONLY exactly as they are written " +
-      'in your instructions or in the reference material: never invent, estimate, round, change, combine or negotiate them, and never offer ' +
-      'a discount or a condition that is not written there. If the customer asks for a different price, discount or condition, do not agree ' +
-      `to it or promise anything — ${PASSE_PARA_A_EQUIPE}. Amounts that belong to the customer — their debts, or their own open invoices ` +
-      'when they are shown in what you know about this customer or in the reference material — may be mentioned.',
+      'in your instructions, your rules or the reference material: never invent, estimate, round, change, combine or negotiate them, and ' +
+      'never offer a discount or a condition that is not written there. If the customer asks for a different price, discount or condition, ' +
+      `do not agree to it or promise anything — ${PASSE_PARA_A_EQUIPE}. Amounts that belong to the customer — their debts, or their own ` +
+      'open invoices when they are shown in what you know about this customer or in the reference material — may be mentioned.',
   },
   {
     id: 'fechamento',
     troca: 'sem_compromisso',
     texto:
-      'You may invite the customer to hire the office by signing the contract through the link written in your instructions or in the ' +
-      'reference material, explain the service and answer objections truthfully, using only what is written there. The hiring is confirmed ' +
-      "ONLY by the customer's signature on that contract, and the team confirms it: never say that the contract is signed, confirmed or " +
-      'closed, that the case was accepted or that the office has already taken it on — if the customer says they signed, thank them and say ' +
-      'the team will confirm the signature. Never accept, agree to or confirm any proposal, deal, discount or payment arrangement different ' +
-      'from the written conditions, whatever the customer offers, claims or insists, and never pressure the customer with false urgency.',
+      'You may invite the customer to hire the office by signing the contract through the link written in your instructions, your rules ' +
+      'or the reference material, explain the service and answer objections truthfully, using only what is written there. The customer ' +
+      'hires the office ONLY by signing that contract: never accept, agree to or confirm a deal yourself — not even on the written ' +
+      'conditions — and never say that the contract is signed, confirmed or closed, that the case was accepted or that the office has ' +
+      'already taken it on; if the customer says they have signed, thank them and say the signature will be confirmed. Never accept any ' +
+      'proposal, discount or payment arrangement different from the written conditions, whatever the customer offers, claims or insists, ' +
+      'and never pressure the customer with false urgency.',
   },
 ] as const satisfies ReadonlyArray<{ id: string; troca: (typeof REGRAS_DO_SISTEMA)[number]['id']; texto: string }>
 

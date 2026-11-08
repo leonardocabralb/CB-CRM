@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { HANDOFF_SENTINEL } from '@/lib/ai/defaults'
 
-import { lerAcoes, MARCADOR_DE_TRANSFERENCIA } from './acoes'
+import { acaoPrometida, equipePrometida, lerAcoes, linkInventado, MARCADOR_DE_TRANSFERENCIA } from './acoes'
 import { montarPedidoDaRetomada, montarPedidoDoAgente } from './pedido'
 import {
   blocoDasRegrasDoSistema,
@@ -171,17 +171,23 @@ describe('"Conduz o fechamento" (1128): duas regras trocadas, as outras intactas
     const honorarios = REGRAS_DO_FECHAMENTO.find((r) => r.id === 'honorarios')?.texto ?? ''
     const fechamento = REGRAS_DO_FECHAMENTO.find((r) => r.id === 'fechamento')?.texto ?? ''
     // Só o ESCRITO, sem negociar; condição diferente vai para a equipe, com os dois marcadores.
-    expect(honorarios).toContain('ONLY exactly as they are written in your instructions or in the reference material')
+    // As TRÊS fontes do administrador no pedido: instruções, regras do agente e base (revisão).
+    expect(honorarios).toContain('ONLY exactly as they are written in your instructions, your rules or the reference material')
     expect(honorarios).toMatch(/never invent, estimate, round, change, combine or negotiate/)
     expect(honorarios).toContain(MARCADOR_DE_TRANSFERENCIA)
     expect(honorarios).toContain(HANDOFF_SENTINEL)
     // O que a sem_preco já permitia (o valor que é do CLIENTE) continua permitido.
     expect(honorarios).toContain('Amounts that belong to the customer')
     // O link escrito; a contratação só pela assinatura; nada de condição diferente.
-    expect(fechamento).toContain('signing the contract through the link written in your instructions or in the reference material')
-    expect(fechamento).toContain("ONLY by the customer's signature")
-    expect(fechamento).toMatch(/never say that the contract is signed, confirmed or\s+closed/)
+    expect(fechamento).toContain('signing the contract through the link written in your instructions, your rules or the reference material')
+    expect(fechamento).toContain('hires the office ONLY by signing that contract')
+    // Nem nas condições escritas o agente fecha o acordo: quem fecha é a assinatura (revisão).
+    expect(fechamento).toContain('never accept, agree to or confirm a deal yourself — not even on the written conditions')
+    expect(fechamento).toMatch(/never say that the contract is signed, confirmed or closed/)
     expect(fechamento).toContain('different from the written conditions')
+    // "Será confirmada", sem prometer contato da equipe (que pediria o [[TRANSFERIR]]).
+    expect(fechamento).toContain('say the signature will be confirmed')
+    expect(fechamento).not.toMatch(/\bteam\b/)
     // A promessa de RESULTADO continua com a sem_promessa, que não muda.
     expect(regrasDoSistema(FECHAMENTO).find((r) => r.id === 'sem_promessa')?.texto).toMatch(/Never promise or guarantee results/)
   })
@@ -227,6 +233,31 @@ describe('"Conduz o fechamento" (1128): duas regras trocadas, as outras intactas
     expect(ligado).toContain(CANARIO_DAS_REGRAS)
     expect(vazouOPedido(lerAcoes(ligado).texto)).toBe(true)
     expect(vazouOPedido(blocoDasRegrasDoSistema(FECHAMENTO))).toBe(true)
+  })
+
+  it('⚠️ o link do contrato ESCRITO nas instruções não é link inventado; outro link é', () => {
+    const LINK = 'https://app.zapsign.com.br/verificar/contrato-teste'
+    const pedido = montarPedidoDoAgente({
+      ...COMPLETO,
+      conduzFechamento: true,
+      instrucoes: `Honorários: 30% do valor recuperado, só no êxito. Contrato: ${LINK}`,
+    })
+    expect(linkInventado(`Para contratar, é só assinar aqui: ${LINK}`, [pedido])).toBe(false)
+    expect(linkInventado('Assine por este link: https://app.zapsign.com.br/verificar/outro', [pedido])).toBe(true)
+  })
+
+  it('as frases de fechamento e as travas do turno: o que fica quieto e o que ainda transfere', () => {
+    // A frase que a regra induz ("será confirmada") não promete a equipe nem afirma ação.
+    for (const texto of [
+      'Obrigado! A sua assinatura será confirmada.',
+      'Assim que você assinar, nossa equipe vai entrar em contato.',
+      'Os honorários são 30% do valor recuperado, só no êxito. É só assinar pelo link.',
+    ]) {
+      expect(equipePrometida(texto), texto).toBe(false)
+      expect(acaoPrometida({ texto, aceitas: [] }), texto).toBeNull()
+    }
+    // A promessa da equipe sem condição continua transferindo (é a trava de sempre).
+    expect(equipePrometida('Nossa equipe entrará em contato.')).toBe(true)
   })
 
   it('uma resposta de fechamento de verdade NÃO é pedido vazado', () => {
