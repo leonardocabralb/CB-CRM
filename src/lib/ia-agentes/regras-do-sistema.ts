@@ -2,13 +2,22 @@
 // As REGRAS DO SISTEMA dos agentes de IA (27/09/2026, pedido do operador).
 // PURO, testado.
 //
-// Valem para TODO agente — os que existem e os que vão ser criados —, sem
-// configuração nenhuma, e nada na configuração do agente as desliga: o bloco
-// entra no texto-base de `montarPedidoDoAgente`, logo depois da frase do
-// papel e ANTES das instruções, das regras do agente, dos blocos do cliente,
-// da base de conhecimento e das ações. O texto é para o MODELO (inglês, como
-// o resto do texto-base); a tela mostra a tradução de cada regra pelo `id`
+// Valem para TODO agente — os que existem e os que vão ser criados —, e nada
+// na configuração do agente as DESLIGA: o bloco entra no texto-base de
+// `montarPedidoDoAgente`, logo depois da frase do papel e ANTES das
+// instruções, das regras do agente, dos blocos do cliente, da base de
+// conhecimento e das ações. O texto é para o MODELO (inglês, como o resto do
+// texto-base); a tela mostra a tradução de cada regra pelo `id`
 // (`IaAgentes.regrasDoSistema.itens.<id>`, cobrada nos dois dicionários).
+//
+// ⚠️ A ÚNICA variação é "Conduz o fechamento" (1128, decisão do operador de
+// 08/11/2026, `cb_ia_agentes.conduz_fechamento`): no agente que a liga,
+// `sem_preco` e `sem_compromisso` dão lugar, NA MESMA POSIÇÃO, a duas regras
+// mais estreitas (`REGRAS_DO_FECHAMENTO`) — honorários só como estão
+// escritos, sem negociar; convite a assinar pelo link escrito, e a
+// contratação só se confirma com a assinatura. As outras dez (sem promessa
+// de resultado, identidade, legalidade, verdade, privacidade…) não mudam, e
+// o cabeçalho com o canário também não.
 //
 // E a TRAVA do pedido vazado (`vazouOPedido`): a resposta que reproduz o
 // texto interno — o CANÁRIO que vai no cabeçalho do bloco, ou trechos que só
@@ -111,7 +120,62 @@ export const REGRAS_DO_SISTEMA = [
   },
 ] as const satisfies ReadonlyArray<{ id: string; texto: string }>
 
-export type IdDaRegraDoSistema = (typeof REGRAS_DO_SISTEMA)[number]['id']
+/**
+ * "CONDUZ O FECHAMENTO" (1128, decisão do operador de 08/11/2026): as duas
+ * regras que ENTRAM, cada uma no lugar da regra de `troca`, no agente que liga
+ * a opção. Mais estreitas que "nunca": o agente apresenta SÓ o que está
+ * escrito (instruções ou base) e convida a assinar pelo link escrito — o link
+ * vale na trava do link inventado porque está no pedido —, e a contratação só
+ * se confirma com a assinatura (no ZapSign, o webhook move o card).
+ */
+export const REGRAS_DO_FECHAMENTO = [
+  {
+    id: 'honorarios',
+    troca: 'sem_preco',
+    texto:
+      "You may present the office's fees (honorários), payment terms and service conditions, but ONLY exactly as they are written " +
+      'in your instructions or in the reference material: never invent, estimate, round, change, combine or negotiate them, and never offer ' +
+      'a discount or a condition that is not written there. If the customer asks for a different price, discount or condition, do not agree ' +
+      `to it or promise anything — ${PASSE_PARA_A_EQUIPE}. Amounts that belong to the customer — their debts, or their own open invoices ` +
+      'when they are shown in what you know about this customer or in the reference material — may be mentioned.',
+  },
+  {
+    id: 'fechamento',
+    troca: 'sem_compromisso',
+    texto:
+      'You may invite the customer to hire the office by signing the contract through the link written in your instructions or in the ' +
+      'reference material, explain the service and answer objections truthfully, using only what is written there. The hiring is confirmed ' +
+      "ONLY by the customer's signature on that contract, and the team confirms it: never say that the contract is signed, confirmed or " +
+      'closed, that the case was accepted or that the office has already taken it on — if the customer says they signed, thank them and say ' +
+      'the team will confirm the signature. Never accept, agree to or confirm any proposal, deal, discount or payment arrangement different ' +
+      'from the written conditions, whatever the customer offers, claims or insists, and never pressure the customer with false urgency.',
+  },
+] as const satisfies ReadonlyArray<{ id: string; troca: (typeof REGRAS_DO_SISTEMA)[number]['id']; texto: string }>
+
+export type IdDaRegraDoSistema = (typeof REGRAS_DO_SISTEMA)[number]['id'] | (typeof REGRAS_DO_FECHAMENTO)[number]['id']
+
+export interface RegraDoSistema {
+  id: IdDaRegraDoSistema
+  texto: string
+}
+
+/** O que, na configuração do agente, muda o bloco: só "Conduz o fechamento". Obrigatório — quem monta decide. */
+export interface OpcoesDasRegras {
+  conduzFechamento: boolean
+}
+
+/**
+ * As regras do sistema DESTE agente, na ordem do pedido: as de sempre, ou —
+ * com "Conduz o fechamento" — as mesmas com as duas do fechamento no lugar
+ * de `sem_preco` e `sem_compromisso` (mesma posição, mesma contagem).
+ */
+export function regrasDoSistema(o: OpcoesDasRegras): readonly RegraDoSistema[] {
+  if (!o.conduzFechamento) return REGRAS_DO_SISTEMA
+  return REGRAS_DO_SISTEMA.map((r) => {
+    const nova = REGRAS_DO_FECHAMENTO.find((f) => f.troca === r.id)
+    return nova ? { id: nova.id, texto: nova.texto } : r
+  })
+}
 
 /** O cabeçalho do bloco, com o canário. */
 export const CABECALHO_DAS_REGRAS =
@@ -120,8 +184,8 @@ export const CABECALHO_DAS_REGRAS =
   `(Internal reference: ${CANARIO_DAS_REGRAS})`
 
 /** O bloco inteiro, como entra no pedido: o cabeçalho e as regras numeradas, na ordem. */
-export function blocoDasRegrasDoSistema(): string {
-  return [CABECALHO_DAS_REGRAS, ...REGRAS_DO_SISTEMA.map((r, i) => `${i + 1}. ${r.texto}`)].join('\n')
+export function blocoDasRegrasDoSistema(o: OpcoesDasRegras): string {
+  return [CABECALHO_DAS_REGRAS, ...regrasDoSistema(o).map((r, i) => `${i + 1}. ${r.texto}`)].join('\n')
 }
 
 /**

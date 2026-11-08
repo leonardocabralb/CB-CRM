@@ -6,31 +6,46 @@
 // `id` (`IaAgentes.regrasDoSistema.itens.<id>`) — chave MONTADA, cobrada nos
 // dois dicionários por `regras-do-sistema.test.ts`. Recolhido por padrão: é
 // referência, não campo a preencher.
+//
+// "Conduz o fechamento" (1128): a lista é a do agente COMO ESTÁ NA TELA (o
+// rascunho, não o salvo) — com a opção ligada, as duas regras do fechamento
+// aparecem no lugar de `sem_preco` e `sem_compromisso`, marcadas.
 
 import { useTranslations } from 'next-intl';
 import { ChevronDown, ShieldCheck } from 'lucide-react';
 
-import { REGRAS_DO_SISTEMA } from '@/lib/ia-agentes/regras-do-sistema';
+import { REGRAS_DO_FECHAMENTO, regrasDoSistema } from '@/lib/ia-agentes/regras-do-sistema';
 
-export function RegrasDoSistema() {
+const DO_FECHAMENTO: ReadonlySet<string> = new Set(REGRAS_DO_FECHAMENTO.map((r) => r.id));
+
+export function RegrasDoSistema({ conduzFechamento }: { conduzFechamento: boolean }) {
   const t = useTranslations('IaAgentes');
+  const regras = regrasDoSistema({ conduzFechamento });
   return (
     <details className="group rounded-md border border-border bg-muted/30">
       <summary className="flex cursor-pointer list-none items-start gap-2 p-3 [&::-webkit-details-marker]:hidden">
         <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-foreground">
-            {t('regrasDoSistema.titulo', { total: REGRAS_DO_SISTEMA.length })}
-          </p>
+          <p className="text-sm font-medium text-foreground">{t('regrasDoSistema.titulo', { total: regras.length })}</p>
           <p className="text-xs text-muted-foreground">{t('regrasDoSistema.dica')}</p>
+          {conduzFechamento ? (
+            <p className="text-xs text-amber-700 dark:text-amber-300">{t('regrasDoSistema.dicaFechamento')}</p>
+          ) : null}
         </div>
         <ChevronDown className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
       </summary>
       <ol className="space-y-1.5 pb-3 pl-9 pr-3 text-xs text-foreground">
-        {REGRAS_DO_SISTEMA.map((r, i) => (
+        {regras.map((r, i) => (
           <li key={r.id} className="flex gap-2">
             <span className="w-4 shrink-0 text-right text-muted-foreground">{i + 1}.</span>
-            <span className="min-w-0">{t(`regrasDoSistema.itens.${r.id}`)}</span>
+            <span className="min-w-0">
+              {DO_FECHAMENTO.has(r.id) ? (
+                <span className="mr-1.5 rounded bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-800">
+                  {t('regrasDoSistema.doFechamento')}
+                </span>
+              ) : null}
+              {t(`regrasDoSistema.itens.${r.id}`)}
+            </span>
           </li>
         ))}
       </ol>

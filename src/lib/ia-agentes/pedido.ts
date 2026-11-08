@@ -5,7 +5,8 @@
 //
 // Ordem: a frase do PAPEL, as REGRAS DO SISTEMA (27/09/2026,
 // `regras-do-sistema.ts`: valem para todo agente, antes de tudo o que o
-// administrador escreve, e nada na configuração as desliga), o texto-base
+// administrador escreve, e nada na configuração as desliga — "Conduz o
+// fechamento", 1128, só troca duas delas), o texto-base
 // (fixo, para o MODELO — por isso em inglês, como o de
 // `buildSystemPrompt`; a regra "responda no idioma do cliente" cuida do
 // português; com o `[[HANDOFF]]` e o `[[TRANSFERIR]]`, "responda e passe",
@@ -271,6 +272,13 @@ function secaoDasAcoes(opcoes: OpcoesDeAcao, agenda?: AgendaNoPedido | null, fus
 export function montarPedidoDoAgente(args: {
   instrucoes: string
   regras: string[]
+  /**
+   * "Conduz o fechamento" (1128): troca `sem_preco` e `sem_compromisso` das
+   * regras do sistema pelas do fechamento (`regrasDoSistema`). OBRIGATÓRIO:
+   * turno, retomada e Playground passam o do agente (no Playground, o do
+   * rascunho) — um chamador que o esquecesse não compila.
+   */
+  conduzFechamento: boolean
   agora: Date
   fuso?: string
   /** Os agentes para quem este pode passar a conversa (D25), na ordem da numeração. */
@@ -292,8 +300,9 @@ export function montarPedidoDoAgente(args: {
   agenda?: AgendaNoPedido | null
 }): string {
   // As regras do sistema vêm logo depois do papel, antes de tudo: nenhum
-  // argumento desta função as tira do pedido.
-  const partes = [PAPEL, blocoDasRegrasDoSistema(), ...TEXTO_BASE]
+  // argumento desta função as tira do pedido (o `conduzFechamento` só troca
+  // duas delas, na mesma posição).
+  const partes = [PAPEL, blocoDasRegrasDoSistema({ conduzFechamento: args.conduzFechamento }), ...TEXTO_BASE]
   partes.push(`Current date and time (the business's timezone): ${dataEHora(args.agora, args.fuso)}.`)
 
   const instrucoes = args.instrucoes.trim()

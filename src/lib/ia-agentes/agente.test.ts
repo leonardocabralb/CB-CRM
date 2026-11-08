@@ -122,6 +122,37 @@ describe('lerLinhaDoAgente', () => {
   })
 })
 
+describe('"Conduz o fechamento" (1128) — a opção por agente', () => {
+  it('a linha: só o booleano true liga; ausente (antes da 1128), "true", 1 e nulo = desligada', () => {
+    const base = { id: ID, account_id: ID, provedor: 'gemini' }
+    expect(lerLinhaDoAgente({ ...base, conduz_fechamento: true })?.conduzFechamento).toBe(true)
+    for (const v of [undefined, false, 'true', 1, null]) {
+      expect(lerLinhaDoAgente({ ...base, conduz_fechamento: v })?.conduzFechamento, String(v)).toBe(false)
+    }
+  })
+
+  it('PATCH: o booleano liga e desliga e vira a coluna conduz_fechamento', () => {
+    for (const v of [true, false]) {
+      const r = lerAlteracao({ conduz_fechamento: v }, false)
+      expect(r).toEqual({ ok: true, valor: { conduzFechamento: v } })
+      if (r.ok) expect(colunasDaAlteracao(r.valor)).toEqual({ conduz_fechamento: v })
+    }
+  })
+
+  it('⚠️ PATCH ESTRITO: qualquer outra forma RECUSA — nunca vira ligada nem desligada em silêncio', () => {
+    for (const v of ['true', 1, 0, null, {}, []]) {
+      expect(lerAlteracao({ conduz_fechamento: v }, false), JSON.stringify(v)).toEqual({ ok: false, codigo: 'corpo_invalido' })
+    }
+  })
+
+  it('sem a chave no corpo, a coluna não se toca (e a criação nasce desligada pelo DEFAULT da 1128)', () => {
+    const r = lerAlteracao({ instrucoes: 'x' }, false)
+    expect(r.ok && r.valor).not.toHaveProperty('conduzFechamento')
+    const criacao = lerAlteracao({ nome: 'A', provedor: 'gemini', modelo: 'm' }, true)
+    expect(criacao.ok && colunasDaAlteracao(criacao.valor)).not.toHaveProperty('conduz_fechamento')
+  })
+})
+
 describe('colunasDaAlteracao', () => {
   it('só as colunas presentes, com o nome do banco', () => {
     expect(colunasDaAlteracao({ tetoRespostas: 5, podePassarPara: [ID] })).toEqual({
@@ -401,6 +432,7 @@ describe('aplicarAlteracao — o RASCUNHO do Playground por cima do salvo (DC4, 
     acesso: { ficha: false, campos: [], negocio: false, etiquetas: false, cobrancas: false, reuniao: false },
     ferramentas: {},
     retomada: { ativa: false, cadencia: [15, 60], janela: { inicio: '08:00', fim: '21:00' } },
+    conduzFechamento: false,
     ativadoEm: null,
     arquivadoEm: null,
     createdAt: '2026-10-01T12:00:00Z',
@@ -463,6 +495,13 @@ describe('aplicarAlteracao — o RASCUNHO do Playground por cima do salvo (DC4, 
     expect(r.etapas).toEqual(comEtapas.etapas)
     expect(r.modelo).toBe('outro')
     expect(comEtapas.modelo).toBe('gemini-x')
+  })
+
+  it('⚠️ "Conduz o fechamento" do rascunho ENTRA: muda as regras do sistema do pedido testado', () => {
+    expect(aplicarAlteracao(SALVO, rascunho({ conduz_fechamento: true })).conduzFechamento).toBe(true)
+    const ligado = { ...SALVO, conduzFechamento: true }
+    expect(aplicarAlteracao(ligado, rascunho({ conduz_fechamento: false })).conduzFechamento).toBe(false)
+    expect(aplicarAlteracao(ligado, rascunho({ instrucoes: 'x' })).conduzFechamento).toBe(true)
   })
 
   it('o `horario: null` do rascunho (sempre) vale; e o teto e a transferência também entram', () => {

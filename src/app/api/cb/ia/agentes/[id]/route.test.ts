@@ -175,3 +175,31 @@ describe('F5 — marcar reunião', () => {
     },
   )
 })
+
+describe('1128 — "Conduz o fechamento"', () => {
+  it('PATCH com o booleano: vai ao repositório (ligar e desligar)', async () => {
+    for (const v of [true, false]) {
+      vi.mocked(atualizarAgente).mockClear()
+      const res = await patch({ conduz_fechamento: v })
+      expect(res.status).toBe(200)
+      expect(vi.mocked(atualizarAgente).mock.calls[0][3]).toEqual({ conduzFechamento: v })
+    }
+  })
+
+  it('⚠️ forma que não é booleano ("true", 1, null): 400 corpo_invalido, sem gravar', async () => {
+    for (const v of ['true', 1, null]) {
+      const res = await patch({ conduz_fechamento: v })
+      expect(res.status).toBe(400)
+      expect((await res.json()).code).toBe('corpo_invalido')
+    }
+    expect(atualizarAgente).not.toHaveBeenCalled()
+  })
+
+  it('só administrador', async () => {
+    papelRecusado = true
+    const res = await patch({ conduz_fechamento: true })
+    expect(res.status).toBe(403)
+    expect(requireRole).toHaveBeenCalledWith('admin')
+    expect(atualizarAgente).not.toHaveBeenCalled()
+  })
+})

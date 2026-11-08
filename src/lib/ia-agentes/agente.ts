@@ -170,6 +170,12 @@ export interface IaAgente {
   ferramentas: FerramentasDoAgente
   /** A retomada quando o cliente não responde (1056); `ativa` falso = desligada. */
   retomada: ConfigDaRetomada
+  /**
+   * "Conduz o fechamento" (1128, decisão do operador de 08/11/2026): troca as
+   * regras do sistema `sem_preco` e `sem_compromisso` pelas do fechamento
+   * (`regrasDoSistema`). Falso = as regras de sempre.
+   */
+  conduzFechamento: boolean
   /** Quando foi LIGADO pela última vez (gatilho da 1049); nulo = nunca. D27. */
   ativadoEm: string | null
   arquivadoEm: string | null
@@ -193,7 +199,7 @@ export type AgenteComEtapas = IaAgente & { etapas: EtapaDoAgente[] }
 
 /** Colunas lidas: nomeadas, nunca `*` (uma coluna sem GRANT derrubaria a consulta). */
 export const COLUNAS_DO_AGENTE =
-  'id, account_id, nome, descricao, instrucoes, regras, provedor, modelo, ativo, conexoes, horario, teto_respostas, pode_passar_para, transferir_para, acesso, ferramentas, retomada, ativado_em, arquivado_em, created_at, updated_at'
+  'id, account_id, nome, descricao, instrucoes, regras, provedor, modelo, ativo, conexoes, horario, teto_respostas, pode_passar_para, transferir_para, acesso, ferramentas, retomada, conduz_fechamento, ativado_em, arquivado_em, created_at, updated_at'
 
 function ehProvedor(v: unknown): v is AiProvider {
   return v === 'openai' || v === 'anthropic' || v === 'gemini'
@@ -293,6 +299,8 @@ export function lerLinhaDoAgente(linha: Record<string, unknown>): IaAgente | nul
     acesso: lerAcesso(linha.acesso),
     ferramentas: lerFerramentas(linha.ferramentas),
     retomada: lerRetomada(linha.retomada),
+    // Só o booleano `true` liga (a coluna é NOT NULL; do JSON, "true" e 1 não).
+    conduzFechamento: linha.conduz_fechamento === true,
     ativadoEm: typeof linha.ativado_em === 'string' ? linha.ativado_em : null,
     arquivadoEm: typeof linha.arquivado_em === 'string' ? linha.arquivado_em : null,
     createdAt: typeof linha.created_at === 'string' ? linha.created_at : '',
@@ -319,6 +327,8 @@ export interface AlteracaoDoAgente {
   ferramentas?: FerramentasDoAgente
   /** A retomada (1056): o objeto INTEIRO. */
   retomada?: ConfigDaRetomada
+  /** "Conduz o fechamento" (1128). */
+  conduzFechamento?: boolean
   /** Ids das etapas em que atua (D24). Não é coluna do agente: vai para `cb_ia_agente_etapas`. */
   etapas?: string[]
 }
@@ -399,6 +409,14 @@ export function lerAlteracao(corpo: unknown, criacao: boolean): LeituraDaAlterac
   // anterior, e toda geração falharia (Codex, #295). A tela manda os dois.
   if (v.provedor !== undefined && v.modelo === undefined) return { ok: false, codigo: 'modelo_vazio' }
   if ('ativo' in c) v.ativo = c.ativo === true
+  if ('conduz_fechamento' in c) {
+    // ESTRITO, ao contrário do `ativo`: a opção libera o agente a falar de
+    // honorários e a convidar a contratar — só o booleano liga ou desliga;
+    // qualquer outra forma ("true", 1, null) recusa em vez de virar falso ou
+    // verdadeiro em silêncio.
+    if (typeof c.conduz_fechamento !== 'boolean') return { ok: false, codigo: 'corpo_invalido' }
+    v.conduzFechamento = c.conduz_fechamento
+  }
   if ('conexoes' in c) {
     const ids = lerIds(c.conexoes)
     if (!ids) return { ok: false, codigo: 'lista_invalida' }
@@ -503,6 +521,8 @@ export function aplicarAlteracao<A extends IaAgente>(agente: A, a: AlteracaoDoAg
     ...(a.acesso !== undefined ? { acesso: a.acesso } : {}),
     ...(a.ferramentas !== undefined ? { ferramentas: a.ferramentas } : {}),
     ...(a.retomada !== undefined ? { retomada: a.retomada } : {}),
+    // Muda o PEDIDO (as regras do sistema): o Playground testa o do rascunho.
+    ...(a.conduzFechamento !== undefined ? { conduzFechamento: a.conduzFechamento } : {}),
   }
 }
 
@@ -524,6 +544,7 @@ export function colunasDaAlteracao(a: AlteracaoDoAgente): Record<string, unknown
   if (a.acesso !== undefined) c.acesso = a.acesso
   if (a.ferramentas !== undefined) c.ferramentas = a.ferramentas
   if (a.retomada !== undefined) c.retomada = a.retomada
+  if (a.conduzFechamento !== undefined) c.conduz_fechamento = a.conduzFechamento
   return c
 }
 

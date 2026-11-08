@@ -128,6 +128,12 @@ qualquer uma é pergunta ao operador.
 - IA: chave por PROVEDOR, uma para a conta toda — nunca por conexão
   (28/08/2026; 1047). O modelo é do módulo (Radar) e, com os agentes, de
   cada agente (D1 de `docs/PLANO-agentes-de-ia.md`).
+- Agentes de IA, regras do sistema: as 12 valem para todo agente e nada as
+  desliga (27/09/2026). A ÚNICA variação é "Conduz o fechamento", por agente
+  e desligada por padrão (08/11/2026, 1128): troca "não fala de preço" e "não
+  aceita proposta" por honorários SÓ como escritos (sem negociar) e convite a
+  assinar pelo link escrito, com a contratação confirmada só pela assinatura;
+  as outras dez ficam (`ia-regras-do-sistema.md`).
 - Agente de IA fora do horário: a mensagem espera e ele responde quando o
   horário abrir, se ninguém da equipe respondeu antes; o padrão da Anthropic
   é o Haiku 5.5, e o seletor mostra os modelos da chave (25/10/2026).
