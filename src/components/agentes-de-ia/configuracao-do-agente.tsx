@@ -7,6 +7,11 @@
 // do funil em que atua (D24, `onde-atua.tsx`), horário, teto, transferência
 // e para quem pode passar (D25: o card vai para a etapa do escolhido).
 //
+// "Conduz o fechamento" (1128, decisão do operador de 08/11/2026): logo
+// abaixo das regras do sistema, porque é o que troca duas delas — o cartão
+// mostra a lista do RASCUNHO, e mudar a opção avisa, antes de salvar, o que
+// passa a valer e o que continua proibido.
+//
 // ⚠️ Conexões: NENHUMA marcada = o agente não atende em conexão nenhuma
 // (nunca "todas": há número de uso pessoal na conta). Idem as etapas.
 //
@@ -91,6 +96,7 @@ export function ConfiguracaoDoAgente({
   const [transferirPara, setTransferirPara] = useState<string | null>(agente.transferirPara);
   const [podePassarPara, setPodePassarPara] = useState<string[]>(agente.podePassarPara);
   const [etapas, setEtapas] = useState<string[]>(() => agente.etapas.map((e) => e.stageId));
+  const [conduzFechamento, setConduzFechamento] = useState(agente.conduzFechamento);
   const [salvando, setSalvando] = useState(false);
   const [confirmandoArquivar, setConfirmandoArquivar] = useState(false);
 
@@ -137,8 +143,9 @@ export function ConfiguracaoDoAgente({
         transferirPara,
         podePassarPara,
         etapas,
+        conduzFechamento,
       }),
-    [agente, nome, descricao, instrucoes, regras, provedor, modelo, ativo, conexoes, horario, teto, transferirPara, podePassarPara, etapas]
+    [agente, nome, descricao, instrucoes, regras, provedor, modelo, ativo, conexoes, horario, teto, transferirPara, podePassarPara, etapas, conduzFechamento]
   );
   const naoSalvo = Object.keys(alteracoes).length > 0 || teto === null;
 
@@ -248,8 +255,28 @@ export function ConfiguracaoDoAgente({
           />
         </div>
         {/* As regras do sistema (27/09/2026): só leitura, e vêm ANTES das
-            instruções no pedido — a ordem da tela é a do pedido. */}
-        <RegrasDoSistema />
+            instruções no pedido — a ordem da tela é a do pedido. A lista é
+            a do rascunho: com "Conduz o fechamento", duas delas trocam. */}
+        <RegrasDoSistema conduzFechamento={conduzFechamento} />
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-3 rounded-md border border-border p-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">{t('campo.conduzFechamento')}</p>
+              <p className="text-xs text-muted-foreground">{t('campo.conduzFechamentoDica')}</p>
+            </div>
+            <Switch
+              checked={conduzFechamento}
+              onCheckedChange={setConduzFechamento}
+              aria-label={t('campo.conduzFechamento')}
+            />
+          </div>
+          {/* O aviso vem ANTES do Salvar, só quando a opção mudou. */}
+          {conduzFechamento !== agente.conduzFechamento ? (
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              {conduzFechamento ? t('campo.conduzFechamentoLigando') : t('campo.conduzFechamentoDesligando')}
+            </p>
+          ) : null}
+        </div>
         <div className="space-y-1.5">
           <Label htmlFor="ag-instr">{t('campo.instrucoes')}</Label>
           <p className="text-xs text-muted-foreground">{t('campo.instrucoesDica')}</p>

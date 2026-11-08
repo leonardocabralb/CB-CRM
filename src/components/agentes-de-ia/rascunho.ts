@@ -40,6 +40,8 @@ export interface Rascunho {
   podePassarPara: string[]
   /** Ids das etapas em que o agente atua (D24). */
   etapas: string[]
+  /** "Conduz o fechamento" (1128): troca duas regras do sistema. */
+  conduzFechamento: boolean
 }
 
 function regrasLimpas(regras: string[]): string[] {
@@ -81,6 +83,7 @@ export function alteracoesDoRascunho(salvo: IaAgente, r: Rascunho): Record<strin
   if (!mesmoConjunto(r.podePassarPara, salvo.podePassarPara)) corpo.pode_passar_para = r.podePassarPara
   // As etapas vão INTEIRAS (a rota apaga as que saíram e insere as novas).
   if (!mesmoConjunto(r.etapas, salvo.etapas.map((e) => e.stageId))) corpo.etapas = r.etapas
+  if (r.conduzFechamento !== salvo.conduzFechamento) corpo.conduz_fechamento = r.conduzFechamento
   return corpo
 }
 

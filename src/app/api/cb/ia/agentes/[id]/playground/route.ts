@@ -256,6 +256,7 @@ export async function POST(request: Request, { params }: Contexto) {
       const pedido = montarPedidoDaRetomada({
         instrucoes: agente.instrucoes,
         regras: agente.regras,
+        conduzFechamento: agente.conduzFechamento,
         agora: agoraDaRetomada,
         blocos: visto.blocos,
         conhecimento: visto.trechos.map((t) => t.content),
@@ -343,6 +344,7 @@ export async function POST(request: Request, { params }: Contexto) {
     const pedido = montarPedidoDoAgente({
       instrucoes: agente.instrucoes,
       regras: agente.regras,
+      conduzFechamento: agente.conduzFechamento,
       agora,
       passagens: opcoes.map((a) => ({ nome: a.nome, descricao: a.descricao })),
       blocos: visto.blocos,

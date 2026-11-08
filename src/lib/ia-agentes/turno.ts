@@ -1234,6 +1234,7 @@ async function conduzir(
   const pedido = montarPedidoDoAgente({
     instrucoes: agente.instrucoes,
     regras: agente.regras,
+    conduzFechamento: agente.conduzFechamento,
     agora: new Date(),
     passagens: opcoes.map((a) => ({ nome: a.nome, descricao: a.descricao })),
     blocos: visto.blocos,
@@ -1909,6 +1910,7 @@ async function conduzirRetomada(
   const pedido = montarPedidoDaRetomada({
     instrucoes: agente.instrucoes,
     regras: agente.regras,
+    conduzFechamento: agente.conduzFechamento,
     agora,
     blocos: visto.blocos,
     conhecimento: visto.trechos.map((t) => t.content),

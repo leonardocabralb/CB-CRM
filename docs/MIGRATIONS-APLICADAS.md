@@ -1913,3 +1913,19 @@ nome da época em que foram aplicadas.
   (249 migrations + `verify-schema.sql`, aplicada duas vezes). Conferida: as 13
   colunas em `timestamptz`; as seis configs e `cb_ia_chaves` seguem sem leitura
   para `anon`/`authenticated`.
+
+- **1128_cb_ia_agente_conduz_fechamento** — `cb_ia_agentes.conduz_fechamento
+  boolean NOT NULL DEFAULT false`: a opção "Conduz o fechamento" por agente
+  de IA (decisão do operador de 08/11/2026). Ligada, as regras do sistema
+  daquele agente trocam `sem_preco` e `sem_compromisso` pelas do fechamento
+  (`.claude/rules/ia-regras-do-sistema.md`). PR #473.
+
+  ADITIVA, ANTES do deploy: o app novo lê a coluna em `COLUNAS_DO_AGENTE`
+  (sem ela, toda leitura de agente falha); o antigo não a lê. Autorização do
+  operador em 08/11/2026 ("Pode gravar", à pergunta de aplicar a 1128 em
+  produção depois do CI verde no commit final), aplicada em 08/11/2026
+  (histórico `20261108214507`) pela Management API, com o arquivo idêntico ao
+  do commit `10a8407e` (sha256 `91679678…`), cujo replay do CI ("Apply to a
+  clean database") passou. Também o replay LOCAL completo (252 migrations +
+  `verify-schema.sql`, aplicada duas vezes). Conferida: a coluna em `boolean`,
+  NOT NULL, padrão `false`; os 23 agentes da tabela com a opção desligada.

@@ -42,6 +42,7 @@ const SALVO: IaAgente = {
   acesso: { ficha: true, campos: ['c1', 'c2'], negocio: false, etiquetas: false, cobrancas: true, reuniao: false },
   ferramentas: { mover_etapa: { etapas: ['e1', 'e2'] }, etiquetar: { etiquetas: ['t1'] } },
   retomada: { ativa: true, cadencia: [15, 60, 180], janela: { inicio: '08:00', fim: '21:00' } },
+  conduzFechamento: false,
   createdAt: '2026-09-25T00:00:00Z',
   updatedAt: '2026-09-25T00:00:00Z',
 }
@@ -61,6 +62,7 @@ function rascunhoDe(a: IaAgente): Rascunho {
     transferirPara: a.transferirPara,
     podePassarPara: [...a.podePassarPara],
     etapas: a.etapas.map((e) => e.stageId),
+    conduzFechamento: a.conduzFechamento,
   }
 }
 
@@ -95,6 +97,13 @@ describe('alteracoesDoRascunho — o Salvar manda só o que mudou', () => {
     const outro = { ...rascunhoDe(SALVO), horario: { dias: [1, 2, 3], inicio: '09:00', fim: '18:00' } }
     expect(alteracoesDoRascunho(SALVO, outro)).toEqual({ horario: outro.horario })
     expect(alteracoesDoRascunho(SALVO, { ...rascunhoDe(SALVO), horario: null })).toEqual({ horario: null })
+  })
+
+  it('"Conduz o fechamento" (1128): ligar ou desligar vai com o nome da rota; sem mexer, nada', () => {
+    expect(alteracoesDoRascunho(SALVO, { ...rascunhoDe(SALVO), conduzFechamento: true })).toEqual({ conduz_fechamento: true })
+    const ligado = { ...SALVO, conduzFechamento: true }
+    expect(alteracoesDoRascunho(ligado, { ...rascunhoDe(ligado), conduzFechamento: false })).toEqual({ conduz_fechamento: false })
+    expect(alteracoesDoRascunho(ligado, rascunhoDe(ligado))).toEqual({})
   })
 
   it('escolher a fila (nulo) no lugar de quem saiu é mudança, e vai com o nome da rota', () => {
@@ -307,7 +316,7 @@ describe('NAO_MUDAM_A_RESPOSTA — o que a tela diz que não muda o teste', () =
   })
 
   it('o que muda o pedido ao modelo nunca está na lista', () => {
-    for (const chave of ['instrucoes', 'regras', 'provedor', 'modelo', 'pode_passar_para', 'acesso', 'ferramentas', 'retomada']) {
+    for (const chave of ['instrucoes', 'regras', 'provedor', 'modelo', 'pode_passar_para', 'acesso', 'ferramentas', 'retomada', 'conduz_fechamento']) {
       expect(NAO_MUDAM_A_RESPOSTA.has(chave), chave).toBe(false)
     }
   })

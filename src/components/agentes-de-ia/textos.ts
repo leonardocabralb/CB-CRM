@@ -136,6 +136,8 @@ export function rotuloDaChaveDoRascunho(t: ReturnType<typeof useTranslations>, c
       return t('detalhe.ferramentas');
     case 'retomada':
       return t('detalhe.retomada');
+    case 'conduz_fechamento':
+      return t('campo.conduzFechamento');
     default:
       return null;
   }

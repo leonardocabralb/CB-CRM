@@ -37,6 +37,11 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  * na conta do Calendly conectado = 400 `tipo_de_evento_invalido`; sem
  * Calendly conectado = 400 `calendly_desconectado` (os dois com `itens` =
  * [uri]).
+ *
+ * 1128: o agente vem com `conduzFechamento`, e o `PATCH` aceita
+ * `conduz_fechamento` — SÓ booleano (outra forma = 400 `corpo_invalido`).
+ * Ligado, as regras do sistema desse agente trocam `sem_preco` e
+ * `sem_compromisso` pelas do fechamento (`regras-do-sistema.ts`).
  */
 export async function GET(_request: Request, { params }: Contexto) {
   try {
