@@ -202,12 +202,26 @@ export function InboxFilters({
     filtros.responsavelId !== null ||
     filtros.empresa !== null;
 
+  // ⚠️ Marcar uma etiqueta numa lista TIRA ela da outra: a mesma etiqueta em
+  // "Etiquetas" e em "Sem as etiquetas" pede "tem e não tem" e esvaziaria a
+  // caixa sem explicação.
   const alternarEtiqueta = (id: string) =>
-    mexer({
-      etiquetaIds: filtros.etiquetaIds.includes(id)
-        ? filtros.etiquetaIds.filter((x) => x !== id)
-        : [...filtros.etiquetaIds, id],
-    });
+    filtros.etiquetaIds.includes(id)
+      ? mexer({ etiquetaIds: filtros.etiquetaIds.filter((x) => x !== id) })
+      : mexer({
+          etiquetaIds: [...filtros.etiquetaIds, id],
+          etiquetaIdsExcluidas: filtros.etiquetaIdsExcluidas.filter((x) => x !== id),
+        });
+
+  const alternarEtiquetaExcluida = (id: string) =>
+    filtros.etiquetaIdsExcluidas.includes(id)
+      ? mexer({
+          etiquetaIdsExcluidas: filtros.etiquetaIdsExcluidas.filter((x) => x !== id),
+        })
+      : mexer({
+          etiquetaIdsExcluidas: [...filtros.etiquetaIdsExcluidas, id],
+          etiquetaIds: filtros.etiquetaIds.filter((x) => x !== id),
+        });
 
   const responsavelAtual = responsaveis.find(
     (p) => p.user_id === filtros.responsavelId,
@@ -496,44 +510,16 @@ export function InboxFilters({
           {etiquetas.length > 0 && (
             <Campo rotulo={t("labelTags")}>
               <div className="flex items-center gap-1">
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    className={cn(
-                      "inline-flex h-8 min-w-0 flex-1 items-center justify-between gap-1 rounded-md border border-border px-2 text-xs transition-colors hover:bg-muted",
-                      filtros.etiquetaIds.length > 0
-                        ? "text-primary"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    <span className="truncate">
-                      {filtros.etiquetaIds.length > 0
-                        ? t("tagsChosen", { count: filtros.etiquetaIds.length })
-                        : t("tags")}
-                    </span>
-                    <ChevronDown className="h-3 w-3 shrink-0" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="start"
-                    className="max-h-64 w-56 overflow-y-auto border-border bg-popover"
-                  >
-                    {etiquetas.map((tag) => (
-                      <DropdownMenuCheckboxItem
-                        key={tag.id}
-                        checked={filtros.etiquetaIds.includes(tag.id)}
-                        onCheckedChange={() => alternarEtiqueta(tag.id)}
-                        className="text-sm text-popover-foreground"
-                      >
-                        <span className="flex items-center gap-2">
-                          <span
-                            className="h-2 w-2 shrink-0 rounded-full"
-                            style={{ backgroundColor: tag.color }}
-                          />
-                          <span className="truncate">{tag.name}</span>
-                        </span>
-                      </DropdownMenuCheckboxItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <ListaDeEtiquetas
+                  etiquetas={etiquetas}
+                  marcadas={filtros.etiquetaIds}
+                  aoAlternar={alternarEtiqueta}
+                  resumo={
+                    filtros.etiquetaIds.length > 0
+                      ? t("tagsChosen", { count: filtros.etiquetaIds.length })
+                      : t("tags")
+                  }
+                />
                 {/* "Qualquer uma" × "Todas elas" só decide algo com 2+ etiquetas
                     marcadas. */}
                 {filtros.etiquetaIds.length >= 2 && (
@@ -552,6 +538,29 @@ export function InboxFilters({
                       : t("tagModeAny")}
                   </button>
                 )}
+              </div>
+            </Campo>
+          )}
+
+          {/* SEM AS ETIQUETAS (pedido do operador, 08/11/2026): esconde quem
+              tem QUALQUER uma das marcadas, somando com o resto — "Jurídico"
+              sem "Trabalhista". Logo abaixo de Etiquetas, com a mesma lista;
+              recorte do painel (a favorita atravessa com "Incluir minhas
+              favoritas"). Ver `etiquetaIdsExcluidas` em filtros.ts. */}
+          {etiquetas.length > 0 && (
+            <Campo rotulo={t("labelTagsExcluded")}>
+              <div className="flex items-center">
+                <ListaDeEtiquetas
+                  etiquetas={etiquetas}
+                  marcadas={filtros.etiquetaIdsExcluidas}
+                  aoAlternar={alternarEtiquetaExcluida}
+                  resumo={
+                    filtros.etiquetaIdsExcluidas.length > 0
+                      ? t("tagsChosen", { count: filtros.etiquetaIdsExcluidas.length })
+                      : t("tagsExcludedNone")
+                  }
+                  dica={t("tagsExcludedHint")}
+                />
               </div>
             </Campo>
           )}
@@ -901,6 +910,63 @@ function Campo({
       </span>
       {children}
     </div>
+  );
+}
+
+/**
+ * A lista de marcar etiquetas, com a bolinha da cor. A MESMA nos dois campos
+ * ("Etiquetas" e "Sem as etiquetas"): o operador reconhece a etiqueta pela
+ * cor, e duas listas desenhadas à parte divergiriam na primeira mudança.
+ */
+function ListaDeEtiquetas({
+  etiquetas,
+  marcadas,
+  aoAlternar,
+  resumo,
+  dica,
+}: {
+  etiquetas: Tag[];
+  marcadas: string[];
+  aoAlternar: (id: string) => void;
+  resumo: string;
+  dica?: string;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        title={dica}
+        className={cn(
+          "inline-flex h-8 min-w-0 flex-1 items-center justify-between gap-1 rounded-md border border-border px-2 text-xs transition-colors hover:bg-muted",
+          marcadas.length > 0
+            ? "text-primary"
+            : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        <span className="truncate">{resumo}</span>
+        <ChevronDown className="h-3 w-3 shrink-0" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        className="max-h-64 w-56 overflow-y-auto border-border bg-popover"
+      >
+        {etiquetas.map((tag) => (
+          <DropdownMenuCheckboxItem
+            key={tag.id}
+            checked={marcadas.includes(tag.id)}
+            onCheckedChange={() => aoAlternar(tag.id)}
+            className="text-sm text-popover-foreground"
+          >
+            <span className="flex items-center gap-2">
+              <span
+                className="h-2 w-2 shrink-0 rounded-full"
+                style={{ backgroundColor: tag.color }}
+              />
+              <span className="truncate">{tag.name}</span>
+            </span>
+          </DropdownMenuCheckboxItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

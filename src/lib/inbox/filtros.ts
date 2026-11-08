@@ -84,6 +84,19 @@ export interface FiltrosDoInbox {
   responsavelId: string | null;
   etiquetaIds: string[];
   modoDeEtiqueta: ModoDeEtiqueta;
+  /**
+   * "Sem as etiquetas" (pedido do operador, 08/11/2026): ESCONDE a conversa
+   * cujo contato tem QUALQUER uma destas — VAZIO = não esconde nada. Soma
+   * com o resto (E lógico), inclusive com `etiquetaIds`: "Previdenciário"
+   * sem "Cliente Fechado" é quem tem a primeira e não tem a segunda. Ver
+   * `semAsEtiquetasExcluidas`.
+   *
+   * ⚠️ É recorte do PAINEL: a favorita atravessa com
+   * {@link FiltrosDoInbox.incluirFavoritas}, como atravessa as etiquetas.
+   * Filtro salvo antes do campo não tem a chave e lê `[]` (não esconde nada,
+   * que é como ele recortava).
+   */
+  etiquetaIdsExcluidas: string[];
   /** Nome exato da empresa, ou `null`. */
   empresa: string | null;
   /**
@@ -202,6 +215,7 @@ export const FILTROS_VAZIOS: FiltrosDoInbox = {
   responsavelId: null,
   etiquetaIds: [],
   modoDeEtiqueta: "qualquer",
+  etiquetaIdsExcluidas: [],
   empresa: null,
   funilIds: [],
   etapaIds: [],
@@ -239,6 +253,9 @@ export function contarFiltrosAtivos(f: FiltrosDoInbox): number {
   if (f.canalIds.length > 0) n++;
   if (f.responsavelId) n++;
   if (f.etiquetaIds.length > 0) n++;
+  // "Sem as etiquetas" conta à parte: é outro campo do painel, e recorta
+  // sozinho (sem etiqueta incluída nenhuma, ainda esconde gente).
+  if (f.etiquetaIdsExcluidas.length > 0) n++;
   if (f.empresa !== null) n++;
   // ⚠️ Os dois níveis contam como UM, com quantos funis e etapas houver
   // marcados (como as várias conexões). Com etapa escolhida o funil vem junto
@@ -256,8 +273,9 @@ export function contarFiltrosAtivos(f: FiltrosDoInbox): number {
 
 /**
  * Há recorte do PAINEL — o que {@link FiltrosDoInbox.incluirFavoritas} deixa
- * a favorita atravessar: conexões, etiquetas, funil/etapa, responsável, tipo
- * e empresa. Sem ele, "incluir favoritas" não muda a lista.
+ * a favorita atravessar: conexões, etiquetas (as incluídas e as de "Sem as
+ * etiquetas"), funil/etapa, responsável, tipo e empresa. Sem ele, "incluir
+ * favoritas" não muda a lista.
  *
  * ⚠️ É a MESMA lista de `casaComORecorteDoPainel`: campo novo do painel entra
  * nas duas, senão o interruptor some do painel com o recorte de pé (ou a
@@ -269,6 +287,7 @@ export function temRecorteDoPainel(f: FiltrosDoInbox): boolean {
     f.canalIds.length > 0 ||
     f.responsavelId !== null ||
     f.etiquetaIds.length > 0 ||
+    f.etiquetaIdsExcluidas.length > 0 ||
     f.empresa !== null ||
     f.funilIds.length > 0 ||
     f.etapaIds.length > 0
@@ -593,6 +612,25 @@ export function casaComOResponsavel(
 }
 
 /**
+ * "Sem as etiquetas": a conversa PASSA quando o contato não tem NENHUMA das
+ * etiquetas excluídas. Lista vazia não esconde nada.
+ *
+ * ⚠️ Mora aqui, e não em `matchesContactFilters` (`conversations.ts`): aquele
+ * arquivo veio do upstream e o `ContactFilters` é contrato da API v1.
+ *
+ * ⚠️ Contato sem etiqueta passa, e GRUPO também: grupo não tem contato, logo
+ * não tem a etiqueta — é o inverso do filtro de etiquetas incluídas, onde o
+ * grupo sai por não ter a etiqueta pedida. Quem não quer grupo usa o Tipo.
+ */
+export function semAsEtiquetasExcluidas(
+  conversation: Conversation,
+  excluidas: string[],
+): boolean {
+  if (excluidas.length === 0) return true;
+  return !(conversation.contact?.tags ?? []).some((t) => excluidas.includes(t.id));
+}
+
+/**
  * Por qual número esta conversa corre.
  *
  * ⚠️ **Conversa de GRUPO tem `conversations.channel_id` NULO — e não por ser
@@ -725,9 +763,9 @@ export function casaComASituacao(
 }
 
 /**
- * O recorte do PAINEL — conexões, etiquetas, funil/etapa, responsável, tipo e
- * empresa —, a parte que a favorita atravessa com
- * {@link FiltrosDoInbox.incluirFavoritas}. A mesma lista de
+ * O recorte do PAINEL — conexões, etiquetas (incluídas e excluídas),
+ * funil/etapa, responsável, tipo e empresa —, a parte que a favorita
+ * atravessa com {@link FiltrosDoInbox.incluirFavoritas}. A mesma lista de
  * {@link temRecorteDoPainel}.
  */
 function casaComORecorteDoPainel(
@@ -769,6 +807,9 @@ function casaComORecorteDoPainel(
       return false;
     }
   }
+
+  // Depois das incluídas, em E: "Previdenciário" sem "Cliente Fechado".
+  if (!semAsEtiquetasExcluidas(c, f.etiquetaIdsExcluidas)) return false;
   return true;
 }
 

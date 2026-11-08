@@ -77,6 +77,9 @@ qualquer uma é pergunta ao operador.
 - Calendly: a ficha do cliente nasce do agendamento (08/09/2026).
 - Caixa de entrada: filtro salvo é de cada membro; Encerradas não é filtro
   nem vai na visão salva; busca no corpo das mensagens desligada por padrão.
+  "Sem as etiquetas" (08/11/2026) esconde quem tem QUALQUER uma das
+  marcadas, soma com o resto e é recorte do painel ("Incluir minhas
+  favoritas" vale sobre ele).
 - Ficha: um bloco de campos por vez, em menu horizontal, na ordem de cada
   pessoa (12/10/2026).
 - Anotação: caixa ANTES da fixada, que nasce recolhida (29/09/2026);

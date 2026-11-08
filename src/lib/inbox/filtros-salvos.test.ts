@@ -78,6 +78,7 @@ describe("lerFiltroSalvo", () => {
         responsavelId: "u1",
         etiquetaIds: ["t1", "t2"],
         modoDeEtiqueta: "todas",
+        etiquetaIdsExcluidas: ["t3"],
         empresa: "ACME",
         funilIds: ["p1", "p2"],
         etapaIds: ["e1", SEM_ETAPA],
@@ -93,6 +94,7 @@ describe("lerFiltroSalvo", () => {
       responsavelId: "u1",
       etiquetaIds: ["t1", "t2"],
       modoDeEtiqueta: "todas",
+      etiquetaIdsExcluidas: ["t3"],
       empresa: "ACME",
       funilIds: ["p1", "p2"],
       etapaIds: ["e1", SEM_ETAPA],
@@ -173,6 +175,7 @@ describe("escreverFiltroSalvo", () => {
       "empresa",
       "etapaIds",
       "etiquetaIds",
+      "etiquetaIdsExcluidas",
       "favoritas",
       "funilIds",
       "inadimplentes",
@@ -276,10 +279,12 @@ describe("descreverFiltro", () => {
         funilIds: ["sumiu"],
         etapaIds: ["sumiu"],
         etiquetaIds: ["sumiu"],
+        etiquetaIdsExcluidas: ["sumiu"],
         responsavelId: "sumiu",
       },
       CAT,
     );
+    expect(p.some((x) => x.chave === "semEtiqueta:sumiu")).toBe(true);
     expect(p.every((x) => x.orfao)).toBe(true);
     // Rótulo genérico do campo, jamais o id — o operador leria o UUID como se
     // fosse o nome.
@@ -386,6 +391,7 @@ describe("descreverFiltro", () => {
       etapaIds: ["e1"],
       empresa: "ACME",
       etiquetaIds: ["t1"],
+      etiquetaIdsExcluidas: ["t2"],
       naoLidas: true,
       favoritas: true,
     };
@@ -492,6 +498,8 @@ const AMOSTRAS: Record<keyof FiltrosDoInbox, Partial<FiltrosDoInbox> | null> = {
   // Só muda como as etiquetas já escolhidas se combinam — `contarFiltrosAtivos`
   // também o ignora, de propósito.
   modoDeEtiqueta: null,
+  // Recorta SOZINHO (sem etiqueta incluída, ainda esconde gente).
+  etiquetaIdsExcluidas: { etiquetaIdsExcluidas: ["t1"] },
   empresa: { empresa: "ACME" },
   funilIds: { funilIds: ["p1"] },
   etapaIds: { etapaIds: ["e1"] },
@@ -739,6 +747,8 @@ const CHAVES_USADAS = [
   "labelStage",
   "labelPipeline",
   "tags",
+  "tagExcluded",
+  "labelTagsExcluded",
   "deletedRef",
 ] as const;
 
@@ -864,5 +874,118 @@ describe("incluir favoritas na visão salva (20/10/2026)", () => {
 
   it("limparOrfaos não toca nele — não é referência a linha nenhuma", () => {
     expect(limparOrfaos(comFavoritas, CAT).incluirFavoritas).toBe(true);
+  });
+});
+
+describe("Sem as etiquetas na visão salva (08/11/2026)", () => {
+  it("⚠️ filtro gravado ANTES do campo lê [] e recorta exatamente como antes", () => {
+    // O JSON que as visões de hoje têm no banco: sem a chave nova.
+    const antigo = {
+      tipo: "todas",
+      canalIds: ["c1"],
+      responsavelId: null,
+      etiquetaIds: ["t1"],
+      modoDeEtiqueta: "qualquer",
+      empresa: null,
+      funilIds: [],
+      etapaIds: [],
+      favoritas: false,
+      incluirFavoritas: false,
+      naoLidas: false,
+      emAtraso: false,
+      inadimplentes: false,
+      clientesIdeais: false,
+    };
+    const lido = lerFiltroSalvo(antigo);
+    expect(lido.etiquetaIdsExcluidas).toEqual([]);
+    expect(lido).toEqual({ ...FILTROS_VAZIOS, canalIds: ["c1"], etiquetaIds: ["t1"] });
+    // O chip dele continua acendendo sobre o mesmo recorte de antes.
+    expect(
+      mesmoFiltro(lido, { ...FILTROS_VAZIOS, canalIds: ["c1"], etiquetaIds: ["t1"] }),
+    ).toBe(true);
+    // E sem a chave nenhuma, também.
+    expect(lerFiltroSalvo({}).etiquetaIdsExcluidas).toEqual([]);
+  });
+
+  it("parse: apara, tira repetição e lixo, preserva a ordem; outra forma vira []", () => {
+    expect(
+      lerFiltroSalvo({ etiquetaIdsExcluidas: ["t2", 3, null, " t1 ", "t2", ""] })
+        .etiquetaIdsExcluidas,
+    ).toEqual(["t2", "t1"]);
+    expect(lerFiltroSalvo({ etiquetaIdsExcluidas: "t1" }).etiquetaIdsExcluidas).toEqual([]);
+    expect(lerFiltroSalvo({ etiquetaIdsExcluidas: null }).etiquetaIdsExcluidas).toEqual([]);
+  });
+
+  it("sobrevive à ida e volta pelo banco", () => {
+    const f = { ...FILTROS_VAZIOS, etiquetaIds: ["t1"], etiquetaIdsExcluidas: ["t2", "t3"] };
+    expect(escreverFiltroSalvo(f)).toMatchObject({ etiquetaIdsExcluidas: ["t2", "t3"] });
+    expect(lerFiltroSalvo(escreverFiltroSalvo(f))).toEqual(f);
+  });
+
+  it("mesmoFiltro compara como CONJUNTO, e não confunde com as etiquetas incluídas", () => {
+    const a = { ...FILTROS_VAZIOS, etiquetaIdsExcluidas: ["t1", "t2"] };
+    expect(mesmoFiltro(a, { ...FILTROS_VAZIOS, etiquetaIdsExcluidas: ["t2", "t1"] })).toBe(true);
+    expect(mesmoFiltro(a, { ...FILTROS_VAZIOS, etiquetaIdsExcluidas: ["t1"] })).toBe(false);
+    expect(mesmoFiltro(FILTROS_VAZIOS, { ...FILTROS_VAZIOS, etiquetaIdsExcluidas: ["t1"] })).toBe(
+      false,
+    );
+    expect(
+      mesmoFiltro(
+        { ...FILTROS_VAZIOS, etiquetaIds: ["t1"] },
+        { ...FILTROS_VAZIOS, etiquetaIdsExcluidas: ["t1"] },
+      ),
+    ).toBe(false);
+  });
+
+  it("descrito como 'Sem <nome>', logo depois das etiquetas incluídas, com cor e limpar próprios", () => {
+    const p = descreverFiltro(
+      { ...FILTROS_VAZIOS, etiquetaIds: ["t1"], etiquetaIdsExcluidas: ["t2"], naoLidas: true },
+      CAT,
+    );
+    expect(p.map((x) => x.chave)).toEqual(["etiqueta:t1", "semEtiqueta:t2", "naoLidas"]);
+    expect(p[1].rotulo).toEqual({ fonte: "i18n", chave: "tagExcluded", valores: { nome: "VIP" } });
+    expect(p[1].cor).toBe("#abc");
+    expect(p[1].orfao).toBe(false);
+    expect(p[1].limpar).toEqual({ etiquetaIdsExcluidas: [] });
+  });
+
+  it("sem o catálogo: o rótulo do campo, nunca o id nem '(apagado)'", () => {
+    const p = descreverFiltro(
+      { ...FILTROS_VAZIOS, etiquetaIdsExcluidas: ["t2"] },
+      { ...CAT, etiquetas: [] },
+    );
+    expect(p[0].rotulo).toEqual({ fonte: "i18n", chave: "labelTagsExcluded" });
+    expect(p[0].orfao).toBe(false);
+  });
+
+  it("limparOrfaos tira só a etiqueta APAGADA, e com catálogo vazio não tira nada", () => {
+    const f = { ...FILTROS_VAZIOS, etiquetaIdsExcluidas: ["t1", "morta", "t2"] };
+    expect(limparOrfaos(f, CAT).etiquetaIdsExcluidas).toEqual(["t1", "t2"]);
+    expect(limparOrfaos(f, { ...CAT, etiquetas: [] }).etiquetaIdsExcluidas).toEqual([
+      "t1",
+      "morta",
+      "t2",
+    ]);
+    // Só com a apagada, o recorte some (não fica um fantasma contando no distintivo).
+    const soMorta = limparOrfaos({ ...FILTROS_VAZIOS, etiquetaIdsExcluidas: ["morta"] }, CAT);
+    expect(contarFiltrosAtivos(soMorta)).toBe(0);
+  });
+
+  it("é recorte do painel: 'Incluir minhas favoritas' passa a pesar no chip e na descrição", () => {
+    const sem = { ...FILTROS_VAZIOS, etiquetaIdsExcluidas: ["t1"] };
+    expect(mesmoFiltro(sem, { ...sem, incluirFavoritas: true })).toBe(false);
+    expect(descreverFiltro({ ...sem, incluirFavoritas: true }, CAT).map((x) => x.chave)).toEqual([
+      "semEtiqueta:t1",
+      "incluirFavoritas",
+    ]);
+  });
+
+  it("os dois dicionários dizem 'Sem {nome}' com o mesmo marcador", () => {
+    for (const arquivo of ["en", "pt-BR"]) {
+      const dic = JSON.parse(readFileSync(`messages/${arquivo}.json`, "utf8")) as {
+        Inbox: { conversationList: Record<string, string> };
+      };
+      expect(dic.Inbox.conversationList.tagExcluded, arquivo).toContain("{nome}");
+    }
   });
 });

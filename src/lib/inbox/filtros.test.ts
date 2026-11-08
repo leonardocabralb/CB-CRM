@@ -20,6 +20,7 @@ import {
   type FiltrosDoInbox,
   casaComASituacao,
   digitosDeBuscaDeTelefone,
+  semAsEtiquetasExcluidas,
   temRecorteDoPainel,
 } from "./filtros";
 import type { Conversation, Tag } from "@/types";
@@ -1263,6 +1264,7 @@ describe("incluir favoritas — a favorita atravessa o recorte do PAINEL (20/10/
       { canalIds: ["c"] },
       { responsavelId: SEM_RESPONSAVEL },
       { etiquetaIds: ["t"] },
+      { etiquetaIdsExcluidas: ["t"] },
       { empresa: "ACME" },
       { funilIds: ["p"] },
       { etapaIds: [SEM_ETAPA] },
@@ -1280,5 +1282,129 @@ describe("incluir favoritas — a favorita atravessa o recorte do PAINEL (20/10/
     ]) {
       expect(temRecorteDoPainel({ ...FILTROS_VAZIOS, ...patch }), JSON.stringify(patch)).toBe(false);
     }
+  });
+});
+
+describe("Sem as etiquetas — esconde quem tem QUALQUER uma das marcadas (08/11/2026)", () => {
+  const comEtiquetas = (id: string, tags: string[], extra: Partial<Conversation> = {}) =>
+    conversa({
+      id,
+      contact: { ...conversa().contact!, tags: tags.map(etiqueta) },
+      ...extra,
+    });
+  const trab = comEtiquetas("trab", ["trabalhista"]);
+  const prev = comEtiquetas("prev", ["previdenciario"]);
+  const prevFechado = comEtiquetas("prev-fechado", ["previdenciario", "fechado"]);
+  const prevTrab = comEtiquetas("prev-trab", ["previdenciario", "trabalhista"]);
+  const semNada = comEtiquetas("sem-nada", []);
+  const semCampoTags = conversa({ id: "sem-campo" }); // contato sem `tags` carregado
+  const lista = [trab, prev, prevFechado, prevTrab, semNada, semCampoTags];
+  const ids = (f: Partial<FiltrosDoInbox>, c: Partial<ContextoDosFiltros> = {}) =>
+    aplicarFiltros(lista, { ...FILTROS_VAZIOS, ...f }, ctx(c)).map((x) => x.id);
+
+  it("vazio não esconde nada", () => {
+    expect(ids({})).toEqual(lista.map((c) => c.id));
+    expect(semAsEtiquetasExcluidas(trab, [])).toBe(true);
+  });
+
+  it("sozinho: some quem tem a etiqueta; contato sem etiqueta fica", () => {
+    expect(ids({ etiquetaIdsExcluidas: ["trabalhista"] })).toEqual([
+      "prev",
+      "prev-fechado",
+      "sem-nada",
+      "sem-campo",
+    ]);
+  });
+
+  it("várias marcadas: some quem tiver QUALQUER uma delas", () => {
+    expect(ids({ etiquetaIdsExcluidas: ["trabalhista", "fechado"] })).toEqual([
+      "prev",
+      "sem-nada",
+      "sem-campo",
+    ]);
+  });
+
+  it("com Etiquetas em 'Qualquer uma': tem alguma das incluídas E nenhuma das excluídas", () => {
+    // O exemplo do operador: Previdenciário sem Cliente Fechado.
+    expect(
+      ids({ etiquetaIds: ["previdenciario"], etiquetaIdsExcluidas: ["fechado"] }),
+    ).toEqual(["prev", "prev-trab"]);
+    expect(
+      ids({
+        etiquetaIds: ["previdenciario", "trabalhista"],
+        modoDeEtiqueta: "qualquer",
+        etiquetaIdsExcluidas: ["fechado"],
+      }),
+    ).toEqual(["trab", "prev", "prev-trab"]);
+  });
+
+  it("com Etiquetas em 'Todas elas': tem todas as incluídas E nenhuma das excluídas", () => {
+    expect(
+      ids({
+        etiquetaIds: ["previdenciario", "trabalhista"],
+        modoDeEtiqueta: "todas",
+        etiquetaIdsExcluidas: ["fechado"],
+      }),
+    ).toEqual(["prev-trab"]);
+    expect(
+      ids({
+        etiquetaIds: ["previdenciario", "trabalhista"],
+        modoDeEtiqueta: "todas",
+        etiquetaIdsExcluidas: ["trabalhista"],
+      }),
+    ).toEqual([]);
+  });
+
+  it("soma com a conexão: 'Jurídico' sem 'Trabalhista'", () => {
+    const jurTrab = comEtiquetas("jur-trab", ["trabalhista"], { channel_id: "ch-jur" });
+    const jurPrev = comEtiquetas("jur-prev", ["previdenciario"], { channel_id: "ch-jur" });
+    const comPrev = comEtiquetas("com-prev", ["previdenciario"], { channel_id: "ch-com" });
+    expect(
+      aplicarFiltros(
+        [jurTrab, jurPrev, comPrev],
+        { ...FILTROS_VAZIOS, canalIds: ["ch-jur"], etiquetaIdsExcluidas: ["trabalhista"] },
+        ctx(),
+      ).map((c) => c.id),
+    ).toEqual(["jur-prev"]);
+  });
+
+  it("grupo não tem contato nem etiqueta: fica (quem não quer grupo usa o Tipo)", () => {
+    const g = grupo();
+    expect(semAsEtiquetasExcluidas(g, ["trabalhista"])).toBe(true);
+    expect(
+      aplicarFiltros([g, trab], { ...FILTROS_VAZIOS, etiquetaIdsExcluidas: ["trabalhista"] }, ctx()).map(
+        (c) => c.id,
+      ),
+    ).toEqual(["g1"]);
+    expect(
+      aplicarFiltros(
+        [g, prev],
+        { ...FILTROS_VAZIOS, tipo: "diretas", etiquetaIdsExcluidas: ["trabalhista"] },
+        ctx(),
+      ).map((c) => c.id),
+    ).toEqual(["prev"]);
+  });
+
+  it("⚠️ 'Incluir minhas favoritas' continua valendo: a favorita com a etiqueta excluída atravessa", () => {
+    const f = { etiquetaIdsExcluidas: ["trabalhista"] };
+    const favoritas = new Set(["trab"]);
+    expect(ids(f, { favoritas })).not.toContain("trab");
+    expect(ids({ ...f, incluirFavoritas: true }, { favoritas })).toContain("trab");
+    // ...mas os interruptores fora do painel seguem valendo para ela.
+    expect(ids({ ...f, incluirFavoritas: true, naoLidas: true }, { favoritas })).toEqual([]);
+  });
+
+  it("conta como filtro próprio no distintivo, ao lado das etiquetas incluídas", () => {
+    expect(contarFiltrosAtivos({ ...FILTROS_VAZIOS, etiquetaIdsExcluidas: ["t1"] })).toBe(1);
+    expect(
+      contarFiltrosAtivos({ ...FILTROS_VAZIOS, etiquetaIdsExcluidas: ["t1", "t2"] }),
+    ).toBe(1);
+    expect(
+      contarFiltrosAtivos({
+        ...FILTROS_VAZIOS,
+        etiquetaIds: ["t1"],
+        etiquetaIdsExcluidas: ["t2"],
+      }),
+    ).toBe(2);
   });
 });
