@@ -77,6 +77,10 @@ assinado (o webhook do ZapSign move o card).
   com a explicação; mudar avisa em âmbar ANTES do Salvar o que passa a valer
   e o que continua proibido; o cartão mostra a lista do RASCUNHO, com as duas
   do fechamento marcadas. No Playground a chave aparece em "o que mudou".
+- ⚠️ **Regra PRÓPRIA do agente que proíba honorários continua valendo** e
+  barra o fechamento (a mais restrita ganha): o modelo "Triagem" do "Novo
+  agente" traz "Nunca informe valores de honorários." — medido no e2e de
+  08/11/2026. Ao ligar a opção, tirar essa regra.
 - **Limites conhecidos**: não há trava no servidor para "seu contrato está
   confirmado" dito antes da assinatura — a defesa é a regra (como era a de
   nunca aceitar proposta). O agente não sabe se o cliente assinou: depois da
