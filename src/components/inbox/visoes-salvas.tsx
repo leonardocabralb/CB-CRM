@@ -91,7 +91,9 @@ export function VisoesSalvas({
   const textoDoPedaco = useCallback(
     (p: PedacoDoFiltro): string => {
       if (p.orfao) return t("deletedRef");
-      return p.rotulo.fonte === "i18n" ? t(p.rotulo.chave) : p.rotulo.texto;
+      return p.rotulo.fonte === "i18n"
+        ? t(p.rotulo.chave, p.rotulo.valores)
+        : p.rotulo.texto;
     },
     [t],
   );

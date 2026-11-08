@@ -128,6 +128,10 @@ export function lerFiltroSalvo(bruto: unknown): FiltrosDoInbox {
     responsavelId: textoOuNulo(o.responsavelId),
     etiquetaIds,
     modoDeEtiqueta: umDe(o.modoDeEtiqueta, MODOS, FILTROS_VAZIOS.modoDeEtiqueta),
+    // Ausente nos filtros gravados antes de 08/11/2026 → [] (não esconde
+    // nada, que é como eles recortavam). Aparado, sem repetição e na ordem,
+    // como `etiquetaIds`.
+    etiquetaIdsExcluidas: listaDeIds(o.etiquetaIdsExcluidas),
     empresa: textoOuNulo(o.empresa),
     // ⚠️ Idem para funil e etapa (um só de cada até 29/09): `funilId: "p"`
     // vira `["p"]`, e `etapaId` — inclusive o sentinela "sem negócio" — vira
@@ -164,6 +168,7 @@ export function escreverFiltroSalvo(f: FiltrosDoInbox): Record<string, unknown> 
     responsavelId: f.responsavelId,
     etiquetaIds: f.etiquetaIds,
     modoDeEtiqueta: f.modoDeEtiqueta,
+    etiquetaIdsExcluidas: f.etiquetaIdsExcluidas,
     empresa: f.empresa,
     funilIds: f.funilIds,
     etapaIds: f.etapaIds,
@@ -194,9 +199,10 @@ function mesmoConjunto(a: string[], b: string[]): boolean {
  * sem ordenar o menu deixaria de marcar o filtro que o operador acabou de
  * aplicar. `modoDeEtiqueta` só conta quando há 2+ etiquetas — com uma só,
  * "qualquer" e "todas" recortam igual, e diferenciar ali faria o mesmo recorte
- * parecer dois. Conexões, funis e etapas também comparam como conjunto, pelo
- * mesmo motivo. `incluirFavoritas` só conta com recorte do painel, pela mesma
- * razão do modo: sem ele, ligado ou desligado recortam igual.
+ * parecer dois. Conexões, funis, etapas e "Sem as etiquetas" também comparam
+ * como conjunto, pelo mesmo motivo. `incluirFavoritas` só conta com recorte
+ * do painel, pela mesma razão do modo: sem ele, ligado ou desligado recortam
+ * igual.
  *
  * ⚠️ `status` (a aba) NÃO entra: trocar de aba com um chip aceso não pode
  * apagá-lo nem oferecer "salvar alterações" — a aba não faz parte da visão
@@ -229,6 +235,7 @@ export function mesmoFiltro(a: FiltrosDoInbox, b: FiltrosDoInbox): boolean {
     a.clientesIdeais === b.clientesIdeais &&
     etiquetasIguais &&
     (!modoImporta || a.modoDeEtiqueta === b.modoDeEtiqueta) &&
+    mesmoConjunto(a.etiquetaIdsExcluidas, b.etiquetaIdsExcluidas) &&
     (!inclusaoImporta || a.incluirFavoritas === b.incluirFavoritas)
   );
 }
@@ -268,10 +275,14 @@ export type ChaveDeRotulo =
   | "labelStage"
   | "labelPipeline"
   | "tags"
+  | "tagExcluded"
+  | "labelTagsExcluded"
   | "deletedRef";
 
 export type RotuloDoPedaco =
-  | { fonte: "i18n"; chave: ChaveDeRotulo }
+  // `valores`: o que a frase da chave interpola ("Sem {nome}") — DADO, nunca
+  // texto da tela montado aqui.
+  | { fonte: "i18n"; chave: ChaveDeRotulo; valores?: Record<string, string> }
   | { fonte: "dado"; texto: string };
 
 export interface PedacoDoFiltro {
@@ -412,6 +423,24 @@ export function descreverFiltro(
       cor: tag?.color,
       orfao: cat.etiquetas.length > 0 && !tag,
       limpar: { etiquetaIds: f.etiquetaIds.filter((x) => x !== id) },
+    });
+  }
+
+  // "Sem as etiquetas" logo depois, como no painel: um pedaço por etiqueta,
+  // dito "Sem Trabalhista" — o nome solto seria lido como etiqueta INCLUÍDA.
+  // Sem o catálogo, o rótulo do campo ("Sem as etiquetas"), nunca o id.
+  for (const id of f.etiquetaIdsExcluidas) {
+    const tag = cat.etiquetas.find((x) => x.id === id);
+    pedacos.push({
+      chave: `semEtiqueta:${id}`,
+      rotulo: tag
+        ? { fonte: "i18n", chave: "tagExcluded", valores: { nome: tag.name } }
+        : { fonte: "i18n", chave: "labelTagsExcluded" },
+      cor: tag?.color,
+      orfao: cat.etiquetas.length > 0 && !tag,
+      limpar: {
+        etiquetaIdsExcluidas: f.etiquetaIdsExcluidas.filter((x) => x !== id),
+      },
     });
   }
 
@@ -615,6 +644,18 @@ export function limparOrfaos(
       cat.etiquetas.some((t) => t.id === id),
     );
     if (vivas.length !== limpo.etiquetaIds.length) limpo.etiquetaIds = vivas;
+  }
+
+  // Etiqueta apagada em "Sem as etiquetas" não esconde ninguém (ninguém a
+  // tem), mas fica no filtro como recorte fantasma: o distintivo contaria e
+  // o chip deixaria de acender. Sai como a incluída, com a mesma guarda.
+  if (limpo.etiquetaIdsExcluidas.length > 0 && cat.etiquetas.length > 0) {
+    const vivas = limpo.etiquetaIdsExcluidas.filter((id) =>
+      cat.etiquetas.some((t) => t.id === id),
+    );
+    if (vivas.length !== limpo.etiquetaIdsExcluidas.length) {
+      limpo.etiquetaIdsExcluidas = vivas;
+    }
   }
 
   return limpo;
