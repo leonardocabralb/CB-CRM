@@ -3,6 +3,7 @@ import { generateReply, parseGeneration } from './generate'
 import { MAX_OUTPUT_TOKENS } from './defaults'
 import { validateAiCredentials } from './validate'
 import { AiError, type AiConfig } from './types'
+import { NOTA_DA_CONVERSA_ABERTA_PELO_ESCRITORIO } from './providers/comeca-no-cliente'
 
 function config(overrides: Partial<AiConfig> = {}): AiConfig {
   return {
@@ -227,7 +228,9 @@ describe('generateReply — Anthropic', () => {
     expect(res.text).toBe('')
   })
 
-  it('drops a leading assistant turn so the payload starts on the customer', async () => {
+  // NOSSO (09/11/2026): a mensagem do escritório que abriu a conversa NÃO é
+  // descartada — vai atrás de uma nota no papel de usuário (`comeca-no-cliente.ts`).
+  it('keeps a leading assistant turn behind a system note so the payload starts on the customer', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(okResponse({ content: [{ type: 'text', text: 'ok' }] }))
@@ -243,8 +246,10 @@ describe('generateReply — Anthropic', () => {
     })
 
     const body = JSON.parse(fetchMock.mock.calls[0][1].body)
-    expect(body.messages[0].role).toBe('user')
-    expect(body.messages).toHaveLength(1)
+    expect(body.messages.map((m: { role: string }) => m.role)).toEqual(['user', 'assistant', 'user'])
+    expect(body.messages[0].content).toBe(NOTA_DA_CONVERSA_ABERTA_PELO_ESCRITORIO)
+    expect(body.messages[1].content).toBe('Welcome!')
+    expect(body.messages[2].content).toBe('Hi')
   })
 })
 

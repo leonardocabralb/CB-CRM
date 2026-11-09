@@ -334,6 +334,19 @@ testados; `prepararMidias` em `turno.ts`; `contexto.ts` e `pedido.ts`.
   teto de caracteres depois de gerar: a Meta recusa texto acima de 4.096 (cai
   no envio recusado, nada sai cortado); a Evolution aceita.
 
+# Agentes de IA — a conversa aberta pelo escritório (09/11/2026)
+
+- ⚠️⚠️ **As mensagens do ESCRITÓRIO antes da 1ª fala do cliente chegam ao
+  modelo** (`comecarNoCliente`, `providers/comeca-no-cliente.ts`, nos
+  adaptadores da Anthropic e do Gemini, que exigem começar no cliente). Eles
+  as DESCARTAVAM: no lead de formulário ("Vi que você marcou: Pedi demissão.
+  Qual foi a data?") o modelo via só "foi dia 20 de outubro" e perguntava de
+  novo. Agora uma nota no papel de usuário ("not a message from the
+  customer", a forma da `comNotaDaRetomada`) abre a conversa. Sem nenhuma fala
+  do cliente, fica a nota de "ainda não escreveu": pedido terminando no
+  modelo, o Gemini recusa e a Anthropic continua o texto. A OpenAI aceita
+  começar no assistente e não passa por aqui.
+
 # Agentes de IA — regras do sistema
 
 As 12 regras do sistema, a trava do pedido vazado e "Conduz o fechamento"

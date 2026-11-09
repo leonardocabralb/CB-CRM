@@ -1,7 +1,7 @@
 import { AiError, type ChatMessage, type ProviderResult } from '../types'
 import { MAX_OUTPUT_TOKENS } from '../defaults'
+import { comecarNoCliente } from './comeca-no-cliente'
 import {
-  mergeConsecutive,
   normalizeUsage,
   providerHttpError,
   respostaCortada,
@@ -31,20 +31,15 @@ export function geminiEndpoint(model: string): string {
 
 /**
  * Nosso `ChatMessage[]` no formato `contents` do Gemini: `user` fica `user`,
- * `assistant` vira `model`. Mesma normalização do adapter Anthropic — turnos
- * consecutivos fundidos e sem turno inicial do assistente — porque o Gemini
- * também espera a conversa começando em quem pergunta.
+ * `assistant` vira `model`. Mesma normalização do adapter Anthropic
+ * (`comecarNoCliente`): turnos consecutivos fundidos e a conversa começando no
+ * cliente, com as mensagens do escritório que vieram antes MANTIDAS atrás de
+ * uma nota — o Gemini também espera a conversa começando em quem pergunta.
  */
 export function toGeminiContents(
   messages: ChatMessage[],
 ): { role: 'user' | 'model'; parts: { text: string }[] }[] {
-  const merged = mergeConsecutive(messages)
-  while (merged.length > 0 && merged[0].role === 'assistant') {
-    merged.shift()
-  }
-  if (merged.length === 0) {
-    merged.push({ role: 'user', content: '(The customer has not sent a message yet.)' })
-  }
+  const merged = comecarNoCliente(messages)
   return merged.map((m) => ({
     role: m.role === 'user' ? 'user' : 'model',
     parts: [{ text: m.content }],
