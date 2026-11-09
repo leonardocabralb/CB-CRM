@@ -1068,8 +1068,10 @@ const PASSAGENS_PARA_A_EQUIPE: readonly RegExp[] = [
 ]
 /**
  * A PROMESSA de que alguém da equipe vai analisar ou procurar o cliente —
- * quieta quando a análise acontece NA reunião (`analiseNaReuniao`: o caminho
- * de quem qualificou, "na reunião de diagnóstico o advogado analisa"):
+ * quieta quando a análise acontece NA reunião ou ANTES dela
+ * (`analiseNaReuniao`: o caminho de quem qualificou, "na reunião de
+ * diagnóstico o advogado analisa", "o advogado vai analisar tudo antes da
+ * reunião"):
  *  - "vou pedir para (um de nossos) especialista… (analisar…)";
  *  - "um especialista / nossa equipe vai (te) analisar / entrar em contato /
  *    chamar / retornar / responder / falar / assumir / atender / ligar";
@@ -1094,9 +1096,25 @@ const PROMESSAS_DA_EQUIPE: readonly RegExp[] = [
  */
 const NA_REUNIAO = /(?:^|[^\p{L}])(?:na|durante\s+a|in\s+the|during\s+the)\s+(?:\p{L}+\s+)?(?:reuniao|meeting)(?![\p{L}])/u
 const ANALISE = /(?:^|[^\p{L}])(?:analis|avali|explic|apresent|review|explain|assess|go\s+over)\p{L}*/u
+/**
+ * A análise acontece ANTES da reunião já marcada — "o advogado vai analisar
+ * tudo antes da reunião. Até lá!", a despedida do pós-agendamento (medido em
+ * 09/11/2026: 4 de 4 no cenário, Sonnet e Gemini). Mais estreita que a de
+ * cima, porque "antes da reunião" também serve a quem PROCURA o cliente: só
+ * a análise de verdade (sem explicar/apresentar, que pedem contato) e nenhum
+ * verbo de contato na frase ("vai analisar e te chamar antes da reunião"
+ * dispara). O artigo vem colado à preposição ou nada entre ela e a reunião
+ * além do possessivo: "para remarcar sua reunião" não casa.
+ */
+const ANTES_DA_REUNIAO =
+  /(?:^|[^\p{L}])(?:antes\s+da|ate(?:\s+a)?|para(?:\s+a)?|pra|before|ahead\s+of|until|for)\s+(?:(?:sua|nossa|the|your|our)\s+)?(?:reuniao|meeting)(?![\p{L}])/u
+const SO_ANALISE = /(?:^|[^\p{L}])(?:analis|avali|revis|review|assess|go\s+over|look\s+over)\p{L}*/u
+const CONTATO =
+  /(?:^|[^\p{L}])(?:em\s+contato|chamar|ligar|retornar|responder|falar|assumir|atender|get\s+back|contact|reach\s+out|take\s+over|call|in\s+touch|follow\s+up)(?![\p{L}])/u
 
 function analiseNaReuniao(f: string): boolean {
-  return NA_REUNIAO.test(f) && ANALISE.test(f)
+  if (NA_REUNIAO.test(f) && ANALISE.test(f)) return true
+  return ANTES_DA_REUNIAO.test(f) && SO_ANALISE.test(f) && !CONTATO.test(f)
 }
 
 /**
@@ -1114,8 +1132,8 @@ const CONJUNCOES_DA_COORDENACAO: ReadonlySet<string> = new Set(['e', 'mas', 'por
  * aqui em breve." SEM o `[[TRANSFERIR]]` — o cliente ouviria que uma pessoa
  * vem e a IA ficaria com a conversa. Frase a frase, sobre o texto sem
  * acento: casa uma das `PASSAGENS_PARA_A_EQUIPE` (sempre) ou das
- * `PROMESSAS_DA_EQUIPE` (menos quando a análise acontece NA reunião,
- * `analiseNaReuniao`), fora de pergunta ("quer que eu chame…?"), sem negação nas quatro
+ * `PROMESSAS_DA_EQUIPE` (menos quando a análise acontece NA reunião ou antes
+ * dela, `analiseNaReuniao`), fora de pergunta ("quer que eu chame…?"), sem negação nas quatro
  * palavras antes e sem condição antes ("se preferir, …"). Quem chama decide
  * o resto: a resposta com `[[TRANSFERIR]]`, `[[HANDOFF]]` ou `[[PASSAR:n]]`
  * já transfere e nem pergunta.

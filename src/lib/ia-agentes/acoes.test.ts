@@ -416,6 +416,46 @@ describe('a EQUIPE PROMETIDA sem o [[TRANSFERIR]] (27/09)', () => {
     }
   })
 
+  it('⚠️ a análise ANTES da reunião já marcada é quieta (a despedida MEDIDA do pós-agendamento, 09/11/2026)', () => {
+    for (const t of [
+      // As quatro respostas medidas (Sonnet 5.5 e Gemini 3.8 Flash, 4 de 4 no cenário).
+      'Tudo certo, obrigada! O advogado vai analisar o contrato e as informações que você passou antes da reunião. Até lá!',
+      'Perfeito, obrigada por mandar o contrato e pelas informações! 🙌\n\nO advogado vai analisar tudo antes da reunião. Se lembrar de mais alguma coisa, é só mandar por aqui.',
+      'Sem problemas! Muito obrigado pelas informações e pelo envio do contrato. O advogado vai analisar tudo com atenção antes da reunião. Até lá!',
+      'O advogado vai analisar tudo com atenção antes da reunião.\n\nPerto do horário agendado, te enviamos o link do Google Meet por aqui. Até lá!',
+      // As variações da mesma despedida.
+      'A advogada vai analisar os documentos até a reunião.',
+      'O advogado vai analisar tudo para a sua reunião de quinta.',
+      'Nossa equipe vai analisar o seu contrato antes da sua reunião.',
+      'Vou pedir para o advogado analisar o contrato antes da reunião.',
+      'A lawyer will review everything before the meeting.',
+    ]) {
+      expect(equipePrometida(t), t).toBe(false)
+    }
+  })
+
+  it('⚠️ "antes da reunião" NÃO cala quem PROCURA o cliente nem a passagem', () => {
+    for (const t of [
+      // Contato prometido antes da reunião: alguém vai procurar o cliente.
+      'O advogado vai te chamar antes da reunião.',
+      'O advogado vai analisar tudo e te chamar antes da reunião.',
+      'Nossa equipe vai entrar em contato antes da reunião.',
+      'Nossa equipe vai analisar o contrato e entrar em contato antes da reunião.',
+      'Um especialista vai te ligar antes da reunião para analisar os documentos.',
+      'Our team will review your contract and get back to you before the meeting.',
+      // Explicar ou apresentar antes da reunião pede contato: não é só análise.
+      'Vou pedir para o advogado te explicar tudo antes da reunião.',
+      // A passagem explícita dispara com qualquer reunião na frase.
+      'Vou passar você para a nossa equipe antes da reunião.',
+      // A promessa sem reunião, e "para remarcar" (não é a reunião já marcada).
+      'Nossa equipe vai entrar em contato.',
+      'O advogado vai analisar o seu caso e te retornar por aqui.',
+      'Nossa equipe vai analisar e entrar em contato para remarcar sua reunião.',
+    ]) {
+      expect(equipePrometida(t), t).toBe(true)
+    }
+  })
+
   it('"quando" com o verbo no passado é fato (a mesma régua da reunião prometida); no futuro, condição', () => {
     expect(equipePrometida('Quando você mandou os documentos, nossa equipe vai analisar e te retornar por aqui.')).toBe(true)
     expect(equipePrometida('Quando você mandar os documentos, nossa equipe vai analisar e te retornar por aqui.')).toBe(false)
