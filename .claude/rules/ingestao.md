@@ -215,11 +215,10 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   `dono-duravel.test.ts`. A API v1: `resolveAuditUserId`, 500 sem dono.
 - Só assinatura inválida vale 4xx; o resto responde 200 com log e trabalha em
   `after()` — 4xx repetido faz o provedor desativar a entrega.
-- ⚠️⚠️ **Evolution: leitura que FALHA = 503**:
-  `resolveInboundEvolutionChannel` devolve `'falhou'`, nunca `null`; a 2.4
-  reentrega em 5xx/timeout (10 vezes; 4xx não). Com 200, um 521 do Supabase
-  perdeu 5 mensagens (09/11/2026). Pino `route.leitura-que-falha.test.ts`.
-  Falha no `after()` não reentrega.
+- ⚠️⚠️ **Evolution: leitura que FALHA = 503** (`'falhou'`, nunca `null`),
+  salvo `messages.edited` (200); a reentrega: `whatsapp-evolution.md`. Com
+  200, um 521 perdeu 5 mensagens (09/11/2026). Pino
+  `route.leitura-que-falha.test.ts`. Falha no `after()` não reentrega.
 - O webhook recebe só a CHAVE de roteamento (`instance_name` na Evolution,
   `phone_number_id` na Meta), nunca a conta: `resolve-inbound.ts` a traduz na
   conexão de `cb_channels`.

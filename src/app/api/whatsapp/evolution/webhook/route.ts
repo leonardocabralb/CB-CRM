@@ -346,7 +346,17 @@ export async function POST(request: Request) {
   // 09/11/2026 levou 5 mensagens de cliente. A reentrega pode repetir o que já
   // entrou (resposta que demorou além dos 30 s dela): a mensagem passa pelo
   // `jaGravada` e pelo UNIQUE, e o recibo pela escada.
+  //
+  // ⚠️⚠️ Exceção: `messages.edited`. É a ÚNICA entrega que a Evolution 2.4
+  // ESPERA terminar (um `await` dentro do laço do `messages.upsert`; as
+  // outras ela dispara e segue — medido no contêiner em 09/11/2026). Com 503,
+  // a reentrega dela (até ~20 min) pararia a fila de entrada do número
+  // inteira atrás de uma edição. Fica como antes: 200, e a edição se perde.
   if (route === 'falhou') {
+    if (event === 'messages.edited') {
+      console.error('[evolution/webhook] edição descartada: a leitura da conexão falhou:', instance);
+      return NextResponse.json({ ok: true });
+    }
     return NextResponse.json({ error: 'temporarily_unavailable' }, { status: 503 });
   }
 

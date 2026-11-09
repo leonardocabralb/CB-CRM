@@ -99,6 +99,22 @@ describe('webhook da Evolution: a leitura da conexão que falha', () => {
     expect(h.after).toHaveLength(0);
   });
 
+  // A Evolution ESPERA a entrega do `messages.edited` dentro do laço do
+  // `messages.upsert` (as outras ela dispara e segue): com 503, a reentrega
+  // dela pararia a fila de entrada do número inteira atrás de uma edição.
+  it('edição (messages.edited) com a leitura falhando → 200, para não parar a fila da Evolution', async () => {
+    h.respostas.cb_channels = { data: null, error: { message: '521: Web server is down' } };
+    for (const evento of ['messages.edited', 'MESSAGES_EDITED']) {
+      const resposta = await postar({
+        event: evento,
+        instance: 'cbcrm-instancia-de-teste',
+        data: { key: { id: '3EB0000000000000AB28' }, editedMessage: { conversation: 'corrigido' } },
+      });
+      expect(resposta.status).toBe(200);
+    }
+    expect(h.after).toHaveLength(0);
+  });
+
   it('instância DESCONHECIDA (as duas leituras responderam, sem linha) segue 200', async () => {
     const resposta = await postar(upsert);
     expect(resposta.status).toBe(200);

@@ -37,6 +37,9 @@ patch" abaixo valem para a imagem de rollback; qual imagem está no ar é o
   VAZIA** (`entrega_recebida_em − entrega_carimbo_em` da 1002 em ~0 s em todas
   as conexões). A Baileys confirma ao servidor ANTES do handler: a fila
   represada se perde para o CRM e fica só no celular.
+- ⚠️⚠️ **A 2.4 REENTREGA o webhook** em 5xx e timeout de 30 s (10 vezes, 5 a
+  300 s, na memória; 4xx não) e só ESPERA a do `messages.edited` (`await` no
+  laço do upsert): ali o 503 pararia a fila. A rota: `ingestao.md`.
 - ⚠️ **O LID muda de CAMPO conforme a versão**: a 2.3.2 o põe em
   `previousRemoteJid`; a 2.4 em `remoteJidAlt` (telefone em `remoteJid`); a
   2.3.7 o perde. `lidJidFromKey` (`evolution-inbound.ts`) lê os três lugares.
