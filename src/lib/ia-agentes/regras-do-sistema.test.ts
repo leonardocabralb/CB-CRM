@@ -170,12 +170,20 @@ describe('"Conduz o fechamento" (1128): duas regras trocadas, as outras intactas
   it('o que as regras do fechamento dizem — e o que continuam proibindo', () => {
     const honorarios = REGRAS_DO_FECHAMENTO.find((r) => r.id === 'honorarios')?.texto ?? ''
     const fechamento = REGRAS_DO_FECHAMENTO.find((r) => r.id === 'fechamento')?.texto ?? ''
-    // Só o ESCRITO, sem negociar; condição diferente vai para a equipe, com os dois marcadores.
-    // As TRÊS fontes do administrador no pedido: instruções, regras do agente e base (revisão).
+    // Só o ESCRITO, sem negociar. As TRÊS fontes do administrador no pedido:
+    // instruções, regras do agente e base (revisão).
     expect(honorarios).toContain('ONLY exactly as they are written in your instructions, your rules or the reference material')
     expect(honorarios).toMatch(/never invent, estimate, round, change, combine or negotiate/)
+    // ⚠️ Condição diferente (08/11/2026, noite): RECUSA com delicadeza, como as
+    // instruções mandam, sem aceitar nem prometer; a equipe só se o cliente
+    // INSISTIR depois da recusa. Os dois marcadores continuam, DEPOIS da insistência.
+    expect(honorarios).toContain('do not agree to it or promise it: decline it gently, answering as your instructions say')
+    expect(honorarios).toContain('Only if the customer insists after that refusal, hand the conversation to the team')
     expect(honorarios).toContain(MARCADOR_DE_TRANSFERENCIA)
     expect(honorarios).toContain(HANDOFF_SENTINEL)
+    expect(honorarios.indexOf(MARCADOR_DE_TRANSFERENCIA)).toBeGreaterThan(honorarios.indexOf('insists after that refusal'))
+    // O "passe para a equipe" direto no 1º pedido (o texto de antes) não volta.
+    expect(honorarios).not.toMatch(/do not agree to it or promise anything —/)
     // O que a sem_preco já permitia (o valor que é do CLIENTE) continua permitido.
     expect(honorarios).toContain('Amounts that belong to the customer')
     // O link escrito; a contratação só pela assinatura; nada de condição diferente.

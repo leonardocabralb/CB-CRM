@@ -53,8 +53,12 @@ assinado (o webhook do ZapSign move o card).
   `REGRAS_DO_FECHAMENTO`): `sem_preco` → `honorarios` (apresenta honorários,
   pagamento e condições SÓ como escritos nas instruções, nas regras do agente
   ou na base — as três fontes do administrador no pedido; nunca inventa,
-  estima, arredonda, muda ou negocia; condição diferente = passa para a
-  equipe com os dois marcadores) e `sem_compromisso` → `fechamento` (convida
+  estima, arredonda, muda ou negocia; condição diferente = RECUSA com
+  delicadeza, do jeito que as instruções mandam, e só passa para a equipe,
+  com os dois marcadores, se o cliente INSISTIR depois da recusa — decisão do
+  operador de 08/11/2026, noite: com o "passa para a equipe" direto, o Sonnet
+  5.5 transferia já no 1º pedido de desconto) e `sem_compromisso` →
+  `fechamento` (convida
   a assinar pelo link escrito, responde objeções com a verdade; a contratação
   só acontece pela assinatura — o agente não fecha nem confirma acordo, NEM
   nas condições escritas; nunca "contrato fechado/confirmado", "caso aceito";
