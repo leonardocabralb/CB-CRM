@@ -115,6 +115,16 @@ describe('proximaRetomada — a cadência, da âncora e do espaçamento', () => 
     expect(proxima({ ancora })).toEqual({ tipo: 'agendar', instante: em('2026-09-28', '10:15') })
   })
 
+  it('⚠️ a 1ª ignora a "anterior": é a fala da automação que o agente executou no MESMO turno (09/11/2026)', () => {
+    // O vídeo e o link saem com a marca do agente segundos depois da âncora, e
+    // `lerMensagensDepois` os devolve como a última do agente. Tomados por
+    // retomada, o piso de 30 min empurrava o 1º toque das 10:15 para as 10:30.
+    expect(proxima({ ancora, ultimaRetomada: em('2026-09-28', '10:00') + 20_000, agora: em('2026-09-28', '10:15') })).toEqual({
+      tipo: 'agendar',
+      instante: em('2026-09-28', '10:15'),
+    })
+  })
+
   it('sem adiamento, a k-ésima cai em âncora + cadência[k]', () => {
     expect(proxima({ ancora, tentativa: 2, ultimaRetomada: em('2026-09-28', '11:00'), agora: em('2026-09-28', '11:01') })).toEqual({
       tipo: 'agendar',

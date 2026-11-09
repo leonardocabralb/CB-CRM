@@ -6836,7 +6836,7 @@
     "retomada": {
       "explicacao": "When the agent asks something and the customer doesn't answer, it gets back to the customer on a cadence. The message is written by the model, from the conversation, and goes out through the same connection.",
       "ligar": "Follow up when the customer doesn't answer",
-      "ligarDica": "Only for the agent's last reply left unanswered — never after a message from an automation, the bot or the team.",
+      "ligarDica": "Only for the agent's last reply left unanswered — never after a message from the bot, the team or an automation (except one the agent itself ran in that reply, which speaks on its behalf).",
       "cadencia": "Cadence",
       "cadenciaDica": "Each attempt goes out this long after the agent's last unanswered reply. If one is delayed (outside the window, near a meeting reminder), the following ones keep their spacing — and never go out less than 30 min after the previous one. From 1 to {max} attempts, 10 min to 7 days each.",
       "tentativa": "Attempt {n}",

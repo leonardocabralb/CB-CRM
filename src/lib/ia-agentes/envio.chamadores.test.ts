@@ -15,6 +15,14 @@ import { describe, expect, it } from 'vitest'
 //    alerta de todo cliente esperando gente, sem erro nenhum. Chamada que
 //    monta o argumento fora da vista (variável, espalhamento) também reprova:
 //    é por onde o carimbo entraria sem aparecer aqui.
+//    EXCEÇÃO decidida (09/11/2026, o vídeo e o link da assinatura do
+//    Trabalhista): o MOTOR DE AUTOMAÇÕES passa a marca no texto e na mídia —
+//    mas só a que `runAutomationById` recebeu do turno (`executar-acoes.ts`,
+//    `ctx.agente.id`) e o "Acionar automação" repassa. O agente já respondeu
+//    ao cliente no MESMO turno, então o "respondido" não muda; e sem a marca
+//    a fala da automação parava a retomada dele ("robô falou"). O disparo por
+//    evento a descarta (`dispararAutomacoes`). Os pinos abaixo amarram cada
+//    elo dessa cadeia.
 // 2. Só as DUAS ingestões do WhatsApp chamam `aoChegarMensagemDoCliente`
 //    (Evolution em `inbound-store.ts`, Meta no webhook) — e as duas chamam:
 //    sem uma delas o agente vale num transporte só. Outro chamador (grupo,
@@ -70,9 +78,18 @@ describe('quem passa `iaAgenteId` ao engineSendText (default-deny)', () => {
     expect(arquivos).toContain('lib/automations/engine.ts')
   })
 
-  it('só o turno passa o carimbo', () => {
+  it('só o turno e o motor de automações passam o carimbo', () => {
     const comCarimbo = [...new Set(chamadas.filter((c) => /\biaAgenteId\b/.test(c.argumento)).map((c) => c.arquivo))]
-    expect(comCarimbo).toEqual(['lib/ia-agentes/turno.ts'])
+    expect(comCarimbo.sort()).toEqual(['lib/automations/engine.ts', 'lib/ia-agentes/turno.ts'])
+  })
+
+  it('o motor passa só a marca do CONTEXTO, e só no "Enviar mensagem" (o aviso a outro número fica sem)', () => {
+    const doMotor = chamadas.filter((c) => c.arquivo === 'lib/automations/engine.ts')
+    const comCarimbo = doMotor.filter((c) => /\biaAgenteId\b/.test(c.argumento))
+    expect(comCarimbo).toHaveLength(1)
+    expect(comCarimbo[0].argumento).toMatch(/\biaAgenteId:\s*args\.context\.ia_agente_id \?\? null\b/)
+    expect(comCarimbo[0].argumento).toMatch(/\bassinarComo\b/) // é o `send_message`
+    expect(doMotor.length).toBeGreaterThan(1) // o `send_to_number` existe, sem a marca
   })
 
   it('e passa o agente do TURNO, com o canal exigido', () => {
@@ -89,10 +106,53 @@ describe('quem passa `iaAgenteId` ao engineSendText (default-deny)', () => {
     expect(escondidas).toEqual([])
   })
 
-  it('o remetente grava `ia_agente_id` num lugar só, e só vindo de `args.iaAgenteId`', () => {
+  it('o remetente do robô grava `ia_agente_id` no texto e na mídia, e só vindo de `args.iaAgenteId`', () => {
     const remetente = FONTES.find((f) => f.arquivo === REMETENTE)!.fonte
+    expect(remetente.match(/\bia_agente_id\b/g) ?? []).toHaveLength(2)
+    expect(remetente.match(/\bia_agente_id:\s*args\.iaAgenteId\b/g) ?? []).toHaveLength(2)
+  })
+
+  it('o remetente das automações grava `ia_agente_id` num lugar só, vindo do TEXTO (`input.iaAgenteId`)', () => {
+    const remetente = FONTES.find((f) => f.arquivo === 'lib/automations/meta-send.ts')!.fonte
     expect(remetente.match(/\bia_agente_id\b/g) ?? []).toHaveLength(1)
-    expect(remetente).toMatch(/\bia_agente_id:\s*args\.iaAgenteId\b/)
+    expect(remetente).toMatch(/\bia_agente_id:\s*iaAgenteId\b/)
+    expect(remetente).toMatch(/const iaAgenteId = input\.kind === 'text' \? \(input\.iaAgenteId \?\? null\) : null/)
+  })
+})
+
+describe('a marca do agente no motor de automações: cada elo da cadeia (default-deny)', () => {
+  const MOTOR = 'lib/automations/engine.ts'
+  const motor = FONTES.find((f) => f.arquivo === MOTOR)!.fonte
+
+  it('engineSendMedia: só o motor passa o carimbo, e só a marca do contexto', () => {
+    const chamadas = FONTES.filter((f) => f.arquivo !== REMETENTE).flatMap((f) =>
+      argumentosDasChamadas(f.fonte, 'engineSendMedia').map((argumento) => ({ arquivo: f.arquivo, argumento })),
+    )
+    expect(new Set(chamadas.map((c) => c.arquivo))).toContain('lib/flows/engine.ts') // a varredura vê o robô
+    const comCarimbo = chamadas.filter((c) => /\biaAgenteId\b/.test(c.argumento))
+    expect(comCarimbo.map((c) => c.arquivo)).toEqual([MOTOR])
+    expect(comCarimbo[0].argumento).toMatch(/\biaAgenteId:\s*args\.context\.ia_agente_id \?\? null\b/)
+  })
+
+  it('runAutomationById: só o turno (o agente do turno) e o "Acionar automação" (repassando o contexto) passam a marca', () => {
+    const chamadas = FONTES.flatMap((f) =>
+      argumentosDasChamadas(f.fonte, 'runAutomationById').map((argumento) => ({ arquivo: f.arquivo, argumento })),
+    )
+    const comCarimbo = chamadas.filter((c) => /\biaAgenteId\b/.test(c.argumento))
+    expect(comCarimbo.map((c) => c.arquivo).sort()).toEqual([MOTOR, 'lib/ia-agentes/executar-acoes.ts'])
+    expect(comCarimbo.find((c) => c.arquivo === 'lib/ia-agentes/executar-acoes.ts')!.argumento).toMatch(
+      /\biaAgenteId:\s*ctx\.agente\.id\b/,
+    )
+    expect(comCarimbo.find((c) => c.arquivo === MOTOR)!.argumento).toMatch(/\biaAgenteId:\s*args\.context\.ia_agente_id \?\? null\b/)
+    const escondidas = chamadas.filter((c) => !c.argumento.startsWith('{')).map((c) => c.arquivo)
+    expect(escondidas).toEqual([])
+  })
+
+  it('o contexto só ganha a marca por `comMarcaDoAgente`: o argumento em `runAutomationById`, NADA no disparo por evento', () => {
+    expect(motor.match(/\bia_agente_id:/g) ?? []).toHaveLength(1) // o retorno de `comMarcaDoAgente`
+    expect(motor).toMatch(/let context = comMarcaDoAgente\(args\.context, args\.iaAgenteId\)/)
+    expect(motor).toMatch(/context: comMarcaDoAgente\(entrada\.context, null\)/)
+    expect(argumentosDasChamadas(motor, 'comMarcaDoAgente')).toHaveLength(2)
   })
 })
 

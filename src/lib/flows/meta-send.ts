@@ -391,6 +391,15 @@ interface SendMediaEngineArgs {
   preferredChannelId?: string | null
   /** Ver `SendTextEngineArgs.aoFalhar`. */
   aoFalhar?: AoFalhar
+  /**
+   * NOSSO (09/11/2026): o agente de IA em nome de quem a mídia sai — só o
+   * "Enviar arquivo" da automação que o agente EXECUTOU no turno dele
+   * (`AutomationContext.ia_agente_id`): o vídeo antes do link da assinatura
+   * não para a retomada dele. ⚠️ A 972 conta `bot` COM a marca como
+   * "respondido". Pino default-deny em
+   * `src/lib/ia-agentes/envio.chamadores.test.ts`.
+   */
+  iaAgenteId?: string | null
 }
 
 /**
@@ -514,6 +523,7 @@ export async function engineSendMedia(
         previa: preview,
         mediaUrl: link,
         mediaFilename: args.kind === 'document' ? (args.filename ?? null) : null,
+        iaAgenteId: args.iaAgenteId ?? null,
       },
       err,
       args.aoFalhar,
@@ -549,6 +559,7 @@ export async function engineSendMedia(
       remote_jid_lid: endereco?.remoteJidLid ?? null,
       from_me: ehEvolution(channel) ? true : null,
       status: 'sent',
+      ...(args.iaAgenteId ? { ia_agente_id: args.iaAgenteId } : {}),
     })
     .select('id')
     .single()
