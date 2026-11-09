@@ -1068,8 +1068,10 @@ const PASSAGENS_PARA_A_EQUIPE: readonly RegExp[] = [
 ]
 /**
  * A PROMESSA de que alguém da equipe vai analisar ou procurar o cliente —
- * quieta quando a análise acontece NA reunião (`analiseNaReuniao`: o caminho
- * de quem qualificou, "na reunião de diagnóstico o advogado analisa"):
+ * quieta quando a análise acontece NA reunião ou ANTES dela
+ * (`analiseNaReuniao`/`analiseAntesDaReuniao`: o caminho de quem qualificou,
+ * "na reunião de diagnóstico o advogado analisa", "o advogado vai analisar
+ * tudo antes da reunião"):
  *  - "vou pedir para (um de nossos) especialista… (analisar…)";
  *  - "um especialista / nossa equipe vai (te) analisar / entrar em contato /
  *    chamar / retornar / responder / falar / assumir / atender / ligar";
@@ -1094,9 +1096,133 @@ const PROMESSAS_DA_EQUIPE: readonly RegExp[] = [
  */
 const NA_REUNIAO = /(?:^|[^\p{L}])(?:na|durante\s+a|in\s+the|during\s+the)\s+(?:\p{L}+\s+)?(?:reuniao|meeting)(?![\p{L}])/u
 const ANALISE = /(?:^|[^\p{L}])(?:analis|avali|explic|apresent|review|explain|assess|go\s+over)\p{L}*/u
+/**
+ * A análise acontece ANTES da reunião já marcada — "o advogado vai analisar
+ * tudo antes da reunião. Até lá!", a despedida do pós-agendamento (medido em
+ * 09/11/2026: 4 de 4 no cenário, Sonnet e Gemini). Mais estreita que a de
+ * cima, porque "antes da reunião" também serve a quem PROCURA o cliente: só
+ * a análise de verdade (sem explicar/apresentar, que pedem contato) e nenhum
+ * verbo de contato na frase ("vai analisar e te chamar antes da reunião"
+ * dispara). O artigo vem colado à preposição ou nada entre ela e a reunião
+ * além do possessivo: "para remarcar sua reunião" não casa.
+ */
+const ANTES_DA_REUNIAO =
+  /(?:^|[^\p{L}])(?:antes\s+da|ate(?:\s+a)?|para(?:\s+a)?|pra|before|ahead\s+of|until|for)\s+(?:(?:sua|nossa|the|your|our)\s+)?(?:reuniao|meeting)(?![\p{L}])/u
+/**
+ * Alguém da equipe FALANDO com o cliente — a classe inteira, não só os
+ * verbos da promessa (Codex, #480, duas rodadas: "retornará" e "te explicar"
+ * escapavam): procurar, contatar, ligar, chamar, escrever, responder,
+ * retornar, falar, conversar, explicar, apresentar, orientar, esclarecer,
+ * tirar dúvidas, atender, acompanhar, assumir. Nas formas que PROMETEM:
+ * infinitivo, futuro, condicional, presente e gerúndio ("vai retornar",
+ * "retornará", "te liga", "explicando"), e "contato"/"retorno" como nome
+ * ("fará contato", "dar um retorno"). O passado ("o que você explicou") e a
+ * 1ª do plural ("nos falamos na quarta", que é a própria reunião) ficam de
+ * fora; "conversa" é o nome, não o verbo. Em inglês, sem o passado ("the
+ * documents you presented"). E o cliente como OBJETO de qualquer verbo ("te
+ * manda um resumo", "mandar uma mensagem para você", "send it to you"): a
+ * equipe fazendo algo COM ele, não só analisando ("você" sujeito, "o que você
+ * passou", não conta).
+ */
+const FORMAS_AR = '(?:ar|ara|arao|aria|a|am|ando)'
+const FORMAS_ER = '(?:er|era|erao|eria|e|em|endo)'
+const FORMAS_IR = '(?:ir|ira|irao|iria|e|em|indo)'
+const FALA_AR = '(?:cham|lig|telefon|contat|retorn|fal|procur|explic|apresent|orient|acompanh)'
+const FALA_ER = '(?:respond|atend|esclarec|escrev)'
+/**
+ * A AÇÃO de analisar (o verbo, nunca o nome): "enviar a análise por aqui" é
+ * entrega, não análise (Codex, #480).
+ */
+const SO_ANALISE = new RegExp(
+  `(?:^|[^\\p{L}])(?:(?:analis|avali|revis)${FORMAS_AR}|review(?:s|ing)?|assess(?:es|ing)?|(?:go|goes|going|look|looks|looking)\\s+over)(?![\\p{L}])`,
+  'u',
+)
+/** A AÇÃO de falar com o cliente, sem o passado (o que já aconteceu não promete nada). */
+const ACAO_DE_FALA =
+  `${FALA_AR}${FORMAS_AR}` +
+  `|convers(?:ar|ara|arao|aria|ando)|${FALA_ER}${FORMAS_ER}|assum${FORMAS_IR}` +
+  `|entr${FORMAS_AR}\\s+em\\s+contato|(?:fazer|faz|fazem|fara|farao|faria)\\s+(?:o\\s+)?contato` +
+  '|(?:dar|da|dao|dara|darao|daria)\\s+(?:um\\s+|o\\s+)?retorno' +
+  `|tir${FORMAS_AR}\\s+(?:\\p{L}+\\s+){0,3}duvidas?` +
+  // A ENTREGA ao cliente ("enviar o parecer por aqui", "mandar um resumo";
+  // Codex, #480), menos quando quem envia é ele ("os documentos que você enviar").
+  `|(?<!(?:voce|vc|tu)\\s(?:me\\s|nos\\s)?)(?:envi|mand|encaminh|compartilh|entreg)${FORMAS_AR}` +
+  '|(?<!you\\s)(?:send|sends|sending|share|shares|sharing|forward|forwards|forwarding|deliver|delivers|delivering)' +
+  '|(?:contact|call|phone|talk|speak|explain|present|respond)(?:s|ing)?|(?:text|message)(?:s|ing)?\\s+you' +
+  '|(?:reach|reaches|reaching)\\s+out|(?:follow|follows|following)\\s+up|(?:get|gets|getting)\\s+back' +
+  '|(?:take|takes|taking)\\s+over|(?:walk|walks|walking)\\s+you\\s+through|in\\s+touch'
+const CONTATO = new RegExp(
+  `(?:^|[^\\p{L}])(?:${ACAO_DE_FALA}|contato|retorno|te|lhe|(?:com|para|pra)\\s+(?:voce|vc)|(?:to|with)\\s+you)(?![\\p{L}])`,
+  'u',
+)
 
 function analiseNaReuniao(f: string): boolean {
   return NA_REUNIAO.test(f) && ANALISE.test(f)
+}
+
+function analiseAntesDaReuniao(f: string): boolean {
+  return ANTES_DA_REUNIAO.test(f) && SO_ANALISE.test(f) && !CONTATO.test(f)
+}
+
+/** Quem da equipe a frase cita — o nome ou o pronome que retoma ("ele", "she"). */
+const EQUIPE_NA_FRASE = new RegExp(
+  `(?:^|[^\\p{L}])(?:ele|ela|eles|elas|he|she|they|${GENTE_DA_EQUIPE}|specialists?|lawyers?|attorneys?|team|colleagues?)(?![\\p{L}])`,
+  'u',
+)
+/** Na continuação, só a AÇÃO conta: "ele já te ligou ontem" não promete nada (Codex, #480). */
+const ACOES_DE_FALA = new RegExp(`(?:^|[^\\p{L}])(?:${ACAO_DE_FALA})(?![\\p{L}])`, 'gu')
+/**
+ * A continuação SEM sujeito (o português o omite: "Depois te retorna por
+ * aqui", "Em seguida vai te ligar", "Te retornamos ainda hoje"): um verbo de
+ * fala ao cliente depois de "te/lhe", na 3ª pessoa ou na 1ª do plural (o
+ * escritório), ou o infinitivo depois do auxiliar dessas pessoas. Só os
+ * verbos de FALA: "te enviamos o link do Meet" (a mensagem de sempre do
+ * pós-agendamento), "até te ver", "me chama por aqui" (o cliente chamando)
+ * não contam.
+ */
+const FALA_SEM_SUJEITO = new RegExp(
+  '(?:^|[^\\p{L}])(?:' +
+    `(?:vai|vao|ira|irao|deve|devem|pode|podem|vamos|iremos)\\s+(?:te|lhe)\\s+(?:${FALA_AR}ar|${FALA_ER}er|assumir|conversar)` +
+    `|(?:te|lhe)\\s+(?:${FALA_AR}(?:a|am|ara|arao|aria|amos|aremos)|${FALA_ER}(?:e|em|era|erao|eria|emos|eremos)|assum(?:e|em|ira|irao|iria|imos|iremos))` +
+    ')(?![\\p{L}])',
+  'gu',
+)
+
+/**
+ * A promessa que CONTINUA noutra frase depois da análise que calou: "O
+ * advogado vai analisar tudo antes da reunião. Depois ele te retorna por aqui
+ * ainda hoje." (Codex, #480 — a guarda `CONTATO` só olhava a frase da
+ * análise, e "ele te retorna" não casa nenhuma promessa sozinha). Conta a
+ * frase que cita a equipe (`EQUIPE_NA_FRASE`) com a AÇÃO de falar com o
+ * cliente no presente ou no futuro (`ACOES_DE_FALA`: o pronome sozinho e o
+ * passado, "ele já te ligou ontem", não contam) ou, sem citar, a fala sem
+ * sujeito (`FALA_SEM_SUJEITO`), fora de pergunta, sem negação nem condição
+ * antes. A fala DURANTE a reunião ("Na reunião, ele te explicará as opções")
+ * é a reunião, como na frase da análise (`NA_REUNIAO`). ⚠️ Limite aceito: a
+ * continuação sem a equipe e sem "te/lhe" ("Depois retorna por aqui") não é
+ * vista.
+ */
+function continuaComContato(f: string): boolean {
+  if (PERGUNTA.test(f)) return false
+  for (const m of f.matchAll(EQUIPE_NA_FRASE.test(f) ? ACOES_DE_FALA : FALA_SEM_SUJEITO)) {
+    const antes = f.slice(0, m.index)
+    // "Na reunião" e a negação contam só ANTES da ação e na oração dela:
+    // depois, falam de outra coisa ("te liga para confirmar os documentos
+    // usados na reunião"; Codex, #480), e noutra oração também ("na reunião
+    // vemos tudo, mas ele te liga amanhã"). A condição olha a frase inteira,
+    // como na promessa.
+    const daOracao = antes.slice(fimDaUltimaCoordenacao(antes))
+    if (NA_REUNIAO.test(daOracao)) continue
+    if (!NEGACAO.test(daOracao) && !/n't\b/.test(daOracao) && !haCondicao(antes)) return true
+  }
+  return false
+}
+
+/** Onde começa a última oração coordenada ("e", "mas", "porém", "and", "but"): 0 sem nenhuma. */
+function fimDaUltimaCoordenacao(antes: string): number {
+  let fim = 0
+  for (const m of antes.matchAll(/(?:^|[^\p{L}])(?:e|mas|porem|and|but)(?![\p{L}])/gu)) fim = (m.index ?? 0) + m[0].length
+  return fim
 }
 
 /**
@@ -1107,6 +1233,31 @@ function analiseNaReuniao(f: string): boolean {
 const CONJUNCOES_DA_COORDENACAO: ReadonlySet<string> = new Set(['e', 'mas', 'porém', 'porem', 'and', 'but'])
 
 /**
+ * A promessa casa a frase (`f`, sem acento) e AFIRMA: sem negação nas quatro
+ * palavras antes, na oração dela, e sem condição antes na frase.
+ */
+function promessaAfirmada(promessa: RegExp, frase: string, f: string): boolean {
+  const m = promessa.exec(f)
+  if (!m) return false
+  const antes = f.slice(0, m.index)
+  // A negação e o futuro contam só na ORAÇÃO da promessa: "sua assinatura
+  // será confirmada E nossa equipe vai entrar em contato" promete (revisão
+  // fria de 09/11/2026 — o "será" da oração anterior calava a trava). A
+  // condição continua olhando a frase inteira ("se preferir, …").
+  // `semAcento` não muda os espaços: as palavras de `antes` são as primeiras
+  // da frase original, onde o "é" ainda tem acento.
+  const palavrasAntes = antes.split(/\s+/).filter(Boolean)
+  const originais = frase.trim().split(/\s+/).filter(Boolean).slice(0, palavrasAntes.length)
+  let corte = 0
+  originais.forEach((w, i) => {
+    if (CONJUNCOES_DA_COORDENACAO.has(w.toLowerCase().replace(/[^\p{L}]/gu, ''))) corte = i + 1
+  })
+  const daOracao = palavrasAntes.slice(corte)
+  if (naoAfirma(daOracao.map(palavraNormalizada).filter(Boolean).slice(-4))) return false
+  return !haCondicao(antes)
+}
+
+/**
  * A resposta PROMETE que uma pessoa da equipe vai assumir ou procurar o
  * cliente? Medido no Playground (27/09): com as instruções mandando dizer
  * isso e passar, em 2 de 4 turnos o modelo escreveu "Vou pedir para um de
@@ -1114,40 +1265,34 @@ const CONJUNCOES_DA_COORDENACAO: ReadonlySet<string> = new Set(['e', 'mas', 'por
  * aqui em breve." SEM o `[[TRANSFERIR]]` — o cliente ouviria que uma pessoa
  * vem e a IA ficaria com a conversa. Frase a frase, sobre o texto sem
  * acento: casa uma das `PASSAGENS_PARA_A_EQUIPE` (sempre) ou das
- * `PROMESSAS_DA_EQUIPE` (menos quando a análise acontece NA reunião,
- * `analiseNaReuniao`), fora de pergunta ("quer que eu chame…?"), sem negação nas quatro
+ * `PROMESSAS_DA_EQUIPE` (menos quando a análise acontece NA reunião ou antes
+ * dela, `analiseNaReuniao`/`analiseAntesDaReuniao`), fora de pergunta ("quer que eu chame…?"), sem negação nas quatro
  * palavras antes e sem condição antes ("se preferir, …"). Quem chama decide
  * o resto: a resposta com `[[TRANSFERIR]]`, `[[HANDOFF]]` ou `[[PASSAR:n]]`
  * já transfere e nem pergunta.
  */
 export function equipePrometida(texto: string): boolean {
+  const frases: { frase: string; f: string }[] = []
   for (const frase of texto.split(/(?<=[.!?…;])\s+|\n+/)) {
     const f = semAcento(frase.trim()).replace(/\u2019/g, "'")
-    if (!f || PERGUNTA.test(f)) continue
-    const frases = analiseNaReuniao(f) ? PASSAGENS_PARA_A_EQUIPE : [...PASSAGENS_PARA_A_EQUIPE, ...PROMESSAS_DA_EQUIPE]
-    for (const promessa of frases) {
-      const m = promessa.exec(f)
-      if (!m) continue
-      const antes = f.slice(0, m.index)
-      // A negação e o futuro contam só na ORAÇÃO da promessa: "sua assinatura
-      // será confirmada E nossa equipe vai entrar em contato" promete (revisão
-      // fria de 09/11/2026 — o "será" da oração anterior calava a trava). A
-      // condição continua olhando a frase inteira ("se preferir, …").
-      // `semAcento` não muda os espaços: as palavras de `antes` são as primeiras
-      // da frase original, onde o "é" ainda tem acento.
-      const palavrasAntes = antes.split(/\s+/).filter(Boolean)
-      const originais = frase.trim().split(/\s+/).filter(Boolean).slice(0, palavrasAntes.length)
-      let corte = 0
-      originais.forEach((w, i) => {
-        if (CONJUNCOES_DA_COORDENACAO.has(w.toLowerCase().replace(/[^\p{L}]/gu, ''))) corte = i + 1
-      })
-      const daOracao = palavrasAntes.slice(corte)
-      if (naoAfirma(daOracao.map(palavraNormalizada).filter(Boolean).slice(-4))) continue
-      if (haCondicao(antes)) continue
-      return true
-    }
+    frases.push({ frase, f })
   }
-  return false
+  // As frases cuja promessa a análise ANTES da reunião calou: a continuação
+  // nas OUTRAS frases decide (`continuaComContato`); a própria já passou pela
+  // guarda `CONTATO`. A análise NA reunião (a exceção de 27/09) não olha as
+  // outras frases, como sempre.
+  // Só a promessa que AFIRMA (passou pela negação e pela condição) é calada:
+  // "Não vou pedir para o advogado analisar…" não abre a continuação (Codex, #480).
+  const caladas = new Set<number>()
+  for (const [i, { frase, f }] of frases.entries()) {
+    if (!f || PERGUNTA.test(f)) continue
+    if (PASSAGENS_PARA_A_EQUIPE.some((p) => promessaAfirmada(p, frase, f))) return true
+    if (!PROMESSAS_DA_EQUIPE.some((p) => promessaAfirmada(p, frase, f))) continue
+    if (analiseNaReuniao(f)) continue
+    if (!analiseAntesDaReuniao(f)) return true
+    caladas.add(i)
+  }
+  return caladas.size > 0 && frases.some(({ f }, i) => !caladas.has(i) && continuaComContato(f))
 }
 
 // ------------------------------------------------------------

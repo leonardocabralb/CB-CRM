@@ -103,6 +103,17 @@ Plano: `docs/PLANO-agentes-de-ia.md` (D5, D28, F4). Sem migration.
   Sentinela, passagem e as travas vencem; só o marcador = transfere sem enviar.
   A resposta que PROMETE a equipe sem ele (`equipePrometida`, medido: 2 de 4)
   vale como com ele, `detalhe: 'sem_marcador'`; análise "na reunião" é quieta.
+  ⚠️ "Antes/até/para a reunião" também, mas SÓ a análise (analisar, avaliar,
+  revisar) e NADA com o cliente na frase (`CONTATO`, a classe inteira em
+  qualquer forma: "retornará", "te explicar", "tirar dúvidas", "te/lhe/com
+  você"; Codex, #480), nem AÇÃO de fala noutra frase que retome a equipe
+  ("Depois ele te retorna"; o passado e a fala NA reunião não contam,
+  `continuaComContato`) — só nesta exceção; a de "na reunião" segue igual a
+  antes: a despedida do pós-agendamento
+  ("o advogado vai analisar tudo antes da reunião. Até lá!") transferia 4 de
+  4 (09/11/2026); "vai te chamar antes da reunião" segue transferindo.
+  Limite aceito: a continuação sem a equipe e sem "te/lhe" ("Depois retorna
+  por aqui") passa quieta.
   Condição (as duas travas, `haCondicao`): "se"/"if" sempre; "quando"/"when"
   só com o verbo no futuro — no passado ("quando você confirmou") é fato.
   "Vou passar/transferir/encaminhar/chamar…" dispara mesmo com reunião na

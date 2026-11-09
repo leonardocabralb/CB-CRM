@@ -416,6 +416,115 @@ describe('a EQUIPE PROMETIDA sem o [[TRANSFERIR]] (27/09)', () => {
     }
   })
 
+  it('⚠️ a análise ANTES da reunião já marcada é quieta (a despedida MEDIDA do pós-agendamento, 09/11/2026)', () => {
+    for (const t of [
+      // As quatro respostas medidas (Sonnet 5.5 e Gemini 3.8 Flash, 4 de 4 no cenário).
+      'Tudo certo, obrigada! O advogado vai analisar o contrato e as informações que você passou antes da reunião. Até lá!',
+      'Perfeito, obrigada por mandar o contrato e pelas informações! 🙌\n\nO advogado vai analisar tudo antes da reunião. Se lembrar de mais alguma coisa, é só mandar por aqui.',
+      'Sem problemas! Muito obrigado pelas informações e pelo envio do contrato. O advogado vai analisar tudo com atenção antes da reunião. Até lá!',
+      'O advogado vai analisar tudo com atenção antes da reunião.\n\nPerto do horário agendado, te enviamos o link do Google Meet por aqui. Até lá!',
+      // As variações da mesma despedida.
+      'A advogada vai analisar os documentos até a reunião.',
+      'O advogado vai analisar tudo para a sua reunião de quinta.',
+      'Nossa equipe vai analisar o seu contrato antes da sua reunião.',
+      'Vou pedir para o advogado analisar o contrato antes da reunião.',
+      'A lawyer will review everything before the meeting.',
+      // A do Playground do pós-agendamento, depois do conserto (09/11/2026).
+      'O advogado vai analisar tudo com antecedência para a reunião.\n\nNos falamos na quarta-feira, às 15h! Se precisar de algo até lá, estou por aqui.',
+      // O passado e o "nos falamos" (a própria reunião) não são promessa de contato.
+      'O advogado vai analisar tudo o que você respondeu antes da reunião.',
+      'O advogado vai analisar tudo antes da reunião, e nos falamos na quarta!',
+      'O advogado vai analisar tudo o que você explicou antes da reunião.',
+      'O advogado vai analisar a conversa e os documentos antes da reunião.',
+      'A lawyer will review the documents you presented before the meeting.',
+      'O advogado vai analisar tudo o que você mandou antes da reunião.',
+      // Quem ENVIA é o cliente: não é entrega da equipe.
+      'O advogado vai analisar os documentos que você enviar antes da reunião.',
+      'O advogado vai analisar tudo o que você me mandar antes da reunião.',
+      'A lawyer will review the documents you send before the meeting.',
+      // A frase seguinte sem a equipe, com negação ou pergunta não continua a promessa.
+      'O advogado vai analisar tudo antes da reunião. Ele não vai te ligar antes disso, fique tranquilo.',
+      'O advogado vai analisar tudo antes da reunião. Quer que ele te mande algo antes?',
+      'O advogado vai analisar tudo antes da reunião. Qualquer coisa, me chama por aqui!',
+      'O advogado vai analisar tudo antes da reunião. Até te ver na quarta!',
+      // O passado e a fala DURANTE a reunião não são promessa nova (Codex, #480).
+      'Um especialista vai analisar o seu caso na reunião. Ele já te ligou ontem para confirmar o horário.',
+      'O advogado vai analisar tudo antes da reunião. Ele já entrou em contato ontem.',
+      'Um especialista vai analisar o seu caso na reunião. Na reunião, ele te explicará as opções.',
+      'O advogado vai analisar tudo antes da reunião. Durante a reunião, ele vai te explicar os caminhos.',
+      // A análise NEGADA ou condicional não cala nada, então não abre a continuação (Codex, #480).
+      'Não vou pedir para o advogado analisar tudo antes da reunião. Ele atende apenas presencialmente.',
+      'Se preferir, o advogado vai analisar tudo antes da reunião. Ele atende de segunda a sexta.',
+    ]) {
+      expect(equipePrometida(t), t).toBe(false)
+    }
+  })
+
+  it('⚠️ "antes da reunião" NÃO cala quem PROCURA o cliente nem a passagem', () => {
+    for (const t of [
+      // Contato prometido antes da reunião: alguém vai procurar o cliente.
+      'O advogado vai te chamar antes da reunião.',
+      'O advogado vai analisar tudo e te chamar antes da reunião.',
+      'Nossa equipe vai entrar em contato antes da reunião.',
+      'Nossa equipe vai analisar o contrato e entrar em contato antes da reunião.',
+      'Um especialista vai te ligar antes da reunião para analisar os documentos.',
+      'Our team will review your contract and get back to you before the meeting.',
+      // O verbo de contato CONJUGADO também conta (Codex, #480).
+      'O advogado vai analisar os documentos antes da reunião e retornará por aqui ainda hoje.',
+      'O advogado vai analisar tudo antes da reunião e entrará em contato com você.',
+      'O advogado vai analisar o contrato antes da reunião e te liga amanhã.',
+      'O advogado vai analisar tudo antes da reunião e fará contato por aqui.',
+      'O advogado vai analisar tudo e te dar um retorno antes da reunião.',
+      'O advogado vai analisar tudo antes da reunião e te procura por aqui.',
+      'Our team will review your documents before the meeting and will be calling you today.',
+      // Explicar, apresentar, orientar, conversar, tirar dúvidas: falar com o cliente (Codex, #480).
+      'Vou pedir para o advogado analisar os documentos e te explicar tudo por aqui antes da reunião.',
+      'O advogado vai analisar tudo antes da reunião e te apresenta os caminhos por aqui.',
+      'O advogado vai analisar o contrato e te orientar antes da reunião.',
+      'O advogado vai analisar tudo e conversar com você antes da reunião.',
+      'O advogado vai analisar tudo e tirar todas as suas dúvidas antes da reunião.',
+      'O advogado vai analisar tudo antes da reunião e esclarecerá suas dúvidas por aqui.',
+      'A lawyer will review your contract and explain everything to you before the meeting.',
+      'A lawyer will review your documents and text you before the meeting.',
+      // O cliente como objeto: a equipe fazendo algo COM ele.
+      'O advogado vai analisar tudo antes da reunião e te manda um resumo.',
+      'O advogado vai analisar tudo e mandar uma mensagem para você antes da reunião.',
+      'Our team will review everything and send a summary to you before the meeting.',
+      // A promessa que CONTINUA noutra frase, retomando a equipe (Codex, #480).
+      'O advogado vai analisar tudo antes da reunião. Depois ele te retorna por aqui ainda hoje.',
+      'O advogado vai analisar tudo antes da reunião.\n\nA advogada te chama amanhã para confirmar.',
+      'O advogado vai analisar tudo antes da reunião. Antes disso, ele te liga para confirmar.',
+      'A lawyer will review everything before the meeting. Then she will call you.',
+      // O NOME "análise/revisão" não é a ação de analisar: é entrega (Codex, #480).
+      'Vou pedir para o advogado enviar a análise por aqui antes da reunião.',
+      'Vou pedir para a equipe mandar a revisão do contrato antes da reunião.',
+      // A análise com ENTREGA prometida ao cliente (Codex, #480).
+      'O advogado vai analisar tudo antes da reunião e enviar o parecer por aqui ainda hoje.',
+      'Vou pedir para o advogado analisar e mandar um resumo antes da reunião.',
+      'O advogado vai analisar tudo antes da reunião. Depois ele envia o parecer por aqui.',
+      'A lawyer will review everything and send the summary before the meeting.',
+      // "Na reunião" DEPOIS da ação fala de outra coisa (Codex, #480).
+      'O advogado vai analisar tudo antes da reunião. Depois ele te liga para confirmar os documentos que serão usados na reunião.',
+      // "Na reunião" e a negação de OUTRA oração não calam a ação.
+      'O advogado vai analisar tudo antes da reunião. Na reunião vemos o resto, mas ele te liga amanhã.',
+      'O advogado vai analisar tudo antes da reunião. Ele não decide sozinho, mas te liga amanhã.',
+      // Sem sujeito (o português o omite): o verbo de fala depois de "te/lhe".
+      'O advogado vai analisar tudo antes da reunião. Depois te retorna por aqui ainda hoje.',
+      'O advogado vai analisar tudo antes da reunião. Em seguida vai te ligar.',
+      'O advogado vai analisar tudo antes da reunião. Depois te retornamos por aqui.',
+      // Explicar ou apresentar antes da reunião pede contato: não é só análise.
+      'Vou pedir para o advogado te explicar tudo antes da reunião.',
+      // A passagem explícita dispara com qualquer reunião na frase.
+      'Vou passar você para a nossa equipe antes da reunião.',
+      // A promessa sem reunião, e "para remarcar" (não é a reunião já marcada).
+      'Nossa equipe vai entrar em contato.',
+      'O advogado vai analisar o seu caso e te retornar por aqui.',
+      'Nossa equipe vai analisar e entrar em contato para remarcar sua reunião.',
+    ]) {
+      expect(equipePrometida(t), t).toBe(true)
+    }
+  })
+
   it('"quando" com o verbo no passado é fato (a mesma régua da reunião prometida); no futuro, condição', () => {
     expect(equipePrometida('Quando você mandou os documentos, nossa equipe vai analisar e te retornar por aqui.')).toBe(true)
     expect(equipePrometida('Quando você mandar os documentos, nossa equipe vai analisar e te retornar por aqui.')).toBe(false)
