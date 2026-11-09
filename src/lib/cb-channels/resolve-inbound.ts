@@ -11,11 +11,15 @@
 // mensagem — é a peça mínima que habilita mais de um número Meta sem mexer no
 // fluxo que já funciona.
 //
-// SEGURO PARA DEPLOY FORA DE ORDEM: as consultas a `cb_channels` ignoram o
-// erro do PostgREST (tabela inexistente → data null), então se este código
-// subir antes da migration 901, o roteamento Evolution cai no fallback
-// `whatsapp_config` (o comportamento single-channel do Gabriel) e o carimbo
-// Meta simplesmente não acontece — nada quebra.
+// As consultas da META a `cb_channels` ignoram o erro do PostgREST (era o
+// "seguro para deploy fora de ordem" de antes da 901): o carimbo Meta
+// simplesmente não acontece.
+//
+// ⚠️⚠️ A da EVOLUTION, não, desde 09/11/2026: a leitura que FALHA devolve
+// `'falhou'`, e a rota responde 503 para a Evolution entregar de novo. Ignorar
+// o erro fazia a instância parecer DESCONHECIDA, a rota respondia 200 sem log
+// nenhum e a mensagem do cliente se perdia — medido: o Supabase fora do ar por
+// ~1 min (521) levou 5 mensagens de cliente, que só existem na Evolution.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -84,27 +88,45 @@ export async function donoDaConta(
  * webhook. Tenta `cb_channels` (multi-canal) e cai em `whatsapp_config`
  * (single-channel do Gabriel / transição) com aviso. Retorna `null` quando a
  * instância é desconhecida (o webhook então só dá ack para não reenviar).
+ *
+ * ⚠️⚠️ `'falhou'` quando uma leitura FALHA: "não consegui perguntar" nunca é
+ * "não existe" (raiz, 8b). A rota responde 503, e a Evolution 2.4 entrega de
+ * novo (até 10 tentativas, de 5 s até 300 s; 400/401/403/404/422 não
+ * repetem — medido no contêiner em 09/11/2026). Com 200, a mensagem do
+ * cliente estava perdida.
  */
 export async function resolveInboundEvolutionChannel(
   db: SupabaseClient,
   instanceName: string,
-): Promise<InboundEvolutionRoute | null> {
+): Promise<InboundEvolutionRoute | null | 'falhou'> {
   // 1. cb_channels por instance_name (chave de roteamento única global).
-  const { data: channel } = await db
+  const { data: channel, error: erroDoCanal } = await db
     .from('cb_channels')
     .select('id, account_id, groups_enabled, own_lid')
     .eq('instance_name', instanceName)
     .eq('kind', 'evolution')
     .maybeSingle();
+  if (erroDoCanal) {
+    console.error(
+      '[cb-channels] ler a conexão Evolution falhou; a Evolution vai entregar de novo:',
+      instanceName,
+      erroDoCanal.message?.slice(0, 120),
+    );
+    return 'falhou';
+  }
 
   if (channel) {
     const ownerUserId = await donoDaConta(db, channel.account_id);
     if (!ownerUserId) {
+      // A conexão existe, e `accounts.owner_user_id` é NOT NULL com a conta
+      // presa à conexão pela FK: sem dono aqui é a leitura que falhou duas
+      // vezes (`donoDaConta` já registrou o erro). Nunca cai para quem
+      // conectou o número — a Evolution entrega de novo.
       console.error(
-        '[cb-channels] canal Evolution sem dono da conta resolvível; mensagem descartada:',
+        '[cb-channels] canal Evolution sem dono da conta resolvível; a Evolution vai entregar de novo:',
         instanceName,
       );
-      return null;
+      return 'falhou';
     }
     return {
       accountId: channel.account_id,
@@ -116,12 +138,20 @@ export async function resolveInboundEvolutionChannel(
   }
 
   // 2. Fallback de transição: whatsapp_config por instance_name (Gabriel).
-  const { data: cfg } = await db
+  const { data: cfg, error: erroDoFallback } = await db
     .from('whatsapp_config')
     .select('account_id')
     .eq('instance_name', instanceName)
     .eq('provider', 'evolution')
     .maybeSingle();
+  if (erroDoFallback) {
+    console.error(
+      '[cb-channels] ler o whatsapp_config falhou; a Evolution vai entregar de novo:',
+      instanceName,
+      erroDoFallback.message?.slice(0, 120),
+    );
+    return 'falhou';
+  }
 
   if (cfg) {
     console.warn(
@@ -130,11 +160,12 @@ export async function resolveInboundEvolutionChannel(
     );
     const ownerUserId = await donoDaConta(db, cfg.account_id);
     if (!ownerUserId) {
+      // Mesmo raciocínio do canal: a linha existe, sem dono é leitura falha.
       console.error(
-        '[cb-channels] instância do fallback sem dono da conta resolvível; mensagem descartada:',
+        '[cb-channels] instância do fallback sem dono da conta resolvível; a Evolution vai entregar de novo:',
         instanceName,
       );
-      return null;
+      return 'falhou';
     }
     return {
       accountId: cfg.account_id,

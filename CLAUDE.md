@@ -339,8 +339,9 @@ Volta para `main` por PR no CB-CRM.
   Não divergir do `ssrf.ts` do original.
 - Webhook de provedor: só credencial inválida (assinatura, token da URL)
   vale 4xx (4xx repetido faz o provedor desativar a entrega); o resto responde 200 com log e trabalha em
-  `after()`. Sem assinatura, o corpo é AVISO: o dado é relido na API com a
-  nossa credencial.
+  `after()`. Exceção: leitura que FALHA antes da resposta, na Evolution, é
+  503 — ela reentrega, e o 200 perdia a mensagem (`ingestao.md`). Sem
+  assinatura, o corpo é AVISO: o dado é relido na API com a nossa credencial.
 - Trabalho reivindicado (claim): `UPDATE … RETURNING` cercado; toda escrita
   posterior leva a cerca de posse (o carimbo do próprio claim); teto de
   processamento menor que o recolhimento; cron com rodízio carimba a
