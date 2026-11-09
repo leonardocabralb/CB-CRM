@@ -9,7 +9,7 @@
 // (`src/lib/flows/midia-do-no.ts`, o mesmo nome de campo).
 //
 // Duas origens, e o passo antigo continua valendo sem mudança nenhuma:
-//   · `acervo_id` — o item do acervo, COPIADO a cada envio;
+//   · `acervo_id` — o item do acervo, pela CÓPIA CONGELADA dele;
 //   · `url` — o arquivo subido no próprio passo, mandado como está.
 //
 // ⚠️⚠️ POR QUE COPIAR (a regra do acervo, `.claude/rules/midia.md`): o que foi
@@ -20,26 +20,24 @@
 // passo falha VISÍVEL quando o item foi apagado — nunca um link morto ao
 // WhatsApp.
 //
-// ⚠️⚠️ DUAS ETAPAS, em dois momentos (revisão do PR):
+// ⚠️⚠️ UMA cópia por ITEM, não por envio (decisão do operador, 09/11/2026,
+// `copiaCongeladaDoAcervo`): feita no primeiro envio, reaproveitada em todos
+// os seguintes, e nunca apagada — nem quando o envio falha (a Meta baixa a
+// mídia DEPOIS de aceitar o pedido). Uma por envio custava o arquivo inteiro
+// a cada cliente (o vídeo de 13,85 MB, 100 envios ≈ 1,4 GB).
+//
+// ⚠️ DUAS ETAPAS, em dois momentos (revisão do #487):
 //   1. ANTES da conversa, o item é CONFERIDO por leitura (existe nesta conta?
 //      qual o tipo?) — o item apagado falha sem criar conversa para a ficha
 //      que não tinha;
-//   2. a CÓPIA é feita pelo REMETENTE (`engineSendMedia` recebe o link como
+//   2. a cópia é pedida pelo REMETENTE (`engineSendMedia` recebe o link como
 //      função), depois de todas as recusas dele (contato, conversa, canal,
-//      alvo, conexão) e antes da tentativa. Copiando antes, a ficha do
-//      Instagram ou sem telefone deixava uma cópia inteira órfã a cada
-//      execução, com o passo falhando do mesmo jeito.
-//
-// ⚠️ A cópia NÃO é apagada quando o envio falha, como no robô: a Meta baixa a
-// mídia DEPOIS de aceitar o pedido, e um erro tardio com a cópia apagada
-// quebraria a mídia no celular do cliente. O preço é um objeto órfão no
-// bucket — um por tentativa, porque a retentativa (recusa 4xx da Evolution)
-// roda o passo de novo e copia de novo.
+//      alvo, conexão) e antes da tentativa: a recusa não toca o Storage.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { copiarDoAcervo } from '@/lib/acervo/copiar';
+import { copiaCongeladaDoAcervo } from '@/lib/acervo/copiar';
 import type { SendMediaStepConfig } from '@/types';
 import type { PassoComRamos } from './condicao-por-campo';
 
@@ -70,8 +68,8 @@ export interface MidiaDoPasso {
   /** Com o acervo, o tipo do ITEM (o `kind` do passo é só a foto da escolha). */
   kind: SendMediaStepConfig['kind'];
   /**
-   * A URL que vai ao WhatsApp e ao fio. Do acervo, a FUNÇÃO que copia o item
-   * e devolve a URL da CÓPIA — quem a chama é `engineSendMedia`, depois das
+   * A URL que vai ao WhatsApp e ao fio. Do acervo, a FUNÇÃO que devolve a URL
+   * da CÓPIA CONGELADA do item — quem a chama é `engineSendMedia`, depois das
    * recusas dele (ver o cabeçalho).
    */
   link: string | (() => Promise<string>);
@@ -90,8 +88,8 @@ function falhaDoAcervo(erro: 'leitura' | 'nao_encontrado' | 'copia', detalhe: st
  * I/O: o arquivo que vai sair. Com `acervo_id`, CONFERE o item agora, pela
  * conta da automação (o `.eq('account_id')` é a cerca: service role ignora a
  * RLS, e o id de um item de outra conta não é lido daqui), e devolve a cópia
- * como função — a cada chamada, uma cópia nova (`copiarDoAcervo`, cercada do
- * mesmo jeito).
+ * como função — a cópia CONGELADA do item (`copiaCongeladaDoAcervo`, cercada
+ * do mesmo jeito): a primeira chamada a cria, as seguintes a reaproveitam.
  *
  * Lança com motivo legível — o motor grava no registro e encerra a execução,
  * como todo passo que falha; a função da cópia lança igual, de dentro do
@@ -130,7 +128,7 @@ export async function prepararMidiaDoPasso(
   return {
     kind,
     link: async () => {
-      const copia = await copiarDoAcervo(db, accountId, origem.acervoId);
+      const copia = await copiaCongeladaDoAcervo(db, accountId, origem.acervoId);
       if (!copia.ok) throw falhaDoAcervo(copia.erro, copia.detalhe);
       return copia.mediaUrl;
     },

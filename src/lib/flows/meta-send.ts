@@ -379,8 +379,8 @@ interface SendMediaEngineArgs {
    *
    * NOSSO (09/11/2026): ou a função que a PRODUZ, chamada só depois de todas as
    * recusas (contato, conversa, canal, alvo, conexão) e antes da tentativa —
-   * o "Enviar arquivo" do acervo das automações copia o item aí
-   * (`automations/midia-do-passo.ts`), e a recusa não deixa cópia órfã.
+   * o "Enviar arquivo" do acervo das automações pede aí a cópia congelada do
+   * item (`automations/midia-do-passo.ts`), e a recusa não toca o Storage.
    */
   link: string | (() => Promise<string>)
   caption?: string

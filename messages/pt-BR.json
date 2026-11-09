@@ -5750,7 +5750,7 @@
     },
     "acervo": {
       "title": "Acervo de mídias",
-      "description": "Arquivos que o escritório deixa prontos — contratos, imagens, áudios — para a equipe enviar de dentro da conversa, sem procurar no computador. Quem envia usa o clipe da caixa de mensagem → “Do acervo”. Robôs (“Enviar mídia”) e automações (“Enviar arquivo”) também mandam arquivos daqui — uma cópia a cada envio.",
+      "description": "Arquivos que o escritório deixa prontos — contratos, imagens, áudios — para a equipe enviar de dentro da conversa, sem procurar no computador. Quem envia usa o clipe da caixa de mensagem → “Do acervo”. Robôs (“Enviar mídia”) e automações (“Enviar arquivo”) também mandam arquivos daqui, por uma cópia guardada à parte: o que já saiu não muda nem some se o item for removido.",
       "add": "Adicionar arquivo",
       "empty": "Nenhum arquivo no acervo ainda. Adicione o primeiro para a equipe usar nas conversas.",
       "uncategorized": "Geral",

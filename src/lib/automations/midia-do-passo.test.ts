@@ -49,6 +49,8 @@ function bancoComAcervo(opts: {
   const copias: Array<[string, string]> = [];
   const filtros: Array<[string, unknown]> = [];
   let leituras = 0;
+  // O bucket guarda o que já foi copiado: a cópia CONGELADA do item é uma só.
+  const bucket = new Set<string>();
   const db = {
     from: () => {
       const b = {
@@ -71,9 +73,16 @@ function bancoComAcervo(opts: {
     },
     storage: {
       from: () => ({
+        // A forma do storage-js: AUSENTE resolve com data:false E error.
+        exists: (p: string) =>
+          Promise.resolve(
+            bucket.has(p) ? { data: true, error: null } : { data: false, error: { message: 'Object not found' } },
+          ),
         copy: (de: string, para: string) => {
           copias.push([de, para]);
-          return Promise.resolve({ error: opts.erroCopia ? { message: opts.erroCopia } : null });
+          if (opts.erroCopia) return Promise.resolve({ error: { message: opts.erroCopia } });
+          bucket.add(para);
+          return Promise.resolve({ error: null });
         },
         getPublicUrl: (p: string) => ({ data: { publicUrl: `https://storage/${p}` } }),
       }),
@@ -131,20 +140,23 @@ describe('prepararMidiaDoPasso', () => {
     const link = await produzir(m.link);
     expect(copias).toHaveLength(1);
     expect(copias[0][0]).toBe(VIDEO.media_path);
-    // A cópia sai do acervo/ — é um anexo como outro qualquer, e a URL que vai
-    // ao WhatsApp e ao fio é a DELA, nunca a do item.
-    expect(copias[0][1]).toMatch(/^account-acc\/\d+-gestante-5-passos\.mp4$/);
+    // UMA cópia por item (09/11/2026), em acervo/enviados/<item>/ — e a URL
+    // que vai ao WhatsApp e ao fio é a DELA, nunca a do item.
+    expect(copias[0][1]).toBe(`account-acc/acervo/enviados/${ITEM_ID}/gestante-5-passos.mp4`);
     expect(link).toBe(`https://storage/${copias[0][1]}`);
-    expect(link).not.toContain('/acervo/');
+    expect(link).not.toBe('https://storage/account-acc/acervo/gestante-5-passos.mp4');
   });
 
-  it('ACERVO: cada envio copia DE NOVO (a mensagem enviada não muda nem some com o item)', async () => {
+  it('ACERVO: UMA cópia por item — os envios seguintes reaproveitam a congelada (09/11/2026)', async () => {
     const { db, copias } = bancoComAcervo({ item: VIDEO });
     const m = await prepararMidiaDoPasso(db, 'acc', { kind: 'video', url: '', acervo_id: ITEM_ID });
-    await produzir(m.link);
-    await produzir(m.link);
-    expect(copias).toHaveLength(2);
-    expect(copias[0][1]).not.toBe(copias[1][1]);
+    const primeiro = await produzir(m.link);
+    const segundo = await produzir(m.link);
+    const outraExecucao = await produzir(
+      (await prepararMidiaDoPasso(db, 'acc', { kind: 'video', url: '', acervo_id: ITEM_ID })).link,
+    );
+    expect(copias).toHaveLength(1);
+    expect(new Set([primeiro, segundo, outraExecucao]).size).toBe(1);
   });
 
   it('ACERVO, documento: o nome editado no passo vence; vazio cai no do item', async () => {

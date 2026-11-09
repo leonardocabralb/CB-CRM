@@ -206,3 +206,7 @@ qualquer uma é pergunta ao operador.
   os 4 ÚLTIMOS caracteres da chave guardada, quando e por quem foi gravada,
   "Testar agora" e "Trocar chave" sem desconectar — antes nenhuma rota
   devolvia a chave, nem mascarada (`credencial-das-integracoes.md`, 1127).
+- Acervo no robô e nas automações (09/11/2026): UMA cópia congelada por
+  item (`acervo/enviados/<item>/`), feita no primeiro envio e reaproveitada
+  em todos — nunca uma por envio; ela nunca é apagada, e apagar o item tira
+  só o original. O compositor segue com uma cópia por envio (`midia.md`).

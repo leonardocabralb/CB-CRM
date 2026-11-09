@@ -210,12 +210,19 @@ Tabela `cb_media_library`, `src/lib/acervo/` (puro, com teste), rotas em
   áudio sai como nota de voz. O editor do robô avisa
   (`audioViraNotaDeVozNaMeta`, `src/lib/flows/tipo-da-midia.ts`); o selo "como
   nota de voz" do seletor do acervo no compositor ainda afirma sem distinguir.
-- **A cópia mora em `copiarDoAcervo` (`src/lib/acervo/copiar.ts`)**, com TRÊS
-  chamadores: a rota `copiar` (compositor), o nó "Enviar mídia" do robô e o
-  passo "Enviar arquivo" das automações (`midia-do-passo.ts`, 09/11/2026), os
-  dois últimos copiando a cada envio (`whatsapp-envio.md`,
-  `automacoes-passos.md`). Erro de banco é `leitura`, nunca `nao_encontrado`.
-  Chamador novo entra no pino `arquivos-do-chat-media.chamadores.test.ts`.
+- **A cópia mora em `src/lib/acervo/copiar.ts`, em DUAS formas.**
+  `copiarDoAcervo` faz uma cópia NOVA por envio, num caminho de anexo, e só o
+  compositor a usa (rota `copiar`), porque apaga o rascunho que morre.
+  `copiaCongeladaDoAcervo` faz UMA cópia por ITEM em
+  `acervo/enviados/<item>/`, criada no 1º envio e reaproveitada (decisão do
+  operador, 09/11/2026). Ela serve ao nó "Enviar mídia" do robô e ao passo
+  "Enviar arquivo" das automações, que nunca apagam o que mandaram. Por
+  envio, o vídeo de 13,85 MB custava o arquivo inteiro a cada cliente.
+  ⚠️ Nada apaga a congelada: a 954 (só admin escreve em `acervo/`) e a 1097
+  (`acervo/` fora da fila) já cobrem a subpasta, e o DELETE do item remove
+  só o original. O `exists()` dela segue as duas armadilhas acima. Erro de
+  banco é `leitura`, nunca `nao_encontrado`. Chamador novo entra no pino
+  `arquivos-do-chat-media.chamadores.test.ts`.
 
 ### Arquivo que SAI do `chat-media`: a fila (1097)
 
