@@ -3703,6 +3703,28 @@ describe('a RETOMADA (1056)', () => {
         expect(turno().status).toBe('respondeu')
         expect(retomadas()).toHaveLength(0)
       })
+
+      it('⚠️ o contato tem OUTRO card numa etapa do mesmo agente: mover o card da resposta para etapa sem agente não arma a retomada no card antigo (Codex, #484)', async () => {
+        // O card mais velho, numa etapa do MESMO agente e dentro do D27. Sem o
+        // card da resposta, `lerCardEAgente` cai nele — e a retomada armada ali
+        // passaria no vencimento (que compara com o card que ela mesma gravou).
+        banco.tabelas.pipeline_stages.push({ id: 'etapa-antiga', pipeline_id: FUNIL, position: 3 })
+        banco.tabelas.cb_ia_agente_etapas.push({ stage_id: 'etapa-antiga', account_id: CONTA, ia_agente_id: AGENTE, desde: haMs(DIA) })
+        banco.tabelas.deals.push({
+          id: 'deal-velho',
+          account_id: CONTA,
+          contact_id: 'contato-1',
+          status: 'open',
+          pipeline_id: FUNIL,
+          stage_id: 'etapa-antiga',
+          etapa_desde: haMs(30 * MIN),
+          created_at: haMs(2 * DIA),
+        })
+        respondeEMove('etapa-meio')
+        await executarTurno(TURNO)
+        expect(turno().status).toBe('respondeu')
+        expect(retomadas()).toHaveLength(0)
+      })
     })
 
     it('⚠️ um turno de RESPOSTA já reivindicado na conversa (o cliente escreveu enquanto a resposta saía): nada armado — revisão de 09/11/2026', async () => {

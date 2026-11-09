@@ -31,7 +31,11 @@ faz, em `.claude/rules/ia-agentes.md`. ⚠️ "Retomada" aqui é o FOLLOW-UP; o
   de etapa"), justo depois da proposta. `armarRetomada` relê
   (`lerQuemAtende` + `quemResponde`, a régua do vencimento): etapa do MESMO
   agente arma com ela; de outro agente ou sem agente NÃO arma — o novo dono
-  fala na próxima mensagem (decisão do operador, 09/11/2026).
+  fala na próxima mensagem (decisão do operador, 09/11/2026). Exige também o
+  MESMO card do turno (só a etapa muda): com dois cards do agente, o da
+  resposta movido para etapa sem dono faria a leitura cair no card ANTIGO, e
+  a retomada armada nele passaria no vencimento, que compara com o card que
+  ela mesma gravou (Codex, #484).
 - ⚠️ **Não arma com turno de RESPOSTA vivo na conversa** (`aguardando` ou
   `rodando`): o cliente escreveu enquanto a resposta saía, e o turno dele, já
   reivindicado, não ocupa a vaga do pendente (sem 23505). Armada, a retomada

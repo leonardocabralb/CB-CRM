@@ -2118,7 +2118,11 @@ async function armarRetomada(
       roboConsumiu: false,
       automacaoFalou: false,
     })
-    if (decisao.quem !== 'agente' || decisao.agenteId !== agente.id) return
+    // O MESMO card do turno, com a etapa livre para mudar: com dois cards do
+    // agente, o da resposta movido para etapa sem dono faria `lerCardEAgente`
+    // cair no card antigo — e a retomada armada nele passaria no vencimento,
+    // que compara com o card que ela mesma gravou (Codex, #484).
+    if (decisao.quem !== 'agente' || decisao.agenteId !== agente.id || decisao.dealId !== turno.deal_id) return
 
     const agora = Date.now()
     let bloqueios = SEM_BLOQUEIOS
