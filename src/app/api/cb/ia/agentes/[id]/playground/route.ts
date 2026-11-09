@@ -30,8 +30,10 @@ import { recusa, respostaDoErro } from '@/lib/ia-agentes/resposta'
 import { tempoEmIngles } from '@/lib/ia-agentes/retomada'
 import { comNotaDaRetomada, lerRespostaDaRetomada } from '@/lib/ia-agentes/retomada-resposta'
 
-// O transcrito testado fica limitado, como a janela real do contexto.
-const MAX_TURNOS = 20
+// O transcrito testado fica limitado, como a janela real do contexto: o MESMO
+// número de `DEFAULT_CONTEXT_MESSAGE_LIMIT` (`src/lib/ai/defaults.ts`). Mudou
+// um, muda o outro.
+const MAX_TURNOS = 50
 
 type Contexto = { params: Promise<{ id: string }> }
 
