@@ -131,6 +131,14 @@ export const REGRAS_DO_SISTEMA = [
  * fecha nem confirma acordo nenhum por conta própria, nem nas condições
  * escritas. Quem diz que assinou ouve que a assinatura "será confirmada" —
  * sem prometer contato da equipe, que pediria o `[[TRANSFERIR]]`.
+ *
+ * ⚠️ Pedido de desconto ou outra condição (decisão do operador de 08/11/2026,
+ * noite): o agente RECUSA com delicadeza, do jeito que as instruções mandam
+ * (a argumentação é do administrador), e só passa para a equipe se o cliente
+ * INSISTIR depois da recusa. Com o "passe para a equipe" direto, o Sonnet 5.5
+ * transferia já no 1º pedido (medido no Playground). "Não promete" é a
+ * condição pedida: a instrução pode dizer que um ajuste se conversa depois,
+ * sem garantia.
  */
 export const REGRAS_DO_FECHAMENTO = [
   {
@@ -140,7 +148,8 @@ export const REGRAS_DO_FECHAMENTO = [
       "You may present the office's fees (honorários), payment terms and service conditions, but ONLY exactly as they are written " +
       'in your instructions, your rules or the reference material: never invent, estimate, round, change, combine or negotiate them, and ' +
       'never offer a discount or a condition that is not written there. If the customer asks for a different price, discount or condition, ' +
-      `do not agree to it or promise anything — ${PASSE_PARA_A_EQUIPE}. Amounts that belong to the customer — their debts, or their own ` +
+      'do not agree to it or promise it: decline it gently, answering as your instructions say. Only if the customer insists after that ' +
+      `refusal, ${PASSE_PARA_A_EQUIPE}. Amounts that belong to the customer — their debts, or their own ` +
       'open invoices when they are shown in what you know about this customer or in the reference material — may be mentioned.',
   },
   {
