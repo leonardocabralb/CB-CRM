@@ -1099,8 +1099,12 @@ function analiseNaReuniao(f: string): boolean {
   return NA_REUNIAO.test(f) && ANALISE.test(f)
 }
 
-/** A conjunção coordenativa que abre outra oração (sobre o texto sem acento): "e", "mas", "and", "but". */
-const ANTES_DA_COORDENACAO = /\s(?:e|mas|porem|and|but)\s/
+/**
+ * As conjunções coordenativas que abrem outra oração: "e", "mas", "and", "but".
+ * ⚠️ Conferidas na palavra COM acento (Codex, #477): sem acento, o verbo "é" vira
+ * "e", e "Não é garantido que nossa equipe vai…" perderia a negação.
+ */
+const CONJUNCOES_DA_COORDENACAO: ReadonlySet<string> = new Set(['e', 'mas', 'porém', 'porem', 'and', 'but'])
 
 /**
  * A resposta PROMETE que uma pessoa da equipe vai assumir ou procurar o
@@ -1129,8 +1133,16 @@ export function equipePrometida(texto: string): boolean {
       // será confirmada E nossa equipe vai entrar em contato" promete (revisão
       // fria de 09/11/2026 — o "será" da oração anterior calava a trava). A
       // condição continua olhando a frase inteira ("se preferir, …").
-      const daOracao = antes.split(ANTES_DA_COORDENACAO).pop() ?? antes
-      if (naoAfirma(daOracao.split(/\s+/).map(palavraNormalizada).filter(Boolean).slice(-4))) continue
+      // `semAcento` não muda os espaços: as palavras de `antes` são as primeiras
+      // da frase original, onde o "é" ainda tem acento.
+      const palavrasAntes = antes.split(/\s+/).filter(Boolean)
+      const originais = frase.trim().split(/\s+/).filter(Boolean).slice(0, palavrasAntes.length)
+      let corte = 0
+      originais.forEach((w, i) => {
+        if (CONJUNCOES_DA_COORDENACAO.has(w.toLowerCase().replace(/[^\p{L}]/gu, ''))) corte = i + 1
+      })
+      const daOracao = palavrasAntes.slice(corte)
+      if (naoAfirma(daOracao.map(palavraNormalizada).filter(Boolean).slice(-4))) continue
       if (haCondicao(antes)) continue
       return true
     }

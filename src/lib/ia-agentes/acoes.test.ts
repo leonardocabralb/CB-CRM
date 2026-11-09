@@ -347,6 +347,18 @@ describe('a EQUIPE PROMETIDA sem o [[TRANSFERIR]] (27/09)', () => {
     }
   })
 
+  it('⚠️ o verbo "é" não é a conjunção "e": a negação antes dele vale (Codex, #477)', () => {
+    for (const t of [
+      'Não é garantido que nossa equipe vai entrar em contato.',
+      'Não é verdade que nossa equipe vai te ligar.',
+      'NÃO É garantido que nossa equipe vai entrar em contato.',
+    ]) {
+      expect(equipePrometida(t), t).toBe(false)
+    }
+    // A conjunção de verdade continua cortando a oração.
+    expect(equipePrometida('Não é preciso esperar e nossa equipe vai te ligar.')).toBe(true)
+  })
+
   it('as outras formas da promessa, em português e em inglês', () => {
     for (const t of [
       'Vou passar você para a nossa equipe.',
