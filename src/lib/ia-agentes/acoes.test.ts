@@ -448,6 +448,9 @@ describe('a EQUIPE PROMETIDA sem o [[TRANSFERIR]] (27/09)', () => {
       'O advogado vai analisar tudo antes da reunião. Ele já entrou em contato ontem.',
       'Um especialista vai analisar o seu caso na reunião. Na reunião, ele te explicará as opções.',
       'O advogado vai analisar tudo antes da reunião. Durante a reunião, ele vai te explicar os caminhos.',
+      // A análise NEGADA ou condicional não cala nada, então não abre a continuação (Codex, #480).
+      'Não vou pedir para o advogado analisar tudo antes da reunião. Ele atende apenas presencialmente.',
+      'Se preferir, o advogado vai analisar tudo antes da reunião. Ele atende de segunda a sexta.',
     ]) {
       expect(equipePrometida(t), t).toBe(false)
     }
@@ -488,6 +491,11 @@ describe('a EQUIPE PROMETIDA sem o [[TRANSFERIR]] (27/09)', () => {
       'O advogado vai analisar tudo antes da reunião.\n\nA advogada te chama amanhã para confirmar.',
       'O advogado vai analisar tudo antes da reunião. Antes disso, ele te liga para confirmar.',
       'A lawyer will review everything before the meeting. Then she will call you.',
+      // "Na reunião" DEPOIS da ação fala de outra coisa (Codex, #480).
+      'O advogado vai analisar tudo antes da reunião. Depois ele te liga para confirmar os documentos que serão usados na reunião.',
+      // "Na reunião" e a negação de OUTRA oração não calam a ação.
+      'O advogado vai analisar tudo antes da reunião. Na reunião vemos o resto, mas ele te liga amanhã.',
+      'O advogado vai analisar tudo antes da reunião. Ele não decide sozinho, mas te liga amanhã.',
       // Sem sujeito (o português o omite): o verbo de fala depois de "te/lhe".
       'O advogado vai analisar tudo antes da reunião. Depois te retorna por aqui ainda hoje.',
       'O advogado vai analisar tudo antes da reunião. Em seguida vai te ligar.',

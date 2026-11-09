@@ -1192,12 +1192,26 @@ const FALA_SEM_SUJEITO = new RegExp(
  * vista.
  */
 function continuaComContato(f: string): boolean {
-  if (PERGUNTA.test(f) || NA_REUNIAO.test(f)) return false
+  if (PERGUNTA.test(f)) return false
   for (const m of f.matchAll(EQUIPE_NA_FRASE.test(f) ? ACOES_DE_FALA : FALA_SEM_SUJEITO)) {
     const antes = f.slice(0, m.index)
-    if (!NEGACAO.test(antes) && !/n't\b/.test(antes) && !haCondicao(antes)) return true
+    // "Na reunião" e a negação contam só ANTES da ação e na oração dela:
+    // depois, falam de outra coisa ("te liga para confirmar os documentos
+    // usados na reunião"; Codex, #480), e noutra oração também ("na reunião
+    // vemos tudo, mas ele te liga amanhã"). A condição olha a frase inteira,
+    // como na promessa.
+    const daOracao = antes.slice(fimDaUltimaCoordenacao(antes))
+    if (NA_REUNIAO.test(daOracao)) continue
+    if (!NEGACAO.test(daOracao) && !/n't\b/.test(daOracao) && !haCondicao(antes)) return true
   }
   return false
+}
+
+/** Onde começa a última oração coordenada ("e", "mas", "porém", "and", "but"): 0 sem nenhuma. */
+function fimDaUltimaCoordenacao(antes: string): number {
+  let fim = 0
+  for (const m of antes.matchAll(/(?:^|[^\p{L}])(?:e|mas|porem|and|but)(?![\p{L}])/gu)) fim = (m.index ?? 0) + m[0].length
+  return fim
 }
 
 /**
@@ -1206,6 +1220,31 @@ function continuaComContato(f: string): boolean {
  * "e", e "Não é garantido que nossa equipe vai…" perderia a negação.
  */
 const CONJUNCOES_DA_COORDENACAO: ReadonlySet<string> = new Set(['e', 'mas', 'porém', 'porem', 'and', 'but'])
+
+/**
+ * A promessa casa a frase (`f`, sem acento) e AFIRMA: sem negação nas quatro
+ * palavras antes, na oração dela, e sem condição antes na frase.
+ */
+function promessaAfirmada(promessa: RegExp, frase: string, f: string): boolean {
+  const m = promessa.exec(f)
+  if (!m) return false
+  const antes = f.slice(0, m.index)
+  // A negação e o futuro contam só na ORAÇÃO da promessa: "sua assinatura
+  // será confirmada E nossa equipe vai entrar em contato" promete (revisão
+  // fria de 09/11/2026 — o "será" da oração anterior calava a trava). A
+  // condição continua olhando a frase inteira ("se preferir, …").
+  // `semAcento` não muda os espaços: as palavras de `antes` são as primeiras
+  // da frase original, onde o "é" ainda tem acento.
+  const palavrasAntes = antes.split(/\s+/).filter(Boolean)
+  const originais = frase.trim().split(/\s+/).filter(Boolean).slice(0, palavrasAntes.length)
+  let corte = 0
+  originais.forEach((w, i) => {
+    if (CONJUNCOES_DA_COORDENACAO.has(w.toLowerCase().replace(/[^\p{L}]/gu, ''))) corte = i + 1
+  })
+  const daOracao = palavrasAntes.slice(corte)
+  if (naoAfirma(daOracao.map(palavraNormalizada).filter(Boolean).slice(-4))) return false
+  return !haCondicao(antes)
+}
 
 /**
  * A resposta PROMETE que uma pessoa da equipe vai assumir ou procurar o
@@ -1231,35 +1270,16 @@ export function equipePrometida(texto: string): boolean {
   // nas OUTRAS frases decide (`continuaComContato`); a própria já passou pela
   // guarda `CONTATO`. A análise NA reunião (a exceção de 27/09) não olha as
   // outras frases, como sempre.
+  // Só a promessa que AFIRMA (passou pela negação e pela condição) é calada:
+  // "Não vou pedir para o advogado analisar…" não abre a continuação (Codex, #480).
   const caladas = new Set<number>()
   for (const [i, { frase, f }] of frases.entries()) {
     if (!f || PERGUNTA.test(f)) continue
-    const naReuniao = analiseNaReuniao(f)
-    const antesDaReuniao = !naReuniao && analiseAntesDaReuniao(f)
-    if (antesDaReuniao && PROMESSAS_DA_EQUIPE.some((p) => p.test(f))) caladas.add(i)
-    const promessas =
-      naReuniao || antesDaReuniao ? PASSAGENS_PARA_A_EQUIPE : [...PASSAGENS_PARA_A_EQUIPE, ...PROMESSAS_DA_EQUIPE]
-    for (const promessa of promessas) {
-      const m = promessa.exec(f)
-      if (!m) continue
-      const antes = f.slice(0, m.index)
-      // A negação e o futuro contam só na ORAÇÃO da promessa: "sua assinatura
-      // será confirmada E nossa equipe vai entrar em contato" promete (revisão
-      // fria de 09/11/2026 — o "será" da oração anterior calava a trava). A
-      // condição continua olhando a frase inteira ("se preferir, …").
-      // `semAcento` não muda os espaços: as palavras de `antes` são as primeiras
-      // da frase original, onde o "é" ainda tem acento.
-      const palavrasAntes = antes.split(/\s+/).filter(Boolean)
-      const originais = frase.trim().split(/\s+/).filter(Boolean).slice(0, palavrasAntes.length)
-      let corte = 0
-      originais.forEach((w, i) => {
-        if (CONJUNCOES_DA_COORDENACAO.has(w.toLowerCase().replace(/[^\p{L}]/gu, ''))) corte = i + 1
-      })
-      const daOracao = palavrasAntes.slice(corte)
-      if (naoAfirma(daOracao.map(palavraNormalizada).filter(Boolean).slice(-4))) continue
-      if (haCondicao(antes)) continue
-      return true
-    }
+    if (PASSAGENS_PARA_A_EQUIPE.some((p) => promessaAfirmada(p, frase, f))) return true
+    if (!PROMESSAS_DA_EQUIPE.some((p) => promessaAfirmada(p, frase, f))) continue
+    if (analiseNaReuniao(f)) continue
+    if (!analiseAntesDaReuniao(f)) return true
+    caladas.add(i)
   }
   return caladas.size > 0 && frases.some(({ f }, i) => !caladas.has(i) && continuaComContato(f))
 }
