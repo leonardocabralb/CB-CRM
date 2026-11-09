@@ -438,6 +438,10 @@ describe('a EQUIPE PROMETIDA sem o [[TRANSFERIR]] (27/09)', () => {
       'O advogado vai analisar a conversa e os documentos antes da reunião.',
       'A lawyer will review the documents you presented before the meeting.',
       'O advogado vai analisar tudo o que você mandou antes da reunião.',
+      // Quem ENVIA é o cliente: não é entrega da equipe.
+      'O advogado vai analisar os documentos que você enviar antes da reunião.',
+      'O advogado vai analisar tudo o que você me mandar antes da reunião.',
+      'A lawyer will review the documents you send before the meeting.',
       // A frase seguinte sem a equipe, com negação ou pergunta não continua a promessa.
       'O advogado vai analisar tudo antes da reunião. Ele não vai te ligar antes disso, fique tranquilo.',
       'O advogado vai analisar tudo antes da reunião. Quer que ele te mande algo antes?',
@@ -494,6 +498,11 @@ describe('a EQUIPE PROMETIDA sem o [[TRANSFERIR]] (27/09)', () => {
       // O NOME "análise/revisão" não é a ação de analisar: é entrega (Codex, #480).
       'Vou pedir para o advogado enviar a análise por aqui antes da reunião.',
       'Vou pedir para a equipe mandar a revisão do contrato antes da reunião.',
+      // A análise com ENTREGA prometida ao cliente (Codex, #480).
+      'O advogado vai analisar tudo antes da reunião e enviar o parecer por aqui ainda hoje.',
+      'Vou pedir para o advogado analisar e mandar um resumo antes da reunião.',
+      'O advogado vai analisar tudo antes da reunião. Depois ele envia o parecer por aqui.',
+      'A lawyer will review everything and send the summary before the meeting.',
       // "Na reunião" DEPOIS da ação fala de outra coisa (Codex, #480).
       'O advogado vai analisar tudo antes da reunião. Depois ele te liga para confirmar os documentos que serão usados na reunião.',
       // "Na reunião" e a negação de OUTRA oração não calam a ação.

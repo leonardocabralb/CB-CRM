@@ -1143,7 +1143,11 @@ const ACAO_DE_FALA =
   `|convers(?:ar|ara|arao|aria|ando)|${FALA_ER}${FORMAS_ER}|assum${FORMAS_IR}` +
   `|entr${FORMAS_AR}\\s+em\\s+contato|(?:fazer|faz|fazem|fara|farao|faria)\\s+(?:o\\s+)?contato` +
   '|(?:dar|da|dao|dara|darao|daria)\\s+(?:um\\s+|o\\s+)?retorno' +
-  `|tir${FORMAS_AR}\\s+(?:\\p{L}+\\s+){0,3}duvidas?|(?:mand|envi)${FORMAS_AR}\\s+(?:\\p{L}+\\s+){0,2}mensage\\p{L}*` +
+  `|tir${FORMAS_AR}\\s+(?:\\p{L}+\\s+){0,3}duvidas?` +
+  // A ENTREGA ao cliente ("enviar o parecer por aqui", "mandar um resumo";
+  // Codex, #480), menos quando quem envia é ele ("os documentos que você enviar").
+  `|(?<!(?:voce|vc|tu)\\s(?:me\\s|nos\\s)?)(?:envi|mand|encaminh|compartilh|entreg)${FORMAS_AR}` +
+  '|(?<!you\\s)(?:send|sends|sending|share|shares|sharing|forward|forwards|forwarding|deliver|delivers|delivering)' +
   '|(?:contact|call|phone|talk|speak|explain|present|respond)(?:s|ing)?|(?:text|message)(?:s|ing)?\\s+you' +
   '|(?:reach|reaches|reaching)\\s+out|(?:follow|follows|following)\\s+up|(?:get|gets|getting)\\s+back' +
   '|(?:take|takes|taking)\\s+over|(?:walk|walks|walking)\\s+you\\s+through|in\\s+touch'
