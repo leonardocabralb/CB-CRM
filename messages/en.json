@@ -6291,6 +6291,7 @@
       "tetoInvalido": "Use a number from 1 to 100.",
       "transferirPara": "Hand over to",
       "fila": "Unassigned queue (anyone can take it)",
+      "transferirParaDica": "When the agent hands the conversation over to the team, the AI stops replying in it, the conversation becomes pending and gets a note with the reason.",
       "membroSuspenso": "{name} (suspended)",
       "foraDaEquipe": "(this person left the team)",
       "foraDaEquipeDica": "The person who received the transfers left the team. Choose someone else, or the unassigned queue.",

@@ -6284,6 +6284,7 @@
       "tetoInvalido": "Use um número de 1 a 100.",
       "transferirPara": "Transferir para",
       "fila": "Fila sem responsável (qualquer pessoa pode assumir)",
+      "transferirParaDica": "Quando o agente passa a conversa para a equipe, a IA para de responder nela, a conversa fica pendente e ganha uma anotação com o motivo.",
       "membroSuspenso": "{name} (suspenso)",
       "foraDaEquipe": "(a pessoa saiu da equipe)",
       "foraDaEquipeDica": "Quem recebia as transferências saiu da equipe. Escolha outra pessoa, ou a fila sem responsável.",

@@ -317,9 +317,15 @@ async function marcarUltimoAgente(db: SupabaseClient, turno: LinhaDoTurno, agent
 export type ResultadoDaTransferencia = 'transferiu' | 'nada_mudou' | 'falhou'
 
 /**
- * Pausa a IA na conversa (`'transferencia'`), atribui o destino do agente
- * quando ninguém é responsável, e deixa uma anotação interna de verdade
- * (autor sem usuário, nome congelado "IA · <agente>").
+ * Pausa a IA na conversa (`'transferencia'`), deixa a conversa PENDENTE,
+ * atribui o destino do agente quando ninguém é responsável, e deixa uma
+ * anotação interna de verdade (autor sem usuário, nome congelado
+ * "IA · <agente>").
+ *
+ * Pendente como na passagem do robô (`flows/engine.ts`, ação `handoff`):
+ * alguém da equipe precisa agir. Pedido do operador (09/11/2026). A conversa
+ * pendente segue na caixa (o filtro padrão mostra aberta e pendente), e a IA
+ * só deixa de responder a conversa ENCERRADA: "Retomar IA" funciona igual.
  *
  * ⚠️ Só se a conversa ainda NÃO está pausada (nem encerrada): o advogado que
  * responde pelo celular enquanto o modelo pensa já pausou por `'gente'`, e a
@@ -343,14 +349,23 @@ export async function transferirParaGente(
 ): Promise<ResultadoDaTransferencia> {
   const agora = new Date().toISOString()
   try {
-    const { data: pausadas, error } = await db
-      .from('conversations')
-      .update({ ai_autoreply_disabled: true, ia_pausada_por: 'transferencia', ia_pausada_em: agora })
-      .eq('id', args.conversationId)
-      .eq('account_id', args.accountId)
-      .eq('ai_autoreply_disabled', false)
-      .neq('status', 'closed')
-      .select('id')
+    // A trilha da conversa (1083) registra a mudança para pendente em nome do agente.
+    const { data: pausadas, error } = await marcarOrigem(
+      db
+        .from('conversations')
+        .update({
+          ai_autoreply_disabled: true,
+          ia_pausada_por: 'transferencia',
+          ia_pausada_em: agora,
+          status: 'pending',
+        })
+        .eq('id', args.conversationId)
+        .eq('account_id', args.accountId)
+        .eq('ai_autoreply_disabled', false)
+        .neq('status', 'closed')
+        .select('id'),
+      { via: 'agente', ref: args.agenteId ?? null },
+    )
     if (error) {
       console.error('[ia-agentes] pausar na transferência falhou:', error.message)
       return 'falhou'
