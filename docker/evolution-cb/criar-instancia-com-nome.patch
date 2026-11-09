@@ -1,0 +1,26 @@
+diff --git a/src/api/routes/instance.router.ts b/src/api/routes/instance.router.ts
+index 3559893..f3e6626 100644
+--- a/src/api/routes/instance.router.ts
++++ b/src/api/routes/instance.router.ts
+@@ -19,7 +19,20 @@ export class InstanceRouter extends RouterBroker {
+           request: req,
+           schema: instanceSchema,
+           ClassRef: InstanceDto,
+-          execute: (instance) => instanceController.createInstance(instance),
++          // CB: o create não tem `:instanceName` na URL, então o nome só existe no
++          // CORPO — e o `sanitizeUntrustedInput` do commit 7a55a2bf (#2549) o tira
++          // de lá. Sem nome, o `saveInstance` falha
++          // ("Argument `name` is missing") e NENHUMA instância nova nasce.
++          // O nome vem do `data` (o corpo validado pelo `instanceSchema`), só
++          // NESTA rota: o `originalUrl.includes('/instance/create')` do
++          // `dataValidate` casa também a query string de outras rotas, e afrouxá-lo
++          // reabriria o CVE. Aqui só chega a chave GLOBAL (`auth.guard`: sem
++          // `:instanceName` na rota, a chave de instância só passa no
++          // fetchInstances). O `instanceId` continua fora: o controller o gera.
++          execute: (instance, data) => {
++            instance.instanceName = data.instanceName;
++            return instanceController.createInstance(instance);
++          },
+         });
+ 
+         return res.status(HttpStatus.CREATED).json(response);

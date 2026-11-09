@@ -3,9 +3,10 @@ name: evolution-cb
 # Constrói a nossa imagem da Evolution 2.4 (develop) a partir de um commit
 # fixo do upstream, com os patches de docker/evolution-cb/ (a citação do
 # cliente, a foto de perfil que travava a fila de entrada, a sessão única com
-# a reconexão depois do logout e do 408, e o recibo de grupo com o código do
-# erro no webhook), o ack do <status> na Baileys (pelo patch-package do próprio
-# Dockerfile) e o prisma.config.ts dentro da imagem.
+# a reconexão depois do logout e do 408, o recibo de grupo com o código do
+# erro no webhook e o nome da instância no create), o ack do <status> na
+# Baileys (pelo patch-package do próprio Dockerfile) e o prisma.config.ts
+# dentro da imagem.
 # Ver docker/evolution-cb/README.md, docs/PLANO-baileys-7.md (P10, 5.10) e
 # docs/PLANO-recibos-de-grupo.md.
 
@@ -19,7 +20,7 @@ on:
       tag:
         description: 'Tag de saída'
         required: true
-        default: '2.4.0-e273b904-citacao-foto-sessao-status-recibo'
+        default: '2.4.0-e273b904-citacao-foto-sessao-status-recibo-criar'
 
 env:
   IMAGE: ghcr.io/leonardocabralb/evolution-api-cb
@@ -54,6 +55,8 @@ jobs:
           git apply ../docker/evolution-cb/sessao-unica-e-reconexao.patch
           git apply --check ../docker/evolution-cb/recibo-de-grupo.patch
           git apply ../docker/evolution-cb/recibo-de-grupo.patch
+          git apply --check ../docker/evolution-cb/criar-instancia-com-nome.patch
+          git apply ../docker/evolution-cb/criar-instancia-com-nome.patch
           test -f prisma.config.ts
           # builder: o arquivo entra junto com o resto do fonte
           sed -i 's#^COPY ./tsup.config.ts ./$#COPY ./tsup.config.ts ./\nCOPY ./prisma.config.ts ./#' Dockerfile
@@ -93,6 +96,13 @@ jobs:
           grep -qF 'reciboDoGrupo,' "$BAILEYS"
           grep -qF '? { ...message, messageStubParameters }' "$BAILEYS"
           ! grep -qF 'this.sendDataWebhook(Events.MESSAGES_UPDATE, message);' "$BAILEYS" || exit 1
+          # Criar instância: o nome sai do corpo validado SÓ na rota /create (o sanitize do
+          # dataValidate o descarta); a forma antiga, sem o nome, não pode sobrar, e o
+          # sanitize do abstract.router.ts fica intacto (afrouxá-lo reabriria o CVE #2435).
+          ROTA=src/api/routes/instance.router.ts
+          grep -qF 'instance.instanceName = data.instanceName;' "$ROTA"
+          ! grep -qF 'execute: (instance) => instanceController.createInstance(instance),' "$ROTA" || exit 1
+          grep -qF "const PROTECTED_INSTANCE_FIELDS = ['instanceName', 'instanceId'] as const;" src/api/abstract/abstract.router.ts
           # Ack do <status> (WhiskeySockets/Baileys#2858): o patch é da BAILEYS compilada, não do
           # fonte da Evolution. O Dockerfile do upstream copia patches/ antes do `npm ci` (cujo
           # postinstall roda o patch-package) e roda `npx patch-package` de novo; o nome do
