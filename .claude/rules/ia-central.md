@@ -48,7 +48,8 @@ Retenção"). Decisões do operador DC1–DC3 (26/10/2026). O motor do turno:
   Lixeira)", nunca "excluída": a ficha pode voltar.
 - ⚠️⚠️ **`cb_ia_turnos_conversa_apagada_trigger`** (BEFORE UPDATE OF
   `conversation_id`): a conversa vira nula com o turno vivo → `descartado`
-  (ou `incerto`, com `enviando_desde`: a resposta pode ter saído), erro
+  (ou `incerto`, com `enviando_desde`: a resposta pode ter saído; ou
+  `respondeu`, com `mensagem_enviada_id`: ela saiu — 1130), erro
   `conversa apagada`, `terminado_em`. Sem ele, dois pendentes órfãos colidem
   no índice `NULLS NOT DISTINCT` (1049) e o DELETE da conversa ABORTA
   (medido num Postgres descartável; a conferência da 1110 prova de novo ao

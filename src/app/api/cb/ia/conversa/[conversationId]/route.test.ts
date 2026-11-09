@@ -62,9 +62,9 @@ beforeEach(() => {
       ai_autoreply_disabled: false,
       ia_pausada_por: null,
     },
-    cb_channels: { kind: 'evolution' },
+    cb_channels: { id: 'canal-1', kind: 'evolution', display_phone: '+55 83 99999-0000' },
     deals: { id: 'd1', stage_id: 'e1', pipeline_id: 'f1', etapa_desde: '2026-09-25T12:00:00Z' },
-    cb_ia_agente_etapas: { ia_agente_id: 'ag-1', desde: '2026-09-21T12:00:00Z' },
+    cb_ia_agente_etapas: { stage_id: 'e1', ia_agente_id: 'ag-1', desde: '2026-09-21T12:00:00Z' },
     cb_ia_agentes: {
       id: 'ag-1',
       nome: 'Triagem',
@@ -96,10 +96,34 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
     expect(card.filtros).toContainEqual(['eq', 'contact_id', 'ct-1'])
     expect(card.filtros).toContainEqual(['eq', 'status', 'open'])
     expect(card.filtros).toContainEqual(['order', 'created_at', { ascending: false }])
+    // Desempate (revisão de 09/11/2026): dois cards da mesma transação.
+    expect(card.filtros).toContainEqual(['order', 'id', { ascending: false }])
     // `messages` não tem conta: é lida pela conversa, já conferida na conta.
     for (const c of consultas.filter((x) => x.tabela !== 'messages')) {
       expect(c.filtros).toContainEqual(['eq', 'account_id', 'conta-1'])
     }
+  })
+
+  it('⚠️ cards em dois funis: decide o mais recente cujo agente atende ESTA conexão (decisão do operador, 09/11/2026)', async () => {
+    // O card NOVO (Trabalhista) numa etapa sem agente; o antigo (Bancário) na
+    // etapa do agente desta conexão. Antes, o novo calava o agente do Bancário.
+    banco.deals = [
+      { id: 'd-novo', stage_id: 'e-trab', pipeline_id: 'f-trab', etapa_desde: '2026-09-27T12:00:00Z' },
+      { id: 'd1', stage_id: 'e1', pipeline_id: 'f1', etapa_desde: '2026-09-25T12:00:00Z' },
+    ]
+    expect(await (await chamar()).json()).toMatchObject({ agente: { id: 'ag-1', nome: 'Triagem' }, motivo: null })
+    // Sem agente que atenda a conexão em nenhum card: o mais recente diz por que ninguém atende.
+    banco.cb_ia_agentes = { ...(banco.cb_ia_agentes as object), conexoes: ['canal-9'] }
+    expect(await (await chamar()).json()).toMatchObject({ agente: null, motivo: 'etapa_sem_agente' })
+  })
+
+  it('o "cliente" que é o número de OUTRA conexão da conta: ninguém, sem nem procurar card', async () => {
+    banco.contacts = { phone: '5583999990000' }
+    expect(await (await chamar()).json()).toMatchObject({ agente: null, motivo: 'fora_do_alcance', naoAtende: null })
+    expect(consultas.some((c) => c.tabela === 'deals')).toBe(false)
+    // Outro número: segue como sempre.
+    banco.contacts = { phone: '5583988887777' }
+    expect(await (await chamar()).json()).toMatchObject({ agente: { id: 'ag-1', nome: 'Triagem' } })
   })
 
   it('⚠️ D27: card que já estava na etapa antes de ela ser marcada — ninguém', async () => {
@@ -113,7 +137,7 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
     banco.deals = { id: 'd1', stage_id: 'e1', pipeline_id: 'f1', etapa_desde: '2026-09-25T12:00:00Z' }
     banco.cb_ia_agente_etapas = null
     expect(await (await chamar()).json()).toMatchObject({ agente: null, motivo: 'etapa_sem_agente' })
-    banco.cb_ia_agente_etapas = { ia_agente_id: 'ag-1', desde: '2026-09-21T12:00:00Z' }
+    banco.cb_ia_agente_etapas = { stage_id: 'e1', ia_agente_id: 'ag-1', desde: '2026-09-21T12:00:00Z' }
     banco.cb_ia_agentes = { ...(banco.cb_ia_agentes as object), ativo: false }
     expect(await (await chamar()).json()).toMatchObject({ agente: null, motivo: 'agente_desligado' })
   })
@@ -172,7 +196,7 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
     expect(await (await chamar()).json()).toMatchObject({ agente: null, motivo: 'fora_do_alcance' })
     expect(consultas.some((c) => c.tabela === 'deals')).toBe(false)
     banco.conversations = { ...(banco.conversations as object), group_id: null, contact_id: 'ct-1' }
-    banco.cb_channels = { kind: 'instagram' }
+    banco.cb_channels = { id: 'canal-1', kind: 'instagram' }
     consultas.length = 0
     expect(await (await chamar()).json()).toMatchObject({ agente: null, motivo: 'fora_do_alcance' })
     expect(consultas.some((c) => c.tabela === 'deals')).toBe(false)
@@ -221,7 +245,7 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
       banco.deals = null
       expect((await (await chamar()).json()).naoAtende).toBeNull()
       banco.deals = { id: 'd1', stage_id: 'e1', pipeline_id: 'f1', etapa_desde: '2026-09-01T00:00:00Z' }
-      banco.cb_ia_agente_etapas = { ia_agente_id: 'ag-1', desde: '2026-09-21T12:00:00Z' }
+      banco.cb_ia_agente_etapas = { stage_id: 'e1', ia_agente_id: 'ag-1', desde: '2026-09-21T12:00:00Z' }
       // Card antigo, mas a conversa está encerrada: o motor para antes (encerrada).
       banco.conversations = { ...(banco.conversations as object), status: 'closed' }
       expect(await (await chamar()).json()).toMatchObject({ motivo: 'encerrada', naoAtende: null })

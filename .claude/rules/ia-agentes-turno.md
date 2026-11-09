@@ -117,6 +117,29 @@ das ações está em `ia.md` e `ia-agentes.md`.
   `mensagem_enviada_id`; o que respondeu grava `respondeu` com as ações e NÃO
   arma retomada (`armarRetomada` relê a conversa). Pino
   `encerrar-nao-apaga-turno-1109.test.ts`.
+- ⚠️ Desde a 1130, nem o que está NO MEIO do envio (`enviando_desde`, carimbado
+  depois da reserva): ele termina sozinho e grava o desfecho verdadeiro
+  (`respondeu`, `falhou` ou `incerto`) — "descartado" mentia sobre uma
+  resposta que estava saindo. E a conversa APAGADA com o turno vivo que já
+  tem `mensagem_enviada_id` é `respondeu`, não `incerto` (`ia-central.md`).
+
+### Revisão de 09/11/2026 (antes de ligar os agentes)
+
+- ⚠️⚠️ **A conversa ao modelo termina no CLIENTE** (`terminarNoCliente`,
+  `contexto.ts`): ela segue o `created_at` (o relógio do WhatsApp), e a
+  mensagem que o cliente escreveu enquanto o agente respondia — e chegou
+  depois da reserva — fica ANTES da resposta: o turno dela mandava a conversa
+  terminando no modelo (o Gemini recusa, cliente sem resposta; a Anthropic
+  CONTINUA o texto anterior). Medido: ~1% das mensagens de cliente. Ganha a
+  nota `NOTA_DA_RESPOSTA_CRUZADA` no papel de usuário — SÓ no que vai ao
+  provedor: a busca da base, a origem do nome e as travas leem a conversa crua.
+- **Áudio `transcrevendo` espera até `TETO_DA_ESPERA_DAS_MIDIAS_MS`** (3 min do
+  gatilho, ou da abertura): o cadeado de um processo que morreu só é recolhido
+  em 10 min, e o turno reagendava a cada 10 s nesse tempo. Depois, gente ouve
+  (`audio`).
+- **A chave da OpenAI "só da base" (`soDaBase`, 1047) é `falhou`** no turno e
+  na retomada, como no Playground (`provedor_so_da_base`) — antes ela ia ao
+  chat e falhava como chave recusada.
 
 ### A transferência deixa a conversa PENDENTE
 

@@ -133,6 +133,30 @@ export function montarConversa(linhas: MensagemDoContexto[], semLeitor?: Readonl
 }
 
 /**
+ * Fecha com o CLIENTE a conversa que termina na fala da empresa (revisão de
+ * 09/11/2026). A conversa segue a ordem em que as mensagens aconteceram
+ * (`created_at`, o relógio do WhatsApp): a mensagem que o cliente escreveu
+ * enquanto o agente respondia — e que chegou ao CRM depois da reserva — fica
+ * ANTES da resposta, e o turno dela mandaria ao modelo uma conversa terminando
+ * no turno do modelo. O Gemini a recusa ("Requests ending with a model turn
+ * are not supported", medido em 27/09/2026: o cliente ficava sem resposta) e
+ * a Anthropic CONTINUA o texto anterior do agente, ignorando a pergunta nova.
+ * Medido: ~1% das mensagens de cliente chegam assim. A nota, no papel de
+ * usuário, diz que não é o cliente — a forma de `comNotaDaRetomada`. Conversa
+ * sem nenhuma fala do cliente fica como está (`comecarNoCliente`, no
+ * adaptador, cuida dela).
+ */
+export const NOTA_DA_RESPOSTA_CRUZADA =
+  "[System note, not a message from the customer: the business's last message(s) above crossed with the customer's " +
+  "latest message — the customer wrote before seeing them. Reply to what the customer still needs, without repeating what the business already said.]"
+
+export function terminarNoCliente(mensagens: readonly ChatMessage[]): ChatMessage[] {
+  const ultima = mensagens[mensagens.length - 1]
+  if (!ultima || ultima.role === 'user' || !mensagens.some((m) => m.role === 'user')) return [...mensagens]
+  return [...mensagens, { role: 'user', content: NOTA_DA_RESPOSTA_CRUZADA }]
+}
+
+/**
  * As últimas N mensagens DESTA conexão, sem as apagadas, na ordem em que
  * aconteceram. Lança em erro de leitura (o turno registra `falhou`).
  */

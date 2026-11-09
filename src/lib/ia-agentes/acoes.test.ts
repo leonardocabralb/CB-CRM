@@ -80,12 +80,90 @@ describe('lerAcoes', () => {
   })
 
   it('⚠️ o marcador NUNCA fica no texto: malformado, desconhecido, PASSAR, HANDOFF e o aberto no fim', () => {
-    const r = lerAcoes('Oi!\n[[MOVER:dois]]\n[[FOO:1]]\n[[PASSAR:1]]\n[[HANDOFF]]\n[[qualquer coisa\nem duas linhas]]\n[[CAMPO:1=cortad')
+    const r = lerAcoes('Oi!\n[[MOVER:n]]\n[[FOO:1]]\n[[PASSAR:1]]\n[[HANDOFF]]\n[[qualquer coisa\nem duas linhas]]\n[[CAMPO:1=cortad')
     expect(r.texto).toBe('Oi!')
     expect(r.texto).not.toContain('[[')
     expect(r.pedidas).toEqual([])
-    // Só o marcador de AÇÃO com forma errada vira recusa.
-    expect(r.recusadas).toEqual([{ tipo: 'mover_etapa', n: null, motivo: 'malformada' }])
+    // Só o marcador de AÇÃO com forma errada vira recusa — com o miolo cru, para medir a forma.
+    expect(r.recusadas).toEqual([{ tipo: 'mover_etapa', n: null, motivo: 'malformada', bruto: 'MOVER:n' }])
+  })
+
+  describe('as formas que o modelo erra (revisão de 09/11/2026: o Haiku 5.5 errava ~10% no Bancário)', () => {
+    it.each([
+      ['[[CAMPO 4=Sicredi]]', { n: 4, valor: 'Sicredi' }],
+      ['[[CAMPO=4=Sicredi]]', { n: 4, valor: 'Sicredi' }],
+      ['[[CAMPO#4=Sicredi]]', { n: 4, valor: 'Sicredi' }],
+      ['[[CAMPO:#4=Sicredi]]', { n: 4, valor: 'Sicredi' }],
+      ['[[CAMPO:4:Sicredi]]', { n: 4, valor: 'Sicredi' }],
+      ['[[CAMPO:4. Tipo de Débito=Sicredi]]', { n: 4, rotulo: 'Tipo de Débito', valor: 'Sicredi' }],
+      ['[[CAMPO:4 - Tipo de Débito=Sicredi]]', { n: 4, rotulo: 'Tipo de Débito', valor: 'Sicredi' }],
+      ['[[CAMPO:Tipo de Débito=Sicredi]]', { n: null, rotulo: 'Tipo de Débito', valor: 'Sicredi' }],
+      ['[CAMPO 4=Sicredi]', { n: 4, valor: 'Sicredi' }],
+      ['[CAMPO=4=Sicredi]', { n: 4, valor: 'Sicredi' }],
+    ])('%s é lido e SAI do texto', (marcador, esperado) => {
+      const r = lerAcoes(`Anotado.\n${marcador}`)
+      expect(r.texto).toBe('Anotado.')
+      expect(r.pedidas).toEqual([{ tipo: 'preencher_campo', ...esperado }])
+      expect(r.recusadas).toEqual([])
+    })
+
+    it('o `:` no lugar do `=` vale também para a tarefa, e o valor com `:` dentro fica inteiro', () => {
+      expect(lerAcoes('Ok [[TAREFA:1:Ligar às 15:00]]').pedidas).toEqual([{ tipo: 'criar_tarefa', n: 1, valor: 'Ligar às 15:00' }])
+      expect(lerAcoes('Ok [[CAMPO:2=Capital de giro: R$ 312.540,77]]').pedidas).toEqual([
+        { tipo: 'preencher_campo', n: 2, valor: 'Capital de giro: R$ 312.540,77' },
+      ])
+    })
+
+    it('o `n` LITERAL do molde, o número sem valor e o marcador sem número nem nome continuam malformados', () => {
+      const r = lerAcoes('Ok [[CAMPO:n=Sicredi]] [[CAMPO:4]] [[CAMPO:=x]] [[CAMPO 4 Sicredi]]')
+      expect(r.texto).toBe('Ok')
+      expect(r.pedidas).toEqual([])
+      expect(r.recusadas.map((x) => [x.n, x.motivo, x.bruto])).toEqual([
+        [null, 'malformada', 'CAMPO:n=Sicredi'],
+        [4, 'malformada', 'CAMPO:4'],
+        [null, 'malformada', 'CAMPO:=x'],
+        [4, 'malformada', 'CAMPO 4 Sicredi'],
+      ])
+    })
+
+    it('o nome sem separador nenhum: `[[ETIQUETAR VIP]]` e `[[CAMPO Tipo de Débito=x]]` são lidos; `[[TAREFA]]` é malformada (registrada, não some)', () => {
+      expect(lerAcoes('Ok [[ETIQUETAR VIP]]').pedidas).toEqual([{ tipo: 'etiquetar', n: null, rotulo: 'VIP' }])
+      expect(lerAcoes('Ok [[CAMPO Tipo de Débito=Sicredi]]').pedidas).toEqual([
+        { tipo: 'preencher_campo', n: null, rotulo: 'Tipo de Débito', valor: 'Sicredi' },
+      ])
+      const r = lerAcoes('Ok [[TAREFA]] [[MOVER]]')
+      expect(r.texto).toBe('Ok')
+      expect(r.recusadas.map((x) => [x.tipo, x.motivo, x.bruto])).toEqual([
+        ['criar_tarefa', 'malformada', 'TAREFA'],
+        ['mover_etapa', 'malformada', 'MOVER'],
+      ])
+    })
+
+    it.each(['[[PASSAR=2]]', '[[PASSAR 2]]', '[[ passar = 2 ]]', '[[HANDOFF: o cliente pediu]]', '[PASSAR=2]'])(
+      '⚠️ %s (passagem ou sentinela fora da forma) TRANSFERE e sai do texto — nunca "vou te passar" sem passagem',
+      (marcador) => {
+        const r = lerAcoes(`Vou te passar para a cobrança. ${marcador}`)
+        expect(r.texto).toBe('Vou te passar para a cobrança.')
+        expect(r.transferir).toBe(true)
+      },
+    )
+
+    it('a passagem NA forma continua sendo só passagem (quem decide é `lerPassagem`)', () => {
+      for (const t of ['[[PASSAR:2]]', '[[ passar : 2 ]]']) expect(lerAcoes(`Ok ${t}`).transferir, t).toBe(false)
+    })
+
+    it('⚠️ colchete simples SEM `=` depois do número continua texto ("[Campo 2 da ficha]")', () => {
+      const r = lerAcoes('Confira o [Campo 2 da ficha] e o [Mover 3 caixas].')
+      expect(r.texto).toBe('Confira o [Campo 2 da ficha] e o [Mover 3 caixas].')
+      expect(r.pedidas).toEqual([])
+    })
+
+    it('limite aceito: `[Mover 2]` (simples, sem separador) fica no texto; `[[MOVER 2]]` é lido', () => {
+      expect(lerAcoes('Ok [Mover 2]').texto).toBe('Ok [Mover 2]')
+      const r = lerAcoes('Ok [[MOVER 2]]')
+      expect(r.texto).toBe('Ok')
+      expect(r.pedidas).toEqual([{ tipo: 'mover_etapa', n: 2 }])
+    })
   })
 
   it('valor vazio, longo demais ou número zero: malformada', () => {
@@ -229,6 +307,91 @@ describe('resolverAcoes — default-deny', () => {
     const r = resolverAcoes([{ tipo: 'mover_etapa', n: 3 }], OPCOES)
     expect(r.aceitas).toEqual([])
     expect(r.recusadas).toEqual([{ tipo: 'mover_etapa', n: 3, motivo: 'fora_da_lista' }])
+  })
+
+  describe('o nome da opção junto do número, ou no lugar dele (revisão de 09/11/2026)', () => {
+    const CAMPOS: OpcoesDeAcao = {
+      ...OPCOES,
+      preencher_campo: [
+        { id: 'campo-banco', nome: 'Banco' },
+        { id: 'campo-divida', nome: 'Tamanho da dívida' },
+        { id: 'campo-tipo', nome: 'Tipo de Débito' },
+      ],
+    }
+
+    it('número e nome que apontam a MESMA opção: aceita (sem acento, sem caixa, com a descrição do formato)', () => {
+      const r = resolverAcoes(
+        [
+          { tipo: 'preencher_campo', n: 3, rotulo: 'tipo de debito', valor: 'Sicredi' },
+          { tipo: 'preencher_campo', n: 2, rotulo: 'Tamanho da dívida — a number', valor: '500000' },
+          { tipo: 'mover_etapa', n: 1, rotulo: 'Proposta' },
+        ],
+        CAMPOS,
+      )
+      expect(r.recusadas).toEqual([])
+      expect(r.aceitas.map((a) => a.id)).toEqual(['campo-tipo', 'campo-divida', 'etapa-a'])
+    })
+
+    it('⚠️ número e nome que DISCORDAM: recusada — nunca escolhe um dos dois', () => {
+      const r = resolverAcoes([{ tipo: 'preencher_campo', n: 1, rotulo: 'Tipo de Débito', valor: 'Sicredi' }], CAMPOS)
+      expect(r.aceitas).toEqual([])
+      expect(r.recusadas).toEqual([{ tipo: 'preencher_campo', n: 1, motivo: 'fora_da_lista' }])
+    })
+
+    it('só o nome: aceita quando casa com UMA opção; nenhuma ou parecida, recusada', () => {
+      const r = resolverAcoes(
+        [
+          { tipo: 'preencher_campo', n: null, rotulo: 'Tipo de Débito', valor: 'Sicredi' },
+          { tipo: 'preencher_campo', n: null, rotulo: 'Tipo', valor: 'x' },
+          { tipo: 'etiquetar', n: null, rotulo: 'vip' },
+        ],
+        CAMPOS,
+      )
+      expect(r.aceitas).toEqual([
+        { tipo: 'preencher_campo', id: 'campo-tipo', nome: 'Tipo de Débito', valor: 'Sicredi' },
+        { tipo: 'etiquetar', id: 'tag-vip', nome: 'VIP' },
+      ])
+      expect(r.recusadas).toEqual([{ tipo: 'preencher_campo', n: null, motivo: 'fora_da_lista' }])
+    })
+
+    it('só o nome, com DUAS opções de mesmo nome: recusada', () => {
+      const duplas: OpcoesDeAcao = {
+        mover_etapa: [
+          { id: 'e1', nome: 'Bancário · Proposta' },
+          { id: 'e2', nome: 'Trabalhista · Proposta' },
+        ],
+      }
+      const r = resolverAcoes([{ tipo: 'mover_etapa', n: null, rotulo: 'Proposta' }], duplas)
+      expect(r.aceitas).toEqual([])
+      expect(r.recusadas).toEqual([{ tipo: 'mover_etapa', n: null, motivo: 'fora_da_lista' }])
+      // Com o funil, é uma só.
+      expect(resolverAcoes([{ tipo: 'mover_etapa', n: null, rotulo: 'Trabalhista · Proposta' }], duplas).aceitas.map((a) => a.id)).toEqual(['e2'])
+    })
+
+    it('a reunião: o número com o horário do PEDIDO ("Mon 28/09 15:15") confere; outro horário recusa', () => {
+      const comReuniao: OpcoesDeAcao = {
+        marcar_reuniao: [
+          { id: '2026-09-28T18:15:00.000Z', nome: '28/09/2026 15:15', textoNoPedido: 'Mon 28/09 15:15' },
+          { id: '2026-09-29T13:00:00.000Z', nome: '29/09/2026 10:00', textoNoPedido: 'Tue 29/09 10:00' },
+        ],
+      }
+      expect(resolverAcoes([{ tipo: 'marcar_reuniao', n: 1, rotulo: 'Mon 28/09 15:15' }], comReuniao).aceitas.map((a) => a.id)).toEqual([
+        '2026-09-28T18:15:00.000Z',
+      ])
+      expect(resolverAcoes([{ tipo: 'marcar_reuniao', n: 1, rotulo: 'Tue 29/09 10:00' }], comReuniao).recusadas).toEqual([
+        { tipo: 'marcar_reuniao', n: 1, motivo: 'fora_da_lista' },
+      ])
+    })
+
+    it('a recusa malformada leva o miolo cru ao `detalhe` do registro (texto — a poda da 1110 o apaga)', () => {
+      expect(registroDaRecusa({ tipo: 'preencher_campo', n: null, motivo: 'malformada', bruto: 'CAMPO:n=Sicredi' })).toEqual({
+        tipo: 'preencher_campo',
+        alvo: { id: null, nome: '' },
+        ok: false,
+        erro: 'malformada',
+        detalhe: 'CAMPO:n=Sicredi',
+      })
+    })
   })
 
   it('tipo não liberado (ou sem item): recusada', () => {

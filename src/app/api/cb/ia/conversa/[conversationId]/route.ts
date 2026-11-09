@@ -5,9 +5,11 @@ import { getCurrentAccount, toErrorResponse } from '@/lib/auth/account'
 import { ehInstagram } from '@/lib/cb-channels/transporte'
 import {
   canalDaIaNaConversa,
+  ehNumeroDeConexao,
+  lerCardEAgente,
   MOTIVOS_DO_AGENTE_QUE_NAO_ATENDE,
   quemResponde,
-  type AgenteDaEtapa,
+  type AgenteDaEtapaComNome,
   type CardDoContato,
   type MotivoDoAgenteQueNaoAtende,
 } from '@/lib/ia-agentes/quem-responde'
@@ -16,25 +18,15 @@ type Contexto = { params: Promise<{ conversationId: string }> }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-type LinhaDoCard = { id: string; stage_id: string; pipeline_id: string; etapa_desde: string | null }
-type LinhaDaEtapa = { ia_agente_id: string; desde: string | null }
-type LinhaDoAgente = {
-  id: string
-  nome: string
-  ativo: boolean | null
-  arquivado_em: string | null
-  conexoes: unknown
-  ativado_em: string | null
-}
-
 /**
  * GET /api/cb/ia/conversa/[conversationId]  (qualquer membro)
  *
  * O que a faixa do fio precisa saber (D24–D27):
  * `{ agente: { id, nome } | null, pausada, pausadaPor, motivo, naoAtende }`.
- *   - `agente` — o agente da ETAPA do card aberto mais recente do contato que
- *     ATENDERIA esta conversa (ligado, com a conexão da conversa, e o card
- *     entrou na etapa depois — D27), MESMO com a IA pausada (a faixa diz "IA
+ *   - `agente` — o agente da ETAPA do card que decide (`lerCardEAgente`: o
+ *     aberto mais recente cujo agente atende esta conexão, senão o mais
+ *     recente) que ATENDERIA esta conversa (ligado, com a conexão da conversa,
+ *     e o card entrou na etapa depois — D27), MESMO com a IA pausada (a faixa diz "IA
  *     pausada" e oferece Retomar); nulo = ninguém.
  *   - `pausada`/`pausadaPor` — a pausa e o motivo (`gente`, `botao`,
  *     `transferencia`, `automacao`; nulo = pausa sem motivo).
@@ -93,63 +85,35 @@ export async function GET(_request: Request, { params }: Contexto) {
       return falhou('última mensagem', err instanceof Error ? err.message : String(err))
     }
 
-    let instagram = false
-    if (canalId) {
-      const { data, error } = await db
-        .from('cb_channels')
-        .select('kind')
-        .eq('id', canalId)
-        .eq('account_id', ctx.accountId)
-        .maybeSingle()
-      if (error) return falhou('conexão', error.message)
-      instagram = data ? ehInstagram(data as { kind: string }) : false
-    }
+    // As conexões da conta: o tipo da desta conversa e os números (o "cliente"
+    // que é outra conexão da conta não tem IA — `ehNumeroDeConexao`).
+    const { data: canais, error: erroCanais } = await db
+      .from('cb_channels')
+      .select('id, kind, display_phone')
+      .eq('account_id', ctx.accountId)
+    if (erroCanais) return falhou('conexão', erroCanais.message)
+    const conexoes = (canais ?? []) as Array<{ id: string; kind: string; display_phone?: unknown }>
+    const canal = canalId ? conexoes.find((c) => c.id === canalId) : undefined
+    const instagram = canal ? ehInstagram(canal) : false
 
-    // O card: o negócio ABERTO mais recente do contato; a etapa dele; o agente.
+    // O card e o agente: a MESMA escolha do motor (`lerCardEAgente`).
     let card: CardDoContato | null = null
-    let agente: (AgenteDaEtapa & { nome: string }) | null = null
+    let agente: AgenteDaEtapaComNome | null = null
+    let conexaoDaConta = false
     if (!ehGrupo && !instagram && conv.contact_id) {
-      const { data: deal, error: erroDeal } = await db
-        .from('deals')
-        .select('id, stage_id, pipeline_id, etapa_desde')
+      const { data: contato, error: erroContato } = await db
+        .from('contacts')
+        .select('phone')
         .eq('account_id', ctx.accountId)
-        .eq('contact_id', conv.contact_id)
-        .eq('status', 'open')
-        .order('created_at', { ascending: false })
-        .limit(1)
+        .eq('id', conv.contact_id)
         .maybeSingle()
-      if (erroDeal) return falhou('card', erroDeal.message)
-      const d = deal as LinhaDoCard | null
-      if (d) card = { id: d.id, stageId: d.stage_id, pipelineId: d.pipeline_id, etapaDesde: d.etapa_desde }
-    }
-    if (card) {
-      const { data: etapa, error: erroEtapa } = await db
-        .from('cb_ia_agente_etapas')
-        .select('ia_agente_id, desde')
-        .eq('account_id', ctx.accountId)
-        .eq('stage_id', card.stageId)
-        .maybeSingle()
-      if (erroEtapa) return falhou('etapa', erroEtapa.message)
-      const e = etapa as LinhaDaEtapa | null
-      if (e) {
-        const { data: ag, error: erroAgente } = await db
-          .from('cb_ia_agentes')
-          .select('id, nome, ativo, arquivado_em, conexoes, ativado_em')
-          .eq('account_id', ctx.accountId)
-          .eq('id', e.ia_agente_id)
-          .maybeSingle()
-        if (erroAgente) return falhou('agente', erroAgente.message)
-        const a = ag as LinhaDoAgente | null
-        if (a) {
-          agente = {
-            id: a.id,
-            nome: a.nome,
-            ativo: a.ativo === true,
-            arquivado: a.arquivado_em !== null,
-            conexoes: Array.isArray(a.conexoes) ? a.conexoes.filter((x): x is string => typeof x === 'string') : [],
-            ativadoEm: a.ativado_em,
-            desde: e.desde,
-          }
+      if (erroContato) return falhou('contato', erroContato.message)
+      conexaoDaConta = ehNumeroDeConexao((contato as { phone?: unknown } | null)?.phone, conexoes)
+      if (!conexaoDaConta) {
+        try {
+          ;({ card, agente } = await lerCardEAgente(db, { accountId: ctx.accountId, contactId: conv.contact_id, canalId }))
+        } catch (err) {
+          return falhou('card', err instanceof Error ? err.message : String(err))
         }
       }
     }
@@ -157,6 +121,7 @@ export async function GET(_request: Request, { params }: Contexto) {
     const decisao = quemResponde({
       ehGrupo,
       ehInstagram: instagram,
+      ehConexaoDaConta: conexaoDaConta,
       canalId,
       // Os fatos da MENSAGEM vão neutros (uma mensagem de texto que ninguém
       // consumiu), e a pausa também: ela sai à parte, em `pausada`.

@@ -151,7 +151,7 @@ import {
 import { type IaAgente, PRAZO_DA_GERACAO_MS } from './agente'
 import { lerAgendaDoAgente } from './agenda'
 import { consultaDaUltimaMensagem, PRAZO_DO_EMBEDDING_MS } from './conhecimento'
-import { lerConversaDaConexao } from './contexto'
+import { lerConversaDaConexao, terminarNoCliente } from './contexto'
 import {
   agendarDisparo,
   enfileirarTurno,
@@ -665,7 +665,18 @@ async function prepararAudios(
     // esperou a abertura do horário, a janela conta da abertura.
     const gravada = Date.parse((audio.gravada_em as string | null) ?? '')
     const idade = Number.isFinite(gravada) ? Date.now() - desdeAEspera(gravada, andamento) : Number.POSITIVE_INFINITY
-    if (r.status === 'transcrevendo' || idade < JANELA_DO_AUDIO_MS) return { status: 'reagendar' }
+    if (idade < JANELA_DO_AUDIO_MS) return { status: 'reagendar' }
+    // `transcrevendo` depois da janela: o cadeado de outra rodada — ou o de um
+    // processo que MORREU, que a transcrição só recolhe em 10 min (revisão de
+    // 09/11/2026: o turno reagendava a cada 10 s por todo esse tempo, com o
+    // cliente esperando). Espera até o teto das mídias, contado do GATILHO como
+    // em `prepararMidias` (o áudio do começo de uma rajada longa não transfere
+    // na 1ª rodada); depois, gente ouve.
+    const doGatilho = Date.parse(gatilho.gravada_em ?? '')
+    const esperaDoTurno = Number.isFinite(doGatilho)
+      ? Date.now() - desdeAEspera(doGatilho, andamento)
+      : Number.POSITIVE_INFINITY
+    if (r.status === 'transcrevendo' && esperaDoTurno < TETO_DA_ESPERA_DAS_MIDIAS_MS) return { status: 'reagendar' }
     return { status: 'transferiu', motivo: 'audio' }
   }
   return null
@@ -1148,6 +1159,9 @@ async function conduzir(
   try {
     const lida = await lerChave(turno.account_id, agente.provedor)
     if (lida.ilegivel) return { status: 'falhou', erro: 'a chave do provedor não decifra' }
+    // A chave da OpenAI que é SÓ da base de conhecimento (1047) não gera
+    // resposta: é falta de chave, como o Playground diz (`provedor_so_da_base`).
+    if (lida.soDaBase) return { status: 'falhou', erro: 'a chave da OpenAI é só da base de conhecimento' }
     apiKey = lida.chave
   } catch {
     return { status: 'falhou', erro: 'leitura da chave falhou' }
@@ -1268,7 +1282,11 @@ async function conduzir(
       config: configDoAgente(agente, apiKey),
       systemPrompt: pedido,
       systemPartes: partes,
-      messages: conversa,
+      // A mensagem do cliente que cruzou com a resposta anterior do agente
+      // deixaria a conversa terminando no modelo (`terminarNoCliente`). Só ao
+      // PROVEDOR: a busca da base, a origem do nome e as travas leem a conversa crua.
+      // A nota vai no FIM das mensagens: o pedaço fixo do cache (1129) não muda.
+      messages: terminarNoCliente(conversa),
       timeoutMs: restante,
       tetoMs: PRAZO_DA_GERACAO_MS,
     })
@@ -1890,6 +1908,9 @@ async function conduzirRetomada(
   try {
     const lida = await lerChave(turno.account_id, agente.provedor)
     if (lida.ilegivel) return { status: 'falhou', erro: 'a chave do provedor não decifra' }
+    // A chave da OpenAI que é SÓ da base de conhecimento (1047) não gera
+    // resposta: é falta de chave, como o Playground diz (`provedor_so_da_base`).
+    if (lida.soDaBase) return { status: 'falhou', erro: 'a chave da OpenAI é só da base de conhecimento' }
     apiKey = lida.chave
   } catch {
     return { status: 'falhou', erro: 'leitura da chave falhou' }
@@ -1958,6 +1979,16 @@ async function conduzirRetomada(
     handoff = r.handoff
     andamento.usage = r.usage
   } catch (err) {
+    // A falha PASSAGEIRA tenta UMA vez mais, como no turno de resposta (revisão
+    // de 09/11/2026): sem isto um 429 ou um 5xx acabava a série inteira — o
+    // `falhou` não arma a tentativa seguinte. A retomada não tem pressa.
+    if (falhaPassageira(err) && turno.erro !== ERRO_DA_REPETICAO) {
+      return {
+        status: 'reagendar',
+        executarApos: new Date(Date.now() + REPETIR_A_GERACAO_MS).toISOString(),
+        erro: ERRO_DA_REPETICAO,
+      }
+    }
     return {
       status: 'falhou',
       erro: err instanceof AiError ? mensagemSeguraDeAiError(err) : 'erro inesperado ao gerar',
@@ -2066,6 +2097,29 @@ async function armarRetomada(
     })
     if (motivoDaParada(depois, agente.id)) return
 
+    // O card de AGORA (revisão de 09/11/2026): a própria resposta pode ter
+    // MOVIDO o card (`mover_etapa`). Armada com a etapa do começo do turno, a
+    // retomada era descartada no vencimento ("o card mudou de etapa") —
+    // sempre, e justo depois da proposta. A etapa nova do MESMO agente arma
+    // com ela; etapa de outro agente ou sem agente não arma: o novo dono (o
+    // agente ou a automação da etapa) fala na próxima mensagem (decisão do
+    // operador, 09/11/2026). A mesma leitura do vencimento (`conferirRetomada`).
+    const leitura = await lerQuemAtende(db, {
+      accountId: turno.account_id,
+      conversationId: turno.conversation_id,
+      canalId: turno.canal_id,
+    })
+    if (!leitura) return
+    const decisao = quemResponde({
+      ...leitura,
+      canalId: turno.canal_id,
+      conteudo: CONTEUDO_DA_RETOMADA,
+      ehRespostaDeBotao: false,
+      roboConsumiu: false,
+      automacaoFalou: false,
+    })
+    if (decisao.quem !== 'agente' || decisao.agenteId !== agente.id) return
+
     const agora = Date.now()
     let bloqueios = SEM_BLOQUEIOS
     try {
@@ -2091,13 +2145,30 @@ async function armarRetomada(
     })
     if (proxima.tipo === 'parar') return
 
+    // Um turno de RESPOSTA vivo na conversa (revisão de 09/11/2026): o cliente
+    // escreveu enquanto esta resposta saía, e esse turno — já reivindicado, por
+    // isso o índice do pendente não acusa o 23505 abaixo — vai responder e
+    // armar a própria série. Armada agora, a retomada (gatilho = esta resposta,
+    // mais nova que a mensagem do cliente) faria a reserva dele recusar
+    // `mais_nova`, e a mensagem ficaria sem resposta.
+    const { data: vivos, error: erroVivos } = await db
+      .from('cb_ia_turnos')
+      .select('id')
+      .eq('account_id', turno.account_id)
+      .eq('conversation_id', turno.conversation_id)
+      .eq('tipo', 'resposta')
+      .in('status', ['aguardando', 'rodando'])
+      .limit(1)
+    if (erroVivos) throw new Error(`leitura dos turnos vivos falhou: ${erroVivos.message}`)
+    if ((vivos?.length ?? 0) > 0) return
+
     const { error: erroDoInsert } = await db.from('cb_ia_turnos').insert({
       account_id: turno.account_id,
       conversation_id: turno.conversation_id,
       canal_id: turno.canal_id,
       ia_agente_id: agente.id,
-      deal_id: turno.deal_id,
-      stage_id: turno.stage_id,
+      deal_id: decisao.dealId,
+      stage_id: decisao.stageId,
       veio_de_passagem: false,
       mensagem_gatilho_id: ancora.id,
       mensagem_inicial_id: ancora.id,

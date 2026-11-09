@@ -52,7 +52,7 @@ interface Banco {
 const DATA_ISO = /^\d{4}-\d\d-\d\dT/
 const temValor = (v: unknown) => v !== null && v !== undefined
 /** O DEFAULT das colunas NOT NULL que os fixtures omitem — como o banco gravaria. */
-const PADRAO_DO_BANCO: Linha = { nao_saiu: false }
+const PADRAO_DO_BANCO: Linha = { nao_saiu: false, tipo: 'resposta' }
 
 function comparar(a: unknown, b: unknown): number {
   if (typeof a === 'string' && typeof b === 'string') {
@@ -232,6 +232,7 @@ import { MetaApiError } from '@/lib/whatsapp/meta-api'
 
 import { lerLinhaDoAgente } from './agente'
 import { lerAgendaDoAgente } from './agenda'
+import { NOTA_DA_RESPOSTA_CRUZADA } from './contexto'
 import { executarAcoes } from './executar-acoes'
 import { opcoesDoAgente } from './ferramentas'
 import { JANELA_DO_AUDIO_MS, REAGENDAR_AUDIO_MS } from './fila'
@@ -593,6 +594,38 @@ describe('nadaSaiu', () => {
 // ------------------------------------------------------------
 // A reivindicação
 // ------------------------------------------------------------
+
+describe('executarTurno — a conversa ao modelo termina no CLIENTE (revisão de 09/11/2026)', () => {
+  const mensagensAoModelo = () => vi.mocked(generateReply).mock.calls[0][0].messages
+
+  it('⚠️ a mensagem do cliente que CRUZOU com a resposta do agente: a conversa ganha a nota no fim, no papel de usuário', async () => {
+    // O cliente escreveu (relógio do WhatsApp) ANTES da resposta anterior do
+    // agente, mas ela só chegou ao CRM depois: por `created_at`, a conversa
+    // terminaria na fala do agente — o Gemini recusa, a Anthropic continua.
+    banco.tabelas.messages.push(
+      mensagem({
+        id: 'msg-resposta',
+        sender_type: 'bot',
+        ia_agente_id: AGENTE,
+        message_id: 'wamid.resposta-antes',
+        content_text: 'Qual o valor da dívida?',
+        created_at: haMs(10_000),
+        gravada_em: haMs(25_000),
+      }),
+    )
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    const enviadas = mensagensAoModelo()
+    expect(enviadas.at(-2)).toEqual({ role: 'assistant', content: 'Qual o valor da dívida?' })
+    expect(enviadas.at(-1)).toEqual({ role: 'user', content: NOTA_DA_RESPOSTA_CRUZADA })
+  })
+
+  it('a conversa que já termina no cliente vai como está (sem nota)', async () => {
+    await executarTurno(TURNO)
+    expect(mensagensAoModelo().at(-1)).toEqual({ role: 'user', content: 'Oi, preciso de ajuda' })
+    expect(JSON.stringify(mensagensAoModelo())).not.toContain('System note')
+  })
+})
 
 describe('executarTurno — a reivindicação', () => {
   it('turno ainda na espera da rajada não roda', async () => {
@@ -1393,6 +1426,14 @@ describe('executarTurno — falha de configuração termina `falhou` sem transfe
     semTransferencia()
   })
 
+  it('a chave da OpenAI que é SÓ da base de conhecimento (1047): sem gerar — revisão de 09/11/2026', async () => {
+    vi.mocked(lerChave).mockResolvedValue({ chave: 'sk-so-da-base', ilegivel: false, soDaBase: true })
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'falhou', erro: 'a chave da OpenAI é só da base de conhecimento' })
+    expect(generateReply).not.toHaveBeenCalled()
+    semTransferencia()
+  })
+
   it('o provedor recusou a chave — o motivo gravado não ecoa a chave', async () => {
     vi.mocked(generateReply).mockRejectedValue(
       new AiError('Incorrect API key provided: sk-…abcd', { code: 'invalid_key', status: 401 }),
@@ -2147,10 +2188,33 @@ describe('executarTurno — áudio', () => {
     expect(checkRateLimit).not.toHaveBeenCalled()
   })
 
-  it('`transcrevendo` reagenda mesmo fora da janela', async () => {
-    gatilhoDeAudio(JANELA_DO_AUDIO_MS + 60_000)
+  it('`transcrevendo` reagenda mesmo fora da janela — até o teto da espera das mídias', async () => {
+    gatilhoDeAudio(JANELA_DO_AUDIO_MS + 30_000)
     vi.mocked(transcreverAudio).mockResolvedValue({ status: 'transcrevendo' })
     await executarTurno(TURNO)
+    expect(turno().status).toBe('aguardando')
+  })
+
+  it('⚠️ `transcrevendo` depois do teto (o cadeado de um processo que MORREU): gente ouve — revisão de 09/11/2026', async () => {
+    // Antes reagendava a cada 10 s até a transcrição recolher o cadeado (10 min).
+    gatilhoDeAudio(TETO_DA_ESPERA_DAS_MIDIAS_MS + 1_000)
+    vi.mocked(transcreverAudio).mockResolvedValue({ status: 'transcrevendo' })
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('transferiu')
+    expect(turno().erro).toBe('audio')
+    expect(generateReply).not.toHaveBeenCalled()
+  })
+
+  it('o teto conta do GATILHO: o áudio do começo de uma rajada longa, com o cadeado de outra rodada, reagenda', async () => {
+    // O áudio veio há 4 min, o cliente seguiu escrevendo, e o gatilho (o
+    // texto mais novo) é de 20 s atrás: ainda dentro do teto.
+    banco.tabelas.messages.unshift(
+      mensagem({ id: 'msg-audio', content_type: 'audio', content_text: null, gravada_em: haMs(4 * 60_000), created_at: haMs(4 * 60_000) }),
+    )
+    turno().mensagem_inicial_id = 'msg-audio'
+    vi.mocked(transcreverAudio).mockResolvedValue({ status: 'transcrevendo' })
+    await executarTurno(TURNO)
+    expect(transcreverAudio).toHaveBeenCalledWith(banco, { accountId: CONTA, messageId: 'msg-audio' })
     expect(turno().status).toBe('aguardando')
   })
 
@@ -2530,8 +2594,13 @@ describe('executarTurno — o que o agente vê (F3)', () => {
     expect(turno().status).toBe('respondeu')
     expect(pedido()).not.toContain('What you know about this customer')
     expect(turno().contexto).toEqual({ blocos: [], documentos: [], trechos: [] })
-    // Nada marcado = nada lido.
-    expect(banco.chamadas.some((c) => ['contacts', 'tags', 'contact_tags', 'cb_asaas_config'].includes(c.tabela))).toBe(false)
+    // Nada marcado = nada lido. (Do contato, só o TELEFONE, que `lerQuemAtende`
+    // lê para reconhecer o número de outra conexão da conta — não vai ao pedido.)
+    expect(
+      banco.chamadas.some(
+        (c) => ['tags', 'contact_tags', 'cb_asaas_config'].includes(c.tabela) || (c.tabela === 'contacts' && c.valores !== 'phone'),
+      ),
+    ).toBe(false)
   })
 
   it('os blocos marcados entram no pedido — o negócio é o CARD do turno — e o retrato é gravado', async () => {
@@ -2735,11 +2804,12 @@ describe('executarTurno — as ações (F4, D28)', () => {
   })
 
   it('⚠️ default-deny: número fora da lista e tipo não liberado são RECUSADOS e registrados, nunca executados', async () => {
-    responde('Ok!\n[[MOVER:5]]\n[[AUTOMACAO:1]]\n[[TIRAR:x]]')
+    responde('Ok!\n[[MOVER:5]]\n[[AUTOMACAO:1]]\n[[TIRAR:n]]')
     await executarTurno(TURNO)
     expect(executarAcoes).not.toHaveBeenCalled()
     expect(turno().acoes).toEqual([
-      { tipo: 'tirar_etiqueta', alvo: { id: null, nome: '' }, ok: false, erro: 'malformada' },
+      // O miolo cru do malformado vai ao `detalhe` (texto: a poda da 1110 o apaga).
+      { tipo: 'tirar_etiqueta', alvo: { id: null, nome: '' }, ok: false, erro: 'malformada', detalhe: 'TIRAR:n' },
       { tipo: 'mover_etapa', alvo: { id: null, nome: '#5' }, ok: false, erro: 'fora_da_lista' },
       { tipo: 'executar_automacao', alvo: { id: null, nome: '#1' }, ok: false, erro: 'nao_liberada' },
     ])
@@ -3593,6 +3663,75 @@ describe('a RETOMADA (1056)', () => {
       expect(retomadas()).toHaveLength(1)
     })
 
+    describe('a resposta MOVEU o card (revisão de 09/11/2026)', () => {
+      /** A resposta move o card para `etapa` com `[[MOVER:1]]`, como a ação de verdade faria. */
+      function respondeEMove(etapa: string): void {
+        vi.mocked(opcoesDoAgente).mockResolvedValue({ mover_etapa: [{ id: etapa, nome: `Comercial · ${etapa}` }] })
+        vi.mocked(generateReply).mockResolvedValueOnce({ text: 'Segue a proposta. Conseguiu ver?\n[[MOVER:1]]', handoff: false, usage: null })
+        vi.mocked(executarAcoes).mockImplementation(async (_db, _ctx, aceitas) => {
+          Object.assign(card(), { stage_id: etapa, etapa_desde: new Date().toISOString() })
+          return { registros: aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: true })), moveu: true }
+        })
+      }
+
+      it('⚠️ para outra etapa do MESMO agente: a retomada nasce com a etapa NOVA — e RODA no vencimento', async () => {
+        banco.tabelas.cb_ia_agente_etapas.push({ stage_id: 'etapa-meio', account_id: CONTA, ia_agente_id: AGENTE, desde: haMs(DIA) })
+        respondeEMove('etapa-meio')
+        await executarTurno(TURNO)
+        expect(turno().status).toBe('respondeu')
+        const [armada] = retomadas()
+        // Antes nascia com a etapa do começo do turno, e o vencimento a
+        // descartava ("o card mudou de etapa") — sempre, justo depois da proposta.
+        expect(armada).toMatchObject({ deal_id: CARD, stage_id: 'etapa-meio', ia_agente_id: AGENTE, tentativa: 1 })
+
+        vi.setSystemTime(new Date(MEIO_DIA.getTime() + 16 * MIN))
+        vi.mocked(generateReply).mockResolvedValue({ text: 'Oi! Conseguiu ver a proposta?', handoff: false, usage: null })
+        await executarTurno(armada.id as string)
+        expect(turno(armada.id as string).status).toBe('respondeu')
+      })
+
+      it.each([
+        ['de OUTRO agente', () => {
+          banco.tabelas.cb_ia_agentes.push(linhaDoAgente({ id: DESTINO, nome: 'Cobrança' }))
+          banco.tabelas.cb_ia_agente_etapas.push({ stage_id: ETAPA_DESTINO, account_id: CONTA, ia_agente_id: DESTINO, desde: haMs(DIA) })
+        }, ETAPA_DESTINO],
+        ['SEM agente', () => {}, 'etapa-meio'],
+      ])('para uma etapa %s: nada armado (o novo dono fala na próxima mensagem — decisão do operador)', async (_r, montar, etapa) => {
+        montar()
+        respondeEMove(etapa)
+        await executarTurno(TURNO)
+        expect(turno().status).toBe('respondeu')
+        expect(retomadas()).toHaveLength(0)
+      })
+    })
+
+    it('⚠️ um turno de RESPOSTA já reivindicado na conversa (o cliente escreveu enquanto a resposta saía): nada armado — revisão de 09/11/2026', async () => {
+      // Reivindicado, ele não ocupa a vaga do pendente: o INSERT da retomada não
+      // acusaria 23505, e a retomada (gatilho = a resposta, mais nova que a
+      // mensagem do cliente) faria a reserva dele recusar `mais_nova`.
+      vi.mocked(executarAcoes).mockImplementation(async () => ({ registros: [], moveu: false }))
+      vi.mocked(engineSendText).mockImplementation(async (args) => {
+        args.antesDoProvedor?.()
+        await args.aoSair?.('wamid.r')
+        banco.tabelas.messages.push(
+          mensagem({ id: 'msg-r', sender_type: 'bot', ia_agente_id: AGENTE, message_id: 'wamid.r', gravada_em: new Date().toISOString() }),
+        )
+        banco.tabelas.cb_ia_turnos.push({
+          id: 'turno-vivo',
+          account_id: CONTA,
+          conversation_id: CONVERSA,
+          canal_id: CANAL,
+          status: 'rodando',
+          tipo: 'resposta',
+          rodando_desde: new Date().toISOString(),
+        })
+        return { whatsapp_message_id: 'wamid.r' }
+      })
+      await executarTurno(TURNO)
+      expect(turno().status).toBe('respondeu')
+      expect(retomadas()).toHaveLength(0)
+    })
+
     it('já há um pendente na conexão (23505 — o cliente escreveu): nada, sem erro', async () => {
       banco.falhas.push({ tabela: 'cb_ia_turnos', op: 'insert', erro: { message: 'duplicate', code: '23505' } })
       await executarTurno(TURNO)
@@ -3786,6 +3925,25 @@ describe('a RETOMADA (1056)', () => {
       expect(turno(RETOMADA)).toMatchObject({ status: 'aguardando', rodando_desde: null })
       expect(turno(RETOMADA).executar_apos).toBe(new Date(MEIO_DIA.getTime() + 2 * MIN).toISOString())
       expect(after).not.toHaveBeenCalled()
+    })
+
+    it('⚠️ falha PASSAGEIRA do provedor: tenta UMA vez mais, como o turno — a série não acaba num 429 (revisão de 09/11/2026)', async () => {
+      comRetomadaPendente()
+      vi.mocked(generateReply).mockRejectedValue(new AiError('limite', { code: 'rate_limited', status: 502, upstreamStatus: 429 }))
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA)).toMatchObject({ status: 'aguardando', erro: ERRO_DA_REPETICAO, rodando_desde: null })
+      expect(engineSendText).not.toHaveBeenCalled()
+      // A segunda falha é `falhou` (sem laço).
+      vi.setSystemTime(new Date(MEIO_DIA.getTime() + MIN))
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA).status).toBe('falhou')
+    })
+
+    it('falha de CONFIGURAÇÃO (chave recusada) não repete: `falhou`', async () => {
+      comRetomadaPendente()
+      vi.mocked(generateReply).mockRejectedValue(new AiError('chave', { code: 'invalid_key', status: 401, upstreamStatus: 401 }))
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA).status).toBe('falhou')
     })
   })
 

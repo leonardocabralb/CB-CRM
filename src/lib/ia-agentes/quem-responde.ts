@@ -28,6 +28,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { ehInstagram } from '@/lib/cb-channels/transporte'
+import { chaveDePessoa } from '@/lib/contacts/dedupe'
 
 /** Tipos de mensagem que abrem turno (E9). Localização e toque em botão (`interactive`) não. */
 export const TIPOS_QUE_ABREM_TURNO: ReadonlySet<string> = new Set(['text', 'audio', 'image', 'document', 'video'])
@@ -123,6 +124,13 @@ export interface FatosDaMensagem {
   ehGrupo: boolean
   /** A conexão é do Instagram (o agente não responde no Direct, D1 do Instagram). */
   ehInstagram: boolean
+  /**
+   * O "cliente" é o número de OUTRA conexão da própria conta (revisão de
+   * 09/11/2026): a mensagem entre dois números da conta entra como de cliente
+   * (validação de 25/10/2026), e com agente nas duas pontas eles responderiam
+   * um ao outro até o teto. Fora do alcance, como o grupo. Ausente = não é.
+   */
+  ehConexaoDaConta?: boolean
   /** A conexão que ficou gravada na mensagem (nula = sem IA). */
   canalId: string | null
   /** O conteúdo gravado — a régua de `abreTurno`. */
@@ -180,7 +188,9 @@ function instante(iso: string | null): number | null {
 }
 
 export function quemResponde(f: FatosDaMensagem): QuemResponde {
-  if (f.ehGrupo || f.ehInstagram || !f.canalId) return { quem: 'ninguem', motivo: 'fora_do_alcance' }
+  if (f.ehGrupo || f.ehInstagram || f.ehConexaoDaConta === true || !f.canalId) {
+    return { quem: 'ninguem', motivo: 'fora_do_alcance' }
+  }
   if (f.ehRespostaDeBotao || !abreTurno(f.conteudo)) return { quem: 'ninguem', motivo: 'nao_abre_turno' }
   if (f.roboConsumiu) return { quem: 'ninguem', motivo: 'robo' }
   if (f.automacaoFalou) return { quem: 'ninguem', motivo: 'automacao_falou' }
@@ -210,10 +220,115 @@ export interface LeituraDaConversa {
   contactId: string | null
   ehGrupo: boolean
   ehInstagram: boolean
+  /** O contato é o número de outra conexão da conta (`ehNumeroDeConexao`). */
+  ehConexaoDaConta: boolean
   encerrada: boolean
   pausada: boolean
   card: CardDoContato | null
   agente: AgenteDaEtapa | null
+}
+
+/**
+ * O telefone é o de uma CONEXÃO da conta (`cb_channels.display_phone`)? Pela
+ * chave de pessoa (o nono dígito), nunca pela grafia. Telefone ausente = não.
+ */
+export function ehNumeroDeConexao(
+  telefone: unknown,
+  conexoes: ReadonlyArray<{ display_phone?: unknown }>,
+): boolean {
+  if (typeof telefone !== 'string' || !telefone.trim()) return false
+  const chave = chaveDePessoa(telefone)
+  if (!chave) return false
+  return conexoes.some((c) => typeof c.display_phone === 'string' && c.display_phone.trim() !== '' && chaveDePessoa(c.display_phone) === chave)
+}
+
+/** Quantos cards ABERTOS do contato a escolha olha (medido em 09/11/2026: 4 contatos com 2 ou mais). */
+const CARDS_ABERTOS_LIDOS = 20
+
+/** O agente da etapa como `lerCardEAgente` o devolve: com o nome (a faixa o mostra). */
+export type AgenteDaEtapaComNome = AgenteDaEtapa & { nome: string }
+
+/**
+ * QUAL card decide o agente (decisão do operador, 09/11/2026): entre os cards
+ * ABERTOS do contato, o mais recente cuja etapa tem agente LIGADO, não
+ * arquivado e com a conexão da mensagem; sem nenhum, o card aberto mais
+ * recente (a regra de antes, D24 — `quemResponde` diz por que ninguém
+ * atende). Antes, o mais recente de QUALQUER funil decidia: o card novo no
+ * Trabalhista calava o agente do Bancário na conexão do Bancário. Desempate
+ * por `id` (dois cards da mesma transação têm o mesmo `created_at`, e a
+ * entrada e a conferência do turno não podem escolher cards diferentes).
+ *
+ * UMA leitura para o motor (`lerQuemAtende`) e para a faixa
+ * (`GET /api/cb/ia/conversa/[id]`). `canalId` nulo (conversa sem fala do
+ * cliente) = o mais recente. LANÇA em erro de leitura.
+ */
+export async function lerCardEAgente(
+  db: SupabaseClient,
+  args: { accountId: string; contactId: string; canalId: string | null },
+): Promise<{ card: CardDoContato | null; agente: AgenteDaEtapaComNome | null }> {
+  const { data: deals, error: erroDeal } = await db
+    .from('deals')
+    .select('id, stage_id, pipeline_id, etapa_desde')
+    .eq('account_id', args.accountId)
+    .eq('contact_id', args.contactId)
+    .eq('status', 'open')
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(CARDS_ABERTOS_LIDOS)
+  if (erroDeal) throw new Error(`leitura do card falhou: ${erroDeal.message}`)
+  const cards = (deals ?? []) as Array<{ id: string; stage_id: string; pipeline_id: string; etapa_desde: string | null }>
+  if (cards.length === 0) return { card: null, agente: null }
+
+  const { data: linhasDaEtapa, error: erroEtapa } = await db
+    .from('cb_ia_agente_etapas')
+    .select('stage_id, ia_agente_id, desde')
+    .eq('account_id', args.accountId)
+    .in('stage_id', [...new Set(cards.map((c) => c.stage_id))])
+  if (erroEtapa) throw new Error(`leitura da etapa falhou: ${erroEtapa.message}`)
+  const donoDaEtapa = new Map(
+    ((linhasDaEtapa ?? []) as Array<{ stage_id: string; ia_agente_id: string; desde: string | null }>).map((e) => [e.stage_id, e]),
+  )
+
+  const agentes = new Map<string, Omit<AgenteDaEtapaComNome, 'desde'>>()
+  const ids = [...new Set([...donoDaEtapa.values()].map((e) => e.ia_agente_id))]
+  if (ids.length > 0) {
+    const { data: linhas, error: erroAgente } = await db
+      .from('cb_ia_agentes')
+      .select('id, nome, ativo, arquivado_em, conexoes, ativado_em')
+      .eq('account_id', args.accountId)
+      .in('id', ids)
+    if (erroAgente) throw new Error(`leitura do agente falhou: ${erroAgente.message}`)
+    for (const a of (linhas ?? []) as Array<{
+      id: string
+      nome: unknown
+      ativo: boolean | null
+      arquivado_em: string | null
+      conexoes: unknown
+      ativado_em: string | null
+    }>) {
+      agentes.set(a.id, {
+        id: a.id,
+        nome: typeof a.nome === 'string' ? a.nome : '',
+        ativo: a.ativo === true,
+        arquivado: a.arquivado_em !== null,
+        conexoes: Array.isArray(a.conexoes) ? a.conexoes.filter((x): x is string => typeof x === 'string') : [],
+        ativadoEm: a.ativado_em,
+      })
+    }
+  }
+
+  const agenteDo = (c: (typeof cards)[number]): AgenteDaEtapaComNome | null => {
+    const e = donoDaEtapa.get(c.stage_id)
+    const a = e ? agentes.get(e.ia_agente_id) : undefined
+    return e && a ? { ...a, desde: e.desde } : null
+  }
+  const atendeAConexao = (a: AgenteDaEtapaComNome | null) =>
+    !!a && a.ativo && !a.arquivado && args.canalId !== null && a.conexoes.includes(args.canalId)
+  const escolhido = cards.find((c) => atendeAConexao(agenteDo(c))) ?? cards[0]
+  return {
+    card: { id: escolhido.id, stageId: escolhido.stage_id, pipelineId: escolhido.pipeline_id, etapaDesde: escolhido.etapa_desde },
+    agente: agenteDo(escolhido),
+  }
 }
 
 /** Quantas mensagens do cliente `canalDaIaNaConversa` olha atrás da última que abre turno. */
@@ -257,27 +372,29 @@ export async function canalDaIaNaConversa(
 }
 
 /**
- * Lê a conversa (e a conexão), o card ABERTO mais recente do contato, a
- * linha da etapa dele em `cb_ia_agente_etapas` e o agente. `null` = a
+ * Lê a conversa (e as conexões da conta), o telefone do contato e o card que
+ * decide o agente, com a etapa e o agente dela (`lerCardEAgente`). `null` = a
  * conversa não é desta conta. LANÇA em erro de leitura: na entrada vira log
  * (ninguém responde), no turno vira `falhou`.
  *
- * O caso comum custa pouco: conversa e conexão numa ida; encerrada, pausada,
- * grupo ou sem contato param aí; sem card, na segunda; etapa sem agente, na
- * terceira.
+ * O caso comum custa pouco: conversa e conexões numa ida; encerrada, pausada,
+ * grupo ou sem contato param aí; o contato que é número da conta, na
+ * segunda; sem card, na terceira; etapa sem agente, na quarta.
  */
 export async function lerQuemAtende(
   db: SupabaseClient,
   args: { accountId: string; conversationId: string; canalId: string },
 ): Promise<LeituraDaConversa | null> {
-  const [{ data: conv, error: erroConv }, { data: canal, error: erroCanal }] = await Promise.all([
+  const [{ data: conv, error: erroConv }, { data: canais, error: erroCanal }] = await Promise.all([
     db
       .from('conversations')
       .select('id, contact_id, group_id, status, ai_autoreply_disabled')
       .eq('id', args.conversationId)
       .eq('account_id', args.accountId)
       .maybeSingle(),
-    db.from('cb_channels').select('kind').eq('id', args.canalId).eq('account_id', args.accountId).maybeSingle(),
+    // TODAS as conexões da conta (poucas): o tipo da desta mensagem e os
+    // números, para reconhecer o "cliente" que é outra conexão da conta.
+    db.from('cb_channels').select('id, kind, display_phone').eq('account_id', args.accountId),
   ])
   if (erroConv) throw new Error(`leitura da conversa falhou: ${erroConv.message}`)
   if (erroCanal) throw new Error(`leitura da conexão falhou: ${erroCanal.message}`)
@@ -288,12 +405,15 @@ export async function lerQuemAtende(
     status: string
     ai_autoreply_disabled: boolean | null
   }
+  const conexoes = (canais ?? []) as Array<{ id: string; kind: string; display_phone?: unknown }>
+  const canal = conexoes.find((x) => x.id === args.canalId)
   const leitura: LeituraDaConversa = {
     contactId: c.contact_id,
     ehGrupo: c.group_id !== null,
     // Conexão apagada (sem linha) fica fora pelo `canalId` nulo da mensagem;
     // aqui só o Instagram.
-    ehInstagram: canal ? ehInstagram(canal as { kind: string }) : false,
+    ehInstagram: canal ? ehInstagram(canal) : false,
+    ehConexaoDaConta: false,
     encerrada: c.status === 'closed',
     pausada: c.ai_autoreply_disabled === true,
     card: null,
@@ -301,52 +421,22 @@ export async function lerQuemAtende(
   }
   if (leitura.ehGrupo || leitura.ehInstagram || leitura.encerrada || leitura.pausada || !c.contact_id) return leitura
 
-  const { data: deal, error: erroDeal } = await db
-    .from('deals')
-    .select('id, stage_id, pipeline_id, etapa_desde')
+  const { data: contato, error: erroContato } = await db
+    .from('contacts')
+    .select('phone')
     .eq('account_id', args.accountId)
-    .eq('contact_id', c.contact_id)
-    .eq('status', 'open')
-    .order('created_at', { ascending: false })
-    .limit(1)
+    .eq('id', c.contact_id)
     .maybeSingle()
-  if (erroDeal) throw new Error(`leitura do card falhou: ${erroDeal.message}`)
-  const d = deal as { id: string; stage_id: string; pipeline_id: string; etapa_desde: string | null } | null
-  if (!d) return leitura
-  leitura.card = { id: d.id, stageId: d.stage_id, pipelineId: d.pipeline_id, etapaDesde: d.etapa_desde }
+  if (erroContato) throw new Error(`leitura do contato falhou: ${erroContato.message}`)
+  leitura.ehConexaoDaConta = ehNumeroDeConexao((contato as { phone?: unknown } | null)?.phone, conexoes)
+  if (leitura.ehConexaoDaConta) return leitura
 
-  const { data: etapa, error: erroEtapa } = await db
-    .from('cb_ia_agente_etapas')
-    .select('ia_agente_id, desde')
-    .eq('stage_id', d.stage_id)
-    .eq('account_id', args.accountId)
-    .maybeSingle()
-  if (erroEtapa) throw new Error(`leitura da etapa falhou: ${erroEtapa.message}`)
-  const e = etapa as { ia_agente_id: string; desde: string | null } | null
-  if (!e) return leitura
-
-  const { data: ag, error: erroAgente } = await db
-    .from('cb_ia_agentes')
-    .select('id, ativo, arquivado_em, conexoes, ativado_em')
-    .eq('id', e.ia_agente_id)
-    .eq('account_id', args.accountId)
-    .maybeSingle()
-  if (erroAgente) throw new Error(`leitura do agente falhou: ${erroAgente.message}`)
-  const a = ag as {
-    id: string
-    ativo: boolean | null
-    arquivado_em: string | null
-    conexoes: unknown
-    ativado_em: string | null
-  } | null
-  if (!a) return leitura
-  leitura.agente = {
-    id: a.id,
-    ativo: a.ativo === true,
-    arquivado: a.arquivado_em !== null,
-    conexoes: Array.isArray(a.conexoes) ? a.conexoes.filter((x): x is string => typeof x === 'string') : [],
-    ativadoEm: a.ativado_em,
-    desde: e.desde,
-  }
+  const { card, agente } = await lerCardEAgente(db, {
+    accountId: args.accountId,
+    contactId: c.contact_id,
+    canalId: args.canalId,
+  })
+  leitura.card = card
+  leitura.agente = agente
   return leitura
 }
