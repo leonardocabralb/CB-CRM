@@ -21,7 +21,7 @@ import {
   type MotivoDaRecusa,
 } from '@/lib/ia-agentes/acoes'
 import { lerAgendaDoAgente } from '@/lib/ia-agentes/agenda'
-import { aplicarAlteracao, lerAlteracao } from '@/lib/ia-agentes/agente'
+import { aplicarAlteracao, lerAlteracao, PRAZO_DA_GERACAO_MS } from '@/lib/ia-agentes/agente'
 import { consultaDaUltimaMensagem } from '@/lib/ia-agentes/conhecimento'
 import { opcoesDoAgente } from '@/lib/ia-agentes/ferramentas'
 import { conferirRascunho, obterAgente } from '@/lib/ia-agentes/repo'
@@ -280,6 +280,7 @@ export async function POST(request: Request, { params }: Contexto) {
         },
         systemPrompt: pedido,
         messages: comNotaDaRetomada(mensagens, semResposta),
+        tetoMs: PRAZO_DA_GERACAO_MS,
       })
       await logAiUsage(supabaseAdmin(), {
         accountId: ctx.accountId,
@@ -370,6 +371,7 @@ export async function POST(request: Request, { params }: Contexto) {
       },
       systemPrompt: pedido,
       messages: mensagens,
+      tetoMs: PRAZO_DA_GERACAO_MS,
     })
 
     // O gasto JÁ aconteceu na chave da conta: registrar antes de responder.

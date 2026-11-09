@@ -1,5 +1,6 @@
 // ============================================================
-// Leitura de IMAGEM e PDF do cliente — a irmã de `transcrever.ts`, com a
+// Leitura de IMAGEM e DOCUMENTO do cliente (PDF; Word, Excel e PowerPoint só
+// pelo Gemini) — a irmã de `transcrever.ts`, com a
 // MESMA mecânica (docs/PLANO-agentes-de-ia.md, "Leitura de imagem e PDF").
 //
 // A leitura vira TEXTO, uma vez, guardado na própria mensagem, e o agente de
@@ -27,7 +28,7 @@
 //    documento sem tipo que o download revela ser desses grava o `media_type`
 //    que o Storage disse, para a próxima vez recusar ANTES de baixar;
 //  - `recusada` GRAVADA só para o irreversível da própria mensagem: tipo que
-//    nenhum provedor lê (docx, planilha…), arquivo grande demais para o
+//    nenhum provedor lê (zip, bmp, txt…), arquivo grande demais para o
 //    provedor escolhido, arquivo sem URL acessível ao servidor, tentativas
 //    esgotadas;
 //  - ⚠️ a falha PASSAGEIRA não gasta tentativa (`falhaPassageira`: chave,
@@ -45,19 +46,23 @@
 // BLOQUEADA (recitação, segurança, recusa do modelo, resposta incompleta por
 // outro motivo — `LeituraDoProvedor.bloqueio`) é falha: o que veio junto
 // nunca vira o conteúdo do arquivo. O prazo da chamada é o da leitura
-// (`TEMPO_DA_LEITURA_MS`: 45 s imagem, 90 s PDF), não o do chat.
+// (`TEMPO_DA_LEITURA_MS`: 45 s imagem, 90 s documento), não o do chat. O
+// documento acima de `LIMITE_INLINE_DO_GEMINI` vai ao Gemini pela Files API
+// (`arquivo-do-gemini.ts`) e é apagado de lá logo depois da leitura.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { logAiUsage } from '@/lib/ai/usage'
 
+import { apagarDoGemini, subirAoGemini, TEMPO_DO_ENVIO_MS } from './arquivo-do-gemini'
 import { escolherLeitor } from './escolher-leitor'
 import {
   erroDoProvedor,
   extensao,
   falhaPassageira,
   LIMITE_DE_BYTES,
+  LIMITE_INLINE_DO_GEMINI,
   lerRespostaDeLeitura,
   mimeDaExtensao,
   mimeLimpo,
@@ -123,7 +128,7 @@ interface MensagemDeMidia {
 
 export type ClasseDaMidia =
   | { tipo: TipoDeLeitura; mime: string }
-  /** Nenhum provedor lê (docx, planilha, zip, bmp…): terminal. */
+  /** Nenhum provedor lê (zip, bmp, txt…): terminal. */
   | { tipo: 'outro' }
   /** Documento sem mime nem extensão: decide-se pelo `Content-Type` do download. */
   | { tipo: 'desconhecido' }
@@ -132,7 +137,7 @@ export type ClasseDaMidia =
  * O que a mensagem é, ANTES do download. Nesta ordem:
  *  1. o `media_type` gravado — quando existe, decide (legível ou `outro`);
  *  2. a extensão do NOME que o cliente deu (`media_filename`, 969) — num
- *     documento, uma extensão que ninguém lê (".docx") já é `outro`;
+ *     documento, uma extensão que ninguém lê (".zip") já é `outro`;
  *  3. a extensão da URL do bucket, só quando é de um tipo legível: o caminho
  *     leva ".bin" quando o nome não tinha extensão (`buildMediaPath`), e isso
  *     não diz nada sobre o arquivo;
@@ -345,26 +350,43 @@ export async function lerMidia(
     }
     if (bytes.byteLength === 0) return await falhar(admin, msg.id, claimIso, 'download do arquivo veio vazio')
 
-    const pedido = pedidoDeLeitura({
-      provedor,
-      chave,
-      tipo,
-      mime,
-      base64: bytes.toString('base64'),
-      nomeDoArquivo: nomeParaOProvedor(msg.media_filename, tipo),
-    })
-    const tProvedor = new AbortController()
-    const tHandle = setTimeout(() => tProvedor.abort(), TEMPO_DA_LEITURA_MS[tipo])
+    // O documento grande vai ao Gemini pela Files API, sem base64 na memória
+    // (`arquivo-do-gemini.ts`); falha de rede, prazo e 5xx não gastam tentativa.
+    let noGemini: { nome: string; uri: string } | null = null
+    if (provedor === 'gemini' && tipo === 'documento' && bytes.byteLength > LIMITE_INLINE_DO_GEMINI) {
+      const subida = await subirAoGemini({ chave, bytes, mime, signal: AbortSignal.timeout(TEMPO_DO_ENVIO_MS) })
+      if (!subida.ok) {
+        const passageira = subida.status === null || falhaPassageira(subida.status)
+        return await falhar(admin, msg.id, claimIso, subida.erro, passageira ? tentativasAntes : undefined)
+      }
+      noGemini = subida
+    }
+
     let r: Response
     try {
-      r = await fetch(pedido.url, {
-        method: 'POST',
-        headers: pedido.headers,
-        body: pedido.body,
-        signal: tProvedor.signal,
+      const pedido = pedidoDeLeitura({
+        provedor,
+        chave,
+        tipo,
+        mime,
+        arquivo: noGemini ? { uriDoGemini: noGemini.uri } : { base64: bytes.toString('base64') },
+        nomeDoArquivo: nomeParaOProvedor(msg.media_filename, tipo),
       })
+      const tProvedor = new AbortController()
+      const tHandle = setTimeout(() => tProvedor.abort(), TEMPO_DA_LEITURA_MS[tipo])
+      try {
+        r = await fetch(pedido.url, {
+          method: 'POST',
+          headers: pedido.headers,
+          body: pedido.body,
+          signal: tProvedor.signal,
+        })
+      } finally {
+        clearTimeout(tHandle)
+      }
     } finally {
-      clearTimeout(tHandle)
+      // Documento de cliente não fica no Google: apaga mesmo se a leitura falhou.
+      if (noGemini) void apagarDoGemini(chave, noGemini.nome)
     }
     if (!r.ok) {
       const corpo = await r.text().catch(() => '')

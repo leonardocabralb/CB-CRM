@@ -17,8 +17,14 @@ import { after } from 'next/server'
 
 /** A rajada: cada mensagem nova empurra o turno; ele roda uma vez, sobre a última. */
 export const ESPERA_DA_RAJADA_MS = 8_000
-/** Teto de tempo de um turno, do reivindicar ao envio. */
-export const PRAZO_DO_TURNO_MS = 45_000
+/**
+ * Teto de tempo de um turno, do reivindicar ao envio: os 45 s da geração
+ * (`PRAZO_DA_GERACAO_MS`, `agente.ts`), a
+ * reserva do envio (10 s) e ~5 s de preparo (conversa, base, agenda). Com
+ * mídia a ler, a leitura come do mesmo prazo e a geração fica com o que
+ * sobrar (`restante`); sem prazo, o turno reagenda (a leitura fica gravada).
+ */
+export const PRAZO_DO_TURNO_MS = 60_000
 /** O que sobra do prazo para o envio depois de gerar (o provedor de mensagem). */
 export const RESERVA_DO_ENVIO_MS = 10_000
 /**

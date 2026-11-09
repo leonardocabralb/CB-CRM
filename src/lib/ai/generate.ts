@@ -17,8 +17,14 @@ export interface GenerateArgs {
   /** Recent conversation turns, oldest first. */
   messages: ChatMessage[]
   /** Teto desta chamada (o turno do agente passa o que sobra do prazo dele).
-   *  Ausente = `aiRequestTimeoutMs()`. Nunca passa do teto global. */
+   *  Ausente = o teto. Nunca passa do teto. */
   timeoutMs?: number
+  /**
+   * O teto no lugar do global (`aiRequestTimeoutMs()`, 30 s). Só a resposta
+   * do AGENTE de IA o usa (`PRAZO_DA_GERACAO_MS`, 45 s: turno, retomada e
+   * Playground); as outras chamadas seguem no global.
+   */
+  tetoMs?: number
 }
 
 /**
@@ -28,10 +34,8 @@ export interface GenerateArgs {
  */
 export async function generateReply(args: GenerateArgs): Promise<GenerateResult> {
   const { config, systemPrompt, messages } = args
-  const timeoutMs =
-    args.timeoutMs !== undefined && args.timeoutMs > 0
-      ? Math.min(args.timeoutMs, aiRequestTimeoutMs())
-      : aiRequestTimeoutMs()
+  const teto = args.tetoMs !== undefined && args.tetoMs > 0 ? args.tetoMs : aiRequestTimeoutMs()
+  const timeoutMs = args.timeoutMs !== undefined && args.timeoutMs > 0 ? Math.min(args.timeoutMs, teto) : teto
   const providerArgs = {
     apiKey: config.apiKey,
     model: config.model,

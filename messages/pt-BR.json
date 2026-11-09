@@ -4731,7 +4731,7 @@
         "conversa": "Assistente de conversa",
         "radar": "Radar de Atendimento",
         "transcricao": "Transcrição de áudio",
-        "leitura": "Leitura de imagem e PDF (agentes de IA)",
+        "leitura": "Leitura de imagem e documentos (agentes de IA)",
         "rag": "Base de conhecimento (RAG)"
       },
       "origem": {
@@ -6865,7 +6865,7 @@
       "atualizar": "Atualizar a lista de modelos"
     },
     "midia": {
-      "titulo": "Quem lê áudio, imagem e PDF do cliente",
+      "titulo": "Quem lê áudio, imagem e documentos do cliente",
       "explicacao": "Não é o modelo do agente de IA: é a chave da conta, na ordem Gemini → OpenAI → Anthropic (a primeira cadastrada em Integrações). O agente recebe só o texto do que foi ouvido ou lido, qualquer que seja o provedor dele.",
       "nestaConta": "Nesta conta:",
       "audioPor": "Áudio: {provedor}",
@@ -6876,9 +6876,9 @@
       "semAudio": "Esta conta não tem chave do Gemini nem da OpenAI, e a Anthropic não ouve áudio: o áudio do cliente não será ouvido, e a conversa com áudio vai para a equipe.",
       "limiteAudio": "Áudio: Gemini, senão OpenAI. A Anthropic não ouve áudio.",
       "limiteFormatos": "Foto HEIC (a do iPhone) só é lida quando quem lê é o Gemini; GIF, só quando quem lê não é o Gemini.",
-      "limitePlanilha": "Planilha, Word e outros arquivos nenhum provedor lê: o agente pede que o cliente descreva o conteúdo ou reenvie em outro formato.",
+      "limitePlanilha": "Word, Excel e PowerPoint só o Gemini lê (da planilha, só a primeira aba). Outros arquivos (zip, texto…) nenhum provedor lê: o agente pede que o cliente descreva o conteúdo ou reenvie em outro formato.",
       "limiteVideo": "Vídeo não é assistido: o agente vê só que chegou um vídeo, com a legenda.",
-      "resumo": "Áudio, imagem e PDF são lidos pela chave da conta (Gemini → OpenAI → Anthropic), não pelo modelo do agente: ele recebe o texto."
+      "resumo": "Áudio, imagem e documentos são lidos pela chave da conta (Gemini → OpenAI → Anthropic), não pelo modelo do agente: ele recebe o texto."
     }
   },
   "ForgotPasswordPage": {

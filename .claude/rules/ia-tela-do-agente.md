@@ -65,7 +65,8 @@ agente errar em silêncio.
   "ninguém". Sem Gemini nem OpenAI: âmbar — áudio não será ouvido.
 - Mudou a ordem ou o que cada provedor lê (`leitores.ts`, `transcrever.ts`,
   `contexto.ts`)? O texto `IaAgentes.midia.*` muda junto (HEIC só Gemini; GIF
-  não Gemini; planilha/Word ninguém; vídeo não é assistido).
+  não Gemini; Office só Gemini, da planilha só a 1ª aba; zip/texto ninguém;
+  vídeo não é assistido).
 
 ### Avisos ANTES de salvar
 
