@@ -507,7 +507,9 @@ export function ConfiguracaoDoAgente({
               <p className="text-xs text-amber-700 dark:text-amber-300">{t('campo.foraDaEquipeDica')}</p>
             ) : equipeLida && membros === null ? (
               <p className="text-xs text-amber-700 dark:text-amber-300">{t('campo.equipeNaoCarregou')}</p>
-            ) : null}
+            ) : (
+              <p className="text-xs text-muted-foreground">{t('campo.transferirParaDica')}</p>
+            )}
           </div>
         </div>
         <div className="space-y-2">

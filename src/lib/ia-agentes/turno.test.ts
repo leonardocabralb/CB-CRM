@@ -1305,9 +1305,10 @@ describe('transferirParaGente', () => {
     expect(notas()).toHaveLength(0)
   })
 
-  it('a conversa ENCERRADA: nada muda', async () => {
+  it('a conversa ENCERRADA: nada muda (nem vira pendente)', async () => {
     conversa().status = 'closed'
     await expect(transferirParaGente(banco as never, args)).resolves.toBe('nada_mudou')
+    expect(conversa().status).toBe('closed')
     expect(conversa().ai_autoreply_disabled).toBe(false)
     expect(notas()).toHaveLength(0)
   })
@@ -1325,10 +1326,21 @@ describe('transferirParaGente', () => {
     expect(conversa().assigned_agent_id ?? null).toBeNull()
   })
 
-  it('pausa, atribui e anota: `transferiu` — mesmo na conversa que a IA ainda não respondeu', async () => {
+  it('pausa, deixa PENDENTE, atribui e anota: `transferiu` — mesmo na conversa que a IA ainda não respondeu', async () => {
     await expect(transferirParaGente(banco as never, args)).resolves.toBe('transferiu')
-    expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'transferencia', assigned_agent_id: MEMBRO })
+    expect(conversa()).toMatchObject({
+      ai_autoreply_disabled: true,
+      ia_pausada_por: 'transferencia',
+      assigned_agent_id: MEMBRO,
+      status: 'pending',
+    })
     expect(notas()).toHaveLength(1)
+  })
+
+  it('a conversa que já estava pendente continua pendente', async () => {
+    conversa().status = 'pending'
+    await expect(transferirParaGente(banco as never, args)).resolves.toBe('transferiu')
+    expect(conversa()).toMatchObject({ status: 'pending', ia_pausada_por: 'transferencia' })
   })
 
   it.each(['gente', 'botao', 'transferencia', 'automacao'])(
@@ -1337,7 +1349,12 @@ describe('transferirParaGente', () => {
       const antes = haMs(60_000)
       Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: pausadaPor, ia_pausada_em: antes })
       await expect(transferirParaGente(banco as never, args)).resolves.toBe('nada_mudou')
-      expect(conversa()).toMatchObject({ ia_pausada_por: pausadaPor, ia_pausada_em: antes, assigned_agent_id: null })
+      expect(conversa()).toMatchObject({
+        ia_pausada_por: pausadaPor,
+        ia_pausada_em: antes,
+        assigned_agent_id: null,
+        status: 'open',
+      })
       expect(notas()).toHaveLength(0)
     },
   )

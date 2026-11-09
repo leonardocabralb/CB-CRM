@@ -136,6 +136,8 @@ qualquer uma é pergunta ao operador.
   as outras dez ficam (`ia-regras-do-sistema.md`). Pedido de desconto ou
   outra condição: recusa delicada, como as instruções mandam, e a equipe só
   se o cliente insistir (08/11/2026, noite).
+- Agente de IA que passa a conversa para a equipe a deixa PENDENTE, como o
+  robô (09/11/2026; `ia-agentes-turno.md`).
 - Agente de IA fora do horário: a mensagem espera e ele responde quando o
   horário abrir, se ninguém da equipe respondeu antes; o padrão da Anthropic
   é o Haiku 5.5, e o seletor mostra os modelos da chave (25/10/2026).

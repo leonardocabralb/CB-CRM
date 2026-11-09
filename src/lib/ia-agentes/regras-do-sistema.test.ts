@@ -184,6 +184,13 @@ describe('"Conduz o fechamento" (1128): duas regras trocadas, as outras intactas
     expect(honorarios.indexOf(MARCADOR_DE_TRANSFERENCIA)).toBeGreaterThan(honorarios.indexOf('insists after that refusal'))
     // O "passe para a equipe" direto no 1º pedido (o texto de antes) não volta.
     expect(honorarios).not.toMatch(/do not agree to it or promise anything —/)
+    // ⚠️ Reclamação do PREÇO, mesmo irritada (09/11/2026): objeção a responder,
+    // nunca passagem sozinha — o "is upset or complaining" do texto-base vencia
+    // a recusa delicada. Vem ANTES da insistência, que continua passando.
+    expect(honorarios).toContain(
+      'A complaint about the price or the fees, even an upset or angry one, is an objection to answer the same way, never by itself a reason to hand off.',
+    )
+    expect(honorarios.indexOf('A complaint about the price')).toBeLessThan(honorarios.indexOf('insists after that refusal'))
     // O que a sem_preco já permitia (o valor que é do CLIENTE) continua permitido.
     expect(honorarios).toContain('Amounts that belong to the customer')
     // O link escrito; a contratação só pela assinatura; nada de condição diferente.

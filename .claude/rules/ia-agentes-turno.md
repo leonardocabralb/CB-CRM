@@ -117,3 +117,14 @@ das ações está em `ia.md` e `ia-agentes.md`.
   `mensagem_enviada_id`; o que respondeu grava `respondeu` com as ações e NÃO
   arma retomada (`armarRetomada` relê a conversa). Pino
   `encerrar-nao-apaga-turno-1109.test.ts`.
+
+### A transferência deixa a conversa PENDENTE
+
+- Pedido do operador (09/11/2026): quem a IA passa para a equipe precisa de
+  alguém, como na passagem do robô (`flows/engine.ts`, ação `handoff`). O
+  UPDATE da pausa em `transferirParaGente` grava `status: 'pending'` junto,
+  marcado com `marcarOrigem` (`agente`): a trilha da 1083 diz quem mudou.
+- Conversa encerrada ou já pausada: nada muda (o UPDATE não casa).
+- A pendente continua na caixa (o filtro padrão mostra aberta e pendente). A
+  IA só se cala na ENCERRADA, então "Retomar IA" não precisa reabrir; voltar
+  para aberta é com a equipe.
