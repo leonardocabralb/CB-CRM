@@ -1110,15 +1110,36 @@ const ANTES_DA_REUNIAO =
   /(?:^|[^\p{L}])(?:antes\s+da|ate(?:\s+a)?|para(?:\s+a)?|pra|before|ahead\s+of|until|for)\s+(?:(?:sua|nossa|the|your|our)\s+)?(?:reuniao|meeting)(?![\p{L}])/u
 const SO_ANALISE = /(?:^|[^\p{L}])(?:analis|avali|revis|review|assess|go\s+over|look\s+over)\p{L}*/u
 /**
- * Quem PROCURA o cliente, em qualquer forma que promete: infinitivo, futuro e
- * presente ("vai retornar", "retornará", "retorna"; Codex, #480 — só o
- * infinitivo deixava "…antes da reunião e retornará por aqui" calar a trava),
- * "contato"/"retorno" como nome ("fará contato", "dar um retorno"). O
- * passado ("o que você respondeu") e a 1ª do plural ("nos falamos na
- * quarta", que é a reunião) ficam de fora.
+ * Alguém da equipe FALANDO com o cliente — a classe inteira, não só os
+ * verbos da promessa (Codex, #480, duas rodadas: "retornará" e "te explicar"
+ * escapavam): procurar, contatar, ligar, chamar, escrever, responder,
+ * retornar, falar, conversar, explicar, apresentar, orientar, esclarecer,
+ * tirar dúvidas, atender, acompanhar, assumir. Nas formas que PROMETEM:
+ * infinitivo, futuro, condicional, presente e gerúndio ("vai retornar",
+ * "retornará", "te liga", "explicando"), e "contato"/"retorno" como nome
+ * ("fará contato", "dar um retorno"). O passado ("o que você explicou") e a
+ * 1ª do plural ("nos falamos na quarta", que é a própria reunião) ficam de
+ * fora; "conversa" é o nome, não o verbo. Em inglês, sem o passado ("the
+ * documents you presented"). E o cliente como OBJETO de qualquer verbo ("te
+ * manda um resumo", "mandar uma mensagem para você", "send it to you"): a
+ * equipe fazendo algo COM ele, não só analisando ("você" sujeito, "o que você
+ * passou", não conta).
  */
-const CONTATO =
-  /(?:^|[^\p{L}])(?:contat\p{L}*|contact(?:s|ing|ed)?|retorno|(?:cham|lig|retorn|fal|procur)(?:ar|ara|arao|a|am|ando)|(?:respond|atend)(?:er|era|erao|e|em|endo)|assum(?:ir|ira|irao|e|em|indo)|(?:get|gets|getting)\s+back|reach(?:es|ing)?\s+out|tak(?:e|es|ing)\s+over|call(?:s|ing)?|in\s+touch|follow(?:s|ing)?\s+up)(?![\p{L}])/u
+const FORMAS_AR = '(?:ar|ara|arao|aria|a|am|ando)'
+const FORMAS_ER = '(?:er|era|erao|eria|e|em|endo)'
+const FORMAS_IR = '(?:ir|ira|irao|iria|e|em|indo)'
+const CONTATO = new RegExp(
+  '(?:^|[^\\p{L}])(?:' +
+    `(?:cham|lig|telefon|contat|retorn|fal|procur|explic|apresent|orient|acompanh)${FORMAS_AR}` +
+    `|convers(?:ar|ara|arao|aria|ando)|(?:respond|atend|esclarec|escrev)${FORMAS_ER}|assum${FORMAS_IR}` +
+    `|contato|retorno|tir${FORMAS_AR}\\s+(?:\\p{L}+\\s+){0,3}duvidas?|(?:mand|envi)${FORMAS_AR}\\s+(?:\\p{L}+\\s+){0,2}mensage\\p{L}*` +
+    '|te|lhe|(?:com|para|pra)\\s+(?:voce|vc)|(?:to|with)\\s+you' +
+    '|(?:contact|call|phone|talk|speak|explain|present|respond)(?:s|ing)?|(?:text|message)(?:s|ing)?\\s+you' +
+    '|(?:reach|reaches|reaching)\\s+out|(?:follow|follows|following)\\s+up|(?:get|gets|getting)\\s+back' +
+    '|(?:take|takes|taking)\\s+over|(?:walk|walks|walking)\\s+you\\s+through|in\\s+touch' +
+    ')(?![\\p{L}])',
+  'u',
+)
 
 function analiseNaReuniao(f: string): boolean {
   if (NA_REUNIAO.test(f) && ANALISE.test(f)) return true

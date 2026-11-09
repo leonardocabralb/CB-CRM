@@ -434,6 +434,10 @@ describe('a EQUIPE PROMETIDA sem o [[TRANSFERIR]] (27/09)', () => {
       // O passado e o "nos falamos" (a própria reunião) não são promessa de contato.
       'O advogado vai analisar tudo o que você respondeu antes da reunião.',
       'O advogado vai analisar tudo antes da reunião, e nos falamos na quarta!',
+      'O advogado vai analisar tudo o que você explicou antes da reunião.',
+      'O advogado vai analisar a conversa e os documentos antes da reunião.',
+      'A lawyer will review the documents you presented before the meeting.',
+      'O advogado vai analisar tudo o que você mandou antes da reunião.',
     ]) {
       expect(equipePrometida(t), t).toBe(false)
     }
@@ -456,6 +460,19 @@ describe('a EQUIPE PROMETIDA sem o [[TRANSFERIR]] (27/09)', () => {
       'O advogado vai analisar tudo e te dar um retorno antes da reunião.',
       'O advogado vai analisar tudo antes da reunião e te procura por aqui.',
       'Our team will review your documents before the meeting and will be calling you today.',
+      // Explicar, apresentar, orientar, conversar, tirar dúvidas: falar com o cliente (Codex, #480).
+      'Vou pedir para o advogado analisar os documentos e te explicar tudo por aqui antes da reunião.',
+      'O advogado vai analisar tudo antes da reunião e te apresenta os caminhos por aqui.',
+      'O advogado vai analisar o contrato e te orientar antes da reunião.',
+      'O advogado vai analisar tudo e conversar com você antes da reunião.',
+      'O advogado vai analisar tudo e tirar todas as suas dúvidas antes da reunião.',
+      'O advogado vai analisar tudo antes da reunião e esclarecerá suas dúvidas por aqui.',
+      'A lawyer will review your contract and explain everything to you before the meeting.',
+      'A lawyer will review your documents and text you before the meeting.',
+      // O cliente como objeto: a equipe fazendo algo COM ele.
+      'O advogado vai analisar tudo antes da reunião e te manda um resumo.',
+      'O advogado vai analisar tudo e mandar uma mensagem para você antes da reunião.',
+      'Our team will review everything and send a summary to you before the meeting.',
       // Explicar ou apresentar antes da reunião pede contato: não é só análise.
       'Vou pedir para o advogado te explicar tudo antes da reunião.',
       // A passagem explícita dispara com qualquer reunião na frase.
