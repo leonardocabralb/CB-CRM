@@ -101,6 +101,13 @@ das ações está em `ia.md` e `ia-agentes.md`.
   30 s, e o cliente ficava sem resposta até escrever de novo. Falha de
   configuração (chave, modelo, 404) não repete. O reagendamento do áudio ou da
   mídia no meio MANTÉM a marca (`encerrar`): sem isso, repetiria de novo.
+- ⚠️ **A geração do agente tem 45 s** (`PRAZO_DA_GERACAO_MS`, decisão do
+  operador de 09/11/2026: o Gemini 3.8 Flash estourou os 30 s em 4 de 108
+  casos, e duas tentativas estouradas deixam o cliente sem resposta). Vai por
+  `generateReply({ tetoMs })` no turno, na retomada e no Playground; o teto
+  global (`aiRequestTimeoutMs()`, 30 s) segue para Radar, transcrição e
+  rascunho. O turno passou a 60 s (`PRAZO_DO_TURNO_MS`: 45 + 10 de envio +
+  preparo). Mudou um, confere o outro.
 
 ### Encerrar NÃO descarta o turno que já respondeu (1109)
 

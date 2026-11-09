@@ -148,7 +148,7 @@ import {
   reuniaoPrometida,
   type RegistroDeAcao,
 } from './acoes'
-import type { IaAgente } from './agente'
+import { type IaAgente, PRAZO_DA_GERACAO_MS } from './agente'
 import { lerAgendaDoAgente } from './agenda'
 import { consultaDaUltimaMensagem, PRAZO_DO_EMBEDDING_MS } from './conhecimento'
 import { lerConversaDaConexao } from './contexto'
@@ -1251,6 +1251,7 @@ async function conduzir(
       systemPrompt: pedido,
       messages: conversa,
       timeoutMs: restante,
+      tetoMs: PRAZO_DA_GERACAO_MS,
     })
     texto = r.text
     handoff = r.handoff
@@ -1929,6 +1930,7 @@ async function conduzirRetomada(
       systemPrompt: pedido,
       messages: comNotaDaRetomada(conversa, semResposta),
       timeoutMs: restante,
+      tetoMs: PRAZO_DA_GERACAO_MS,
     })
     texto = r.text
     handoff = r.handoff

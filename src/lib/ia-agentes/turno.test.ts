@@ -2184,8 +2184,8 @@ describe('executarTurno — áudio', () => {
   })
 
   describe('o prazo acaba DEPOIS da transcrição', () => {
-    // Só o `Date` é falso: o relógio anda 40 s dentro do dublê, como uma
-    // transcrição (download + Gemini) que come o prazo de 45 s do turno.
+    // Só o `Date` é falso: o relógio anda dentro do dublê, como uma
+    // transcrição (download + Gemini) que come o prazo de 60 s do turno.
     beforeEach(() => {
       vi.useFakeTimers({ toFake: ['Date'] })
       vi.setSystemTime(new Date())
@@ -2211,8 +2211,8 @@ describe('executarTurno — áudio', () => {
     it('sobra prazo para gerar, mas não para ler o contexto (o embedding): reagenda SEM gastar a vaga', async () => {
       gatilhoDeAudio(10_000)
       vi.mocked(transcreverAudio).mockImplementation(async () => {
-        // 45 s − 10 s de reserva = 35 s; sobram ~7 s: dá para gerar, não para o teto do embedding (8 s).
-        vi.setSystemTime(Date.now() + 28_000)
+        // 60 s − 10 s de reserva = 50 s; sobram ~7 s: dá para gerar, não para o teto do embedding (8 s).
+        vi.setSystemTime(Date.now() + 43_000)
         return { status: 'pronta', transcricao: 'quero falar do contrato' }
       })
       await executarTurno(TURNO)
@@ -2463,11 +2463,11 @@ describe('executarTurno — imagem e PDF do cliente', () => {
     it('sem prazo para mais uma leitura, para de ler (o que foi lido fica gravado)', async () => {
       for (let i = 1; i <= 3; i++) banco.tabelas.messages.push(midia(`foto-${i}`, 20_000 + i * 1_000))
       vi.mocked(lerMidia).mockImplementation(async () => {
-        vi.setSystemTime(Date.now() + 25_000)
+        vi.setSystemTime(Date.now() + 40_000)
         return { status: 'pronta', texto: 'x' }
       })
       await executarTurno(TURNO)
-      // 45 s − 10 s de reserva − 8 s do embedding − 25 s da 1ª leitura < 3 s: a 2ª não começa.
+      // 60 s − 10 s de reserva − 8 s do embedding − 40 s da 1ª leitura < 3 s: a 2ª não começa.
       expect(lerMidia).toHaveBeenCalledTimes(1)
       expect(turno().status).toBe('aguardando')
     })

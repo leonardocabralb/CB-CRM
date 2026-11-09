@@ -239,9 +239,9 @@ export const MAX_TOKENS_DA_LEITURA = 24_576
  * O prazo da CHAMADA ao provedor, por tipo — próprio da leitura, não o
  * `aiRequestTimeoutMs()` (30 s) das respostas de chat: um PDF de dezenas de
  * páginas leva mais que isso. Cabe no turno (`ia-agentes/turno.ts`): a
- * leitura só COMEÇA com o prazo da prévia sobrando (até ~24 s dos 45 s do
+ * leitura só COMEÇA com o prazo da prévia sobrando (até ~39 s dos 60 s do
  * turno), e a pior = 20 s de download + 30 s de envio à Files API (o
- * documento grande, `TEMPO_DO_ENVIO_MS`) + 90 s de documento, ~164 s de rodada —
+ * documento grande, `TEMPO_DO_ENVIO_MS`) + 90 s de documento, ~180 s de rodada —
  * abaixo dos 4 min do recolhedor (`RECOLHER_TURNO_MS`). A leitura que passa
  * do prazo do turno fica GRAVADA e o turno reagenda (`prepararMidias`).
  * Tempo esgotado é falha PASSAGEIRA (não gasta tentativa — `ler-midia.ts`).

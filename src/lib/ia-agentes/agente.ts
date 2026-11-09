@@ -10,6 +10,18 @@ import type { AiProvider } from '@/lib/ai/types'
 
 import { lerRetomada, lerRetomadaDoCorpo, type ConfigDaRetomada } from './retomada'
 
+/**
+ * Teto da GERAÇÃO da resposta do agente — no turno, na retomada e no
+ * Playground —, acima do teto global das outras chamadas de IA
+ * (`aiRequestTimeoutMs()`, 30 s: Radar, transcrição, rascunho ✨), que não
+ * muda. ⚠️ Medido em 09/11/2026 (comparativo de modelos, pedidos reais de
+ * 7 a 12 mil tokens): o Gemini 3.8 Flash ficou em 12–16 s no meio e estourou
+ * os 30 s quatro vezes, duas no pedido grande do Previdenciário — e geração
+ * que estoura, depois da 2ª tentativa, deixa o cliente SEM resposta (E8).
+ * Decisão do operador: 45 s.
+ */
+export const PRAZO_DA_GERACAO_MS = 45_000
+
 export const LIMITES = {
   nome: 80,
   descricao: 1000,

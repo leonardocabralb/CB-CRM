@@ -23,8 +23,8 @@
 const HOST_DO_GEMINI = 'generativelanguage.googleapis.com'
 /**
  * O prazo do ENVIO (início + bytes + espera do processamento), à parte do da
- * leitura: 50 MB no pior caso. Somado ao resto, a pior rodada fica em ~164 s
- * (20 s de download + 30 s de envio + 90 s de leitura + a prévia), abaixo dos
+ * leitura: 50 MB no pior caso. Somado ao resto, a pior rodada fica em ~180 s
+ * (até 39 s de prévia + 20 s de download + 30 s de envio + 90 s de leitura), abaixo dos
  * 4 min do recolhedor (`RECOLHER_TURNO_MS`).
  */
 export const TEMPO_DO_ENVIO_MS = 30_000

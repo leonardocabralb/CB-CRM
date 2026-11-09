@@ -275,8 +275,8 @@ testados; `prepararMidias` em `turno.ts`; `contexto.ts` e `pedido.ts`.
     imagem, 90 s documento), não os 30 s do chat, e o texto pedido vai até
     ~6.000 caracteres. ⚠️ O teto de SAÍDA é 24.576: o raciocínio conta dentro
     (medido 08/11: com 8.192, contrato cortado em 609 caracteres). Cabe no
-    turno: a leitura só começa com a prévia sobrando (≤ ~24 s dos 45 s), a
-    pior dá ~164 s com o envio (< 4 min do recolhedor), e a que passa do
+    turno: a leitura só começa com a prévia sobrando (≤ ~39 s dos 60 s), a
+    pior dá ~180 s com o envio (< 4 min do recolhedor), e a que passa do
     prazo fica gravada e o turno reagenda.
   - ⚠️ **Borrado vira `[ilegível]`** (`MARCA_ILEGIVEL`, nas duas instruções):
     sem ela o Gemini completava a data borrada sem avisar (medido 08/11).

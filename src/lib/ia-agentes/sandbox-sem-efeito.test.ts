@@ -58,8 +58,9 @@ const PERMITIDOS: Record<string, readonly string[]> = {
   ],
   // Os horários AO VIVO (leitura); `marcarNoCalendly` mora no mesmo módulo e é PROIBIDO.
   '@/lib/ia-agentes/agenda': ['lerAgendaDoAgente'],
-  // O rascunho: ler o corpo do PATCH e aplicá-lo por cima do salvo (puras).
-  '@/lib/ia-agentes/agente': ['aplicarAlteracao', 'lerAlteracao'],
+  // O rascunho: ler o corpo do PATCH e aplicá-lo por cima do salvo (puras); e o
+  // teto da geração do agente (uma constante: o Playground gera com o MESMO prazo do turno).
+  '@/lib/ia-agentes/agente': ['aplicarAlteracao', 'lerAlteracao', 'PRAZO_DA_GERACAO_MS'],
   '@/lib/ia-agentes/conhecimento': ['consultaDaUltimaMensagem'],
   '@/lib/ia-agentes/ferramentas': ['opcoesDoAgente'],
   // Ler o agente e conferir o rascunho como o salvar (só lê; item 4 abaixo).
