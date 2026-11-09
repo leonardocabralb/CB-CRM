@@ -55,3 +55,52 @@ describe('o Haiku 5.5 e a faixa do pedido', () => {
     expect(precoNoDia('anthropic', 'claude-haiku-5-5', '2026-10-25')?.entrada).toBe(0.1)
   })
 })
+
+// O CACHE do provedor (1129, 09/11/2026): da entrada, o lido paga `cacheLeitura`
+// e o gravado `cacheEscrita` (Anthropic: 2× com 1 h); sem os preços na linha,
+// erra para CIMA (leitura cheia, gravação a 2×), nunca para baixo.
+describe('o cache do provedor no custo (1129)', () => {
+  const sonnet = { provedor: 'anthropic', modelo: 'claude-sonnet-5-5', dia: '2026-11-09', acimaDaFaixa: false }
+
+  it('Sonnet: 1M de entrada lida do cache sai a US$ 0,20 (não 2,00); a gravada, a US$ 4,00', () => {
+    const lido = custoEmDolar({ ...sonnet, tokensEntrada: 1_000_000, tokensSaida: 0, tokensTotal: 1_000_000, tokensCacheLeitura: 1_000_000 })
+    expect(lido).toBeCloseTo(0.2, 6)
+    const gravado = custoEmDolar({ ...sonnet, tokensEntrada: 1_000_000, tokensSaida: 0, tokensTotal: 1_000_000, tokensCacheEscrita: 1_000_000 })
+    expect(gravado).toBeCloseTo(4, 6)
+  })
+
+  it('a chamada medida em 09/11 (10.518 lidos de 10.818): ~US$ 0,0086, contra 0,0266 sem cache', () => {
+    const u = { ...sonnet, tokensEntrada: 10_818, tokensSaida: 500, tokensTotal: 11_318 }
+    expect(custoEmDolar(u)).toBeCloseTo((10_818 * 2 + 500 * 10) / 1e6, 8)
+    expect(custoEmDolar({ ...u, tokensCacheLeitura: 10_518 })).toBeCloseTo((300 * 2 + 10_518 * 0.2 + 500 * 10) / 1e6, 8)
+  })
+
+  it('Gemini: o lido do cache implícito a 10% (US$ 0,075 até 31/12; 0,15 a partir de 2027)', () => {
+    const g = { provedor: 'gemini', modelo: 'gemini-3.8-flash', acimaDaFaixa: false, tokensEntrada: 1_000_000, tokensSaida: 0, tokensTotal: 1_000_000, tokensCacheLeitura: 1_000_000 }
+    expect(custoEmDolar({ ...g, dia: '2026-12-31' })).toBeCloseTo(0.075, 6)
+    expect(custoEmDolar({ ...g, dia: '2027-01-01' })).toBeCloseTo(0.15, 6)
+  })
+
+  it('linha SEM preço de cache: a leitura a preço cheio e a gravação a 2× (erra para cima)', () => {
+    const g = { provedor: 'gemini', modelo: 'gemini-3.5-flash', dia: '2026-11-09', acimaDaFaixa: false, tokensSaida: 0 }
+    expect(custoEmDolar({ ...g, tokensEntrada: 1_000_000, tokensTotal: 1_000_000, tokensCacheLeitura: 1_000_000 })).toBeCloseTo(1.5, 6)
+    expect(custoEmDolar({ ...g, tokensEntrada: 1_000_000, tokensTotal: 1_000_000, tokensCacheEscrita: 1_000_000 })).toBeCloseTo(3, 6)
+  })
+
+  it('soma torta (cache maior que a entrada) nunca dá entrada negativa', () => {
+    expect(custoEmDolar({ ...sonnet, tokensEntrada: 100, tokensSaida: 0, tokensTotal: 100, tokensCacheLeitura: 1_000_000 })).toBeCloseTo(0.2, 6)
+  })
+
+  it('todo modelo da Anthropic e do Gemini 3.x Flash da tabela tem o preço da leitura de cache', () => {
+    for (const m of ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5']) {
+      const p = precoNoDia('anthropic', m, '2026-11-09')
+      expect(p?.cacheLeitura, m).toBeDefined()
+      expect(p?.cacheEscrita, m).toBeCloseTo(2 * (p?.entrada ?? 0), 6)
+    }
+    expect(precoNoDia('anthropic', 'claude-haiku-5-5', '2026-11-09', 'acima')?.cacheEscrita).toBeCloseTo(1, 6)
+    for (const m of ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash']) {
+      expect(precoNoDia('gemini', m, '2026-11-09')?.cacheLeitura, m).toBe(0.075)
+      expect(precoNoDia('gemini', m, '2027-01-01')?.cacheLeitura, m).toBe(0.15)
+    }
+  })
+})

@@ -67,7 +67,9 @@ const PERMITIDOS: Record<string, readonly string[]> = {
   '@/lib/ia-agentes/ferramentas': ['opcoesDoAgente'],
   // Ler o agente e conferir o rascunho como o salvar (só lê; item 4 abaixo).
   '@/lib/ia-agentes/repo': ['conferirRascunho', 'obterAgente'],
-  '@/lib/ia-agentes/pedido': ['lerPassagem', 'montarPedidoDaRetomada', 'montarPedidoDoAgente'],
+  // O pedido em pedaços (09/11/2026, o cache do provedor): funções PURAS, o
+  // mesmo texto de antes, só dividido.
+  '@/lib/ia-agentes/pedido': ['juntarPartes', 'lerPassagem', 'partesDoPedidoDaRetomada', 'partesDoPedidoDoAgente'],
   '@/lib/ia-agentes/regras-do-sistema': ['vazouOPedido'],
   '@/lib/ia-agentes/resposta': ['recusa', 'respostaDoErro'],
   '@/lib/ia-agentes/retomada': ['tempoEmIngles'],

@@ -58,9 +58,17 @@ export interface ChatMessage {
  * the provider didn't return usage. Logged to `ai_usage_log`.
  */
 export interface AiUsage {
+  /** TODA a entrada, com a parte lida do cache e a gravada nele (NOSSO, 09/11/2026). */
   promptTokens: number
   completionTokens: number
   totalTokens: number
+  /**
+   * NOSSO (09/11/2026, `.claude/rules/ia-cache-do-pedido.md`): quanto da
+   * entrada veio do CACHE do provedor (cobrado a ~10%) e quanto foi GRAVADO
+   * nele (na Anthropic, a 2× com TTL de 1 h). Ausentes = nada de cache.
+   */
+  cacheReadTokens?: number
+  cacheWriteTokens?: number
 }
 
 /** Raw text + usage a provider adapter returns before handoff parsing. */

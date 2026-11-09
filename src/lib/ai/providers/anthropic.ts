@@ -15,7 +15,38 @@ export const ANTHROPIC_VERSION = '2023-06-01'
 interface AnthropicResponse {
   content?: { type?: string; text?: string }[]
   stop_reason?: string
-  usage?: { input_tokens?: number; output_tokens?: number }
+  usage?: {
+    input_tokens?: number
+    output_tokens?: number
+    cache_creation_input_tokens?: number
+    cache_read_input_tokens?: number
+  }
+}
+
+/**
+ * NOSSO (09/11/2026, `.claude/rules/ia-cache-do-pedido.md`): o cache dos
+ * pedaços FIXOS do pedido dura 1 h. Gravar custa 2× a entrada e ler, 0,1×;
+ * com 5 min (1,25×) a gravação é mais barata, mas o acerto cai de ~93% para
+ * ~65% no volume medido do Trabalhista (o relatório de 09/11). Abaixo de ~2
+ * chamadas por hora do mesmo agente, o 5 min sairia mais barato.
+ */
+export const TTL_DO_CACHE = '1h'
+
+/**
+ * O `system` da Anthropic: o texto inteiro, ou — com os pedaços — um bloco
+ * por pedaço, com a marca de cache nos fixos. Os pedaços já trazem a linha em
+ * branco que os separa (`juntarPartes`).
+ */
+export function sistemaDaAnthropic(
+  systemPrompt: string,
+  partes: ProviderArgs['systemPartes'],
+): string | Array<{ type: 'text'; text: string; cache_control?: { type: 'ephemeral'; ttl: typeof TTL_DO_CACHE } }> {
+  if (!partes || partes.length === 0) return systemPrompt
+  return partes.map((p) =>
+    p.cache
+      ? { type: 'text' as const, text: p.texto, cache_control: { type: 'ephemeral' as const, ttl: TTL_DO_CACHE } }
+      : { type: 'text' as const, text: p.texto },
+  )
 }
 
 /**
@@ -36,7 +67,7 @@ function normalizeForAnthropic(messages: ChatMessage[]): ChatMessage[] {
  * in `generateReply`).
  */
 export async function generateAnthropic(args: ProviderArgs): Promise<ProviderResult> {
-  const { apiKey, model, systemPrompt, messages, timeoutMs } = args
+  const { apiKey, model, systemPrompt, systemPartes, messages, timeoutMs } = args
 
   let res: Response
   try {
@@ -49,7 +80,7 @@ export async function generateAnthropic(args: ProviderArgs): Promise<ProviderRes
       },
       body: JSON.stringify({
         model,
-        system: systemPrompt,
+        system: sistemaDaAnthropic(systemPrompt, systemPartes),
         max_tokens: MAX_OUTPUT_TOKENS,
         messages: normalizeForAnthropic(messages),
       }),
@@ -79,10 +110,23 @@ export async function generateAnthropic(args: ProviderArgs): Promise<ProviderRes
       code: 'empty_response',
     })
   }
-  // Anthropic reports input/output but no total — normalizeUsage sums.
-  const usage = normalizeUsage({
-    prompt: data?.usage?.input_tokens,
-    completion: data?.usage?.output_tokens,
+  return { text, usage: usoDaAnthropic(data?.usage) }
+}
+
+/**
+ * Anthropic reports input/output but no total — normalizeUsage sums. ⚠️
+ * NOSSO (09/11/2026): com cache, `input_tokens` é só o RESTO sem cache; a
+ * entrada inteira é ele + o gravado + o lido. Sem somar, o custo registrado
+ * cairia para uma fração do real.
+ */
+export function usoDaAnthropic(u: AnthropicResponse['usage']) {
+  const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0)
+  const gravado = n(u?.cache_creation_input_tokens)
+  const lido = n(u?.cache_read_input_tokens)
+  return normalizeUsage({
+    prompt: n(u?.input_tokens) + gravado + lido,
+    completion: u?.output_tokens,
+    cacheRead: lido,
+    cacheWrite: gravado,
   })
-  return { text, usage }
 }

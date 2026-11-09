@@ -53,6 +53,10 @@ export async function logAiUsage(
       prompt_tokens: args.usage.promptTokens,
       completion_tokens: args.usage.completionTokens,
       total_tokens: args.usage.totalTokens,
+      // NOSSO (1129, 09/11/2026): as partes do cache do provedor, só quando
+      // houve — a linha sem cache (Radar, transcrição) segue como antes.
+      ...(args.usage.cacheReadTokens ? { cache_leitura_tokens: args.usage.cacheReadTokens } : {}),
+      ...(args.usage.cacheWriteTokens ? { cache_escrita_tokens: args.usage.cacheWriteTokens } : {}),
       // Só quando há agente: a linha de Radar/transcrição não carrega as colunas
       // (e o app anterior à 1048, sem elas no banco, continua gravando).
       ...(args.iaAgenteId

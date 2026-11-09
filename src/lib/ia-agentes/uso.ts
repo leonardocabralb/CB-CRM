@@ -4,8 +4,9 @@
 // A entrada são as linhas da RPC `cb_ia_uso` (1048: uma por dia, modo,
 // agente, provedor e modelo — a soma é feita no BANCO, porque ler linha a
 // linha esbarrava no corte de 1000 do PostgREST; desde a 1108, também por
-// FAIXA do pedido, para o preço do Haiku 5.5). Aqui só se reagrupa e se
-// estima o custo.
+// FAIXA do pedido, para o preço do Haiku 5.5; desde a 1129, com a parte da
+// entrada que veio do CACHE do provedor). Aqui só se reagrupa e se estima o
+// custo.
 //
 // ⚠️ Produção (`agente`) e teste do Playground (`agente_teste`, D13) ficam
 // SEPARADOS. Radar e transcrição são custo da CONTA (D15), sem agente.
@@ -29,9 +30,17 @@ export interface LinhaDeUso {
    */
   acimaDaFaixa: boolean | null
   chamadas: number
+  /** A entrada INTEIRA, com a parte do cache. */
   tokensEntrada: number
   tokensSaida: number
   tokensTotal: number
+  /**
+   * Da entrada, o que veio do CACHE do provedor e o que foi GRAVADO nele
+   * (1129). Coluna ausente (a função de antes da 1129) = 0: a entrada inteira
+   * a preço cheio — o custo erra para CIMA, nunca para baixo.
+   */
+  tokensCacheLeitura: number
+  tokensCacheEscrita: number
 }
 
 export interface Soma {
@@ -100,6 +109,8 @@ export function resumirUso(linhas: LinhaDeUso[], cotacao: number | null): Resumo
       tokensEntrada: l.tokensEntrada,
       tokensSaida: l.tokensSaida,
       tokensTotal: l.tokensTotal,
+      tokensCacheLeitura: l.tokensCacheLeitura,
+      tokensCacheEscrita: l.tokensCacheEscrita,
     })
     if (dolar === null && l.tokensTotal > 0) semPreco.add(`${l.provedor}/${l.modelo}`)
 
@@ -168,5 +179,7 @@ export function lerLinhaDeUso(r: Record<string, unknown>): LinhaDeUso | null {
     tokensEntrada: n(r.tokens_entrada),
     tokensSaida: n(r.tokens_saida),
     tokensTotal: n(r.tokens_total),
+    tokensCacheLeitura: n(r.tokens_cache_leitura),
+    tokensCacheEscrita: n(r.tokens_cache_escrita),
   }
 }

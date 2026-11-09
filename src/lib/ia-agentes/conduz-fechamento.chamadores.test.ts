@@ -26,7 +26,9 @@ describe('conduzFechamento: os chamadores passam a opção do agente', () => {
   for (const caminho of CHAMADORES) {
     it(`${caminho}: cada montagem do pedido leva agente.conduzFechamento`, () => {
       const texto = fonte(caminho)
-      const montagens = texto.match(/montarPedido(?:DoAgente|DaRetomada)\(\{/g) ?? []
+      // Desde 09/11/2026 (o cache do provedor) os chamadores montam o pedido em
+      // PEDAÇOS (`partesDoPedido*`); `montarPedido*` é o mesmo texto, junto.
+      const montagens = texto.match(/(?:montarPedido|partesDoPedido)(?:DoAgente|DaRetomada)\(\{/g) ?? []
       expect(montagens.length, 'resposta e retomada').toBe(2)
       const passados = texto.match(/conduzFechamento:\s*agente\.conduzFechamento\b/g) ?? []
       expect(passados.length).toBe(montagens.length)

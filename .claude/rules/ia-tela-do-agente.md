@@ -106,6 +106,8 @@ agente errar em silêncio.
   (Haiku 5.5: 0,10/0,50 até 100 mil; 0,50/2,50 acima). Sem a coluna
   (`acimaDaFaixa` nulo), modelo COM faixa é "sem preço", nunca a tabela baixa.
 - O corte vive em DOIS lugares (o `.sql` e `LIMIAR_DA_FAIXA`), cobrados por
-  `ia-uso-por-faixa-1108.test.ts`: modelo com corte DIFERENTE exige migration
+  `ia-uso-por-faixa-1108.test.ts` e `ia-uso-com-cache-1129.test.ts` (a 1129,
+  com as somas do cache, é a definição vigente da função; o cache do
+  provedor no custo: `ia-cache-do-pedido.md`): modelo com corte DIFERENTE exige migration
   nova. A rota pagina pelas SEIS chaves e exige a 1108 aplicada ANTES do
   deploy (ordenar por coluna ausente é erro do PostgREST).

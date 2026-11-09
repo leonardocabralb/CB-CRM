@@ -2827,6 +2827,19 @@ describe('executarTurno — as ações (F4, D28)', () => {
     expect(String(notas()[0].texto)).toContain('link')
   })
 
+  it('o CACHE do provedor (09/11/2026): o pedido vai em pedaços — juntos, são o systemPrompt; os fixos marcados, a parte variável no fim', async () => {
+    responde('Certo!\n[[ETIQUETAR:1]]')
+    await executarTurno(TURNO)
+    const chamada = vi.mocked(generateReply).mock.calls[0][0]
+    const partes = chamada.systemPartes ?? []
+    expect(partes.map((p) => p.texto).join('')).toBe(chamada.systemPrompt)
+    expect(partes.map((p) => p.cache)).toEqual([true, true, false])
+    // As ações (fixas) no pedaço do meio; a data, no último.
+    expect(partes[1].texto).toContain('[[ETIQUETAR:n]]')
+    expect(partes[2].texto).toContain('Current date and time')
+    expect(partes.slice(0, 2).some((p) => p.texto.includes('Current date and time'))).toBe(false)
+  })
+
   // As REGRAS DO SISTEMA (27/09/2026): a resposta que reproduz o pedido
   // interno é RETIDA, antes do link inventado e da reunião prometida.
   it('⚠️ o PEDIDO VAZADO (o canário das regras do sistema): a resposta é RETIDA, nada executa, e a conversa vai para gente', async () => {
