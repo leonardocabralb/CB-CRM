@@ -155,7 +155,10 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       }
       break
     case 'send_media': {
-      if (!nonEmpty(c.url)) {
+      // NOSSO (09/11/2026): o arquivo é o subido no passo (`url`) OU um item
+      // do acervo (`acervo_id`, copiado a cada envio). Se o item ainda existe
+      // é do banco — `validateAcervoForActivation`, na rota.
+      if (!nonEmpty(c.url) && !nonEmpty(c.acervo_id)) {
         issues.push({ path: `${path}.url`, message: 'a file is required', codigo: 'midia_sem_arquivo' })
       }
       const tipos = ['image', 'video', 'document', 'audio']
@@ -1276,6 +1279,45 @@ export function validateCustomFieldConditionsForActivation(
       if (s.step_type === 'condition' && c.subject === 'custom_field' && nonEmpty(c.operand)) {
         const problema = problemaDaCondicaoPorCampo(c, campos.get(String(c.operand).trim()))
         if (problema) issues.push({ path: `${path}.operand`, message: problema })
+      }
+      if (s.step_type === 'condition' && s.branches) {
+        andar(s.branches.yes, `${path}.yes.`)
+        andar(s.branches.no, `${path}.no.`)
+      }
+    })
+  }
+  andar(steps, '')
+  return issues
+}
+
+// ------------------------------------------------------------
+// NOSSO (09/11/2026): o item do ACERVO que um "Enviar arquivo" aponta ainda
+// existe NESTA conta? A conferência que a ativação do robô faz
+// (`referencias-do-robo.ts`): sem ela, a automação ligada com o item apagado
+// falharia em TODA execução, e ninguém saberia até ler o histórico. Puro: a
+// rota carrega os itens da conta (`carregarAcervoDosPassos`, em
+// `midia-do-passo.ts`) e a tela passa os que ela leu (`conferirParaLigar`).
+// `null` = a leitura falhou ou a lista não chegou: a conferência é pulada, e o
+// motor continua sendo a guarda (item apagado = o passo falha com o motivo).
+// ------------------------------------------------------------
+export function validateAcervoForActivation(
+  steps: StepLike[],
+  acervo: ReadonlySet<string> | null,
+): ValidationIssue[] {
+  if (!acervo || !Array.isArray(steps)) return []
+  const issues: ValidationIssue[] = []
+  const andar = (lista: StepLike[] | undefined, prefix: string) => {
+    ;(lista ?? []).forEach((s, i) => {
+      const path = `${prefix}steps[${i}]`
+      const id = s.step_type === 'send_media' && nonEmpty(s.step_config?.acervo_id)
+        ? String(s.step_config.acervo_id).trim()
+        : ''
+      if (id && !acervo.has(id)) {
+        issues.push({
+          path: `${path}.acervo_id`,
+          message: 'the media library file was deleted — pick another file',
+          codigo: 'midia_do_acervo_apagada',
+        })
       }
       if (s.step_type === 'condition' && s.branches) {
         andar(s.branches.yes, `${path}.yes.`)

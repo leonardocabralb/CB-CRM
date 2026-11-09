@@ -219,6 +219,8 @@ export const CODIGOS_DE_PENDENCIA = [
   'midia_tipo_invalido',
   'audio_com_legenda',
   'legenda_longa',
+  // O item do acervo que o "Enviar arquivo" aponta foi apagado (09/11/2026)
+  'midia_do_acervo_apagada',
   'mensagem_sem_texto',
   'interativa_invalida',
   'modelo_nao_escolhido',

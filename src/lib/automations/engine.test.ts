@@ -715,6 +715,30 @@ vi.mock('@/lib/notes/anotacao-da-automacao', async (original) => ({
   ...(await original<typeof import('@/lib/notes/anotacao-da-automacao')>()),
   escreverAnotacaoDaAutomacao: anotacaoMock.escreverAnotacaoDaAutomacao,
 }));
+// "Enviar arquivo" do ACERVO (09/11/2026): a cópia (`copiarDoAcervo`) e a
+// régua da origem são testadas em `midia-do-passo.test.ts`; aqui, o que o
+// motor faz com elas — a URL e o TIPO que chegam ao remetente, e a falha que
+// encerra o passo antes de qualquer envio.
+const midiaMock = vi.hoisted(() => ({
+  engineSendMedia: vi.fn<(args: Record<string, unknown>) => Promise<{ whatsapp_message_id: string }>>(
+    async () => ({ whatsapp_message_id: 'mid-1' })
+  ),
+  copiarDoAcervo: vi.fn<(db: unknown, conta: string, itemId: string) => Promise<unknown>>(async () => ({
+    ok: true,
+    tipo: 'video',
+    mediaUrl: 'https://storage/account-acct-1/1762700000000123456-gestante.mp4',
+    path: 'account-acct-1/1762700000000123456-gestante.mp4',
+    filename: 'gestante.mp4',
+  })),
+}));
+vi.mock('@/lib/flows/meta-send', async (original) => ({
+  ...(await original<typeof import('@/lib/flows/meta-send')>()),
+  engineSendMedia: midiaMock.engineSendMedia,
+}));
+vi.mock('@/lib/acervo/copiar', async (original) => ({
+  ...(await original<typeof import('@/lib/acervo/copiar')>()),
+  copiarDoAcervo: midiaMock.copiarDoAcervo,
+}));
 
 import {
   dispararAutomacoes,
@@ -6921,5 +6945,128 @@ describe('valoresParaPrevia — a prévia usa as funções do envio e só lê', 
       context: { conversation_id: 'conv1' },
     });
     expect(vi.mocked(engineSendText).mock.calls[0]?.[0]?.text).toBe('Oi Marcelo []');
+  });
+});
+
+// ------------------------------------------------------------
+// "Enviar arquivo" do ACERVO (09/11/2026): o passo escolhe um item do acervo
+// de mídias (`acervo_id`), e o motor o COPIA a cada envio — como o nó "Enviar
+// mídia" do robô. O passo antigo (arquivo subido no passo, `url`) segue igual.
+// ------------------------------------------------------------
+
+describe('"Enviar arquivo": o arquivo subido no passo ou um item do ACERVO (09/11/2026)', () => {
+  const ITEM = '00000000-0000-4000-8000-0000000000a1';
+
+  beforeEach(() => {
+    midiaMock.engineSendMedia.mockClear();
+    midiaMock.copiarDoAcervo.mockClear();
+    destinatarioMock.conversaDoContato.mockClear();
+  });
+
+  async function executar(
+    step_config: Record<string, unknown>,
+    context: Record<string, unknown> = { conversation_id: 'conv-1' }
+  ) {
+    h.state.owned = { id: 'c1', name: 'Maria' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [{ ...sendStep(step_config), step_type: 'send_media' }];
+    return runAutomationById({
+      automationId: 'a1',
+      accountId: ACCOUNT,
+      contactId: 'c1',
+      context,
+      triggerType: 'deal_stage_changed',
+    });
+  }
+
+  it('SEM acervo: manda a URL do passo como sempre — nada é copiado', async () => {
+    await executar({
+      kind: 'document',
+      url: 'https://storage/account-acct-1/contrato.pdf',
+      filename: 'Contrato.pdf',
+      caption: 'Segue o contrato',
+    });
+
+    expect(midiaMock.copiarDoAcervo).not.toHaveBeenCalled();
+    expect(midiaMock.engineSendMedia).toHaveBeenCalledTimes(1);
+    expect(midiaMock.engineSendMedia.mock.calls[0]?.[0]).toMatchObject({
+      accountId: ACCOUNT,
+      conversationId: 'conv-1',
+      contactId: 'c1',
+      kind: 'document',
+      link: 'https://storage/account-acct-1/contrato.pdf',
+      filename: 'Contrato.pdf',
+      caption: 'Segue o contrato',
+    });
+  });
+
+  it('COM acervo: copia o item PELA CONTA a cada envio e manda a CÓPIA, com o tipo do item', async () => {
+    const passo = {
+      // foto velha da escolha: o motor manda com o tipo do ITEM
+      kind: 'image',
+      url: 'https://storage/account-acct-1/acervo/gestante.mp4',
+      acervo_id: ITEM,
+      caption: 'Veja como funciona, {{contact.name}}',
+    };
+    await executar(passo);
+    await executar(passo);
+
+    expect(midiaMock.copiarDoAcervo).toHaveBeenCalledTimes(2);
+    expect(midiaMock.copiarDoAcervo).toHaveBeenCalledWith(expect.anything(), ACCOUNT, ITEM);
+    expect(midiaMock.engineSendMedia.mock.calls[0]?.[0]).toMatchObject({
+      kind: 'video',
+      link: 'https://storage/account-acct-1/1762700000000123456-gestante.mp4',
+      caption: 'Veja como funciona, Maria',
+      // vídeo não leva nome
+      filename: undefined,
+    });
+    // A URL do item (guardada só para a tela) nunca vai ao WhatsApp.
+    expect(JSON.stringify(midiaMock.engineSendMedia.mock.calls)).not.toContain('/acervo/');
+  });
+
+  it('item de ÁUDIO do acervo: sai sem legenda, mesmo com legenda gravada no passo (o tipo é o do item)', async () => {
+    midiaMock.copiarDoAcervo.mockResolvedValueOnce({
+      ok: true,
+      tipo: 'audio',
+      mediaUrl: 'https://storage/account-acct-1/1762700000000654321-voz.ogg',
+      path: 'account-acct-1/1762700000000654321-voz.ogg',
+      filename: 'voz.ogg',
+    });
+    await executar({ kind: 'video', url: '', acervo_id: ITEM, caption: 'texto que não viajaria' });
+
+    expect(midiaMock.engineSendMedia.mock.calls[0]?.[0]).toMatchObject({ kind: 'audio', caption: undefined });
+  });
+
+  it('CRÍTICO: item APAGADO do acervo — o passo falha com o motivo, nada sai, e nenhuma conversa é criada', async () => {
+    midiaMock.copiarDoAcervo.mockResolvedValueOnce({ ok: false, erro: 'nao_encontrado', detalhe: 'item not found' });
+    // Ficha SEM conversa: chegando ao envio, o passo a criaria (encerrada).
+    await executar({ kind: 'video', url: 'https://storage/acervo/gestante.mp4', acervo_id: ITEM }, {});
+
+    expect(h.state.logUpdates).toContainEqual(expect.objectContaining({ desfecho: 'falhou' }));
+    expect(midiaMock.engineSendMedia).not.toHaveBeenCalled();
+    expect(destinatarioMock.conversaDoContato).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.state.logUpdates)).toContain(
+      'o arquivo do acervo escolhido neste passo foi apagado'
+    );
+    // Não é falha do provedor: não volta para a fila.
+    expect(h.state.esperasEnfileiradas).toEqual([]);
+  });
+
+  it('erro de BANCO ao ler o acervo: falha como leitura, NUNCA "apagado"', async () => {
+    midiaMock.copiarDoAcervo.mockResolvedValueOnce({ ok: false, erro: 'leitura', detalhe: 'timeout' });
+    await executar({ kind: 'video', url: '', acervo_id: ITEM });
+
+    expect(midiaMock.engineSendMedia).not.toHaveBeenCalled();
+    const registro = JSON.stringify(h.state.logUpdates);
+    expect(registro).toContain('a leitura do acervo falhou (timeout)');
+    expect(registro).not.toContain('apagado');
+  });
+
+  it('sem arquivo nenhum (nem subido, nem do acervo): falha antes de copiar ou enviar', async () => {
+    await executar({ kind: 'image', url: '' });
+
+    expect(midiaMock.copiarDoAcervo).not.toHaveBeenCalled();
+    expect(midiaMock.engineSendMedia).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.state.logUpdates)).toContain('send_media precisa de um arquivo');
   });
 });

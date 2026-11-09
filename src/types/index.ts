@@ -1925,11 +1925,26 @@ export interface RunFlowStepConfig {
  * ⚠️ **NÃO há coleta de lixo do arquivo.** O mesmo objeto serve toda execução
  * da automação, para sempre. Apagar no envio (como a agendada faz) deixaria a
  * automação quebrada a partir do segundo disparo.
+ *
+ * NOSSO (09/11/2026): o arquivo também pode vir do ACERVO de mídias
+ * (`acervo_id`), COPIADO a cada envio — `src/lib/automations/midia-do-passo.ts`.
  */
 export interface SendMediaStepConfig {
+  /** Com `acervo_id`, é a foto do tipo do item na hora da escolha: o motor usa o do item. */
   kind: 'image' | 'video' | 'document' | 'audio';
-  /** URL pública que o WhatsApp busca no momento do envio. */
+  /**
+   * URL pública que o WhatsApp busca no momento do envio.
+   *
+   * Com `acervo_id`, guarda a URL do item só para a tela mostrar o arquivo: o
+   * motor NÃO a usa — ele copia o item a cada envio.
+   */
   url: string;
+  /**
+   * Item do acervo (`cb_media_library.id`) — o mesmo nome do nó "Enviar mídia"
+   * do robô. Presente VENCE `url`: o motor copia o item (`copiarDoAcervo`), e a
+   * mensagem enviada aponta para a cópia. Ausente = o arquivo subido no passo.
+   */
+  acervo_id?: string | null;
   /**
    * Legenda sob a mídia.
    *
