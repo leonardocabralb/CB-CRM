@@ -62,6 +62,15 @@ export async function subirAoGemini(args: {
   mime: string
   signal: AbortSignal
 }): Promise<ArquivoNoGemini> {
+  // O arquivo já CRIADO no Google: toda saída sem sucesso daqui em diante o
+  // apaga — inclusive a consulta do estado que cai na rede ou no prazo (Codex,
+  // #476). Só o envio que o Google aceitou sem a resposta chegar fica para a
+  // expiração de 48 h: não há nome para apagar.
+  let criado: string | null = null
+  const falha = (r: Extract<ArquivoNoGemini, { ok: false }>): ArquivoNoGemini => {
+    if (criado) void apagarDoGemini(args.chave, criado)
+    return r
+  }
   try {
     const inicio = await fetch(URL_DO_UPLOAD_DO_GEMINI, {
       method: 'POST',
@@ -100,6 +109,7 @@ export async function subirAoGemini(args: {
       return { ok: false, status: null, erro: 'o Gemini não devolveu o arquivo enviado' }
     }
     const nome = arquivo.name
+    criado = nome
     let estado = arquivo.state
     const ate = Date.now() + ESPERA_DO_PROCESSAMENTO_MS
     while (estado === 'PROCESSING' && Date.now() < ate) {
@@ -113,17 +123,16 @@ export async function subirAoGemini(args: {
     }
     // Sem estado (forma fora do padrão) segue: a leitura acusa se não der.
     if (estado === 'PROCESSING' || estado === 'FAILED') {
-      void apagarDoGemini(args.chave, nome)
-      return {
+      return falha({
         ok: false,
         status: estado === 'FAILED' ? 422 : null,
         erro: estado === 'FAILED' ? 'o Gemini não conseguiu processar o arquivo' : 'o Gemini ainda processava o arquivo',
-      }
+      })
     }
     return { ok: true, nome, uri: arquivo.uri }
   } catch (err) {
     const tempo = err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError')
-    return { ok: false, status: null, erro: tempo ? 'tempo esgotado no envio ao Gemini' : 'falha de rede no envio ao Gemini' }
+    return falha({ ok: false, status: null, erro: tempo ? 'tempo esgotado no envio ao Gemini' : 'falha de rede no envio ao Gemini' })
   }
 }
 
