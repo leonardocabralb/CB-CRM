@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 import { supabaseAdmin } from '@/lib/ai/admin-client'
+import { aiContextMessageLimit } from '@/lib/ai/defaults'
 import { generateReply } from '@/lib/ai/generate'
 import { logAiUsage } from '@/lib/ai/usage'
 import { AiError, mensagemSeguraDeAiError, type ChatMessage } from '@/lib/ai/types'
@@ -30,10 +31,10 @@ import { recusa, respostaDoErro } from '@/lib/ia-agentes/resposta'
 import { tempoEmIngles } from '@/lib/ia-agentes/retomada'
 import { comNotaDaRetomada, lerRespostaDaRetomada } from '@/lib/ia-agentes/retomada-resposta'
 
-// O transcrito testado fica limitado, como a janela real do contexto: o MESMO
-// número de `DEFAULT_CONTEXT_MESSAGE_LIMIT` (`src/lib/ai/defaults.ts`). Mudou
-// um, muda o outro.
-const MAX_TURNOS = 50
+// O transcrito testado fica limitado como a janela REAL do contexto: o mesmo
+// `aiContextMessageLimit()` do turno (padrão 50, ou a env
+// `AI_CONTEXT_MESSAGE_LIMIT`), lido a cada pedido — revisão de 09/11/2026: o
+// número cravado divergia da produção quando a env estava preenchida.
 
 type Contexto = { params: Promise<{ id: string }> }
 
@@ -162,7 +163,7 @@ export async function POST(request: Request, { params }: Contexto) {
           typeof (m as ChatMessage).content === 'string' &&
           (m as ChatMessage).content.trim().length > 0,
       )
-      .slice(-MAX_TURNOS)
+      .slice(-aiContextMessageLimit())
     if (mensagens.length === 0) {
       return NextResponse.json({ error: 'sem_mensagens', code: 'sem_mensagens' }, { status: 400 })
     }

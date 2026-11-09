@@ -302,8 +302,8 @@ testados; `prepararMidias` em `turno.ts`; `contexto.ts` e `pedido.ts`.
   mensagens: nada muda nele.
 - **O histórico são as últimas 50 mensagens DESTA conexão** (08/11/2026;
   `aiContextMessageLimit`, env `AI_CONTEXT_MESSAGE_LIMIT`), mídia lida contando
-  uma; o Playground corta no MESMO número (`MAX_TURNOS` da rota): mudou um,
-  muda o outro.
+  uma; o Playground corta pelo MESMO `aiContextMessageLimit()` (a env vale
+  nos dois).
 - **Playground**: continua só texto — não recebe arquivo.
 - ⚠️ **Áudio pela OpenAI (a queda da transcrição, `transcrever.ts`)**: texto
   VAZIO é o áudio sem fala e vira `MARCA_INAUDIVEL` (`[inaudível]`), o mesmo

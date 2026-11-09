@@ -330,6 +330,23 @@ describe('a EQUIPE PROMETIDA sem o [[TRANSFERIR]] (27/09)', () => {
     }
   })
 
+  it('⚠️ o futuro da oração ANTERIOR não cala a promessa coordenada (revisão fria, 09/11/2026)', () => {
+    for (const t of [
+      'Obrigado! Sua assinatura será confirmada e nossa equipe vai entrar em contato.',
+      'Thank you! Your signature will be confirmed and our team will contact you.',
+      'Não consigo mudar o valor por aqui, mas nossa equipe vai entrar em contato com você.',
+    ]) {
+      expect(equipePrometida(t), t).toBe(true)
+    }
+    // A negação e a condição DA PRÓPRIA oração continuam valendo.
+    for (const t of [
+      'Sua assinatura será confirmada e nossa equipe não vai entrar em contato por aqui.',
+      'Se preferir, a assinatura fica para depois e nossa equipe vai te ligar.',
+    ]) {
+      expect(equipePrometida(t), t).toBe(false)
+    }
+  })
+
   it('as outras formas da promessa, em português e em inglês', () => {
     for (const t of [
       'Vou passar você para a nossa equipe.',

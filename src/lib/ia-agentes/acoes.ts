@@ -1099,6 +1099,9 @@ function analiseNaReuniao(f: string): boolean {
   return NA_REUNIAO.test(f) && ANALISE.test(f)
 }
 
+/** A conjunção coordenativa que abre outra oração (sobre o texto sem acento): "e", "mas", "and", "but". */
+const ANTES_DA_COORDENACAO = /\s(?:e|mas|porem|and|but)\s/
+
 /**
  * A resposta PROMETE que uma pessoa da equipe vai assumir ou procurar o
  * cliente? Medido no Playground (27/09): com as instruções mandando dizer
@@ -1122,7 +1125,12 @@ export function equipePrometida(texto: string): boolean {
       const m = promessa.exec(f)
       if (!m) continue
       const antes = f.slice(0, m.index)
-      if (naoAfirma(antes.split(/\s+/).map(palavraNormalizada).filter(Boolean).slice(-4))) continue
+      // A negação e o futuro contam só na ORAÇÃO da promessa: "sua assinatura
+      // será confirmada E nossa equipe vai entrar em contato" promete (revisão
+      // fria de 09/11/2026 — o "será" da oração anterior calava a trava). A
+      // condição continua olhando a frase inteira ("se preferir, …").
+      const daOracao = antes.split(ANTES_DA_COORDENACAO).pop() ?? antes
+      if (naoAfirma(daOracao.split(/\s+/).map(palavraNormalizada).filter(Boolean).slice(-4))) continue
       if (haCondicao(antes)) continue
       return true
     }
