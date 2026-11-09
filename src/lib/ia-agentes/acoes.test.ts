@@ -443,6 +443,11 @@ describe('a EQUIPE PROMETIDA sem o [[TRANSFERIR]] (27/09)', () => {
       'O advogado vai analisar tudo antes da reunião. Quer que ele te mande algo antes?',
       'O advogado vai analisar tudo antes da reunião. Qualquer coisa, me chama por aqui!',
       'O advogado vai analisar tudo antes da reunião. Até te ver na quarta!',
+      // O passado e a fala DURANTE a reunião não são promessa nova (Codex, #480).
+      'Um especialista vai analisar o seu caso na reunião. Ele já te ligou ontem para confirmar o horário.',
+      'O advogado vai analisar tudo antes da reunião. Ele já entrou em contato ontem.',
+      'Um especialista vai analisar o seu caso na reunião. Na reunião, ele te explicará as opções.',
+      'O advogado vai analisar tudo antes da reunião. Durante a reunião, ele vai te explicar os caminhos.',
     ]) {
       expect(equipePrometida(t), t).toBe(false)
     }
@@ -481,7 +486,7 @@ describe('a EQUIPE PROMETIDA sem o [[TRANSFERIR]] (27/09)', () => {
       // A promessa que CONTINUA noutra frase, retomando a equipe (Codex, #480).
       'O advogado vai analisar tudo antes da reunião. Depois ele te retorna por aqui ainda hoje.',
       'O advogado vai analisar tudo antes da reunião.\n\nA advogada te chama amanhã para confirmar.',
-      'Um especialista vai analisar o seu caso na reunião. Antes disso, ele te liga para confirmar.',
+      'O advogado vai analisar tudo antes da reunião. Antes disso, ele te liga para confirmar.',
       'A lawyer will review everything before the meeting. Then she will call you.',
       // Sem sujeito (o português o omite): o verbo de fala depois de "te/lhe".
       'O advogado vai analisar tudo antes da reunião. Depois te retorna por aqui ainda hoje.',
