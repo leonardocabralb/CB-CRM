@@ -23,12 +23,10 @@ Operação da VPS e da imagem (digests, rollback, stack, backup): leia
 ### Baileys 7 / Evolution 2.4
 
 A produção roda a NOSSA imagem da Evolution 2.4 (Baileys 7.0.0-rc13), com os
-cinco patches de `docker/evolution-cb/`: a citação do cliente, a foto de
-perfil, a sessão única com a reconexão (no ar desde 08/10/2026), o ack do
-`<status>` na Baileys (desde 04/11/2026) e o recibo de grupo (desde
-05/11/2026). Os avisos "sem o
-patch" abaixo valem para a imagem de rollback; qual imagem está no ar é o
-`docs/INFRA-VPS.md` que diz. Plano vivo: `docs/PLANO-baileys-7.md`.
+patches de `docker/evolution-cb/` (a lista e as datas: o README de lá). Os
+avisos "sem o patch" abaixo valem para a imagem de rollback; qual imagem está
+no ar é o `docs/INFRA-VPS.md` que diz. Plano vivo: `docs/PLANO-baileys-7.md`.
+⚠️ Sem o 6º (o nome no create, 09/11/2026), nenhuma conexão nova nasce.
 
 - ⚠️ **Voltar de versão da imagem está DESCARTADO** (decisão do operador): a
   2.4 foi escolhida para acabar com o "Aguardando mensagem" — a Baileys 6 não
