@@ -260,6 +260,21 @@ export const MARCA_ILEGIVEL = '[ilegível]'
 const SEM_PALPITE =
   `If any part is blurred, cut off or covered so that you cannot read it with certainty, write ${MARCA_ILEGIVEL} in its place — never complete or guess it. `
 
+/**
+ * Os FATOS no topo da leitura. ⚠️ Medido em 08/11/2026 (40 arquivos reais): 13
+ * leituras passavam dos 4.000 caracteres que o agente recebe
+ * (`TETO_DA_LEITURA_NO_CONTEXTO`, `contexto.ts`), e o corte é pelo FIM — onde
+ * o contrato tem o total, as parcelas, os avalistas e as assinaturas. Com o
+ * resumo no começo, o essencial chega mesmo com o texto cortado. As mesmas
+ * regras valem dentro dele: só o que está escrito, e `[ilegível]`.
+ */
+const FATOS_NO_TOPO =
+  'Begin the reply with the line "FATOS:" followed by 3 to 6 short lines, in Brazilian Portuguese, with the key facts of the WHOLE file: ' +
+  'what the document is; who issued it (bank, company, court, agency); contract, process or protocol numbers; ' +
+  'amounts (total, installments, rates); key dates; and the people or companies involved. ' +
+  `Use only what is written in the file — write ${MARCA_ILEGIVEL} for anything you cannot read with certainty — and leave out any item the file does not have. ` +
+  'After it, leave a blank line. '
+
 // Para o MODELO — em inglês, como os demais prompts fixos do projeto. O texto
 // lido pode estar em qualquer língua; a descrição sai em português porque é o
 // que o escritório lê quando for conferir.
@@ -268,14 +283,18 @@ export const INSTRUCAO_DA_IMAGEM =
   'If it is a screenshot of a chat, write who said what, in order. ' +
   'Do not interpret, guess or add anything beyond what is visible. ' +
   SEM_PALPITE +
+  'If the image shows a document (contract, statement, bill, payslip, ID, work card, medical or court paper): ' +
+  FATOS_NO_TOPO +
+  'If it is not a document (a photo, a chat screenshot), do not write the FATOS block. ' +
   'Write the description in Brazilian Portuguese. ' +
-  'Reply only with the description and the transcribed text — no comments, no labels. ' +
+  'Reply only with the FATOS block when there is one, the description and the transcribed text — no other comments or labels. ' +
   'Keep the whole reply under 6,000 characters; if the visible text is longer, summarize the rest, keeping every number, date, name and amount.'
 export const INSTRUCAO_DO_DOCUMENTO =
-  'Extract the text content of this document faithfully, in its original language — keep every number, date, name and amount exactly as written. ' +
+  FATOS_NO_TOPO +
+  'Then extract the text content of this document faithfully, in its original language — keep every number, date, name and amount exactly as written. ' +
   SEM_PALPITE +
   'If the full text would exceed 6,000 characters, summarize it instead, keeping every number, date, name and amount. ' +
-  'Reply only with the extracted text (or the summary), under 6,000 characters — no comments, no labels.'
+  'Reply only with the FATOS block and the extracted text (or the summary), all under 6,000 characters — no other comments or labels.'
 
 export interface PedidoAoProvedor {
   url: string
