@@ -1128,10 +1128,12 @@ const SO_ANALISE = /(?:^|[^\p{L}])(?:analis|avali|revis|review|assess|go\s+over|
 const FORMAS_AR = '(?:ar|ara|arao|aria|a|am|ando)'
 const FORMAS_ER = '(?:er|era|erao|eria|e|em|endo)'
 const FORMAS_IR = '(?:ir|ira|irao|iria|e|em|indo)'
+const FALA_AR = '(?:cham|lig|telefon|contat|retorn|fal|procur|explic|apresent|orient|acompanh)'
+const FALA_ER = '(?:respond|atend|esclarec|escrev)'
 const CONTATO = new RegExp(
   '(?:^|[^\\p{L}])(?:' +
-    `(?:cham|lig|telefon|contat|retorn|fal|procur|explic|apresent|orient|acompanh)${FORMAS_AR}` +
-    `|convers(?:ar|ara|arao|aria|ando)|(?:respond|atend|esclarec|escrev)${FORMAS_ER}|assum${FORMAS_IR}` +
+    `${FALA_AR}${FORMAS_AR}` +
+    `|convers(?:ar|ara|arao|aria|ando)|${FALA_ER}${FORMAS_ER}|assum${FORMAS_IR}` +
     `|contato|retorno|tir${FORMAS_AR}\\s+(?:\\p{L}+\\s+){0,3}duvidas?|(?:mand|envi)${FORMAS_AR}\\s+(?:\\p{L}+\\s+){0,2}mensage\\p{L}*` +
     '|te|lhe|(?:com|para|pra)\\s+(?:voce|vc)|(?:to|with)\\s+you' +
     '|(?:contact|call|phone|talk|speak|explain|present|respond)(?:s|ing)?|(?:text|message)(?:s|ing)?\\s+you' +
@@ -1144,6 +1146,48 @@ const CONTATO = new RegExp(
 function analiseNaReuniao(f: string): boolean {
   if (NA_REUNIAO.test(f) && ANALISE.test(f)) return true
   return ANTES_DA_REUNIAO.test(f) && SO_ANALISE.test(f) && !CONTATO.test(f)
+}
+
+/** Quem da equipe a frase cita — o nome ou o pronome que retoma ("ele", "she"). */
+const EQUIPE_NA_FRASE = new RegExp(
+  `(?:^|[^\\p{L}])(?:ele|ela|eles|elas|he|she|they|${GENTE_DA_EQUIPE}|specialists?|lawyers?|attorneys?|team|colleagues?)(?![\\p{L}])`,
+  'u',
+)
+const CONTATOS = new RegExp(CONTATO.source, 'gu')
+/**
+ * A continuação SEM sujeito (o português o omite: "Depois te retorna por
+ * aqui", "Em seguida vai te ligar", "Te retornamos ainda hoje"): um verbo de
+ * fala ao cliente depois de "te/lhe", na 3ª pessoa ou na 1ª do plural (o
+ * escritório), ou o infinitivo depois do auxiliar dessas pessoas. Só os
+ * verbos de FALA: "te enviamos o link do Meet" (a mensagem de sempre do
+ * pós-agendamento), "até te ver", "me chama por aqui" (o cliente chamando)
+ * não contam.
+ */
+const FALA_SEM_SUJEITO = new RegExp(
+  '(?:^|[^\\p{L}])(?:' +
+    `(?:vai|vao|ira|irao|deve|devem|pode|podem|vamos|iremos)\\s+(?:te|lhe)\\s+(?:${FALA_AR}ar|${FALA_ER}er|assumir|conversar)` +
+    `|(?:te|lhe)\\s+(?:${FALA_AR}(?:a|am|ara|arao|aria|amos|aremos)|${FALA_ER}(?:e|em|era|erao|eria|emos|eremos)|assum(?:e|em|ira|irao|iria|imos|iremos))` +
+    ')(?![\\p{L}])',
+  'gu',
+)
+
+/**
+ * A promessa que CONTINUA noutra frase depois da análise que calou: "O
+ * advogado vai analisar tudo antes da reunião. Depois ele te retorna por aqui
+ * ainda hoje." (Codex, #480 — a guarda `CONTATO` só olhava a frase da
+ * análise, e "ele te retorna" não casa nenhuma promessa sozinha). Conta a
+ * frase que cita a equipe (`EQUIPE_NA_FRASE`) com fala ao cliente
+ * (`CONTATO`) ou, sem citar, a fala sem sujeito (`FALA_SEM_SUJEITO`), fora de
+ * pergunta, sem negação nem condição antes. ⚠️ Limite aceito: a continuação
+ * sem a equipe e sem "te/lhe" ("Depois retorna por aqui") não é vista.
+ */
+function continuaComContato(f: string): boolean {
+  if (PERGUNTA.test(f)) return false
+  for (const m of f.matchAll(EQUIPE_NA_FRASE.test(f) ? CONTATOS : FALA_SEM_SUJEITO)) {
+    const antes = f.slice(0, m.index)
+    if (!NEGACAO.test(antes) && !/n't\b/.test(antes) && !haCondicao(antes)) return true
+  }
+  return false
 }
 
 /**
@@ -1168,11 +1212,22 @@ const CONJUNCOES_DA_COORDENACAO: ReadonlySet<string> = new Set(['e', 'mas', 'por
  * já transfere e nem pergunta.
  */
 export function equipePrometida(texto: string): boolean {
+  const frases: { frase: string; f: string }[] = []
   for (const frase of texto.split(/(?<=[.!?…;])\s+|\n+/)) {
     const f = semAcento(frase.trim()).replace(/\u2019/g, "'")
+    frases.push({ frase, f })
+  }
+  // As frases cuja promessa a análise na reunião (ou antes dela) calou: a
+  // continuação nas OUTRAS frases decide (`continuaComContato`). A própria
+  // frase calada já foi julgada ("na reunião, o advogado vai analisar e te
+  // orientar" é a reunião).
+  const caladas = new Set<number>()
+  for (const [i, { frase, f }] of frases.entries()) {
     if (!f || PERGUNTA.test(f)) continue
-    const frases = analiseNaReuniao(f) ? PASSAGENS_PARA_A_EQUIPE : [...PASSAGENS_PARA_A_EQUIPE, ...PROMESSAS_DA_EQUIPE]
-    for (const promessa of frases) {
+    const naReuniao = analiseNaReuniao(f)
+    if (naReuniao && PROMESSAS_DA_EQUIPE.some((p) => p.test(f))) caladas.add(i)
+    const promessas = naReuniao ? PASSAGENS_PARA_A_EQUIPE : [...PASSAGENS_PARA_A_EQUIPE, ...PROMESSAS_DA_EQUIPE]
+    for (const promessa of promessas) {
       const m = promessa.exec(f)
       if (!m) continue
       const antes = f.slice(0, m.index)
@@ -1194,7 +1249,7 @@ export function equipePrometida(texto: string): boolean {
       return true
     }
   }
-  return false
+  return caladas.size > 0 && frases.some(({ f }, i) => !caladas.has(i) && continuaComContato(f))
 }
 
 // ------------------------------------------------------------

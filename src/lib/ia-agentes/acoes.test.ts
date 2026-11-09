@@ -438,6 +438,11 @@ describe('a EQUIPE PROMETIDA sem o [[TRANSFERIR]] (27/09)', () => {
       'O advogado vai analisar a conversa e os documentos antes da reunião.',
       'A lawyer will review the documents you presented before the meeting.',
       'O advogado vai analisar tudo o que você mandou antes da reunião.',
+      // A frase seguinte sem a equipe, com negação ou pergunta não continua a promessa.
+      'O advogado vai analisar tudo antes da reunião. Ele não vai te ligar antes disso, fique tranquilo.',
+      'O advogado vai analisar tudo antes da reunião. Quer que ele te mande algo antes?',
+      'O advogado vai analisar tudo antes da reunião. Qualquer coisa, me chama por aqui!',
+      'O advogado vai analisar tudo antes da reunião. Até te ver na quarta!',
     ]) {
       expect(equipePrometida(t), t).toBe(false)
     }
@@ -473,6 +478,15 @@ describe('a EQUIPE PROMETIDA sem o [[TRANSFERIR]] (27/09)', () => {
       'O advogado vai analisar tudo antes da reunião e te manda um resumo.',
       'O advogado vai analisar tudo e mandar uma mensagem para você antes da reunião.',
       'Our team will review everything and send a summary to you before the meeting.',
+      // A promessa que CONTINUA noutra frase, retomando a equipe (Codex, #480).
+      'O advogado vai analisar tudo antes da reunião. Depois ele te retorna por aqui ainda hoje.',
+      'O advogado vai analisar tudo antes da reunião.\n\nA advogada te chama amanhã para confirmar.',
+      'Um especialista vai analisar o seu caso na reunião. Antes disso, ele te liga para confirmar.',
+      'A lawyer will review everything before the meeting. Then she will call you.',
+      // Sem sujeito (o português o omite): o verbo de fala depois de "te/lhe".
+      'O advogado vai analisar tudo antes da reunião. Depois te retorna por aqui ainda hoje.',
+      'O advogado vai analisar tudo antes da reunião. Em seguida vai te ligar.',
+      'O advogado vai analisar tudo antes da reunião. Depois te retornamos por aqui.',
       // Explicar ou apresentar antes da reunião pede contato: não é só análise.
       'Vou pedir para o advogado te explicar tudo antes da reunião.',
       // A passagem explícita dispara com qualquer reunião na frase.
