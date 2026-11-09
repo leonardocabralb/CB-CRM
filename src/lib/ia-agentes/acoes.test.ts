@@ -491,6 +491,9 @@ describe('a EQUIPE PROMETIDA sem o [[TRANSFERIR]] (27/09)', () => {
       'O advogado vai analisar tudo antes da reunião.\n\nA advogada te chama amanhã para confirmar.',
       'O advogado vai analisar tudo antes da reunião. Antes disso, ele te liga para confirmar.',
       'A lawyer will review everything before the meeting. Then she will call you.',
+      // O NOME "análise/revisão" não é a ação de analisar: é entrega (Codex, #480).
+      'Vou pedir para o advogado enviar a análise por aqui antes da reunião.',
+      'Vou pedir para a equipe mandar a revisão do contrato antes da reunião.',
       // "Na reunião" DEPOIS da ação fala de outra coisa (Codex, #480).
       'O advogado vai analisar tudo antes da reunião. Depois ele te liga para confirmar os documentos que serão usados na reunião.',
       // "Na reunião" e a negação de OUTRA oração não calam a ação.

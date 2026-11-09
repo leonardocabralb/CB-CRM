@@ -1108,7 +1108,6 @@ const ANALISE = /(?:^|[^\p{L}])(?:analis|avali|explic|apresent|review|explain|as
  */
 const ANTES_DA_REUNIAO =
   /(?:^|[^\p{L}])(?:antes\s+da|ate(?:\s+a)?|para(?:\s+a)?|pra|before|ahead\s+of|until|for)\s+(?:(?:sua|nossa|the|your|our)\s+)?(?:reuniao|meeting)(?![\p{L}])/u
-const SO_ANALISE = /(?:^|[^\p{L}])(?:analis|avali|revis|review|assess|go\s+over|look\s+over)\p{L}*/u
 /**
  * Alguém da equipe FALANDO com o cliente — a classe inteira, não só os
  * verbos da promessa (Codex, #480, duas rodadas: "retornará" e "te explicar"
@@ -1130,6 +1129,14 @@ const FORMAS_ER = '(?:er|era|erao|eria|e|em|endo)'
 const FORMAS_IR = '(?:ir|ira|irao|iria|e|em|indo)'
 const FALA_AR = '(?:cham|lig|telefon|contat|retorn|fal|procur|explic|apresent|orient|acompanh)'
 const FALA_ER = '(?:respond|atend|esclarec|escrev)'
+/**
+ * A AÇÃO de analisar (o verbo, nunca o nome): "enviar a análise por aqui" é
+ * entrega, não análise (Codex, #480).
+ */
+const SO_ANALISE = new RegExp(
+  `(?:^|[^\\p{L}])(?:(?:analis|avali|revis)${FORMAS_AR}|review(?:s|ing)?|assess(?:es|ing)?|(?:go|goes|going|look|looks|looking)\\s+over)(?![\\p{L}])`,
+  'u',
+)
 /** A AÇÃO de falar com o cliente, sem o passado (o que já aconteceu não promete nada). */
 const ACAO_DE_FALA =
   `${FALA_AR}${FORMAS_AR}` +
