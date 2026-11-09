@@ -429,6 +429,11 @@ describe('a EQUIPE PROMETIDA sem o [[TRANSFERIR]] (27/09)', () => {
       'Nossa equipe vai analisar o seu contrato antes da sua reunião.',
       'Vou pedir para o advogado analisar o contrato antes da reunião.',
       'A lawyer will review everything before the meeting.',
+      // A do Playground do pós-agendamento, depois do conserto (09/11/2026).
+      'O advogado vai analisar tudo com antecedência para a reunião.\n\nNos falamos na quarta-feira, às 15h! Se precisar de algo até lá, estou por aqui.',
+      // O passado e o "nos falamos" (a própria reunião) não são promessa de contato.
+      'O advogado vai analisar tudo o que você respondeu antes da reunião.',
+      'O advogado vai analisar tudo antes da reunião, e nos falamos na quarta!',
     ]) {
       expect(equipePrometida(t), t).toBe(false)
     }
@@ -443,6 +448,14 @@ describe('a EQUIPE PROMETIDA sem o [[TRANSFERIR]] (27/09)', () => {
       'Nossa equipe vai analisar o contrato e entrar em contato antes da reunião.',
       'Um especialista vai te ligar antes da reunião para analisar os documentos.',
       'Our team will review your contract and get back to you before the meeting.',
+      // O verbo de contato CONJUGADO também conta (Codex, #480).
+      'O advogado vai analisar os documentos antes da reunião e retornará por aqui ainda hoje.',
+      'O advogado vai analisar tudo antes da reunião e entrará em contato com você.',
+      'O advogado vai analisar o contrato antes da reunião e te liga amanhã.',
+      'O advogado vai analisar tudo antes da reunião e fará contato por aqui.',
+      'O advogado vai analisar tudo e te dar um retorno antes da reunião.',
+      'O advogado vai analisar tudo antes da reunião e te procura por aqui.',
+      'Our team will review your documents before the meeting and will be calling you today.',
       // Explicar ou apresentar antes da reunião pede contato: não é só análise.
       'Vou pedir para o advogado te explicar tudo antes da reunião.',
       // A passagem explícita dispara com qualquer reunião na frase.

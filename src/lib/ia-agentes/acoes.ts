@@ -1109,8 +1109,16 @@ const ANALISE = /(?:^|[^\p{L}])(?:analis|avali|explic|apresent|review|explain|as
 const ANTES_DA_REUNIAO =
   /(?:^|[^\p{L}])(?:antes\s+da|ate(?:\s+a)?|para(?:\s+a)?|pra|before|ahead\s+of|until|for)\s+(?:(?:sua|nossa|the|your|our)\s+)?(?:reuniao|meeting)(?![\p{L}])/u
 const SO_ANALISE = /(?:^|[^\p{L}])(?:analis|avali|revis|review|assess|go\s+over|look\s+over)\p{L}*/u
+/**
+ * Quem PROCURA o cliente, em qualquer forma que promete: infinitivo, futuro e
+ * presente ("vai retornar", "retornará", "retorna"; Codex, #480 — só o
+ * infinitivo deixava "…antes da reunião e retornará por aqui" calar a trava),
+ * "contato"/"retorno" como nome ("fará contato", "dar um retorno"). O
+ * passado ("o que você respondeu") e a 1ª do plural ("nos falamos na
+ * quarta", que é a reunião) ficam de fora.
+ */
 const CONTATO =
-  /(?:^|[^\p{L}])(?:em\s+contato|chamar|ligar|retornar|responder|falar|assumir|atender|get\s+back|contact|reach\s+out|take\s+over|call|in\s+touch|follow\s+up)(?![\p{L}])/u
+  /(?:^|[^\p{L}])(?:contat\p{L}*|contact(?:s|ing|ed)?|retorno|(?:cham|lig|retorn|fal|procur)(?:ar|ara|arao|a|am|ando)|(?:respond|atend)(?:er|era|erao|e|em|endo)|assum(?:ir|ira|irao|e|em|indo)|(?:get|gets|getting)\s+back|reach(?:es|ing)?\s+out|tak(?:e|es|ing)\s+over|call(?:s|ing)?|in\s+touch|follow(?:s|ing)?\s+up)(?![\p{L}])/u
 
 function analiseNaReuniao(f: string): boolean {
   if (NA_REUNIAO.test(f) && ANALISE.test(f)) return true
