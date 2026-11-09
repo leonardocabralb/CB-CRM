@@ -4738,7 +4738,7 @@
         "conversa": "Conversation assistant",
         "radar": "Service Radar",
         "transcricao": "Voice transcription",
-        "leitura": "Reading images and PDFs (AI agents)",
+        "leitura": "Reading images and documents (AI agents)",
         "rag": "Knowledge base (RAG)"
       },
       "origem": {
@@ -6872,7 +6872,7 @@
       "atualizar": "Refresh the model list"
     },
     "midia": {
-      "titulo": "Who reads the customer's audio, images and PDFs",
+      "titulo": "Who reads the customer's audio, images and documents",
       "explicacao": "It is not the AI agent's model: it is the account's key, in the order Gemini → OpenAI → Anthropic (the first one saved in Integrations). The agent only receives the text of what was heard or read, whatever its own provider.",
       "nestaConta": "In this account:",
       "audioPor": "Audio: {provedor}",
@@ -6883,9 +6883,9 @@
       "semAudio": "This account has no Gemini or OpenAI key, and Anthropic does not take audio: the customer's audio will not be heard, and a conversation with audio goes to the team.",
       "limiteAudio": "Audio: Gemini, otherwise OpenAI. Anthropic does not take audio.",
       "limiteFormatos": "HEIC photos (the iPhone's) are only read when the reader is Gemini; GIFs, only when the reader is not Gemini.",
-      "limitePlanilha": "No provider reads spreadsheets, Word or other files: the agent asks the customer to describe the content or resend it in another format.",
+      "limitePlanilha": "Only Gemini reads Word, Excel and PowerPoint (only the first sheet of a spreadsheet). No provider reads other files (zip, text…): the agent asks the customer to describe the content or resend it in another format.",
       "limiteVideo": "Videos are not watched: the agent only sees that a video arrived, with its caption.",
-      "resumo": "Audio, images and PDFs are read by the account's key (Gemini → OpenAI → Anthropic), not by the agent's model: the agent receives the text."
+      "resumo": "Audio, images and documents are read by the account's key (Gemini → OpenAI → Anthropic), not by the agent's model: the agent receives the text."
     }
   },
   "ForgotPasswordPage": {

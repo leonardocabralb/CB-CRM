@@ -229,7 +229,7 @@ uma AÇÃO a mais do protocolo da F4 (`marcar_reuniao`, `[[REUNIAO:n]]`).
   o nome do perfil do WhatsApp é fixado pela automação do Calendly; o
   Playground não distingue "desligada" de "leitura falhou".
 
-# Agentes de IA — mídia do cliente (imagem e PDF, 27/09/2026)
+# Agentes de IA — mídia do cliente (imagem e documento, 27/09 e 08/11/2026)
 
 Plano: `docs/PLANO-agentes-de-ia.md` (Estado, "Leitura de imagem e PDF").
 `src/lib/transcricao/ler-midia.ts` (I/O) e `leitores.ts` (puro), os dois
@@ -245,10 +245,14 @@ testados; `prepararMidias` em `turno.ts`; `contexto.ts` e `pedido.ts`.
   forma de cada provedor foi conferida na documentação (URLs em
   `leitores.ts`): Gemini `inlineData`; OpenAI pela API RESPONSES
   (`input_image`/`input_file` em data URL, `store: false` — documento de
-  cliente); Anthropic `image`/`document` base64. HEIC só o Gemini lê.
+  cliente); Anthropic `image`/`document` base64. HEIC e Office (Word, Excel
+  — só a 1ª aba —, PowerPoint) só o Gemini lê. ⚠️ Documento acima de 14 MB
+  vai ao Gemini pela Files API (`arquivo-do-gemini.ts`, até 50 MB): a URL do
+  envio só é seguida no host dele, e o arquivo é APAGADO logo depois, mesmo
+  com falha (documento de cliente não fica no Google).
 - **O contrato é o da transcrição**: cadeado `UPDATE…RETURNING`, 3
   tentativas, cerca de posse; `recusada` GRAVADA só o irreversível (tipo que
-  ninguém lê — docx, planilha —, grande demais para o provedor escolhido, sem
+  ninguém lê — zip, texto —, grande demais para o provedor escolhido, sem
   URL, tentativas esgotadas). Teto de tokens NÃO é recusa: grava o lido com o
   corte declarado. Custo em `ai_usage_log` no modo `transcricao`, com o
   provedor e o modelo usados. Três diferenças, cada uma com motivo:
@@ -268,10 +272,14 @@ testados; `prepararMidias` em `turno.ts`; `contexto.ts` e `pedido.ts`.
     teto é corte); Anthropic `refusal` ou fim de ferramenta. O pedaço
     recitado ou a frase de recusa nunca vão para `transcricao`.
   - **O prazo da chamada é o da leitura** (`TEMPO_DA_LEITURA_MS`: 45 s
-    imagem, 90 s PDF), não os 30 s do chat, e o texto pedido vai até ~6.000
-    caracteres. Cabe no turno: a leitura só começa com a prévia sobrando
-    (≤ ~24 s dos 45 s), a pior dá ~134 s de rodada (< 4 min do recolhedor),
-    e a que passa do prazo fica gravada e o turno reagenda.
+    imagem, 90 s documento), não os 30 s do chat, e o texto pedido vai até
+    ~6.000 caracteres. ⚠️ O teto de SAÍDA é 24.576: o raciocínio conta dentro
+    (medido 08/11: com 8.192, contrato cortado em 609 caracteres). Cabe no
+    turno: a leitura só começa com a prévia sobrando (≤ ~24 s dos 45 s), a
+    pior dá ~164 s com o envio (< 4 min do recolhedor), e a que passa do
+    prazo fica gravada e o turno reagenda.
+  - ⚠️ **Borrado vira `[ilegível]`** (`MARCA_ILEGIVEL`, nas duas instruções):
+    sem ela o Gemini completava a data borrada sem avisar (medido 08/11).
 - ⚠️ **No turno** (`prepararMidias`, depois do áudio): as mídias do CLIENTE
   entre as mensagens que vão ao modelo (as últimas N da conexão, não só a
   rajada), sem leitura, até 5 TENTATIVAS por rodada (o `sem_leitor` não

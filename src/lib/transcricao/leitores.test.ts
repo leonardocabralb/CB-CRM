@@ -6,8 +6,11 @@ import {
   extensaoDoAudio,
   falhaPassageira,
   INSTRUCAO_DA_IMAGEM,
-  INSTRUCAO_DO_PDF,
+  INSTRUCAO_DO_DOCUMENTO,
   LIMITE_DE_BYTES,
+  LIMITE_INLINE_DO_GEMINI,
+  MARCA_ILEGIVEL,
+  MAX_TOKENS_DA_LEITURA,
   lerRespostaDeLeitura,
   lerRespostaDeTranscricaoOpenAi,
   MARCA_DE_CORTE,
@@ -40,7 +43,7 @@ function corpo(p: { body: string | FormData }): Record<string, unknown> {
 }
 
 describe('a ordem e os modelos fixos', () => {
-  it('imagem e PDF: Gemini → OpenAI → Anthropic; áudio: Gemini → OpenAI (a Anthropic não ouve)', () => {
+  it('imagem e documento: Gemini → OpenAI → Anthropic; áudio: Gemini → OpenAI (a Anthropic não ouve)', () => {
     expect(ORDEM_DA_LEITURA).toEqual(['gemini', 'openai', 'anthropic'])
     expect(ORDEM_DA_TRANSCRICAO).toEqual(['gemini', 'openai'])
   })
@@ -57,7 +60,7 @@ describe('a ordem e os modelos fixos', () => {
 
 describe('pedidoDeLeitura — Gemini', () => {
   it('imagem em `inlineData`, chave no cabeçalho, nunca na URL', () => {
-    const p = pedidoDeLeitura({ provedor: 'gemini', chave: 'g-1', tipo: 'imagem', mime: 'image/jpeg', base64: B64, nomeDoArquivo: 'x' })
+    const p = pedidoDeLeitura({ provedor: 'gemini', chave: 'g-1', tipo: 'imagem', mime: 'image/jpeg', arquivo: { base64: B64 }, nomeDoArquivo: 'x' })
     expect(p.url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent')
     expect(p.url).not.toContain('key=')
     expect(p.headers['x-goog-api-key']).toBe('g-1')
@@ -67,16 +70,52 @@ describe('pedidoDeLeitura — Gemini', () => {
   })
 
   it('PDF também em `inlineData`, com o pedido de extrair o texto', () => {
-    const p = pedidoDeLeitura({ provedor: 'gemini', chave: 'g-1', tipo: 'pdf', mime: 'application/pdf', base64: B64, nomeDoArquivo: 'a.pdf' })
+    const p = pedidoDeLeitura({ provedor: 'gemini', chave: 'g-1', tipo: 'documento', mime: 'application/pdf', arquivo: { base64: B64 }, nomeDoArquivo: 'a.pdf' })
     const partes = (corpo(p).contents as { parts: Record<string, unknown>[] }[])[0].parts
     expect(partes[1]).toEqual({ inlineData: { mimeType: 'application/pdf', data: B64 } })
-    expect(String(partes[0].text)).toMatch(/Extract the text content of this PDF faithfully/)
+    expect(String(partes[0].text)).toMatch(/Extract the text content of this document faithfully/)
+  })
+})
+
+describe('pedidoDeLeitura — Gemini: Office e arquivo grande', () => {
+  it('Word e Excel vão em `inlineData` com o mime do arquivo, com o pedido do documento', () => {
+    const xlsx = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    const p = pedidoDeLeitura({ provedor: 'gemini', chave: 'g-1', tipo: 'documento', mime: xlsx, arquivo: { base64: B64 }, nomeDoArquivo: 'LEVANTAMENTO.xlsx' })
+    const partes = (corpo(p).contents as { parts: Record<string, unknown>[] }[])[0].parts
+    expect(partes[1]).toEqual({ inlineData: { mimeType: xlsx, data: B64 } })
+    expect(String(partes[0].text)).toMatch(/Extract the text content of this document faithfully/)
+  })
+
+  it('o arquivo já enviado pela Files API vai como `file_data` (a forma do REST da doc), sem base64', () => {
+    const uri = 'https://generativelanguage.googleapis.com/v1beta/files/abc123'
+    const p = pedidoDeLeitura({ provedor: 'gemini', chave: 'g-1', tipo: 'documento', mime: 'application/pdf', arquivo: { uriDoGemini: uri }, nomeDoArquivo: 'a.pdf' })
+    const partes = (corpo(p).contents as { parts: Record<string, unknown>[] }[])[0].parts
+    expect(partes[1]).toEqual({ file_data: { mime_type: 'application/pdf', file_uri: uri } })
+    expect(p.body).not.toContain('inlineData')
+  })
+
+  it('⚠️ só o Gemini recebe o arquivo da Files API: OpenAI e Anthropic lançam', () => {
+    for (const provedor of ['openai', 'anthropic'] as const) {
+      expect(() =>
+        pedidoDeLeitura({ provedor, chave: 'k', tipo: 'documento', mime: 'application/pdf', arquivo: { uriDoGemini: 'u' }, nomeDoArquivo: 'a.pdf' }),
+      ).toThrow(/só o Gemini/)
+    }
+  })
+
+  it('o teto de saída é o mesmo nos três provedores, escrito à mão: 24.576 (o raciocínio conta dentro)', () => {
+    expect(MAX_TOKENS_DA_LEITURA).toBe(24_576)
+    const g = corpo(pedidoDeLeitura({ provedor: 'gemini', chave: 'k', tipo: 'imagem', mime: 'image/png', arquivo: { base64: B64 }, nomeDoArquivo: 'x' }))
+    expect((g.generationConfig as Record<string, unknown>).maxOutputTokens).toBe(24_576)
+    const o = corpo(pedidoDeLeitura({ provedor: 'openai', chave: 'k', tipo: 'imagem', mime: 'image/png', arquivo: { base64: B64 }, nomeDoArquivo: 'x' }))
+    expect(o.max_output_tokens).toBe(24_576)
+    const a = corpo(pedidoDeLeitura({ provedor: 'anthropic', chave: 'k', tipo: 'imagem', mime: 'image/png', arquivo: { base64: B64 }, nomeDoArquivo: 'x' }))
+    expect(a.max_tokens).toBe(24_576)
   })
 })
 
 describe('pedidoDeLeitura — OpenAI (Responses)', () => {
   it('imagem como `input_image` com data URL, Bearer, e SEM guardar a resposta', () => {
-    const p = pedidoDeLeitura({ provedor: 'openai', chave: 'sk-1', tipo: 'imagem', mime: 'image/png', base64: B64, nomeDoArquivo: 'x' })
+    const p = pedidoDeLeitura({ provedor: 'openai', chave: 'sk-1', tipo: 'imagem', mime: 'image/png', arquivo: { base64: B64 }, nomeDoArquivo: 'x' })
     expect(p.url).toBe('https://api.openai.com/v1/responses')
     expect(p.headers.Authorization).toBe('Bearer sk-1')
     const c = corpo(p)
@@ -89,7 +128,7 @@ describe('pedidoDeLeitura — OpenAI (Responses)', () => {
   })
 
   it('PDF como `input_file` com `filename` e `file_data` em data URL', () => {
-    const p = pedidoDeLeitura({ provedor: 'openai', chave: 'sk-1', tipo: 'pdf', mime: 'application/pdf', base64: B64, nomeDoArquivo: 'extrato.pdf' })
+    const p = pedidoDeLeitura({ provedor: 'openai', chave: 'sk-1', tipo: 'documento', mime: 'application/pdf', arquivo: { base64: B64 }, nomeDoArquivo: 'extrato.pdf' })
     const conteudo = (corpo(p).input as { content: Record<string, unknown>[] }[])[0].content
     expect(conteudo[0]).toEqual({
       type: 'input_file',
@@ -101,7 +140,7 @@ describe('pedidoDeLeitura — OpenAI (Responses)', () => {
 
 describe('pedidoDeLeitura — Anthropic', () => {
   it('imagem num bloco `image` base64, ANTES do texto; x-api-key e versão', () => {
-    const p = pedidoDeLeitura({ provedor: 'anthropic', chave: 'a-1', tipo: 'imagem', mime: 'image/webp', base64: B64, nomeDoArquivo: 'x' })
+    const p = pedidoDeLeitura({ provedor: 'anthropic', chave: 'a-1', tipo: 'imagem', mime: 'image/webp', arquivo: { base64: B64 }, nomeDoArquivo: 'x' })
     expect(p.url).toBe('https://api.anthropic.com/v1/messages')
     expect(p.headers['x-api-key']).toBe('a-1')
     expect(p.headers['anthropic-version']).toBe('2023-06-01')
@@ -113,7 +152,7 @@ describe('pedidoDeLeitura — Anthropic', () => {
   })
 
   it('PDF num bloco `document` base64', () => {
-    const p = pedidoDeLeitura({ provedor: 'anthropic', chave: 'a-1', tipo: 'pdf', mime: 'application/pdf', base64: B64, nomeDoArquivo: 'x.pdf' })
+    const p = pedidoDeLeitura({ provedor: 'anthropic', chave: 'a-1', tipo: 'documento', mime: 'application/pdf', arquivo: { base64: B64 }, nomeDoArquivo: 'x.pdf' })
     const conteudo = (corpo(p).messages as { content: Record<string, unknown>[] }[])[0].content
     expect(conteudo[0]).toEqual({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: B64 } })
   })
@@ -242,32 +281,51 @@ describe('tipos e tamanhos', () => {
   })
 
   it('o que ALGUM provedor lê — e o que cada um lê', () => {
-    expect(tipoDoMime('application/pdf')).toBe('pdf')
+    expect(tipoDoMime('application/pdf')).toBe('documento')
     expect(tipoDoMime('image/heic')).toBe('imagem')
     expect(tipoDoMime('image/gif')).toBe('imagem')
-    expect(tipoDoMime('application/vnd.openxmlformats-officedocument.wordprocessingml.document')).toBeNull()
+    expect(tipoDoMime('application/vnd.openxmlformats-officedocument.wordprocessingml.document')).toBe('documento')
+    expect(tipoDoMime('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')).toBe('documento')
+    expect(tipoDoMime('application/vnd.ms-excel')).toBe('documento')
     expect(tipoDoMime('image/bmp')).toBeNull()
+    expect(tipoDoMime('application/zip')).toBeNull()
+    expect(tipoDoMime('text/plain')).toBeNull()
     // HEIC só o Gemini; GIF todos menos o Gemini.
     expect(provedorLe('gemini', 'imagem', 'image/heic')).toBe(true)
     expect(provedorLe('openai', 'imagem', 'image/heic')).toBe(false)
     expect(provedorLe('anthropic', 'imagem', 'image/heic')).toBe(false)
     expect(provedorLe('gemini', 'imagem', 'image/gif')).toBe(false)
     expect(provedorLe('anthropic', 'imagem', 'image/gif')).toBe(true)
-    for (const p of ORDEM_DA_LEITURA) expect(provedorLe(p, 'pdf', 'application/pdf')).toBe(true)
+    for (const p of ORDEM_DA_LEITURA) expect(provedorLe(p, 'documento', 'application/pdf')).toBe(true)
+    // Word, Excel e PowerPoint: só o Gemini (os outros dois só leem PDF).
+    for (const mime of [
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    ]) {
+      expect(provedorLe('gemini', 'documento', mime)).toBe(true)
+      expect(provedorLe('openai', 'documento', mime)).toBe(false)
+      expect(provedorLe('anthropic', 'documento', mime)).toBe(false)
+    }
   })
 
-  it('os limites (bytes do ARQUIVO): Gemini 14 MB na imagem, Anthropic 7 MB, e o nosso teto de 20 MB', () => {
+  it('os limites (bytes do ARQUIVO): Gemini 14 MB na imagem e 50 MB no documento (Files API), Anthropic 7 MB, e o nosso teto de 20 MB', () => {
     const MB = 1024 * 1024
     expect(LIMITE_DE_BYTES).toEqual({
-      gemini: { imagem: 14 * MB, pdf: 20 * MB },
-      openai: { imagem: 20 * MB, pdf: 20 * MB },
-      anthropic: { imagem: 7 * MB, pdf: 20 * MB },
+      gemini: { imagem: 14 * MB, documento: 50 * MB },
+      openai: { imagem: 20 * MB, documento: 20 * MB },
+      anthropic: { imagem: 7 * MB, documento: 20 * MB },
     })
+    // Acima de 14 MB o documento vai ao Gemini pela Files API: o base64 do que vai DENTRO cabe nos 20 MB.
+    expect(LIMITE_INLINE_DO_GEMINI).toBe(14 * MB)
+    expect((LIMITE_INLINE_DO_GEMINI * 4) / 3).toBeLessThan(20 * MB)
     // O base64 da imagem do Gemini cabe no pedido de 20 MB; o da Anthropic, nos 10 MB por imagem.
     expect((LIMITE_DE_BYTES.gemini.imagem * 4) / 3).toBeLessThan(20 * MB)
     expect((LIMITE_DE_BYTES.anthropic.imagem * 4) / 3).toBeLessThan(10 * MB)
     // E o PDF em base64 cabe nos 32 MB do pedido da Anthropic.
-    expect((LIMITE_DE_BYTES.anthropic.pdf * 4) / 3).toBeLessThan(32 * MB)
+    expect((LIMITE_DE_BYTES.anthropic.documento * 4) / 3).toBeLessThan(32 * MB)
   })
 })
 
@@ -323,14 +381,21 @@ describe('transcrição pela OpenAI', () => {
 })
 
 describe('o prazo e o tamanho da resposta da leitura', () => {
-  it('prazo PRÓPRIO, escrito à mão: 45 s na imagem, 90 s no PDF (não os 30 s do chat)', () => {
-    expect(TEMPO_DA_LEITURA_MS).toEqual({ imagem: 45_000, pdf: 90_000 })
+  it('prazo PRÓPRIO, escrito à mão: 45 s na imagem, 90 s no documento (não os 30 s do chat)', () => {
+    expect(TEMPO_DA_LEITURA_MS).toEqual({ imagem: 45_000, documento: 90_000 })
   })
 
   it('as instruções pedem no máximo ~6.000 caracteres, resumindo o que passar', () => {
     expect(INSTRUCAO_DA_IMAGEM).toContain('under 6,000 characters')
-    expect(INSTRUCAO_DO_PDF).toContain('would exceed 6,000 characters, summarize it')
-    expect(INSTRUCAO_DO_PDF).not.toContain('10,000')
+    expect(INSTRUCAO_DO_DOCUMENTO).toContain('would exceed 6,000 characters, summarize it')
+    expect(INSTRUCAO_DO_DOCUMENTO).not.toContain('10,000')
+  })
+
+  it('⚠️ o borrado vira [ilegível], nunca palpite — nas duas instruções', () => {
+    expect(MARCA_ILEGIVEL).toBe('[ilegível]')
+    for (const i of [INSTRUCAO_DA_IMAGEM, INSTRUCAO_DO_DOCUMENTO]) {
+      expect(i).toContain('write [ilegível] in its place — never complete or guess it')
+    }
   })
 })
 
@@ -342,14 +407,14 @@ describe('falhaPassageira — a falha que NÃO é do arquivo', () => {
 })
 
 describe('nomeParaOProvedor', () => {
-  it('⚠️ o PDF vai SEMPRE com ".pdf" (a OpenAI decide o formato pelo nome)', () => {
-    expect(nomeParaOProvedor('extrato.pdf', 'pdf')).toBe('extrato.pdf')
-    expect(nomeParaOProvedor('Extrato.PDF', 'pdf')).toBe('Extrato.PDF')
-    expect(nomeParaOProvedor('Extrato setembro', 'pdf')).toBe('Extrato setembro.pdf')
-    expect(nomeParaOProvedor('scan.bin', 'pdf')).toBe('scan.bin.pdf')
-    expect(nomeParaOProvedor('  ', 'pdf')).toBe('documento.pdf')
-    expect(nomeParaOProvedor(null, 'pdf')).toBe('documento.pdf')
-    const longo = nomeParaOProvedor('x'.repeat(300), 'pdf')
+  it('⚠️ o documento vai SEMPRE com ".pdf" (a OpenAI, a única que usa o nome, decide o formato por ele e só lê PDF)', () => {
+    expect(nomeParaOProvedor('extrato.pdf', 'documento')).toBe('extrato.pdf')
+    expect(nomeParaOProvedor('Extrato.PDF', 'documento')).toBe('Extrato.PDF')
+    expect(nomeParaOProvedor('Extrato setembro', 'documento')).toBe('Extrato setembro.pdf')
+    expect(nomeParaOProvedor('scan.bin', 'documento')).toBe('scan.bin.pdf')
+    expect(nomeParaOProvedor('  ', 'documento')).toBe('documento.pdf')
+    expect(nomeParaOProvedor(null, 'documento')).toBe('documento.pdf')
+    const longo = nomeParaOProvedor('x'.repeat(300), 'documento')
     expect(longo.endsWith('.pdf')).toBe(true)
     expect(longo.length).toBeLessThanOrEqual(200)
   })

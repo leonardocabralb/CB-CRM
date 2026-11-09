@@ -1,5 +1,5 @@
 // ============================================================
-// Os LEITORES por provedor: a leitura de IMAGEM e PDF (`ler-midia.ts`) e a
+// Os LEITORES por provedor: a leitura de IMAGEM e DOCUMENTO (`ler-midia.ts`) e a
 // queda da transcrição de áudio para a OpenAI (`transcrever.ts`).
 //
 // PURO (testado): monta o pedido HTTP e lê a resposta de cada provedor. Quem
@@ -11,7 +11,8 @@
 // de propósito: comparar o código com a própria constante é tautologia).
 //
 // A ordem de escolha é pela CHAVE que a conta tem (`escolher-leitor.ts`):
-//   - imagem e PDF: Gemini → OpenAI → Anthropic;
+//   - imagem e documento: Gemini → OpenAI → Anthropic (Word, Excel e
+//     PowerPoint só o Gemini lê: `DOCUMENTOS_POR_PROVEDOR`);
 //   - áudio: Gemini → OpenAI. A Anthropic NÃO tem entrada de áudio.
 // O modelo de cada provedor é FIXO aqui (como `MODELO_TRANSCRICAO`), nunca
 // configurável na tela: é o mesmo raciocínio do cabeçalho de `transcrever.ts`
@@ -64,7 +65,8 @@ export const MODELO_TRANSCRICAO_OPENAI = 'gpt-transcribe'
 export const URL_DA_OPENAI_RESPONSES = 'https://api.openai.com/v1/responses'
 export const URL_DA_OPENAI_TRANSCRICAO = 'https://api.openai.com/v1/audio/transcriptions'
 
-export type TipoDeLeitura = 'imagem' | 'pdf'
+/** `documento` = PDF e, só no Gemini, Word, Excel e PowerPoint (`DOCUMENTOS_POR_PROVEDOR`). */
+export type TipoDeLeitura = 'imagem' | 'documento'
 
 // ------------------------------------------------------------
 // Tipos de arquivo
@@ -76,7 +78,6 @@ export type TipoDeLeitura = 'imagem' | 'pdf'
  *   (https://ai.google.dev/gemini-api/docs/image-understanding);
  * - OpenAI: "PNG, JPEG, WEBP, and non-animated GIF" (images-vision);
  * - Anthropic: "image/jpeg, image/png, image/gif, image/webp" (vision).
- * PDF os três leem.
  */
 const IMAGENS_POR_PROVEDOR: Record<AiProvider, readonly string[]> = {
   gemini: ['image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif'],
@@ -85,6 +86,35 @@ const IMAGENS_POR_PROVEDOR: Record<AiProvider, readonly string[]> = {
 }
 const IMAGENS_QUE_ALGUEM_LE = new Set(Object.values(IMAGENS_POR_PROVEDOR).flat())
 export const MIME_DO_PDF = 'application/pdf'
+
+/**
+ * Word, Excel e PowerPoint, que SÓ o Gemini lê, "the same way as PDFs, either
+ * inline or with the Files API" (https://ai.google.dev/gemini-api/docs/document-processing,
+ * conferido em 08/11/2026). ⚠️ Da planilha (xlsx/xls/ods) o Gemini lê SÓ a
+ * PRIMEIRA aba ("Other sheets in a workbook are ignored"). Medido em 08/11/2026
+ * pelo `generateContent` com `inlineData`, em arquivos reais de clientes:
+ * xlsx e docx lidos inteiros (200, `STOP`). Os outros formatos vêm da lista
+ * da documentação, sem amostra no acervo.
+ */
+const DOCUMENTOS_DO_OFFICE: readonly string[] = [
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // docx
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.template', // dotx
+  'application/msword', // doc
+  'application/vnd.oasis.opendocument.text', // odt
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // xlsx
+  'application/vnd.ms-excel', // xls
+  'application/vnd.oasis.opendocument.spreadsheet', // ods
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation', // pptx
+  'application/vnd.ms-powerpoint', // ppt
+  'application/vnd.oasis.opendocument.presentation', // odp
+]
+/** Os documentos que CADA provedor lê. PDF os três; o resto, só o Gemini. */
+const DOCUMENTOS_POR_PROVEDOR: Record<AiProvider, readonly string[]> = {
+  gemini: [MIME_DO_PDF, ...DOCUMENTOS_DO_OFFICE],
+  openai: [MIME_DO_PDF],
+  anthropic: [MIME_DO_PDF],
+}
+const DOCUMENTOS_QUE_ALGUEM_LE = new Set(Object.values(DOCUMENTOS_POR_PROVEDOR).flat())
 
 const MIME_POR_EXTENSAO: Record<string, string> = {
   pdf: MIME_DO_PDF,
@@ -95,6 +125,16 @@ const MIME_POR_EXTENSAO: Record<string, string> = {
   gif: 'image/gif',
   heic: 'image/heic',
   heif: 'image/heif',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  dotx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.template',
+  doc: 'application/msword',
+  odt: 'application/vnd.oasis.opendocument.text',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  xls: 'application/vnd.ms-excel',
+  ods: 'application/vnd.oasis.opendocument.spreadsheet',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  ppt: 'application/vnd.ms-powerpoint',
+  odp: 'application/vnd.oasis.opendocument.presentation',
 }
 
 /** `IMAGE/JPEG; charset=binary` → `image/jpeg`; `image/jpg` (não padrão) → `image/jpeg`. */
@@ -116,16 +156,16 @@ export function mimeDaExtensao(ext: string | null): string | null {
   return ext ? (MIME_POR_EXTENSAO[ext] ?? null) : null
 }
 
-/** O mime é lido por ALGUM provedor? `null` = nenhum lê (docx, xlsx, zip, bmp…). */
+/** O mime é lido por ALGUM provedor? `null` = nenhum lê (zip, bmp, txt, csv…). */
 export function tipoDoMime(mime: string | null): TipoDeLeitura | null {
   if (!mime) return null
-  if (mime === MIME_DO_PDF) return 'pdf'
+  if (DOCUMENTOS_QUE_ALGUEM_LE.has(mime)) return 'documento'
   return IMAGENS_QUE_ALGUEM_LE.has(mime) ? 'imagem' : null
 }
 
-/** ESTE provedor lê este arquivo? (HEIC só o Gemini; GIF não o Gemini.) */
+/** ESTE provedor lê este arquivo? (HEIC e Office só o Gemini; GIF não o Gemini.) */
 export function provedorLe(provedor: AiProvider, tipo: TipoDeLeitura, mime: string): boolean {
-  if (tipo === 'pdf') return mime === MIME_DO_PDF
+  if (tipo === 'documento') return DOCUMENTOS_POR_PROVEDOR[provedor].includes(mime)
   return IMAGENS_POR_PROVEDOR[provedor].includes(mime)
 }
 
@@ -144,12 +184,22 @@ const MB = 1024 * 1024
 export const TETO_PROPRIO_BYTES = 20 * MB
 
 /**
+ * Acima disto o documento vai ao Gemini pela Files API (upload, `file_data`,
+ * apagado depois — `arquivo-do-gemini.ts`), não dentro do pedido: o limite do
+ * pedido INLINE é 20 MB contando o base64 (4/3), ou seja ~14 MB de arquivo.
+ * Medido em 08/11/2026: o contrato escaneado de 21 MB que era `recusada`
+ * subiu em 5 s e foi lido inteiro em 49 s.
+ */
+export const LIMITE_INLINE_DO_GEMINI = 14 * MB
+
+/**
  * O maior arquivo que cada provedor recebe, em bytes do ARQUIVO (o base64
  * cresce 4/3). Acima dele a leitura é `recusada` ("arquivo grande demais").
  * - Gemini: imagem — "Inline image data limits your total request size (text
  *   prompts, system instructions, and inline bytes) to 20MB"
- *   (image-understanding): 14 MB de arquivo = ~18,7 MB em base64; PDF — "up to
- *   50MB or 1000 pages" (document-processing): o nosso teto.
+ *   (image-understanding): 14 MB de arquivo = ~18,7 MB em base64; documento —
+ *   "For PDF files, the limit is 50 MB" (files, conferido em 08/11/2026),
+ *   pela Files API acima de `LIMITE_INLINE_DO_GEMINI` (sem base64 na memória).
  * - OpenAI: "each file must be under 50 MB" (file-inputs) e até 512 MB por
  *   pedido nas imagens (images-vision): o nosso teto nos dois.
  * - Anthropic: imagem — "10 MB (base64-encoded) when using the Claude API
@@ -160,9 +210,9 @@ export const TETO_PROPRIO_BYTES = 20 * MB
  * demais é recusado pelo provedor, vira `falhou` e, na 3ª tentativa, `recusada`.
  */
 export const LIMITE_DE_BYTES: Record<AiProvider, Record<TipoDeLeitura, number>> = {
-  gemini: { imagem: 14 * MB, pdf: TETO_PROPRIO_BYTES },
-  openai: { imagem: TETO_PROPRIO_BYTES, pdf: TETO_PROPRIO_BYTES },
-  anthropic: { imagem: 7 * MB, pdf: TETO_PROPRIO_BYTES },
+  gemini: { imagem: LIMITE_INLINE_DO_GEMINI, documento: 50 * MB },
+  openai: { imagem: TETO_PROPRIO_BYTES, documento: TETO_PROPRIO_BYTES },
+  anthropic: { imagem: 7 * MB, documento: TETO_PROPRIO_BYTES },
 }
 
 // ------------------------------------------------------------
@@ -173,27 +223,42 @@ export const LIMITE_DE_BYTES: Record<AiProvider, Record<TipoDeLeitura, number>> 
 export const TETO_DO_TEXTO = 12_000
 export const MARCA_DE_CORTE = '[… leitura cortada: o arquivo é maior que o limite de texto]'
 /**
- * Teto de tokens da resposta. Folgado: o raciocínio do Gemini 3.x e do
- * gpt-5.4-mini conta dentro dele, e o texto pedido vai até ~6.000 caracteres
- * (`INSTRUCAO_*`). Pedir menos texto encurta a resposta, e é a resposta que
- * leva tempo: o PDF longo que pedia 10.000 caracteres estourava os 30 s.
+ * Teto de tokens da resposta. O raciocínio do Gemini 3.x e do gpt-5.4-mini
+ * conta DENTRO dele, e o texto pedido vai até ~6.000 caracteres (`INSTRUCAO_*`,
+ * ~2 mil tokens). ⚠️ Medido em 08/11/2026 (40 arquivos reais): o raciocínio do
+ * Gemini no MESMO PDF variou de 1,8 mil a 7,9 mil tokens, e com 8.192 dois
+ * contratos pararam em `MAX_TOKENS` com 609 a 3.834 caracteres — sem tabela de
+ * parcelas nem avalistas. Com 24.576 os dois terminaram em `STOP`, em até 62 s
+ * (o prazo do documento é 90 s). Pedir menos texto encurta a resposta, e é a
+ * resposta que leva tempo: o PDF longo que pedia 10.000 caracteres estourava
+ * os 30 s.
  */
-export const MAX_TOKENS_DA_LEITURA = 8192
+export const MAX_TOKENS_DA_LEITURA = 24_576
 
 /**
  * O prazo da CHAMADA ao provedor, por tipo — próprio da leitura, não o
  * `aiRequestTimeoutMs()` (30 s) das respostas de chat: um PDF de dezenas de
  * páginas leva mais que isso. Cabe no turno (`ia-agentes/turno.ts`): a
  * leitura só COMEÇA com o prazo da prévia sobrando (até ~24 s dos 45 s do
- * turno), e a pior = 20 s de download + 90 s de PDF, ~134 s de rodada —
+ * turno), e a pior = 20 s de download + 30 s de envio à Files API (o
+ * documento grande, `TEMPO_DO_ENVIO_MS`) + 90 s de documento, ~164 s de rodada —
  * abaixo dos 4 min do recolhedor (`RECOLHER_TURNO_MS`). A leitura que passa
  * do prazo do turno fica GRAVADA e o turno reagenda (`prepararMidias`).
  * Tempo esgotado é falha PASSAGEIRA (não gasta tentativa — `ler-midia.ts`).
  */
 export const TEMPO_DA_LEITURA_MS: Record<TipoDeLeitura, number> = {
   imagem: 45_000,
-  pdf: 90_000,
+  documento: 90_000,
 }
+
+/**
+ * A marca do trecho que não dá para ler com certeza. ⚠️ Medido em 08/11/2026:
+ * sem ela, o Gemini COMPLETAVA o borrado sem avisar (a data de uma pulseira de
+ * UPA, uma palavra num cadastro cortado) — e o agente recebia o palpite como fato.
+ */
+export const MARCA_ILEGIVEL = '[ilegível]'
+const SEM_PALPITE =
+  `If any part is blurred, cut off or covered so that you cannot read it with certainty, write ${MARCA_ILEGIVEL} in its place — never complete or guess it. `
 
 // Para o MODELO — em inglês, como os demais prompts fixos do projeto. O texto
 // lido pode estar em qualquer língua; a descrição sai em português porque é o
@@ -202,11 +267,13 @@ export const INSTRUCAO_DA_IMAGEM =
   'Describe what the image shows and transcribe ALL visible text verbatim, in its original language. ' +
   'If it is a screenshot of a chat, write who said what, in order. ' +
   'Do not interpret, guess or add anything beyond what is visible. ' +
+  SEM_PALPITE +
   'Write the description in Brazilian Portuguese. ' +
   'Reply only with the description and the transcribed text — no comments, no labels. ' +
   'Keep the whole reply under 6,000 characters; if the visible text is longer, summarize the rest, keeping every number, date, name and amount.'
-export const INSTRUCAO_DO_PDF =
-  'Extract the text content of this PDF faithfully, in its original language — keep every number, date, name and amount exactly as written. ' +
+export const INSTRUCAO_DO_DOCUMENTO =
+  'Extract the text content of this document faithfully, in its original language — keep every number, date, name and amount exactly as written. ' +
+  SEM_PALPITE +
   'If the full text would exceed 6,000 characters, summarize it instead, keeping every number, date, name and amount. ' +
   'Reply only with the extracted text (or the summary), under 6,000 characters — no comments, no labels.'
 
@@ -217,22 +284,34 @@ export interface PedidoAoProvedor {
 }
 
 /**
- * O pedido de LEITURA de uma imagem ou PDF. A chave vai SEMPRE em cabeçalho,
- * nunca na URL (vaza em log de proxy).
+ * O arquivo no pedido: em base64 DENTRO do corpo, ou já enviado ao Gemini pela
+ * Files API (`arquivo-do-gemini.ts`) — só o Gemini recebe a segunda forma.
+ */
+export type ArquivoNoPedido = { base64: string } | { uriDoGemini: string }
+
+/**
+ * O pedido de LEITURA de uma imagem ou documento. A chave vai SEMPRE em
+ * cabeçalho, nunca na URL (vaza em log de proxy).
  */
 export function pedidoDeLeitura(args: {
   provedor: AiProvider
   chave: string
   tipo: TipoDeLeitura
   mime: string
-  base64: string
+  arquivo: ArquivoNoPedido
   nomeDoArquivo: string
 }): PedidoAoProvedor {
-  const instrucao = args.tipo === 'imagem' ? INSTRUCAO_DA_IMAGEM : INSTRUCAO_DO_PDF
+  const instrucao = args.tipo === 'imagem' ? INSTRUCAO_DA_IMAGEM : INSTRUCAO_DO_DOCUMENTO
   const modelo = MODELO_DE_LEITURA[args.provedor]
+  if (args.provedor !== 'gemini' && !('base64' in args.arquivo)) {
+    throw new Error('só o Gemini lê arquivo enviado pela Files API')
+  }
+  const base64 = 'base64' in args.arquivo ? args.arquivo.base64 : ''
   switch (args.provedor) {
     case 'gemini':
-      // `inlineData` para imagem e PDF (image-understanding, document-processing).
+      // `inlineData` para imagem e documento (image-understanding,
+      // document-processing); o arquivo grande vai como `file_data` com a URI
+      // da Files API — a forma do exemplo REST da doc (files, 08/11/2026).
       return {
         url: geminiEndpoint(modelo),
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': args.chave },
@@ -240,7 +319,12 @@ export function pedidoDeLeitura(args: {
           contents: [
             {
               role: 'user',
-              parts: [{ text: instrucao }, { inlineData: { mimeType: args.mime, data: args.base64 } }],
+              parts: [
+                { text: instrucao },
+                'uriDoGemini' in args.arquivo
+                  ? { file_data: { mime_type: args.mime, file_uri: args.arquivo.uriDoGemini } }
+                  : { inlineData: { mimeType: args.mime, data: base64 } },
+              ],
             },
           ],
           generationConfig: { temperature: 0, maxOutputTokens: MAX_TOKENS_DA_LEITURA },
@@ -266,11 +350,11 @@ export function pedidoDeLeitura(args: {
               role: 'user',
               content: [
                 args.tipo === 'imagem'
-                  ? { type: 'input_image', image_url: `data:${args.mime};base64,${args.base64}` }
+                  ? { type: 'input_image', image_url: `data:${args.mime};base64,${base64}` }
                   : {
                       type: 'input_file',
                       filename: args.nomeDoArquivo,
-                      file_data: `data:${MIME_DO_PDF};base64,${args.base64}`,
+                      file_data: `data:${MIME_DO_PDF};base64,${base64}`,
                     },
                 { type: 'input_text', text: instrucao },
               ],
@@ -296,8 +380,8 @@ export function pedidoDeLeitura(args: {
               role: 'user',
               content: [
                 args.tipo === 'imagem'
-                  ? { type: 'image', source: { type: 'base64', media_type: args.mime, data: args.base64 } }
-                  : { type: 'document', source: { type: 'base64', media_type: MIME_DO_PDF, data: args.base64 } },
+                  ? { type: 'image', source: { type: 'base64', media_type: args.mime, data: base64 } }
+                  : { type: 'document', source: { type: 'base64', media_type: MIME_DO_PDF, data: base64 } },
                 { type: 'text', text: instrucao },
               ],
             },
@@ -542,7 +626,8 @@ export function falhaPassageira(status: number): boolean {
 
 /**
  * O nome com que o arquivo vai ao provedor (a OpenAI EXIGE o `filename` do
- * PDF e decide o formato por ele). Nunca vazio; o PDF termina SEMPRE em
+ * PDF e decide o formato por ele — e só lê PDF). Nunca vazio; o documento
+ * termina SEMPRE em
  * ".pdf" — o nome que o cliente deu pode não ter extensão ("Extrato
  * setembro") ou ter outra ("scan.bin").
  */

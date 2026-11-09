@@ -14,7 +14,7 @@ import { classificarMidia, lerMidia, RECUSA } from './ler-midia'
 type FetchFalso = (url: string, init?: RequestInit) => Promise<unknown>
 
 // ============================================================
-// A leitura de imagem e PDF (`ler-midia.ts`): a mecânica da transcrição
+// A leitura de imagem e documento (`ler-midia.ts`): a mecânica da transcrição
 // (cadeado, idempotência, `recusada` sem gravar por configuração) com o
 // provedor escolhido pela CHAVE. O banco é o stub de fila de
 // `transcrever.test.ts`: cada `from()` consome UMA resposta, na ordem real das
@@ -155,15 +155,22 @@ afterEach(() => {
 
 describe('classificarMidia — o que é, antes do download', () => {
   it('o `media_type` gravado decide', () => {
-    expect(classificarMidia({ content_type: 'document', media_type: 'application/pdf' })).toEqual({ tipo: 'pdf', mime: 'application/pdf' })
-    expect(
-      classificarMidia({ content_type: 'document', media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }),
-    ).toEqual({ tipo: 'outro' })
+    expect(classificarMidia({ content_type: 'document', media_type: 'application/pdf' })).toEqual({ tipo: 'documento', mime: 'application/pdf' })
+    // Word e Excel são `documento` (só o Gemini lê — `provedorLe`, na hora da chave).
+    expect(classificarMidia({ content_type: 'document', media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })).toEqual({
+      tipo: 'documento',
+      mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    })
+    expect(classificarMidia({ content_type: 'document', media_type: 'application/zip' })).toEqual({ tipo: 'outro' })
   })
 
   it('sem tipo: a extensão do NOME; num documento, extensão que ninguém lê já é `outro`', () => {
-    expect(classificarMidia({ content_type: 'document', media_type: null, media_filename: 'peticao.PDF' })).toEqual({ tipo: 'pdf', mime: 'application/pdf' })
-    expect(classificarMidia({ content_type: 'document', media_type: null, media_filename: 'planilha.xlsx' })).toEqual({ tipo: 'outro' })
+    expect(classificarMidia({ content_type: 'document', media_type: null, media_filename: 'peticao.PDF' })).toEqual({ tipo: 'documento', mime: 'application/pdf' })
+    expect(classificarMidia({ content_type: 'document', media_type: null, media_filename: 'LEVANTAMENTO.xlsx' })).toEqual({
+      tipo: 'documento',
+      mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    expect(classificarMidia({ content_type: 'document', media_type: null, media_filename: 'arquivos.zip' })).toEqual({ tipo: 'outro' })
   })
 
   it('⚠️ o ".bin" da URL do bucket não diz nada: documento sem mais nada fica para o download', () => {
@@ -172,7 +179,7 @@ describe('classificarMidia — o que é, antes do download', () => {
     ).toEqual({ tipo: 'desconhecido' })
     expect(
       classificarMidia({ content_type: 'document', media_type: null, media_url: 'https://x/account-1/1-arquivo.pdf' }),
-    ).toEqual({ tipo: 'pdf', mime: 'application/pdf' })
+    ).toEqual({ tipo: 'documento', mime: 'application/pdf' })
   })
 
   it('foto sem tipo nem nome é JPEG (é o que o WhatsApp entrega)', () => {
@@ -261,10 +268,10 @@ describe('lerMidia', () => {
     expect(logAiUsage).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ provider: 'anthropic', model: 'claude-haiku-5-5' }))
   })
 
-  it('documento que NENHUM provedor lê (docx): `recusada` GRAVADA, sem chave nem download', async () => {
+  it('documento que NENHUM provedor lê (zip): `recusada` GRAVADA, sem chave nem download', async () => {
     const chamadas: Chamada[] = []
     const admin = fakeAdmin(
-      [{ data: { ...pdfBase, media_type: null, media_filename: 'procuracao.docx' } }, { error: null }],
+      [{ data: { ...pdfBase, media_type: null, media_filename: 'arquivos.zip' } }, { error: null }],
       chamadas,
     )
     const f = fakeFetch()
@@ -274,6 +281,104 @@ describe('lerMidia', () => {
     expect(lerChave).not.toHaveBeenCalled()
     const grava = chamadas.filter((c) => c.op === 'update').at(-1)!
     expect(grava.payload).toMatchObject({ transcricao_status: 'recusada', transcricao_erro: RECUSA.tipo })
+  })
+
+  it('WORD pelo Gemini: `inlineData` com o mime do arquivo e o pedido do documento', async () => {
+    const docx = { ...pdfBase, media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', media_filename: 'carta.docx' }
+    const admin = fakeAdmin([{ data: docx }, { data: { id: 'm1' } }, { data: { id: 'm1' } }], [])
+    const f = fakeFetch({ contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
+    vi.stubGlobal('fetch', f)
+    expect((await lerMidia(admin, { accountId: 'a1', messageId: 'm1' })).status).toBe('pronta')
+    const corpo = String((chamadasAoProvedor(f)[0] as [string, RequestInit])[1].body)
+    expect(corpo).toContain('"mimeType":"application/vnd.openxmlformats-officedocument.wordprocessingml.document"')
+    expect(corpo).toContain('Extract the text content of this document faithfully')
+  })
+
+  it('EXCEL sem chave do Gemini: formato que só ele lê, `sem_leitor` SEM gravar e sem baixar', async () => {
+    comChaves('openai', 'anthropic')
+    const chamadas: Chamada[] = []
+    const admin = fakeAdmin([{ data: { ...pdfBase, media_type: null, media_filename: 'LEVANTAMENTO.xlsx' } }], chamadas)
+    const f = fakeFetch()
+    vi.stubGlobal('fetch', f)
+    expect((await lerMidia(admin, { accountId: 'a1', messageId: 'm1' })).status).toBe('sem_leitor')
+    expect(f).not.toHaveBeenCalled()
+    expect(chamadas.filter((c) => c.op === 'update')).toHaveLength(0)
+  })
+
+  describe('documento GRANDE pelo Gemini: Files API', () => {
+    const MB = 1024 * 1024
+    const URL_DO_ENVIO = 'https://generativelanguage.googleapis.com/upload/v1beta/files?upload_id=xyz'
+    const URI = 'https://generativelanguage.googleapis.com/v1beta/files/abc123'
+
+    function fetchDoEnvio(opcoes: { inicio?: 'ok' | 'rede' | 'outro-host' } = {}) {
+      return vi.fn<FetchFalso>(async (url, init) => {
+        const u = String(url)
+        if (u.includes('storage/v1')) {
+          return {
+            ok: true,
+            status: 200,
+            headers: { get: (h: string) => (h === 'content-type' ? 'application/pdf' : null) },
+            arrayBuffer: async () => new ArrayBuffer(21 * MB),
+          }
+        }
+        if (u === 'https://generativelanguage.googleapis.com/upload/v1beta/files') {
+          if (opcoes.inicio === 'rede') throw new TypeError('fetch failed')
+          const destino = opcoes.inicio === 'outro-host' ? 'https://intruso.example.com/up' : URL_DO_ENVIO
+          return { ok: true, status: 200, headers: { get: (h: string) => (h === 'x-goog-upload-url' ? destino : null) } }
+        }
+        if (u === URL_DO_ENVIO) {
+          return { ok: true, status: 200, json: async () => ({ file: { name: 'files/abc123', uri: URI, state: 'ACTIVE' } }) }
+        }
+        if (u.includes(':generateContent')) {
+          return { ok: true, status: 200, json: async () => RESPOSTAS.generativelanguage }
+        }
+        if (u.endsWith('/v1beta/files/abc123') && init?.method === 'DELETE') return { ok: true, status: 200 }
+        throw new Error(`chamada inesperada: ${u}`)
+      })
+    }
+
+    it('acima de 14 MB: envia, lê por `file_data` (sem base64) e APAGA do Google', async () => {
+      const admin = fakeAdmin([{ data: pdfBase }, { data: { id: 'm1' } }, { data: { id: 'm1' } }], [])
+      const f = fetchDoEnvio()
+      vi.stubGlobal('fetch', f)
+      expect((await lerMidia(admin, { accountId: 'a1', messageId: 'm1' })).status).toBe('pronta')
+      const urls = f.mock.calls.map((c) => String(c[0]))
+      const leitura = f.mock.calls.find((c) => String(c[0]).includes(':generateContent'))!
+      expect(String(leitura[1]?.body)).toContain(`"file_data":{"mime_type":"application/pdf","file_uri":"${URI}"}`)
+      expect(String(leitura[1]?.body)).not.toContain('inlineData')
+      // A chave no cabeçalho do início, nunca na URL.
+      const inicio = f.mock.calls.find((c) => String(c[0]).endsWith('/upload/v1beta/files'))!
+      expect((inicio[1]?.headers as Record<string, string>)['x-goog-api-key']).toBe('chave-gemini')
+      expect(urls.every((u) => !u.includes('key='))).toBe(true)
+      await vi.waitFor(() => expect(f.mock.calls.some((c) => c[1]?.method === 'DELETE')).toBe(true))
+    })
+
+    it('envio que cai na rede: `falhou` SEM gastar tentativa (passageira), e nada é lido', async () => {
+      const chamadas: Chamada[] = []
+      const admin = fakeAdmin([{ data: pdfBase }, { data: { id: 'm1' } }, { error: null }], chamadas)
+      const f = fetchDoEnvio({ inicio: 'rede' })
+      vi.stubGlobal('fetch', f)
+      expect((await lerMidia(admin, { accountId: 'a1', messageId: 'm1' })).status).toBe('falhou')
+      expect(f.mock.calls.some((c) => String(c[0]).includes(':generateContent'))).toBe(false)
+      const falha = chamadas.filter((c) => c.op === 'update').at(-1)!
+      expect(falha.payload).toMatchObject({ transcricao_status: 'falhou', transcricao_tentativas: 0 })
+    })
+
+    it('⚠️ endereço de envio fora do host do Gemini NÃO é seguido', async () => {
+      const admin = fakeAdmin([{ data: pdfBase }, { data: { id: 'm1' } }, { error: null }], [])
+      const f = fetchDoEnvio({ inicio: 'outro-host' })
+      vi.stubGlobal('fetch', f)
+      expect((await lerMidia(admin, { accountId: 'a1', messageId: 'm1' })).status).toBe('falhou')
+      expect(f.mock.calls.some((c) => String(c[0]).includes('intruso'))).toBe(false)
+    })
+
+    it('acima de 50 MB (declarado): `recusada` sem baixar o corpo nem enviar', async () => {
+      const admin = fakeAdmin([{ data: pdfBase }, { data: { id: 'm1' } }, { error: null }], [])
+      const f = fakeFetch({ contentType: 'application/pdf', contentLength: 60 * MB })
+      vi.stubGlobal('fetch', f)
+      expect(await lerMidia(admin, { accountId: 'a1', messageId: 'm1' })).toEqual({ status: 'recusada', erro: RECUSA.grande })
+      expect(chamadasAoProvedor(f)).toHaveLength(0)
+    })
   })
 
   it('GRANDE DEMAIS pelo tamanho declarado: `recusada` gravada com a cerca, sem baixar o corpo nem chamar o provedor', async () => {
