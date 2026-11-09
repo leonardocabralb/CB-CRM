@@ -99,6 +99,14 @@ const PADROES: Padrao[] = [
   { re: /^(?:Error: )?Connection Closed$/i, ler: () => frase('conexaoCaiu') },
   // A frase é do `throwError` de `evolution-client.ts` (400 com `exists: false`).
   { re: /^number (\S+) is not on WhatsApp$/, ler: (m) => frase('semWhatsApp', { numero: m[1] }) },
+  // O item do acervo do "Enviar arquivo" foi apagado (09/11/2026): o texto é
+  // `MOTIVO_ITEM_DO_ACERVO_APAGADO` (`automations/midia-do-passo.ts`), escrito
+  // aqui por extenso — importá-lo traria a cópia do Storage para o navegador. O
+  // teste amarra os dois.
+  {
+    re: /^o arquivo do acervo escolhido neste passo foi apagado — escolha outro arquivo no passo$/,
+    ler: () => frase('arquivoDoAcervoApagado'),
+  },
   // A retomada que o processo não terminou, recolhida pelo cron (1106). O
   // texto gravado é a constante do motor, casado INTEIRO (os parênteses dela
   // escapados): quem atende precisa ler que nada foi repetido ao cliente.
@@ -184,6 +192,7 @@ export const CHAVES_DO_MOTOR = [
   'tarefaCriada',
   'conexaoCaiu',
   'semWhatsApp',
+  'arquivoDoAcervoApagado',
   'retomadaInterrompida',
   'tentativa',
   'desistiu',

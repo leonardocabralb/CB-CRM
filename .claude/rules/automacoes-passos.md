@@ -281,10 +281,16 @@ campo do nó "Enviar mídia" do robô (`whatsapp-envio.md`).
   guardada é só da tela (e o que um motor antigo mandaria num rollback). O
   TIPO e a regra da legenda (áudio sem) são os do ITEM; o `kind` do passo é
   a foto da escolha.
-- ⚠️ **A cópia vem ANTES da conversa**: item apagado falha sem criar conversa
-  para a ficha que não tinha. Erro de banco é `leitura`, nunca "apagado".
-  A cópia não é apagada quando o envio falha (a Meta baixa depois), e a
-  retentativa (4xx da Evolution) copia de novo: órfãos no bucket, aceitos.
+- ⚠️⚠️ **Duas etapas**: o item é CONFERIDO por leitura ANTES da conversa
+  (apagado falha sem criar conversa para a ficha que não tinha), e a CÓPIA é
+  do remetente — `engineSendMedia` recebe o `link` como FUNÇÃO e só a chama
+  depois das recusas dele (contato, conversa, canal, alvo, conexão) e antes
+  da tentativa. Copiando antes, a ficha do Instagram ou sem telefone deixava
+  uma cópia inteira órfã a cada execução (revisão do PR). Erro de banco é
+  `leitura`, nunca "apagado". A cópia não é apagada quando o envio falha (a
+  Meta baixa depois), e a retentativa (4xx da Evolution) copia de novo:
+  órfãos aceitos. O motivo de item apagado tem frase no "Já rodou"
+  (`texto-do-motor.ts`, escrito por extenso; o teste amarra à constante).
 - ⚠️⚠️ **Ligar confere o item NA CONTA**, como a ativação do robô:
   `validateAcervoForActivation` nas duas rotas (`carregarAcervoDosPassos`;
   leitura que falha pula) e na tela (`conferirParaLigar` com

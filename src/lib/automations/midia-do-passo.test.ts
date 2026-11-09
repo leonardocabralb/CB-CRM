@@ -41,11 +41,14 @@ describe('origemDaMidiaDoPasso', () => {
 
 function bancoComAcervo(opts: {
   item?: Record<string, unknown> | null;
+  /** O item na leitura da CÓPIA (a 2ª); ausente = o mesmo da conferência. */
+  itemNaCopia?: Record<string, unknown> | null;
   erroLeitura?: string;
   erroCopia?: string;
 }) {
   const copias: Array<[string, string]> = [];
   const filtros: Array<[string, unknown]> = [];
+  let leituras = 0;
   const db = {
     from: () => {
       const b = {
@@ -54,12 +57,15 @@ function bancoComAcervo(opts: {
           filtros.push([c, v]);
           return b;
         },
-        maybeSingle: () =>
-          Promise.resolve(
+        maybeSingle: () => {
+          leituras += 1;
+          const item = leituras > 1 && 'itemNaCopia' in opts ? opts.itemNaCopia : opts.item;
+          return Promise.resolve(
             opts.erroLeitura
               ? { data: null, error: { message: opts.erroLeitura } }
-              : { data: opts.item ?? null, error: null },
-          ),
+              : { data: item ?? null, error: null },
+          );
+        },
       };
       return b;
     },
@@ -76,6 +82,12 @@ function bancoComAcervo(opts: {
   return { db: db as unknown as SupabaseClient, copias, filtros };
 }
 
+/** A cópia que o remetente produz (o `link` do acervo é função). */
+async function produzir(link: string | (() => Promise<string>)): Promise<string> {
+  expect(typeof link).toBe('function');
+  return (link as () => Promise<string>)();
+}
+
 describe('prepararMidiaDoPasso', () => {
   const VIDEO = {
     id: ITEM_ID,
@@ -84,8 +96,8 @@ describe('prepararMidiaDoPasso', () => {
     filename: 'gestante-5-passos.mp4',
   };
 
-  it('PASSO ANTIGO: manda a URL do passo como está, sem copiar nada', async () => {
-    const { db, copias } = bancoComAcervo({});
+  it('PASSO ANTIGO: manda a URL do passo como está, sem ler nem copiar nada', async () => {
+    const { db, copias, filtros } = bancoComAcervo({});
     const m = await prepararMidiaDoPasso(db, 'acc', {
       kind: 'document',
       url: 'https://storage/account-acc/contrato.pdf',
@@ -93,12 +105,13 @@ describe('prepararMidiaDoPasso', () => {
     });
     expect(m).toEqual({ kind: 'document', link: 'https://storage/account-acc/contrato.pdf', filename: 'Contrato.pdf' });
     expect(copias).toHaveLength(0);
+    expect(filtros).toHaveLength(0);
     // Nome só em documento — o WhatsApp ignora nos outros.
     const imagem = await prepararMidiaDoPasso(db, 'acc', { kind: 'image', url: 'https://x/a.png', filename: 'a.png' });
     expect(imagem.filename).toBeUndefined();
   });
 
-  it('ACERVO: copia o item e manda a CÓPIA — o tipo vem do item, nunca do passo', async () => {
+  it('ACERVO: CONFERE o item pela conta agora, e a CÓPIA só quando o remetente pede — o tipo vem do item', async () => {
     const { db, copias, filtros } = bancoComAcervo({ item: VIDEO });
     const m = await prepararMidiaDoPasso(db, 'acc', {
       // o passo diz imagem (foto velha da escolha): quem manda é o item
@@ -107,24 +120,29 @@ describe('prepararMidiaDoPasso', () => {
       acervo_id: ITEM_ID,
     });
     expect(m.kind).toBe('video');
-    expect(copias).toHaveLength(1);
-    expect(copias[0][0]).toBe(VIDEO.media_path);
-    // A cópia sai do acervo/ — é um anexo como outro qualquer, e a URL que vai
-    // ao WhatsApp e ao fio é a DELA, nunca a do item.
-    expect(copias[0][1]).toMatch(/^account-acc\/\d+-gestante-5-passos\.mp4$/);
-    expect(m.link).toBe(`https://storage/${copias[0][1]}`);
-    expect(m.link).not.toContain('/acervo/');
     // Vídeo não leva nome.
     expect(m.filename).toBeUndefined();
     // Cercado pela conta: service role ignora RLS.
     expect(filtros).toContainEqual(['account_id', 'acc']);
     expect(filtros).toContainEqual(['id', ITEM_ID]);
+    // Conferir não copia: a recusa do remetente (Instagram, sem telefone) não deixa órfão.
+    expect(copias).toHaveLength(0);
+
+    const link = await produzir(m.link);
+    expect(copias).toHaveLength(1);
+    expect(copias[0][0]).toBe(VIDEO.media_path);
+    // A cópia sai do acervo/ — é um anexo como outro qualquer, e a URL que vai
+    // ao WhatsApp e ao fio é a DELA, nunca a do item.
+    expect(copias[0][1]).toMatch(/^account-acc\/\d+-gestante-5-passos\.mp4$/);
+    expect(link).toBe(`https://storage/${copias[0][1]}`);
+    expect(link).not.toContain('/acervo/');
   });
 
   it('ACERVO: cada envio copia DE NOVO (a mensagem enviada não muda nem some com o item)', async () => {
     const { db, copias } = bancoComAcervo({ item: VIDEO });
-    await prepararMidiaDoPasso(db, 'acc', { kind: 'video', url: '', acervo_id: ITEM_ID });
-    await prepararMidiaDoPasso(db, 'acc', { kind: 'video', url: '', acervo_id: ITEM_ID });
+    const m = await prepararMidiaDoPasso(db, 'acc', { kind: 'video', url: '', acervo_id: ITEM_ID });
+    await produzir(m.link);
+    await produzir(m.link);
     expect(copias).toHaveLength(2);
     expect(copias[0][1]).not.toBe(copias[1][1]);
   });
@@ -147,11 +165,18 @@ describe('prepararMidiaDoPasso', () => {
     expect(vazio.filename).toBe('guia.pdf');
   });
 
-  it('ACERVO: item apagado falha com o motivo claro — e nunca cai para a URL guardada', async () => {
+  it('ACERVO: item apagado falha com o motivo claro na CONFERÊNCIA — e nunca cai para a URL guardada', async () => {
     const { db, copias } = bancoComAcervo({ item: null });
     await expect(
       prepararMidiaDoPasso(db, 'acc', { kind: 'video', url: 'https://storage/acervo/velho.mp4', acervo_id: ITEM_ID }),
     ).rejects.toThrow(MOTIVO_ITEM_DO_ACERVO_APAGADO);
+    expect(copias).toHaveLength(0);
+  });
+
+  it('ACERVO: apagado ENTRE a conferência e o envio — a cópia falha com o mesmo motivo', async () => {
+    const { db, copias } = bancoComAcervo({ item: VIDEO, itemNaCopia: null });
+    const m = await prepararMidiaDoPasso(db, 'acc', { kind: 'video', url: '', acervo_id: ITEM_ID });
+    await expect(produzir(m.link)).rejects.toThrow(MOTIVO_ITEM_DO_ACERVO_APAGADO);
     expect(copias).toHaveLength(0);
   });
 
@@ -165,14 +190,12 @@ describe('prepararMidiaDoPasso', () => {
     expect(String(erro)).not.toMatch(/apagado/);
   });
 
-  it('ACERVO: o Storage recusou a cópia — falha, nada é enviado', async () => {
-    await expect(
-      prepararMidiaDoPasso(bancoComAcervo({ item: VIDEO, erroCopia: 'The resource already exists' }).db, 'acc', {
-        kind: 'video',
-        url: '',
-        acervo_id: ITEM_ID,
-      }),
-    ).rejects.toThrow(/cópia do arquivo do acervo falhou \(The resource already exists\)/);
+  it('ACERVO: o Storage recusou a cópia — a função falha, nada é enviado', async () => {
+    const { db } = bancoComAcervo({ item: VIDEO, erroCopia: 'The resource already exists' });
+    const m = await prepararMidiaDoPasso(db, 'acc', { kind: 'video', url: '', acervo_id: ITEM_ID });
+    await expect(produzir(m.link)).rejects.toThrow(
+      /cópia do arquivo do acervo falhou \(The resource already exists\)/,
+    );
   });
 
   it('sem arquivo nenhum: falha antes de qualquer leitura', async () => {

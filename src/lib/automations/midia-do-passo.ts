@@ -20,6 +20,16 @@
 // passo falha VISÍVEL quando o item foi apagado — nunca um link morto ao
 // WhatsApp.
 //
+// ⚠️⚠️ DUAS ETAPAS, em dois momentos (revisão do PR):
+//   1. ANTES da conversa, o item é CONFERIDO por leitura (existe nesta conta?
+//      qual o tipo?) — o item apagado falha sem criar conversa para a ficha
+//      que não tinha;
+//   2. a CÓPIA é feita pelo REMETENTE (`engineSendMedia` recebe o link como
+//      função), depois de todas as recusas dele (contato, conversa, canal,
+//      alvo, conexão) e antes da tentativa. Copiando antes, a ficha do
+//      Instagram ou sem telefone deixava uma cópia inteira órfã a cada
+//      execução, com o passo falhando do mesmo jeito.
+//
 // ⚠️ A cópia NÃO é apagada quando o envio falha, como no robô: a Meta baixa a
 // mídia DEPOIS de aceitar o pedido, e um erro tardio com a cópia apagada
 // quebraria a mídia no celular do cliente. O preço é um objeto órfão no
@@ -59,21 +69,34 @@ export function origemDaMidiaDoPasso(
 export interface MidiaDoPasso {
   /** Com o acervo, o tipo do ITEM (o `kind` do passo é só a foto da escolha). */
   kind: SendMediaStepConfig['kind'];
-  /** A URL que vai ao WhatsApp e ao fio — a da CÓPIA, quando vem do acervo. */
-  link: string;
+  /**
+   * A URL que vai ao WhatsApp e ao fio. Do acervo, a FUNÇÃO que copia o item
+   * e devolve a URL da CÓPIA — quem a chama é `engineSendMedia`, depois das
+   * recusas dele (ver o cabeçalho).
+   */
+  link: string | (() => Promise<string>);
   /** Só documento leva nome; o WhatsApp ignora nos outros tipos. */
   filename?: string;
 }
 
+/** O motivo legível de cada falha do acervo — o motor o grava no registro. */
+function falhaDoAcervo(erro: 'leitura' | 'nao_encontrado' | 'copia', detalhe: string): Error {
+  if (erro === 'nao_encontrado') return new Error(MOTIVO_ITEM_DO_ACERVO_APAGADO);
+  if (erro === 'leitura') return new Error(`a leitura do acervo falhou (${detalhe}); nada foi enviado`);
+  return new Error(`a cópia do arquivo do acervo falhou (${detalhe}); nada foi enviado`);
+}
+
 /**
- * I/O: o arquivo que vai sair. Com `acervo_id`, copia o item AGORA, pela
- * conta da automação (`copiarDoAcervo` cerca por `account_id`: o id de um item
- * de outra conta não é copiado daqui).
+ * I/O: o arquivo que vai sair. Com `acervo_id`, CONFERE o item agora, pela
+ * conta da automação (o `.eq('account_id')` é a cerca: service role ignora a
+ * RLS, e o id de um item de outra conta não é lido daqui), e devolve a cópia
+ * como função — a cada chamada, uma cópia nova (`copiarDoAcervo`, cercada do
+ * mesmo jeito).
  *
  * Lança com motivo legível — o motor grava no registro e encerra a execução,
- * como todo passo que falha. ⚠️ Erro de banco é `leitura`, nunca "apagado":
- * dizer "apagado" sobre o item que só não foi lido mandaria alguém cadastrar
- * o arquivo de novo.
+ * como todo passo que falha; a função da cópia lança igual, de dentro do
+ * remetente. ⚠️ Erro de banco é `leitura`, nunca "apagado": dizer "apagado"
+ * sobre o item que só não foi lido mandaria alguém cadastrar o arquivo de novo.
  */
 export async function prepararMidiaDoPasso(
   db: SupabaseClient,
@@ -92,21 +115,27 @@ export async function prepararMidiaDoPasso(
     };
   }
 
-  const copia = await copiarDoAcervo(db, accountId, origem.acervoId);
-  if (!copia.ok) {
-    if (copia.erro === 'nao_encontrado') throw new Error(MOTIVO_ITEM_DO_ACERVO_APAGADO);
-    if (copia.erro === 'leitura') {
-      throw new Error(`a leitura do acervo falhou (${copia.detalhe}); nada foi enviado`);
-    }
-    throw new Error(`a cópia do arquivo do acervo falhou (${copia.detalhe}); nada foi enviado`);
-  }
+  const { data: item, error } = await db
+    .from('cb_media_library')
+    .select('id, tipo, filename')
+    .eq('id', origem.acervoId)
+    .eq('account_id', accountId)
+    .maybeSingle();
+  if (error) throw falhaDoAcervo('leitura', error.message);
+  if (!item) throw falhaDoAcervo('nao_encontrado', 'item not found');
+
+  // O TIPO vem do item: ele não troca de arquivo (trocar é apagar e cadastrar
+  // de novo), e o `kind` gravado no passo é só a foto da escolha.
+  const kind = item.tipo as SendMediaStepConfig['kind'];
   return {
-    // O TIPO vem do item: ele não troca de arquivo (trocar é apagar e
-    // cadastrar de novo), e o `kind` gravado no passo é só a foto da escolha.
-    kind: copia.tipo,
-    link: copia.mediaUrl,
+    kind,
+    link: async () => {
+      const copia = await copiarDoAcervo(db, accountId, origem.acervoId);
+      if (!copia.ok) throw falhaDoAcervo(copia.erro, copia.detalhe);
+      return copia.mediaUrl;
+    },
     // O nome editado no passo (documento) vence; senão o do item.
-    filename: copia.tipo === 'document' ? cfg.filename?.trim() || copia.filename : undefined,
+    filename: kind === 'document' ? cfg.filename?.trim() || (item.filename as string) : undefined,
   };
 }
 

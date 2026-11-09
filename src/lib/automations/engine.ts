@@ -2547,9 +2547,10 @@ async function runStep(
       if (!args.contactId) throw new Error('send_media precisa de um contato');
 
       // NOSSO (09/11/2026): o arquivo pode vir do ACERVO (`acervo_id`),
-      // COPIADO agora, a cada envio — `midia-do-passo.ts`; o passo antigo
-      // (`url`) segue igual. A cópia vem ANTES da conversa: item apagado falha
-      // sem criar conversa para a ficha que não tinha.
+      // COPIADO a cada envio — `midia-do-passo.ts`; o passo antigo (`url`)
+      // segue igual. O item é CONFERIDO aqui, ANTES da conversa (item apagado
+      // falha sem criar conversa para a ficha que não tinha); a CÓPIA, o
+      // remetente faz depois das recusas dele (`midia.link` é função).
       const midia = await prepararMidiaDoPasso(db, args.automation.account_id, cfg);
 
       // ⚠️ ÁUDIO NÃO LEVA LEGENDA, e o dano é silencioso: a nota de voz sai por

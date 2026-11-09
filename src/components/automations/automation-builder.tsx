@@ -160,6 +160,7 @@ import { mensagemDoUpload } from "@/lib/storage/erro-de-upload"
 import { CHAT_MEDIA_BUCKET } from "@/lib/storage/buckets"
 import { AcervoPicker } from "@/components/inbox/acervo-picker"
 import { useAcervo } from "@/hooks/use-acervo"
+import { TETO_DA_LEITURA_DO_ACERVO } from "@/lib/acervo/filtro"
 import { audioViraNotaDeVozNaMeta } from "@/lib/flows/tipo-da-midia"
 import { origemDoConstrutor, urlDoConstrutor, voltaDoConstrutor } from "@/lib/pipelines/url"
 import { opcoesDeResponsavel } from "@/lib/account/suspensao"
@@ -3546,9 +3547,14 @@ function EditorDeMidia({
   const itemDoAcervo = acervoId
     ? (acervo.escolhidos.get(acervoId) ?? acervo.itens.find((i) => i.id === acervoId) ?? null)
     : null
-  // "Apagado" só com a lista CARREGADA: durante a carga, ou com ela falhando,
-  // o item que só não chegou não é afirmado apagado.
-  const itemApagado = acervoId !== null && itemDoAcervo === null && acervo.estado === "pronto"
+  // "Apagado" só com a lista CARREGADA e INTEIRA: durante a carga, com ela
+  // falhando ou no teto da leitura (pode ter vindo cortada), o item que só não
+  // chegou não é afirmado apagado — a mesma régua de `acervoParaConferir`.
+  const itemApagado =
+    acervoId !== null &&
+    itemDoAcervo === null &&
+    acervo.estado === "pronto" &&
+    acervo.itens.length < TETO_DA_LEITURA_DO_ACERVO
   // ⚠️ No número OFICIAL só .ogg (Opus) vira nota de voz — o aviso do robô.
   const audioSemNotaDeVozNaMeta =
     itemDoAcervo !== null &&

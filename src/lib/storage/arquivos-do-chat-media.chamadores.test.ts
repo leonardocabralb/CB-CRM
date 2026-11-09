@@ -242,7 +242,7 @@ const AJUDANTES: {
       },
       'src/lib/automations/midia-do-passo.ts': {
         grava: [MSG],
-        nota: 'o passo "Enviar arquivo" da automação copia a cada envio (engineSendMedia grava a mensagem)',
+        nota: 'o passo "Enviar arquivo" da automação copia a cada envio, de dentro do engineSendMedia (o link é função), que grava a mensagem',
       },
     },
   },
