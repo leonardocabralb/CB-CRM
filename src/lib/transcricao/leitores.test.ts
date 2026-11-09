@@ -73,7 +73,7 @@ describe('pedidoDeLeitura — Gemini', () => {
     const p = pedidoDeLeitura({ provedor: 'gemini', chave: 'g-1', tipo: 'documento', mime: 'application/pdf', arquivo: { base64: B64 }, nomeDoArquivo: 'a.pdf' })
     const partes = (corpo(p).contents as { parts: Record<string, unknown>[] }[])[0].parts
     expect(partes[1]).toEqual({ inlineData: { mimeType: 'application/pdf', data: B64 } })
-    expect(String(partes[0].text)).toMatch(/Extract the text content of this document faithfully/)
+    expect(String(partes[0].text)).toMatch(/extract the text content of this document faithfully/)
   })
 })
 
@@ -83,7 +83,7 @@ describe('pedidoDeLeitura — Gemini: Office e arquivo grande', () => {
     const p = pedidoDeLeitura({ provedor: 'gemini', chave: 'g-1', tipo: 'documento', mime: xlsx, arquivo: { base64: B64 }, nomeDoArquivo: 'LEVANTAMENTO.xlsx' })
     const partes = (corpo(p).contents as { parts: Record<string, unknown>[] }[])[0].parts
     expect(partes[1]).toEqual({ inlineData: { mimeType: xlsx, data: B64 } })
-    expect(String(partes[0].text)).toMatch(/Extract the text content of this document faithfully/)
+    expect(String(partes[0].text)).toMatch(/extract the text content of this document faithfully/)
   })
 
   it('o arquivo já enviado pela Files API vai como `file_data` (a forma do REST da doc), sem base64', () => {
@@ -395,6 +395,24 @@ describe('o prazo e o tamanho da resposta da leitura', () => {
     expect(MARCA_ILEGIVEL).toBe('[ilegível]')
     for (const i of [INSTRUCAO_DA_IMAGEM, INSTRUCAO_DO_DOCUMENTO]) {
       expect(i).toContain('write [ilegível] in its place — never complete or guess it')
+    }
+  })
+
+  it('⚠️ os FATOS vêm no TOPO: o agente recebe só os primeiros 4.000 caracteres', () => {
+    const pedido = 'Begin the reply with the line "FATOS:" followed by 3 to 6 short lines'
+    // O documento SEMPRE começa pelos fatos — e a instrução também, antes do texto.
+    expect(INSTRUCAO_DO_DOCUMENTO.startsWith(pedido)).toBe(true)
+    expect(INSTRUCAO_DO_DOCUMENTO.indexOf('FATOS:')).toBeLessThan(INSTRUCAO_DO_DOCUMENTO.indexOf('extract the text content'))
+    // A imagem, só quando é documento: a foto e o print de conversa não têm fatos.
+    expect(INSTRUCAO_DA_IMAGEM).toContain('If the image shows a document (contract, statement, bill, payslip, ID, work card, medical or court paper): ' + pedido)
+    expect(INSTRUCAO_DA_IMAGEM).toContain('If it is not a document (a photo, a chat screenshot), do not write the FATOS block.')
+    for (const i of [INSTRUCAO_DA_IMAGEM, INSTRUCAO_DO_DOCUMENTO]) {
+      expect(i).toContain('key facts of the WHOLE file')
+      // Os fatos seguem as regras do texto: só o escrito, e [ilegível].
+      expect(i).toContain('Use only what is written in the file — write [ilegível] for anything you cannot read with certainty')
+      // O teto de ~6.000 inclui os fatos.
+      expect(i).toContain('6,000 characters')
+      expect(i).not.toContain('no comments, no labels')
     }
   })
 })

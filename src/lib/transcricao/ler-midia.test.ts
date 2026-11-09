@@ -291,7 +291,7 @@ describe('lerMidia', () => {
     expect((await lerMidia(admin, { accountId: 'a1', messageId: 'm1' })).status).toBe('pronta')
     const corpo = String((chamadasAoProvedor(f)[0] as [string, RequestInit])[1].body)
     expect(corpo).toContain('"mimeType":"application/vnd.openxmlformats-officedocument.wordprocessingml.document"')
-    expect(corpo).toContain('Extract the text content of this document faithfully')
+    expect(corpo).toContain('extract the text content of this document faithfully')
   })
 
   it('EXCEL sem chave do Gemini: formato que só ele lê, `sem_leitor` SEM gravar e sem baixar', async () => {
