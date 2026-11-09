@@ -3,12 +3,17 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { buildConversationContext } from './context'
 
 /** Minimal fake matching the query chain in buildConversationContext:
- *  from().select().eq().eq().order().limit() → { data, error }. */
-function fakeDb(rows: unknown[]): SupabaseClient {
+ *  from().select().eq()….is().order().limit() → { data, error }.
+ *  `filtros` anota os `.is()` recebidos. */
+function fakeDb(rows: unknown[], filtros: unknown[][] = []): SupabaseClient {
   const chain = {
     from: () => chain,
     select: () => chain,
     eq: () => chain,
+    is: (...args: unknown[]) => {
+      filtros.push(args)
+      return chain
+    },
     order: () => chain,
     limit: () => Promise.resolve({ data: rows, error: null }),
   }
@@ -49,5 +54,12 @@ describe('buildConversationContext', () => {
       'conv-1',
     )
     expect(out).toEqual([{ role: 'user', content: 'real' }])
+  })
+
+  // CB: a mensagem apagada não vai ao modelo (como no turno do agente).
+  it('filtra as mensagens apagadas', async () => {
+    const filtros: unknown[][] = []
+    await buildConversationContext(fakeDb([], filtros), 'conv-1')
+    expect(filtros).toContainEqual(['deleted_at', null])
   })
 })

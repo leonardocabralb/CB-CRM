@@ -37,6 +37,8 @@ const PERMITIDOS: Record<string, readonly string[]> = {
   '@/lib/auth/account': ['requireRole', 'toErrorResponse'],
   '@/lib/rate-limit': ['checkRateLimit', 'rateLimitResponse', 'RATE_LIMITS'],
   '@/lib/ai/admin-client': ['supabaseAdmin'],
+  // Leitura da env do tamanho do histórico (o mesmo número do turno): sem efeito.
+  '@/lib/ai/defaults': ['aiContextMessageLimit'],
   // O provedor: gera texto, não escreve no banco.
   '@/lib/ai/generate': ['generateReply'],
   // A ÚNICA escrita do Playground: a linha de custo `agente_teste` (D13).

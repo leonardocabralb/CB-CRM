@@ -29,6 +29,8 @@ export async function buildConversationContext(
     .eq('content_type', 'text')
     // CB (1080): a tentativa do robô que não saiu o cliente nunca leu.
     .eq('nao_saiu', false)
+    // CB: a mensagem apagada não entra no rascunho, como no turno do agente.
+    .is('deleted_at', null)
     .order('created_at', { ascending: false })
     .limit(limit)
 

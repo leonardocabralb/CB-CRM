@@ -136,8 +136,8 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 30_000
 // 50 por decisão do operador (08/11/2026): mais contexto para o agente. A
 // conta é por MENSAGEM — áudio transcrito, foto e PDF lidos contam uma cada —,
 // e a leitura de cada mídia continua com o teto de 4.000 caracteres no pedido
-// (`TETO_DA_LEITURA_NO_CONTEXTO`). O Playground corta no mesmo número
-// (`MAX_TURNOS` da rota). Vale também para o assistente de rascunho (só texto).
+// (`TETO_DA_LEITURA_NO_CONTEXTO`). O Playground corta pelo mesmo
+// `aiContextMessageLimit()`. Vale também para o assistente de rascunho (só texto).
 const DEFAULT_CONTEXT_MESSAGE_LIMIT = 50
 
 /** Per-call provider timeout. Override with `AI_REQUEST_TIMEOUT_MS`. */
