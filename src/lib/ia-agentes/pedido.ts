@@ -34,10 +34,10 @@
 import { HANDOFF_SENTINEL } from '@/lib/ai/defaults'
 
 import {
+  descricaoDoFormato,
   LIMITES_DAS_ACOES,
   MARCADOR_DA_ACAO,
   MARCADOR_DE_TRANSFERENCIA,
-  type FormatoDoCampo,
   type OpcaoDeAcao,
   type OpcoesDeAcao,
 } from './acoes'
@@ -150,25 +150,6 @@ function formaDoMarcador(tipo: TipoDeAcao): string {
   if (tipo === 'preencher_campo') return `[[${marcador}:n=value]]`
   if (tipo === 'criar_tarefa') return `[[${marcador}:n=title]]`
   return `[[${marcador}:n]]`
-}
-
-/**
- * O formato do valor de um campo, para o modelo (a execução confere o mesmo,
- * `valorDoCampo`: fora dele, a ação falha como `valor_invalido`).
- */
-function descricaoDoFormato(formato: FormatoDoCampo | undefined): string {
-  switch (formato?.tipo) {
-    case 'data':
-      return "a date as YYYY-MM-DD, or a date and time as YYYY-MM-DD HH:MM, in the business's timezone"
-    case 'numero':
-      return "a number: digits only, with '.' as the decimal separator — no currency, no thousands separator (e.g. 150000.50)"
-    case 'lista':
-      return `exactly one of: ${formato.opcoes.map((o) => JSON.stringify(o)).join(', ')}`
-    case 'email':
-      return 'an e-mail address'
-    default:
-      return 'text'
-  }
 }
 
 /**

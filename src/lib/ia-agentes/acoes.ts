@@ -547,22 +547,62 @@ export function lerAcoes(texto: string): LeituraDasAcoes {
 }
 
 /**
- * Um nome comparável: sem acento, sem caixa, espaços colapsados, sem a
- * pontuação e as aspas das pontas e sem a descrição do formato que o pedido
- * põe depois do nome do campo ("Tipo de Débito — text").
+ * O formato do valor de um campo, para o modelo (a execução confere o mesmo,
+ * `valorDoCampo`: fora dele, a ação falha como `valor_invalido`). O pedido o
+ * põe depois do nome do campo (`linhaDaOpcao`, "Tipo de Débito — text"), e
+ * `rotuloDaOpcao` o tira do rótulo que o modelo copiou — por isso mora aqui.
+ */
+export function descricaoDoFormato(formato: FormatoDoCampo | undefined): string {
+  switch (formato?.tipo) {
+    case 'data':
+      return "a date as YYYY-MM-DD, or a date and time as YYYY-MM-DD HH:MM, in the business's timezone"
+    case 'numero':
+      return "a number: digits only, with '.' as the decimal separator — no currency, no thousands separator (e.g. 150000.50)"
+    case 'lista':
+      return `exactly one of: ${formato.opcoes.map((o) => JSON.stringify(o)).join(', ')}`
+    case 'email':
+      return 'an e-mail address'
+    default:
+      return 'text'
+  }
+}
+
+/** O travessão que separa partes de um nome; a meia-risca e o hífen entre espaços contam como ele. */
+const TRAVESSAO = /\s+[—–-]\s+/g
+
+/**
+ * Um nome comparável: sem acento, sem caixa, espaços colapsados, travessões
+ * iguais e sem a pontuação e as aspas das pontas. O nome INTEIRO: "Banco —
+ * Nome" e "Banco — Agência" são campos diferentes (Codex, #484).
  */
 function nomeComparavel(nome: string): string {
-  return semAcento(nome.split(/\s+[—–]\s+/)[0])
+  return semAcento(nome)
+    .replace(TRAVESSAO, ' — ')
     .replace(/\s+/g, ' ')
     .replace(/^[\s"'“”‘’«».,;:!?()-]+|[\s"'“”‘’«».,;:!?()-]+$/g, '')
 }
 
-/** O rótulo que o modelo escreveu é o desta opção? O nome inteiro, o texto do pedido ou a etapa sem o funil ("Funil · Etapa"). */
-function rotuloDaOpcao(rotulo: string, o: OpcaoDeAcao): boolean {
+/**
+ * O rótulo que o modelo escreveu é o desta opção? O nome inteiro, o texto do
+ * pedido ou a etapa sem o funil ("Funil · Etapa"). No campo, também o nome
+ * seguido da descrição do formato DESTE campo — inteira ou só o começo dela
+ * ("Valor — a number"), que é o que o pedido acrescentou à linha; nunca um
+ * pedaço do nome.
+ */
+function rotuloDaOpcao(rotulo: string, o: OpcaoDeAcao, ehCampo: boolean): boolean {
   const alvo = nomeComparavel(rotulo)
   if (!alvo) return false
-  const nomes = [o.nome, o.textoNoPedido, o.nome.split(' · ').at(-1)].filter((x): x is string => !!x)
-  return nomes.some((n) => nomeComparavel(n) === alvo)
+  const nomes = [o.nome, o.textoNoPedido, o.nome.split(' · ').at(-1)]
+    .filter((x): x is string => !!x)
+    .map(nomeComparavel)
+  if (nomes.includes(alvo)) return true
+  if (!ehCampo) return false
+  const formato = nomeComparavel(descricaoDoFormato(o.formato))
+  return nomes.some((n) => {
+    if (!alvo.startsWith(`${n} — `)) return false
+    const resto = alvo.slice(n.length + 3)
+    return resto.length > 0 && formato.startsWith(resto)
+  })
 }
 
 /**
@@ -572,12 +612,13 @@ function rotuloDaOpcao(rotulo: string, o: OpcaoDeAcao): boolean {
  * casar com UMA opção só. `undefined` = nenhuma (a recusa `fora_da_lista`).
  */
 function opcaoPedida(p: AcaoPedida, lista: readonly OpcaoDeAcao[]): OpcaoDeAcao | undefined {
+  const ehCampo = p.tipo === 'preencher_campo'
   if (p.n !== null) {
     const opcao = lista[p.n - 1]
-    return opcao && (p.rotulo === undefined || rotuloDaOpcao(p.rotulo, opcao)) ? opcao : undefined
+    return opcao && (p.rotulo === undefined || rotuloDaOpcao(p.rotulo, opcao, ehCampo)) ? opcao : undefined
   }
   if (p.rotulo === undefined) return undefined
-  const achadas = lista.filter((o) => rotuloDaOpcao(p.rotulo as string, o))
+  const achadas = lista.filter((o) => rotuloDaOpcao(p.rotulo as string, o, ehCampo))
   return achadas.length === 1 ? achadas[0] : undefined
 }
 

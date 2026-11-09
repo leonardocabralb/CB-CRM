@@ -312,10 +312,11 @@ describe('resolverAcoes — default-deny', () => {
   describe('o nome da opção junto do número, ou no lugar dele (revisão de 09/11/2026)', () => {
     const CAMPOS: OpcoesDeAcao = {
       ...OPCOES,
+      // Como `opcoesDoAgente` as monta: todo campo com o formato.
       preencher_campo: [
-        { id: 'campo-banco', nome: 'Banco' },
-        { id: 'campo-divida', nome: 'Tamanho da dívida' },
-        { id: 'campo-tipo', nome: 'Tipo de Débito' },
+        { id: 'campo-banco', nome: 'Banco', formato: { tipo: 'texto' } },
+        { id: 'campo-divida', nome: 'Tamanho da dívida', formato: { tipo: 'numero' } },
+        { id: 'campo-tipo', nome: 'Tipo de Débito', formato: { tipo: 'texto' } },
       ],
     }
 
@@ -352,6 +353,44 @@ describe('resolverAcoes — default-deny', () => {
         { tipo: 'etiquetar', id: 'tag-vip', nome: 'VIP' },
       ])
       expect(r.recusadas).toEqual([{ tipo: 'preencher_campo', n: null, motivo: 'fora_da_lista' }])
+    })
+
+    it('⚠️ o travessão do NOME não é o do formato: "Banco — Nome" e "Banco — Agência" são campos diferentes (Codex, #484)', () => {
+      const banco: OpcoesDeAcao = {
+        preencher_campo: [
+          { id: 'campo-nome', nome: 'Banco — Nome', formato: { tipo: 'texto' } },
+          { id: 'campo-agencia', nome: 'Banco — Agência', formato: { tipo: 'texto' } },
+        ],
+      }
+      // Antes os dois viravam "banco" e o 1 aceitava o rótulo do 2: o valor ia ao campo errado.
+      const discordam = resolverAcoes([{ tipo: 'preencher_campo', n: 1, rotulo: 'Banco — Agência', valor: '1234' }], banco)
+      expect(discordam.aceitas).toEqual([])
+      expect(discordam.recusadas).toEqual([{ tipo: 'preencher_campo', n: 1, motivo: 'fora_da_lista' }])
+      const certos = resolverAcoes(
+        [
+          { tipo: 'preencher_campo', n: 2, rotulo: 'Banco — Agência — text', valor: '1234' },
+          { tipo: 'preencher_campo', n: null, rotulo: 'banco - nome', valor: 'Sicredi' },
+        ],
+        banco,
+      )
+      expect(certos.recusadas).toEqual([])
+      expect(certos.aceitas.map((a) => [a.id, a.valor])).toEqual([['campo-agencia', '1234'], ['campo-nome', 'Sicredi']])
+    })
+
+    it('do rótulo sai só a descrição do formato DESTE campo (inteira ou o começo); fora dos campos, nada sai', () => {
+      const r = resolverAcoes(
+        [
+          { tipo: 'preencher_campo', n: 2, rotulo: "Tamanho da dívida — a number: digits only, with '.' as the decimal separator", valor: '1' },
+          { tipo: 'preencher_campo', n: 3, rotulo: 'Tipo de Débito — a number', valor: 'x' },
+          { tipo: 'mover_etapa', n: 1, rotulo: 'Proposta — text' },
+        ],
+        CAMPOS,
+      )
+      expect(r.aceitas.map((a) => a.id)).toEqual(['campo-divida'])
+      expect(r.recusadas).toEqual([
+        { tipo: 'preencher_campo', n: 3, motivo: 'fora_da_lista' },
+        { tipo: 'mover_etapa', n: 1, motivo: 'fora_da_lista' },
+      ])
     })
 
     it('só o nome, com DUAS opções de mesmo nome: recusada', () => {

@@ -97,7 +97,8 @@ Plano: `docs/PLANO-agentes-de-ia.md` (D5, D28, F4). Sem migration.
 - **Nenhum marcador chega ao cliente** (`lerAcoes`: caixa, acento, espaço,
   colchete simples; `[[handoff]]` em qualquer forma = transferência). Teste
   para cada forma nova. Desde 09/11/2026 lê também `CAMPO 4=`, `CAMPO=4=`,
-  `#4`, `4:valor` e o NOME da opção (com o número, tem de ser o DELA; sem,
+  `#4`, `4:valor` e o NOME INTEIRO da opção (do campo sai só o formato
+  dele; com o número, tem de ser o DELA; sem,
   casar com UMA só — `resolverAcoes`); o malformado leva o miolo ao `detalhe`.
 - **`[[TRANSFERIR]]` = responda e passe** (27/09): sempre disponível, sem
   configuração; a resposta SAI e, depois das ações, o turno transfere
