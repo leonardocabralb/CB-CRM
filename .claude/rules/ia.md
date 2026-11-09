@@ -340,8 +340,8 @@ ingestões), `fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron
   SECURITY DEFINER: o operador encerra sob RLS), menos o que respondeu (1109).
 - ⚠️ **Falha de CONFIGURAÇÃO não transfere** (E8): chave, modelo, provedor
   fora do ar → `falhou`. Transferem o sentinela, a resposta vazia, o teto, o
-  áudio que não se ouve e o envio incerto — pausa `transferencia`, destino só
-  sem responsável, anotação "IA · <agente>". Nunca por cima de pausa ou de
+  áudio que não se ouve e o envio incerto — pausa `transferencia` + pendente,
+  destino só sem responsável, anotação "IA · <agente>". Nunca por cima de pausa ou de
   conversa encerrada (zero linhas = sem nota, `pausado_no_meio`).
 - ⚠️ **Só o turno passa `iaAgenteId` ao `engineSendText`** (pino
   default-deny): a 972 conta `bot` COM `ia_agente_id` como "respondido".
