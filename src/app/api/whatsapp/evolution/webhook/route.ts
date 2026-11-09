@@ -337,8 +337,18 @@ export async function POST(request: Request) {
 
   // Route to the owning account/channel by instance name (the inbound key).
   // cb_channels first (multi-canal); falls back to whatsapp_config (the
-  // single-channel flow) with a warning. Deploy-safe: unknown table → fallback.
+  // single-channel flow) with a warning.
   const route = await resolveInboundEvolutionChannel(supabaseAdmin(), instance);
+
+  // ⚠️⚠️ Leitura que FALHOU não é instância desconhecida: 503, e a Evolution
+  // entrega de novo (até 10 vezes, com espera crescente). Com o 200, a
+  // mensagem se perdia em silêncio — o Supabase fora do ar por ~1 min em
+  // 09/11/2026 levou 5 mensagens de cliente. A reentrega pode repetir o que já
+  // entrou (resposta que demorou além dos 30 s dela): a mensagem passa pelo
+  // `jaGravada` e pelo UNIQUE, e o recibo pela escada.
+  if (route === 'falhou') {
+    return NextResponse.json({ error: 'temporarily_unavailable' }, { status: 503 });
+  }
 
   if (!route) {
     // Unknown/foreign instance — ack so Evolution doesn't retry forever.

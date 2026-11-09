@@ -95,23 +95,30 @@ describe('resolveInboundEvolutionChannel', () => {
     });
   });
 
-  it('cb_channels com erro (tabela ausente pré-migration) → ignora o erro e usa o fallback', async () => {
+  // ⚠️⚠️ Leitura que FALHA não é "instância desconhecida" (09/11/2026): o 521
+  // do Supabase virava `null`, a rota respondia 200 e a mensagem se perdia.
+  // `'falhou'` faz a rota responder 503, e a Evolution entrega de novo.
+  it('cb_channels com erro → "falhou", sem cair no fallback nem dar a instância por desconhecida', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
     const db = makeDb({
-      cb_channels: () => ({
-        data: null,
-        error: { message: 'relation "cb_channels" does not exist' },
-      }),
+      cb_channels: () => ({ data: null, error: { message: '521: Web server is down' } }),
       whatsapp_config: () => ({ data: { account_id: 'accG', user_id: 'quem-conectou' } }),
       accounts,
     });
-    const route = await resolveInboundEvolutionChannel(db, 'cbcrm-gabriel');
-    expect(route).toEqual({
-      accountId: 'accG',
-      ownerUserId: 'donoG',
-      channelId: null,
-      groupsEnabled: false,
-      ownLid: null,
+    expect(await resolveInboundEvolutionChannel(db, 'cbcrm-acc1-abc')).toBe('falhou');
+    expect(db.calls.map((c) => c.table)).toEqual(['cb_channels']);
+    expect(err).toHaveBeenCalledTimes(1);
+  });
+
+  it('whatsapp_config com erro (depois de não achar o canal) → "falhou", nunca null', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const db = makeDb({
+      cb_channels: () => ({ data: null }),
+      whatsapp_config: () => ({ data: null, error: { message: 'fetch failed' } }),
+      accounts,
     });
+    expect(await resolveInboundEvolutionChannel(db, 'cbcrm-acc1-abc')).toBe('falhou');
+    expect(db.calls.map((c) => c.table)).toEqual(['cb_channels', 'whatsapp_config']);
   });
 
   it('canal com grupos LIGADOS propaga o interruptor e o nosso lid', async () => {
@@ -151,12 +158,12 @@ describe('resolveInboundEvolutionChannel', () => {
       accounts: (f) => (++vezes === 1 ? { error: { message: 'timeout' } } : accounts(f)),
     });
     const route = await resolveInboundEvolutionChannel(db, 'cbcrm-acc1-abc');
-    expect(route?.ownerUserId).toBe('dono1');
+    expect(route).toMatchObject({ ownerUserId: 'dono1' });
     expect(db.calls.map((c) => c.table)).toEqual(['cb_channels', 'accounts', 'accounts']);
     expect(err).toHaveBeenCalledTimes(1);
   });
 
-  it('dono irresolvível (duas falhas) → null e log; NUNCA cai para quem conectou', async () => {
+  it('dono irresolvível (duas falhas) → "falhou" e log; NUNCA cai para quem conectou', async () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});
     const db = makeDb({
       cb_channels: () => ({
@@ -165,7 +172,7 @@ describe('resolveInboundEvolutionChannel', () => {
       whatsapp_config: () => ({ data: { user_id: 'quem-conectou' } }),
       accounts: () => ({ error: { message: 'timeout' } }),
     });
-    expect(await resolveInboundEvolutionChannel(db, 'cbcrm-acc1-x')).toBeNull();
+    expect(await resolveInboundEvolutionChannel(db, 'cbcrm-acc1-x')).toBe('falhou');
     expect(db.calls.map((c) => c.table)).toEqual(['cb_channels', 'accounts', 'accounts']);
     expect(err).toHaveBeenCalled();
   });

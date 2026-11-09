@@ -212,14 +212,14 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   `whatsapp_config`, o 2º número da Meta, Instagram) e o número padrão da Meta
   passam por ele; a leitura que falha é repetida uma vez, e sem dono a entrega
   é descartada com log — nunca a queda para quem conectou. Pino
-  `dono-duravel.test.ts`. Na Evolution a leitura roda antes de separar os
-  eventos: se falhar duas vezes, o recibo e o `connection.update` daquela
-  entrega caem junto — aceito na revisão (a leitura de `cb_channels` logo antes
-  já descartava tudo assim). A API v1 segue a mesma régua
-  (`resolveAuditUserId`, 500 sem dono).
+  `dono-duravel.test.ts`. A API v1: `resolveAuditUserId`, 500 sem dono.
 - Só assinatura inválida vale 4xx; o resto responde 200 com log e trabalha em
-  `after()` — 4xx repetido faz o provedor desativar a entrega. A Evolution não
-  reentrega: o 200 sai antes do `after()`.
+  `after()` — 4xx repetido faz o provedor desativar a entrega.
+- ⚠️⚠️ **Evolution: leitura que FALHA = 503**:
+  `resolveInboundEvolutionChannel` devolve `'falhou'`, nunca `null`; a 2.4
+  reentrega em 5xx/timeout (10 vezes; 4xx não). Com 200, um 521 do Supabase
+  perdeu 5 mensagens (09/11/2026). Pino `route.leitura-que-falha.test.ts`.
+  Falha no `after()` não reentrega.
 - O webhook recebe só a CHAVE de roteamento (`instance_name` na Evolution,
   `phone_number_id` na Meta), nunca a conta: `resolve-inbound.ts` a traduz na
   conexão de `cb_channels`.
