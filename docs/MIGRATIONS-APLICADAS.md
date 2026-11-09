@@ -1949,3 +1949,26 @@ nome da época em que foram aplicadas.
   EXECUTE, `service_role` executa e lê o log. ⚠️ A worktree da sessão
   `revisao-ia` tinha uma `1129_cb_ia_correcoes_da_revisao.sql` sem commit:
   avisada para renumerar.
+
+- **1130_cb_ia_correcoes_da_revisao** — as correções da revisão geral da IA
+  (09/11/2026) que moram no banco, recriando quatro funções a partir da forma
+  vigente: `cb_ia_reservar_envio` (1118: `mais_nova` ignora a retomada; o teto
+  conta desde a entrada no território do agente, pela trilha 912),
+  `cb_ia_enfileirar_turno` (1056: a retomada que ocupava a vaga vira o turno
+  da mensagem nova por inteiro), `cb_encerrar_limpa_ia` (1109: encerrar não
+  descarta o turno no meio do envio) e `cb_ia_turno_conversa_apagada` (1110:
+  resposta já saída = `respondeu`); e `GRANT SELECT` em `cb_lead_events` ao
+  `service_role`. PR #484.
+
+  Independe do deploy (o app de hoje e o novo convivem com as quatro; os
+  agentes estão desligados). Autorização do operador em 09/11/2026 ("pode
+  gravar e mergear", à espera do "pode gravar" para aplicar a 1130 em
+  produção), aplicada em 09/11/2026 (histórico `20261109132108`) pela
+  Management API, com o arquivo idêntico ao do commit `7746b8af` (sha256
+  `194a47fe…`), cujo replay do CI ("Apply to a clean database") passou.
+  Também o replay LOCAL completo (254 migrations + `verify-schema.sql`), a
+  1130 aplicada duas vezes com dado fictício e 10 cenários. Na produção a
+  conferência rodou COM dado (havia conversa elegível no passo 0) e foi
+  desfeita pelo P1130. Conferida: as quatro funções na forma nova (uma de
+  cada), `anon` sem EXECUTE, `service_role` executa e lê a trilha; nenhum
+  agente, mensagem ou turno de conferência ficou.

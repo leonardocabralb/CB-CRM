@@ -98,6 +98,32 @@ agente errar em silêncio.
 - Motivo é chave MONTADA (`Inbox.aiBanner.naoAtendeMotivo.<m>`), cobrada pela
   LISTA; motivo fora dela a faixa ignora (`lerNaoAtende`), nunca chave crua.
 
+### Qual card decide o agente (decisão do operador, 09/11/2026)
+
+- ⚠️⚠️ **`lerCardEAgente` (`quem-responde.ts`)**: entre os cards ABERTOS do
+  contato (até 20, `created_at desc, id desc`), o mais recente cuja etapa tem
+  agente LIGADO, não arquivado e com a conexão da mensagem; sem nenhum, o
+  mais recente (a D24 de antes — `quemResponde` diz por que ninguém atende).
+  Antes, o card novo noutro funil (Trabalhista) calava o agente do Bancário
+  na conexão do Bancário. UMA leitura para a entrada, as conferências do
+  turno, a retomada e a faixa (`GET /api/cb/ia/conversa/[id]`, com
+  `canalId` nulo = o mais recente). O desempate por `id` faz dois cards da
+  mesma transação darem sempre o mesmo card à entrada e à conferência.
+- O bloco "Negócio" sem card do turno (o Playground; `lerNegocio` em
+  `acesso.ts`) faz a mesma escolha pelo agente TESTADO, sem a conexão (o
+  Playground não tem): o card numa etapa dele, senão o aberto mais recente.
+  Falha ao ler as etapas = bloco indisponível, nunca o card de outro funil.
+- **Limite aceito**: a pausa por gente (o gatilho da 1049) continua olhando
+  "EXISTE card aberto em etapa com agente", sem a conexão: com dois cards e o
+  agente do antigo noutra conexão, a resposta do SDR pausa e mover o card novo
+  não entrega a conversa (a faixa mostra "Retomar"). 0 contatos assim em
+  09/11/2026.
+- ⚠️ **O "cliente" que é o número de OUTRA conexão da conta não tem IA**
+  (`ehNumeroDeConexao`, pela chave de pessoa contra `cb_channels.display_phone`;
+  `fora_do_alcance`, como o grupo): a mensagem entre dois números da conta
+  entra como de cliente (validação de 25/10/2026), e com agente nas duas
+  pontas eles se respondiam até o teto. A faixa não oferece nada.
+
 ### Custo por FAIXA do pedido (1108)
 
 - ⚠️⚠️ **`cb_ia_uso` agrupa também por `acima_da_faixa`**

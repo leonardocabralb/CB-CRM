@@ -508,6 +508,76 @@ describe('lerDadosDoAcesso', () => {
     expect(texto(dados)).toContain('- Stage: Lead')
   })
 
+  describe('sem card do turno (o Playground): o card numa etapa DESTE agente vem antes do mais recente', () => {
+    function comEtapas() {
+      const tabelas = tabelasCompletas()
+      tabelas.cb_ia_agente_etapas = [
+        { account_id: CONTA, ia_agente_id: 'ag-lead', stage_id: 'e1' },
+        // A mesma etapa noutra conta não conta.
+        { account_id: 'outra', ia_agente_id: 'ag-alheio', stage_id: 'e1' },
+      ]
+      return tabelas
+    }
+
+    it('o agente da etapa do card MAIS VELHO vê esse card, não o mais recente', async () => {
+      const { db, consultas } = criarBanco(comEtapas())
+      const dados = await lerDadosDoAcesso(db, {
+        accountId: CONTA,
+        contactId: CONTATO,
+        dealId: null,
+        agenteId: 'ag-lead',
+        acesso: { ...FECHADO, negocio: true },
+        agora: AGORA,
+      })
+      expect(texto(dados)).toContain('- Stage: Lead')
+      const etapas = consultas.find((c) => c.tabela === 'cb_ia_agente_etapas')
+      expect(etapas?.filtros).toContainEqual(['eq', 'account_id', CONTA])
+      expect(etapas?.filtros).toContainEqual(['eq', 'ia_agente_id', 'ag-lead'])
+    })
+
+    it('agente sem etapa entre os cards (ou de outra conta): o aberto mais recente', async () => {
+      for (const agenteId of ['ag-sem-etapa', 'ag-alheio']) {
+        const { db } = criarBanco(comEtapas())
+        const dados = await lerDadosDoAcesso(db, {
+          accountId: CONTA,
+          contactId: CONTATO,
+          dealId: null,
+          agenteId,
+          acesso: { ...FECHADO, negocio: true },
+          agora: AGORA,
+        })
+        expect(texto(dados), agenteId).toContain('- Stage: Proposta')
+      }
+    })
+
+    it('o card do TURNO manda: nem lê as etapas do agente', async () => {
+      const { db, consultas } = criarBanco(comEtapas())
+      const dados = await lerDadosDoAcesso(db, {
+        accountId: CONTA,
+        contactId: CONTATO,
+        dealId: 'd-novo',
+        agenteId: 'ag-lead',
+        acesso: { ...FECHADO, negocio: true },
+        agora: AGORA,
+      })
+      expect(texto(dados)).toContain('- Stage: Proposta')
+      expect(consultas.map((c) => c.tabela)).not.toContain('cb_ia_agente_etapas')
+    })
+
+    it('⚠️ a leitura das etapas falha: o bloco vai como indisponível, nunca o card errado', async () => {
+      const { db } = criarBanco(comEtapas(), ['cb_ia_agente_etapas'])
+      const dados = await lerDadosDoAcesso(db, {
+        accountId: CONTA,
+        contactId: CONTATO,
+        dealId: null,
+        agenteId: 'ag-lead',
+        acesso: { ...FECHADO, negocio: true },
+        agora: AGORA,
+      })
+      expect(dados.negocio).toEqual({ ok: false })
+    })
+  })
+
   it('⚠️ o card do turno que passou a ser de OUTRO contato não é lido (Codex, #312)', async () => {
     const tabelas = tabelasCompletas()
     const velho = tabelas.deals.find((d) => d.id === 'd-velho')!
@@ -605,6 +675,21 @@ describe('lerOQueOAgenteVe', () => {
     expect(visto.blocos).toEqual([{ bloco: 'etiquetas', texto: 'Tags: bancário, vip' }])
     expect(visto.retrato).toEqual({ blocos: [{ bloco: 'etiquetas', texto: 'Tags: bancário, vip' }], documentos: [], trechos: [] })
     expect(lerChaveDeEmbeddings).not.toHaveBeenCalled()
+  })
+
+  it('o Playground (sem card do turno) vê o card da etapa do agente testado', async () => {
+    const tabelas = tabelasCompletas()
+    tabelas.cb_ia_agente_etapas = [{ account_id: CONTA, ia_agente_id: 'ag-lead', stage_id: 'e1' }]
+    const { db } = criarBanco(tabelas)
+    const visto = await lerOQueOAgenteVe(db, {
+      accountId: CONTA,
+      agente: { id: 'ag-lead', acesso: { ...FECHADO, negocio: true } },
+      contactId: CONTATO,
+      dealId: null,
+      consulta: 'oi',
+      agora: AGORA,
+    })
+    expect(visto.blocos.find((b) => b.bloco === 'negocio')?.texto).toContain('- Stage: Lead')
   })
 })
 

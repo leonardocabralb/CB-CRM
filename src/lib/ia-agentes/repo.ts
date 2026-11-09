@@ -294,6 +294,25 @@ async function gravarEtapas(accountId: string, agenteId: string, etapas: string[
   if (error) throw new ErroDoAgente('banco', error.message)
 }
 
+/**
+ * Outro agente NÃO arquivado da conta já usa este nome? A régua do índice
+ * único `cb_ia_agentes_nome_vivo_idx` (1048: `lower(btrim(nome))`). Lança
+ * `nome_repetido`, ou `banco` em erro de leitura.
+ */
+async function conferirNomeLivre(accountId: string, id: string, nome: string): Promise<void> {
+  const { data, error } = await supabaseAdmin()
+    .from('cb_ia_agentes')
+    .select('id, nome')
+    .eq('account_id', accountId)
+    .is('arquivado_em', null)
+    .neq('id', id)
+  if (error) throw new ErroDoAgente('banco', error.message)
+  const alvo = nome.trim().toLowerCase()
+  if (((data ?? []) as Array<{ nome: unknown }>).some((l) => typeof l.nome === 'string' && l.nome.trim().toLowerCase() === alvo)) {
+    throw new ErroDoAgente('nome_repetido', 'já existe um agente com este nome')
+  }
+}
+
 function traduzirErroDeEscrita(error: { code?: string; message: string }): never {
   // Índice único do nome entre os não arquivados.
   if (error.code === '23505') throw new ErroDoAgente('nome_repetido', 'já existe um agente com este nome')
@@ -358,6 +377,12 @@ export async function atualizarAgente(
   }
   await conferirReferencias(accountId, { ...a, provedor: provedorAConferir }, id, ferramentasGravadas)
   const inserirEtapas = a.etapas ? await conferirEtapas(accountId, id, a.etapas) : null
+  // O NOME repetido ANTES das etapas (revisão de 09/11/2026): o UPDATE abaixo
+  // recusaria com `nome_repetido` DEPOIS de as etapas já terem mudado — a tela
+  // diz "não salvou" e o agente (ligado) passa a atender nas etapas novas. A
+  // mesma régua do índice único (`lower(btrim(nome))` entre os não
+  // arquivados); o 23505 do UPDATE continua sendo a palavra final na corrida.
+  if (a.etapas && inserirEtapas && a.nome !== undefined) await conferirNomeLivre(accountId, id, a.nome)
   // As etapas ANTES do resto: a etapa tomada por outro agente recusa o
   // salvamento sem ter mudado nada do agente (Codex, #309).
   if (a.etapas && inserirEtapas) await gravarEtapas(accountId, id, a.etapas, inserirEtapas)

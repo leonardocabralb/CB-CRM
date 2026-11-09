@@ -25,6 +25,22 @@ faz, em `.claude/rules/ia-agentes.md`. ⚠️ "Retomada" aqui é o FOLLOW-UP; o
   escreveu. Robô, automação e gente não armam. Conversa ENCERRADA durante o
   turno (a automação que o agente executou) não arma: `armarRetomada` relê a
   conversa (1109, `ia-agentes-turno.md`).
+- ⚠️⚠️ **Arma com o card e a etapa de AGORA** (revisão de 09/11/2026): a
+  própria resposta pode ter movido o card (`mover_etapa`); armada com a etapa
+  do começo do turno, ela era descartada SEMPRE no vencimento ("o card mudou
+  de etapa"), justo depois da proposta. `armarRetomada` relê
+  (`lerQuemAtende` + `quemResponde`, a régua do vencimento): etapa do MESMO
+  agente arma com ela; de outro agente ou sem agente NÃO arma — o novo dono
+  fala na próxima mensagem (decisão do operador, 09/11/2026). Exige também o
+  MESMO card do turno (só a etapa muda): com dois cards do agente, o da
+  resposta movido para etapa sem dono faria a leitura cair no card ANTIGO, e
+  a retomada armada nele passaria no vencimento, que compara com o card que
+  ela mesma gravou (Codex, #484).
+- ⚠️ **Não arma com turno de RESPOSTA vivo na conversa** (`aguardando` ou
+  `rodando`): o cliente escreveu enquanto a resposta saía, e o turno dele, já
+  reivindicado, não ocupa a vaga do pendente (sem 23505). Armada, a retomada
+  (gatilho = a resposta, mais nova que a mensagem do cliente) fazia a reserva
+  dele recusar `mais_nova`; desde a 1130 a reserva também não a conta.
 - ⚠️⚠️ **A cadência mantém o ESPAÇAMENTO** (decisão do operador, 27/09):
   `max(ancora + cadencia[k], enviada(k-1) + (cadencia[k] − cadencia[k-1]))`,
   piso de 30 min depois da anterior, dentro da janela ∩ horário do agente. A
@@ -55,7 +71,10 @@ faz, em `.claude/rules/ia-agentes.md`. ⚠️ "Retomada" aqui é o FOLLOW-UP; o
   retomada), equipe prometida e link inventado PARAM a
   série (`sem_resposta`, motivo no `erro`), sem mandar — `lerRespostaDaRetomada`
   é a régua do turno E do Playground. O teto conta as retomadas e só para; o
-  `incerto` não transfere (nem recolhido pela rede).
+  `incerto` não transfere (nem recolhido pela rede). A falha PASSAGEIRA do
+  provedor (prazo, 429, 5xx) tenta UMA vez mais, como o turno
+  (`ERRO_DA_REPETICAO`, 09/11/2026): o `falhou` não arma a seguinte, e um 429
+  acabava a série.
 - ⚠️⚠️ **A conversa ao modelo NÃO pode terminar na resposta do agente**: o
   Gemini recusa ("Requests ending with a model turn are not supported",
   MEDIDO no e2e de 27/09 — o provedor falso dos testes não pegava) e a

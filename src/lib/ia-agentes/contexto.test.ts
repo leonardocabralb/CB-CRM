@@ -1,6 +1,36 @@
 import { describe, expect, it } from 'vitest'
 
-import { montarConversa, MOTIVO_SEM_LEITOR, TETO_DA_LEITURA_NO_CONTEXTO } from './contexto'
+import {
+  montarConversa,
+  MOTIVO_SEM_LEITOR,
+  NOTA_DA_RESPOSTA_CRUZADA,
+  terminarNoCliente,
+  TETO_DA_LEITURA_NO_CONTEXTO,
+} from './contexto'
+
+describe('terminarNoCliente — a conversa ao modelo nunca termina na empresa (revisão de 09/11/2026)', () => {
+  it('termina na empresa (a mensagem do cliente cruzou com a resposta): ganha a nota no papel de usuário', () => {
+    const conversa = [
+      { role: 'user' as const, content: 'Quanto custa?' },
+      { role: 'assistant' as const, content: 'Qual o valor da dívida?' },
+    ]
+    expect(terminarNoCliente(conversa)).toEqual([...conversa, { role: 'user', content: NOTA_DA_RESPOSTA_CRUZADA }])
+    // Não muda o original (a busca da base e as travas leem a conversa crua).
+    expect(conversa).toHaveLength(2)
+  })
+
+  it('termina no cliente: igual; sem fala do cliente nenhuma: igual (o adaptador cuida)', () => {
+    const doCliente = [{ role: 'user' as const, content: 'Oi' }]
+    expect(terminarNoCliente(doCliente)).toEqual(doCliente)
+    const soDaEmpresa = [{ role: 'assistant' as const, content: 'Olá!' }]
+    expect(terminarNoCliente(soDaEmpresa)).toEqual(soDaEmpresa)
+    expect(terminarNoCliente([])).toEqual([])
+  })
+
+  it('a nota diz que NÃO é o cliente', () => {
+    expect(NOTA_DA_RESPOSTA_CRUZADA).toMatch(/^\[System note, not a message from the customer:/)
+  })
+})
 
 describe('montarConversa — o que o agente lê', () => {
   it('cliente é user; equipe, robô e o próprio agente são assistant', () => {

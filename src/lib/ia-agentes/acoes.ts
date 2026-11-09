@@ -282,7 +282,18 @@ export type MotivoDaRecusa =
 
 export interface AcaoPedida {
   tipo: TipoDeAcao
-  n: number
+  /**
+   * O número da opção. Nulo quando o modelo escreveu só o NOME dela
+   * (`[[CAMPO:Tipo de Débito=…]]`, revisão de 09/11/2026): aí vale o `rotulo`.
+   */
+  n: number | null
+  /**
+   * O nome da opção que o modelo escreveu junto do número (`[[CAMPO:4. Tipo
+   * de Débito=…]]`) ou no lugar dele. `resolverAcoes` o confere contra a
+   * lista do SERVIDOR: com o número, os dois têm de apontar a MESMA opção;
+   * sozinho, tem de casar com UMA opção só. Nunca escolhe "a mais parecida".
+   */
+  rotulo?: string
   /** O valor do campo ou o título da tarefa, aparado e numa linha. */
   valor?: string
 }
@@ -292,7 +303,17 @@ export interface RecusaDeAcao {
   /** O número pedido (nulo quando nem ele se leu). */
   n: number | null
   motivo: MotivoDaRecusa
+  /**
+   * O miolo cru do marcador `malformada` (até `TETO_DO_MARCADOR_CRU`): mede
+   * a forma que o modelo erra (09/11/2026, o Haiku errava ~10% no Bancário
+   * sem registro de COMO). Vai ao `detalhe` do registro — texto, que a poda
+   * da 1110 apaga (pode trazer o valor de um campo).
+   */
+  bruto?: string
 }
+
+/** O teto do miolo cru que o registro guarda de um marcador malformado. */
+const TETO_DO_MARCADOR_CRU = 200
 
 export interface LeituraDasAcoes {
   /** A resposta ao cliente, SEM nenhum marcador. */
@@ -338,14 +359,42 @@ const LUGAR = '\u0000'
  *     de um marcador válido não engole o texto até ele;
  *  2. `[NOME:…]` com colchete simples (ou um lado dobrado), numa linha — só
  *     vira marcador quando NOME é de ação ou de controle; o resto é texto
- *     ("[Obs: …]" fica). Sem dois-pontos, só o `[HANDOFF]` e o `[TRANSFERIR]`.
+ *     ("[Obs: …]" fica). Sem dois-pontos, só o `[HANDOFF]` e o `[TRANSFERIR]`
+ *     — ou o separador que o modelo troca pelo `:` (`[CAMPO=4=…]` e, com um
+ *     `=` depois do número, `[CAMPO 4=…]`; revisão de 09/11/2026), que `ler`
+ *     resolve. Sem o `=`, "[Campo 2 da ficha]" continua texto — e por isso
+ *     `[Mover 2]` e `[PASSAR 2]` (colchete simples, sem separador) também
+ *     ficam no texto e chegam ao cliente: limite aceito, porque separar o
+ *     marcador da frase entre colchetes pediria adivinhar. O colchete duplo
+ *     (`[[MOVER 2]]`) é lido.
  * `[[HANDOFF]]` e `[[TRANSFERIR]]` sem dois-pontos caem no 1.
  */
-const MARCADOR = /\[\[((?:(?!\[\[)[\s\S])*?)\]\]+|\[{1,2}[ \t]*(\p{L}+)[ \t]*(?::([^[\]\n]*))?\]{1,2}/gu
-/** O miolo de um marcador de ação: `TIPO : n` e, opcional, `= valor`. */
-const MIOLO = /^\s*(\p{L}+)\s*:\s*([^=]*?)\s*(?:=([\s\S]*))?$/u
+const MARCADOR = /\[\[((?:(?!\[\[)[\s\S])*?)\]\]+|\[{1,2}[ \t]*(\p{L}+)((?:[ \t]*[:=]|[ \t]*(?=[#\d][^[\]\n]*=))[^[\]\n]*)?[ \t]*\]{1,2}/gu
+/**
+ * O miolo de um marcador de ação: o `TIPO`, o separador e o resto. O
+ * separador é o `:` do protocolo — ou o que o modelo escreve no lugar dele
+ * (revisão de 09/11/2026: o Haiku 5.5 errava a forma em ~10% das respostas do
+ * Bancário, e o marcador sumia sem registro): `=` (`[[CAMPO=4=…]]`) ou nada
+ * antes do número (`[[CAMPO 4=…]]`, `[[CAMPO#4=…]]`).
+ */
+const MIOLO = /^\s*(\p{L}+)\s*(?:[:=]|(?=[#\d]))\s*([\s\S]*)$/u
+/**
+ * O resto antes do `=`: o NÚMERO (com `#` opcional) e, depois dele, o nome da
+ * opção que o modelo copiou da lista (`4. Tipo de Débito`, `4 - Tipo de
+ * Débito`, `4: …`); ou só o nome, sem número.
+ */
+const NUMERO_E_ROTULO = /^#?\s*(\d+)(?:\s*[.)\-–—:]?\s*([\s\S]*))?$/u
+/**
+ * O nome sem o separador do protocolo: sozinho (`[[TAREFA]]`) ou seguido de
+ * espaço (`[[ETIQUETAR VIP]]`). Só dentro de `[[…]]`, que sai sempre do texto.
+ */
+const SO_O_NOME = /^\s*(\p{L}+)(?:\s+([\s\S]*?))?\s*$/u
+/** A passagem na forma que `lerPassagem` lê (`[[PASSAR:n]]`, com espaço e caixa à vontade). */
+const PASSAGEM_NA_FORMA = /^\s*PASSAR\s*:\s*\d+\s*$/i
+/** `4:valor` — o `:` no lugar do `=`, nos tipos que levam valor. */
+const VALOR_DEPOIS_DE_DOIS_PONTOS = /^#?\s*(\d+)\s*:\s*([\s\S]+)$/u
 /** `[NOME:…` de ação ou controle que ficou aberto até o fim (resposta cortada). */
-const SIMPLES_ABERTO = /\[{1,2}[ \t]*(\p{L}+)[ \t]*:[^[\]\n]*$/u
+const SIMPLES_ABERTO = /\[{1,2}[ \t]*(\p{L}+)(?:[ \t]*[:=]|[ \t]*(?=[#\d][^[\]\n]*=))[^[\]\n]*$/u
 
 function numaLinha(texto: string): string {
   return texto.replace(/\s+/g, ' ').trim()
@@ -375,38 +424,75 @@ export function lerAcoes(texto: string): LeituraDasAcoes {
       transferirDepois = true
       return
     }
-    const m = MIOLO.exec(miolo)
+    // Sem o separador do protocolo, o nome sozinho ou seguido de espaço
+    // (`[[TAREFA]]`, `[[ETIQUETAR VIP]]`, `[[CAMPO Tipo de Débito=…]]`).
+    const m = MIOLO.exec(miolo) ?? SO_O_NOME.exec(miolo)
     if (!m) return
+    const nome = nomeNormalizado(m[1])
     // `[[TRANSFERIR: …]]` com algo depois: a intenção é a mesma.
-    if (nomeNormalizado(m[1]) === 'TRANSFERIR') {
+    if (nome === 'TRANSFERIR') {
       transferirDepois = true
       return
     }
-    const tipo = TIPO_DO_MARCADOR.get(nomeNormalizado(m[1]))
-    // PASSAR, HANDOFF e o que não é ação: só saem do texto.
-    if (!tipo) return
-    const n = /^\d+$/.test(m[2]) ? Number.parseInt(m[2], 10) : Number.NaN
-    if (!Number.isSafeInteger(n) || n < 1) {
-      recusadas.push({ tipo, n: null, motivo: 'malformada' })
+    // O sentinela com algo depois (`[[HANDOFF: motivo]]`) e a passagem FORA da
+    // forma de `lerPassagem` (`[[PASSAR=2]]`, `[[PASSAR 2]]`): a intenção era
+    // entregar a conversa — transfere, como o `[PASSAR:n]` de colchete simples;
+    // nunca manda ao cliente um "vou te passar" sem passagem nenhuma.
+    if (nome === 'HANDOFF' || (nome === 'PASSAR' && !PASSAGEM_NA_FORMA.test(miolo))) {
+      transferir = true
       return
     }
-    let valor: string | undefined
-    if (ACOES_COM_VALOR.has(tipo)) {
-      valor = numaLinha(m[3] ?? '')
-      const teto = tipo === 'preencher_campo' ? LIMITES_DAS_ACOES.valorDoCampo : LIMITES_DAS_ACOES.tituloDaTarefa
-      if (!valor || valor.length > teto) {
-        recusadas.push({ tipo, n, motivo: 'malformada' })
+    const tipo = TIPO_DO_MARCADOR.get(nome)
+    // A passagem na forma (quem decide é `lerPassagem`) e o que não é ação: só saem do texto.
+    if (!tipo) return
+    const bruto = numaLinha(miolo).slice(0, TETO_DO_MARCADOR_CRU)
+    const malformada = (n: number | null) => recusadas.push({ tipo, n, motivo: 'malformada', bruto })
+
+    // O valor: depois do PRIMEIRO `=` — ou, sem `=`, depois do `:` que segue o
+    // número (`4:valor`), nos tipos que levam valor.
+    const resto = m[2] ?? ''
+    const comValor = ACOES_COM_VALOR.has(tipo) || ACOES_COM_VALOR_OPCIONAL.has(tipo)
+    const igual = resto.indexOf('=')
+    const doisPontos = igual < 0 && comValor ? VALOR_DEPOIS_DE_DOIS_PONTOS.exec(resto.trim()) : null
+    const esquerda = (igual >= 0 ? resto.slice(0, igual) : doisPontos ? doisPontos[1] : resto).trim()
+    const valorCru = igual >= 0 ? resto.slice(igual + 1) : doisPontos ? doisPontos[2] : undefined
+
+    // O número (com `#`, e o nome da opção depois dele) ou só o nome. O `n`
+    // literal do molde (`[[CAMPO:n=…]]`) não diz opção nenhuma.
+    let n: number | null = null
+    let rotulo: string | undefined
+    const numero = NUMERO_E_ROTULO.exec(esquerda)
+    if (numero) {
+      n = Number.parseInt(numero[1], 10)
+      rotulo = numaLinha(numero[2] ?? '') || undefined
+      if (!Number.isSafeInteger(n) || n < 1) {
+        malformada(null)
         return
       }
-    } else if (ACOES_COM_VALOR_OPCIONAL.has(tipo) && m[3] !== undefined) {
+    } else if (/\p{L}/u.test(esquerda) && !/^n$/i.test(esquerda)) {
+      rotulo = numaLinha(esquerda)
+    } else {
+      malformada(null)
+      return
+    }
+
+    let valor: string | undefined
+    if (ACOES_COM_VALOR.has(tipo)) {
+      valor = numaLinha(valorCru ?? '')
+      const teto = tipo === 'preencher_campo' ? LIMITES_DAS_ACOES.valorDoCampo : LIMITES_DAS_ACOES.tituloDaTarefa
+      if (!valor || valor.length > teto) {
+        malformada(n)
+        return
+      }
+    } else if (ACOES_COM_VALOR_OPCIONAL.has(tipo) && valorCru !== undefined) {
       // Opcional: vazio vale como ausente; quem confere a forma é `resolverAcoes`.
-      valor = numaLinha(m[3]) || undefined
+      valor = numaLinha(valorCru) || undefined
     }
     if (pedidas.length >= LIMITES_DAS_ACOES.porResposta) {
       recusadas.push({ tipo, n, motivo: 'teto' })
       return
     }
-    pedidas.push(valor === undefined ? { tipo, n } : { tipo, n, valor })
+    pedidas.push({ tipo, n, ...(rotulo !== undefined ? { rotulo } : {}), ...(valor !== undefined ? { valor } : {}) })
   }
 
   const conhecido = (nome: string): boolean => {
@@ -432,7 +518,8 @@ export function lerAcoes(texto: string): LeituraDasAcoes {
     // `[[…]]`); a intenção era entregar a conversa, então transfere para gente
     // — nunca manda ao cliente um "vou te passar" sem passagem nenhuma.
     if (nomeNormalizado(nome) === 'PASSAR') transferir = true
-    else ler(`${nome}:${resto}`)
+    // O `resto` traz o separador (`:`, `=` ou o espaço antes do número).
+    else ler(`${nome}${resto}`)
     return LUGAR
   })
 
@@ -457,6 +544,82 @@ export function lerAcoes(texto: string): LeituraDasAcoes {
     .replace(/\n{3,}/g, '\n\n')
     .trim()
   return { texto: limpo, pedidas, recusadas, transferir, transferirDepois }
+}
+
+/**
+ * O formato do valor de um campo, para o modelo (a execução confere o mesmo,
+ * `valorDoCampo`: fora dele, a ação falha como `valor_invalido`). O pedido o
+ * põe depois do nome do campo (`linhaDaOpcao`, "Tipo de Débito — text"), e
+ * `rotuloDaOpcao` o tira do rótulo que o modelo copiou — por isso mora aqui.
+ */
+export function descricaoDoFormato(formato: FormatoDoCampo | undefined): string {
+  switch (formato?.tipo) {
+    case 'data':
+      return "a date as YYYY-MM-DD, or a date and time as YYYY-MM-DD HH:MM, in the business's timezone"
+    case 'numero':
+      return "a number: digits only, with '.' as the decimal separator — no currency, no thousands separator (e.g. 150000.50)"
+    case 'lista':
+      return `exactly one of: ${formato.opcoes.map((o) => JSON.stringify(o)).join(', ')}`
+    case 'email':
+      return 'an e-mail address'
+    default:
+      return 'text'
+  }
+}
+
+/** O travessão que separa partes de um nome; a meia-risca e o hífen entre espaços contam como ele. */
+const TRAVESSAO = /\s+[—–-]\s+/g
+
+/**
+ * Um nome comparável: sem acento, sem caixa, espaços colapsados, travessões
+ * iguais e sem a pontuação e as aspas das pontas. O nome INTEIRO: "Banco —
+ * Nome" e "Banco — Agência" são campos diferentes (Codex, #484).
+ */
+function nomeComparavel(nome: string): string {
+  return semAcento(nome)
+    .replace(TRAVESSAO, ' — ')
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s"'“”‘’«».,;:!?()-]+|[\s"'“”‘’«».,;:!?()-]+$/g, '')
+}
+
+/**
+ * O rótulo que o modelo escreveu é o desta opção? O nome inteiro, o texto do
+ * pedido ou a etapa sem o funil ("Funil · Etapa"). No campo, também o nome
+ * seguido da descrição do formato DESTE campo — inteira ou só o começo dela
+ * ("Valor — a number"), que é o que o pedido acrescentou à linha; nunca um
+ * pedaço do nome.
+ */
+function rotuloDaOpcao(rotulo: string, o: OpcaoDeAcao, ehCampo: boolean): boolean {
+  const alvo = nomeComparavel(rotulo)
+  if (!alvo) return false
+  const nomes = [o.nome, o.textoNoPedido, o.nome.split(' · ').at(-1)]
+    .filter((x): x is string => !!x)
+    .map(nomeComparavel)
+  if (nomes.includes(alvo)) return true
+  if (!ehCampo) return false
+  const formato = nomeComparavel(descricaoDoFormato(o.formato))
+  return nomes.some((n) => {
+    if (!alvo.startsWith(`${n} — `)) return false
+    const resto = alvo.slice(n.length + 3)
+    return resto.length > 0 && formato.startsWith(resto)
+  })
+}
+
+/**
+ * A opção que a ação pedida aponta, pela lista do SERVIDOR. Com número, a da
+ * posição — e, se o modelo copiou também o nome, o nome tem de ser o DELA
+ * (número e nome que discordam não executam nada). Sem número, o nome tem de
+ * casar com UMA opção só. `undefined` = nenhuma (a recusa `fora_da_lista`).
+ */
+function opcaoPedida(p: AcaoPedida, lista: readonly OpcaoDeAcao[]): OpcaoDeAcao | undefined {
+  const ehCampo = p.tipo === 'preencher_campo'
+  if (p.n !== null) {
+    const opcao = lista[p.n - 1]
+    return opcao && (p.rotulo === undefined || rotuloDaOpcao(p.rotulo, opcao, ehCampo)) ? opcao : undefined
+  }
+  if (p.rotulo === undefined) return undefined
+  const achadas = lista.filter((o) => rotuloDaOpcao(p.rotulo as string, o, ehCampo))
+  return achadas.length === 1 ? achadas[0] : undefined
 }
 
 /** Uma ação com os IDS do servidor, pronta para executar. */
@@ -504,7 +667,7 @@ export function resolverAcoes(
       recusadas.push({ tipo: p.tipo, n: p.n, motivo: 'nao_liberada' })
       continue
     }
-    const opcao = lista[p.n - 1]
+    const opcao = opcaoPedida(p, lista)
     if (!opcao) {
       recusadas.push({ tipo: p.tipo, n: p.n, motivo: 'fora_da_lista' })
       continue
@@ -1524,7 +1687,14 @@ export interface RegistroDeAcao {
 
 /** A recusa como linha do registro (o alvo é o número pedido). */
 export function registroDaRecusa(r: RecusaDeAcao): RegistroDeAcao {
-  return { tipo: r.tipo, alvo: { id: null, nome: r.n === null ? '' : `#${r.n}` }, ok: false, erro: r.motivo }
+  return {
+    tipo: r.tipo,
+    alvo: { id: null, nome: r.n === null ? '' : `#${r.n}` },
+    ok: false,
+    erro: r.motivo,
+    // O marcador malformado como veio (texto: a poda da 1110 o apaga).
+    ...(r.bruto ? { detalhe: r.bruto } : {}),
+  }
 }
 
 /**

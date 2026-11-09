@@ -427,7 +427,7 @@ describe('aoChegarMensagemDoCliente — o agente da etapa do card', () => {
     banco.tabelas.deals = []
     await aoChegarMensagemDoCliente(msg())
     expect(enfileirou()).toBe(false)
-    expect(tabelasLidas()).toEqual(['conversations', 'cb_channels', 'deals'])
+    expect(tabelasLidas()).toEqual(['conversations', 'cb_channels', 'contacts', 'deals'])
   })
 
   it('card GANHO ou PERDIDO na etapa do agente não conta (só o aberto)', async () => {
@@ -436,8 +436,39 @@ describe('aoChegarMensagemDoCliente — o agente da etapa do card', () => {
     expect(enfileirou()).toBe(false)
   })
 
-  it('o card ABERTO MAIS RECENTE decide: o antigo na etapa do agente não conta', async () => {
-    banco.tabelas.deals = [card({ created_at: haDias(10) }), card({ id: 'deal-2', stage_id: 'etapa-sem-agente', created_at: haDias(1) })]
+  describe('cards abertos em mais de um funil (decisão do operador, 09/11/2026)', () => {
+    const dealDoTurno = () => banco.rpcChamadas.find((c) => c.nome === 'cb_ia_enfileirar_turno')?.args.p_deal_id
+
+    it('⚠️ decide o mais recente cuja etapa tem agente que atende ESTA conexão — o card novo noutro funil não cala o agente', async () => {
+      banco.tabelas.deals = [card({ created_at: haDias(10) }), card({ id: 'deal-2', stage_id: 'etapa-sem-agente', created_at: haDias(1) })]
+      await aoChegarMensagemDoCliente(msg())
+      expect(enfileirou()).toBe(true)
+      expect(dealDoTurno()).toBe(CARD)
+    })
+
+    it('nenhum card com agente que atende a conexão: vale o mais recente (a regra de antes) — ninguém', async () => {
+      banco.tabelas.cb_ia_agentes[0].conexoes = ['canal-2']
+      banco.tabelas.deals = [card({ created_at: haDias(10) }), card({ id: 'deal-2', stage_id: 'etapa-sem-agente', created_at: haDias(1) })]
+      await aoChegarMensagemDoCliente(msg())
+      expect(enfileirou()).toBe(false)
+    })
+
+    it('dois cards com agente que atende a conexão: o MAIS RECENTE', async () => {
+      banco.tabelas.cb_ia_agente_etapas.push({ stage_id: 'etapa-2', account_id: CONTA, ia_agente_id: AGENTE, desde: haDias(1) })
+      banco.tabelas.deals = [card({ created_at: haDias(10) }), card({ id: 'deal-2', stage_id: 'etapa-2', created_at: haDias(1) })]
+      await aoChegarMensagemDoCliente(msg())
+      expect(dealDoTurno()).toBe('deal-2')
+    })
+  })
+
+  it('o "cliente" que é o número de OUTRA conexão da conta: não enfileira, sem nem ler o card', async () => {
+    banco.tabelas.cb_channels.push({ id: 'canal-2', account_id: CONTA, kind: 'evolution', display_phone: '+55 (83) 99999-0000' })
+    banco.tabelas.contacts = [{ id: 'contato-1', account_id: CONTA, phone: '5583999990000' }]
+    await aoChegarMensagemDoCliente(msg())
+    expect(enfileirou()).toBe(false)
+    expect(tabelasLidas()).not.toContain('deals')
+    // O nono dígito escrito de outro jeito também é o mesmo número.
+    banco.tabelas.contacts = [{ id: 'contato-1', account_id: CONTA, phone: '558399990000' }]
     await aoChegarMensagemDoCliente(msg())
     expect(enfileirou()).toBe(false)
   })

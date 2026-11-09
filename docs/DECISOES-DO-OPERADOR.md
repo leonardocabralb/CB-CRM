@@ -138,6 +138,13 @@ qualquer uma é pergunta ao operador.
   se o cliente insistir (08/11/2026, noite).
 - Agente de IA que passa a conversa para a equipe a deixa PENDENTE, como o
   robô (09/11/2026; `ia-agentes-turno.md`).
+- Agentes de IA, revisão de 09/11/2026: (1) com cards abertos em mais de um
+  funil, decide o mais recente cujo agente atende a conexão da mensagem; sem
+  nenhum, o mais recente (`ia-tela-do-agente.md`); (2) o teto de respostas
+  conta desde a entrada no território do agente — mover entre as etapas dele
+  não zera (1130, `ia.md`); (3) a resposta que move o card para a etapa de
+  OUTRO agente (ou sem agente) não arma retomada; para outra etapa do mesmo,
+  arma com ela (`ia-retomada.md`).
 - Agente de IA fora do horário: a mensagem espera e ele responde quando o
   horário abrir, se ninguém da equipe respondeu antes; o padrão da Anthropic
   é o Haiku 5.5, e o seletor mostra os modelos da chave (25/10/2026).

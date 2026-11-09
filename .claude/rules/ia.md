@@ -253,17 +253,17 @@ ingestões), `fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron
   (`pipelines!inner`: `pipeline_stages` não tem `account_id`) e sem regravar as
   que ficam (o `desde`); etapa de outro = 409 `etapa_ocupada` com o nome.
   Arquivar o agente APAGA as linhas dele (gatilho).
-- ⚠️⚠️ **Responde o agente da etapa do card ABERTO mais recente do contato**
-  (`created_at desc`), ligado, não arquivado e com a conexão da mensagem.
-  `lerQuemAtende` é a ÚNICA leitura desses fatos (a entrada e as duas
-  conferências do turno); a rota da faixa aplica o mesmo `quemResponde`.
+- ⚠️⚠️ **Decide o card ABERTO mais recente cujo agente (ligado, não
+  arquivado) tem a conexão da mensagem; sem nenhum, o mais recente** (decisão
+  de 09/11/2026; `ia-tela-do-agente.md`). `lerCardEAgente` é a ÚNICA leitura
+  (entrada, conferências do turno, retomada e a faixa).
 - ⚠️ **D27: só card que ENTROU na etapa depois de o agente ser ligado nela**
   (`deals.etapa_desde >= greatest(desde, cb_ia_agentes.ativado_em)`; data
   ausente = não atende). As duas datas são carimbadas pelo BANCO. ⚠️ A carga
   da Kommo cala os gatilhos de `deals`: o card que ela MOVE guarda o
   `etapa_desde` velho, e o que ela CRIA ganha a hora da carga (conta como novo).
 - ⚠️⚠️ **A ordem das regras É a regra** (`quemResponde`): fora do alcance
-  (grupo, Instagram) → não abre turno → robô consumiu → automação FALOU (E4:
+  (grupo, Instagram, número da conta) → não abre turno → robô → automação FALOU (E4:
   `ResultadoDoDisparo.falou`, em TODOS os gatilhos da mensagem, com o
   `tag_added` aninhado e a fala ADIADA do funil — card criado ou movido para
   etapa que automação ligada escuta, `etapaTemQuemFale`) → encerrada → pausada
@@ -281,23 +281,21 @@ ingestões), `fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron
   (`descartarPendente`); o turno e a reserva descartam com `bot` sem
   `ia_agente_id` depois do gatilho, na MESMA conexão.
 - ⚠️⚠️ **A ingestão só ENFILEIRA** (`cb_ia_enfileirar_turno`: um pendente por
-  conversa E conexão, com agente, card e etapa; a rajada de 8 s o empurra;
-  desde a 1050, a mensagem gravada ANTES da do pendente não troca o gatilho
-  nem o agente/card/etapa — ingestões fora de ordem deixavam o turno na
-  velha, e ele se descartava pela nova). Executa em `after()` e, como rede,
-  o cron. O turno fica AMARRADO a (agente,
-  card, etapa): card movido ou etapa com outro agente = descarta, sem
-  re-resolver (o alerta de atraso chama a equipe).
+  conversa E conexão, com agente, card e etapa; a rajada de 8 s o empurra e,
+  desde a 1130, o devolve LIMPO; a mensagem gravada ANTES da do pendente não
+  troca gatilho, agente, card nem etapa, 1050). Executa em `after()` e, como
+  rede, o cron. O turno fica AMARRADO a (agente, card, etapa): card movido ou
+  etapa com outro agente = descarta, sem re-resolver.
 - ⚠️⚠️ **A última palavra é da reserva, `cb_ia_reservar_envio(turno,
   rodando_desde)`**: conversa travada (`FOR NO KEY UPDATE`), NÃO escreve nada,
   devolve `ok` ou o 1º motivo — `descartado`, `encerrada`, `pausada`,
   `card_mudou`, `card_fechado`, `agente_desligado`, `fora_da_conexao`,
-  `agente_sem_etapa`, `mais_nova`, `robo_falou`, `teto`. `teto` transfere,
-  `pausada` é `pausado_no_meio`, o resto descarta sem transferir (transferir
-  pausaria a IA até alguém clicar). Não reconfere a D27.
-- ⚠️ **O teto é CONTADO nas mensagens do agente** na conversa desde
-  `greatest(etapa_desde, ia_retomada_em)`: mudar de etapa ou "Retomar IA"
-  recomeça. `ai_reply_count` não decide mais nada.
+  `agente_sem_etapa`, `mais_nova` (sem a retomada, 1130), `robo_falou`,
+  `teto`. `teto` transfere, `pausada` é `pausado_no_meio`, o resto descarta
+  sem transferir (pausaria a IA até alguém clicar). Não reconfere a D27.
+- ⚠️ **O teto conta as mensagens do agente desde a ENTRADA no território
+  dele** (1130: o último evento da trilha vindo de etapa que não é dele; sem
+  trilha, `etapa_desde`) ou o "Retomar IA". Mover entre as etapas DELE não zera.
 - ⚠️⚠️ **PASSAGEM (D25)**: o pedido lista, numerados, os agentes de
   `pode_passar_para` ligados, não arquivados e com a conexão; `[[PASSAR:n]]`
   vale em QUALQUER ponto do texto (`lerPassagem`) e nunca vai ao cliente; a

@@ -2,12 +2,34 @@ import { describe, expect, it } from 'vitest'
 
 import {
   abreTurno,
+  ehNumeroDeConexao,
   MIME_DA_FIGURINHA,
   PREFIXO_DE_TIPO_NAO_SUPORTADO,
   quemResponde,
   TIPOS_QUE_ABREM_TURNO,
   type FatosDaMensagem,
 } from './quem-responde'
+
+describe('o "cliente" que é o número de OUTRA conexão da conta (revisão de 09/11/2026)', () => {
+  const CONEXOES = [{ display_phone: '+55 (83) 99999-0000' }, { display_phone: null }, { display_phone: '' }]
+
+  it('fora do alcance, como o grupo: agente nenhum responde (com agente nas duas pontas, eles se respondiam até o teto)', () => {
+    expect(quemResponde(fatos({ ehConexaoDaConta: true }))).toEqual({ quem: 'ninguem', motivo: 'fora_do_alcance' })
+    expect(quemResponde(fatos({ ehConexaoDaConta: false })).quem).toBe('agente')
+  })
+
+  it('casa pela chave de PESSOA (o nono dígito), nunca pela grafia', () => {
+    expect(ehNumeroDeConexao('5583999990000', CONEXOES)).toBe(true)
+    expect(ehNumeroDeConexao('558399990000', CONEXOES)).toBe(true)
+    expect(ehNumeroDeConexao('5583988887777', CONEXOES)).toBe(false)
+  })
+
+  it('telefone ausente ou vazio, e conexão sem número: não é', () => {
+    expect(ehNumeroDeConexao(null, CONEXOES)).toBe(false)
+    expect(ehNumeroDeConexao('', CONEXOES)).toBe(false)
+    expect(ehNumeroDeConexao('5583999990000', [{ display_phone: null }])).toBe(false)
+  })
+})
 
 const CANAL = 'canal-a'
 const LIGADO_EM = '2026-09-25T10:00:00Z'

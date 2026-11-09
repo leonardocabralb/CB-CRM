@@ -22,7 +22,7 @@ function consulta(tabela: string, op: Chamada['op'], payload?: unknown) {
   const c: Chamada = { tabela, op, filtros: [], payload }
   chamadas.push(c)
   const q: Record<string, unknown> = {}
-  for (const m of ['eq', 'is', 'in', 'not', 'order', 'select', 'limit']) {
+  for (const m of ['eq', 'neq', 'is', 'in', 'not', 'order', 'select', 'limit']) {
     q[m] = (...args: unknown[]) => {
       c.filtros.push([m, ...args])
       return q
@@ -82,6 +82,19 @@ beforeEach(() => {
   outros = { 'ag-2': linhaDoAgente({ id: 'ag-2', nome: 'Cobrança' }) }
   erroDoInsert = null
   responder = (c) => {
+    if (c.tabela === 'cb_ia_agentes' && c.op === 'select' && filtro(c, 'neq', 'id')) {
+      // A conferência do nome: os OUTROS agentes da conta — e só tira os
+      // arquivados se a consulta PEDIU (o teste do nome livre prova o filtro).
+      const fora = filtro(c, 'neq', 'id')?.[2]
+      const conta = filtro(c, 'eq', 'account_id')?.[2]
+      const semArquivados = filtro(c, 'is', 'arquivado_em')?.[2] === null
+      return {
+        data: Object.values(outros).filter(
+          (o) => o.id !== fora && o.account_id === conta && !(semArquivados && o.arquivado_em),
+        ),
+        error: null,
+      }
+    }
     if (c.tabela === 'cb_ia_agentes' && c.op === 'select') {
       const id = filtro(c, 'eq', 'id')?.[2] as string
       return { data: id === AG ? agente : (outros[id] ?? null), error: null }
@@ -158,6 +171,26 @@ describe('atualizarAgente — etapas (D24)', () => {
     // O INSERT vem ANTES de tirar as que saíram e antes de gravar o agente.
     expect(chamadas.some((c) => c.op === 'delete')).toBe(false)
     expect(chamadas.some((c) => c.tabela === 'cb_ia_agentes' && c.op === 'update')).toBe(false)
+  })
+
+  it('⚠️ NOME repetido junto com as etapas: nome_repetido, e as etapas NÃO mudaram (revisão de 09/11/2026)', async () => {
+    // Antes, as etapas eram gravadas e só o UPDATE do agente recusava o nome:
+    // a tela dizia "não salvou" e o agente ligado passava a atender nelas.
+    await expect(atualizarAgente(CONTA, 'user-1', AG, { etapas: ['e1', 'e3'], nome: '  cobrança ' })).rejects.toMatchObject({
+      codigo: 'nome_repetido',
+    })
+    expect(escritas()).toHaveLength(0)
+  })
+
+  it('nome livre (ou o de um agente ARQUIVADO) com as etapas: grava', async () => {
+    outros['ag-3'] = linhaDoAgente({ id: 'ag-3', nome: 'Antigo', arquivado_em: '2026-09-01T00:00:00Z' })
+    // O nome de um agente de OUTRA conta também não conta.
+    outros['ag-4'] = linhaDoAgente({ id: 'ag-4', nome: 'Vizinho', account_id: 'outra-conta' })
+    await atualizarAgente(CONTA, 'user-1', AG, { etapas: ['e1', 'e3'], nome: 'Antigo' })
+    expect(chamadas.some((c) => c.tabela === 'cb_ia_agente_etapas' && c.op === 'insert')).toBe(true)
+    chamadas.length = 0
+    await atualizarAgente(CONTA, 'user-1', AG, { etapas: ['e1', 'e3'], nome: 'vizinho' })
+    expect(chamadas.some((c) => c.tabela === 'cb_ia_agente_etapas' && c.op === 'insert')).toBe(true)
   })
 
   it('sem `etapas` no corpo, a tabela de etapas nem é tocada', async () => {

@@ -440,28 +440,58 @@ async function lerCampos(db: SupabaseClient, accountId: string, contactId: strin
     .map((id) => ({ nome: nomeDe.get(id) ?? '', valor: valorDe.get(id) ?? '' }))
 }
 
-/** O card: o do turno (`dealId`), senão o ABERTO mais recente do contato (o Playground). */
+/** Cards abertos lidos quando não há card do turno — o mesmo teto de `lerCardEAgente`. */
+const CARDS_ABERTOS_LIDOS = 20
+
+type CardLido = { pipeline_id: string; stage_id: string; value: unknown; etapa_desde: string | null }
+
+/**
+ * O card: o do turno (`dealId`); sem ele (o Playground), o ABERTO mais
+ * recente numa etapa DESTE agente, senão o aberto mais recente — a mesma
+ * escolha da entrada (`lerCardEAgente`), sem a conexão, que o Playground não
+ * tem. Sem isso, o contato com cards em dois funis mostrava no teste o card
+ * do outro funil (revisão de 09/11/2026).
+ */
 async function lerNegocio(
   db: SupabaseClient,
   accountId: string,
   contactId: string,
   dealId: string | null,
+  agenteId: string | null,
 ): Promise<NegocioLido | null> {
   const base = db.from('deals').select('id, pipeline_id, stage_id, value, etapa_desde').eq('account_id', accountId)
-  // ⚠️ O card do turno TAMBÉM pelo contato: se alguém trocou o contato do
-  // card entre a conferência e esta leitura, os dados dele iriam ao provedor
-  // na conversa de outra pessoa (Codex, #312).
-  const { data, error } = dealId
-    ? await base.eq('id', dealId).eq('contact_id', contactId).maybeSingle()
-    : await base
-        .eq('contact_id', contactId)
-        .eq('status', 'open')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-  if (error) throw new Error(`negócio: ${error.message}`)
-  if (!data) return null
-  const d = data as { pipeline_id: string; stage_id: string; value: unknown; etapa_desde: string | null }
+  let d: CardLido | null
+  if (dealId) {
+    // ⚠️ O card do turno TAMBÉM pelo contato: se alguém trocou o contato do
+    // card entre a conferência e esta leitura, os dados dele iriam ao provedor
+    // na conversa de outra pessoa (Codex, #312).
+    const { data, error } = await base.eq('id', dealId).eq('contact_id', contactId).maybeSingle()
+    if (error) throw new Error(`negócio: ${error.message}`)
+    d = data as CardLido | null
+  } else {
+    const { data, error } = await base
+      .eq('contact_id', contactId)
+      .eq('status', 'open')
+      .order('created_at', { ascending: false })
+      // Desempate: dois cards da mesma transação dão sempre o mesmo card.
+      .order('id', { ascending: false })
+      .limit(CARDS_ABERTOS_LIDOS)
+    if (error) throw new Error(`negócio: ${error.message}`)
+    const cards = (data ?? []) as CardLido[]
+    d = cards[0] ?? null
+    if (agenteId && cards.length > 1) {
+      const { data: etapas, error: erroEtapas } = await db
+        .from('cb_ia_agente_etapas')
+        .select('stage_id')
+        .eq('account_id', accountId)
+        .eq('ia_agente_id', agenteId)
+        .in('stage_id', [...new Set(cards.map((c) => c.stage_id))])
+      if (erroEtapas) throw new Error(`etapas do agente: ${erroEtapas.message}`)
+      const doAgente = new Set(((etapas ?? []) as { stage_id: string }[]).map((e) => e.stage_id))
+      d = cards.find((c) => doAgente.has(c.stage_id)) ?? d
+    }
+  }
+  if (!d) return null
   const [{ data: funil, error: erroFunil }, { data: etapa, error: erroEtapa }] = await Promise.all([
     db.from('pipelines').select('name').eq('account_id', accountId).eq('id', d.pipeline_id).maybeSingle(),
     // `pipeline_stages` não tem conta: o recorte é o funil, que é da conta.
@@ -574,14 +604,22 @@ async function lerBloco<T>(rotulo: string, ler: () => Promise<T>): Promise<Leitu
  */
 export async function lerDadosDoAcesso(
   db: SupabaseClient,
-  args: { accountId: string; contactId: string | null; dealId: string | null; acesso: AcessoDoAgente; agora: Date },
+  args: {
+    accountId: string
+    contactId: string | null
+    dealId: string | null
+    /** Sem `dealId`, o card numa etapa deste agente vem antes do mais recente. */
+    agenteId?: string | null
+    acesso: AcessoDoAgente
+    agora: Date
+  },
 ): Promise<DadosDoAcesso> {
   const { accountId, contactId, acesso, agora } = args
   if (!contactId) return {}
   const [ficha, campos, negocio, etiquetas, cobrancas, reuniao] = await Promise.all([
     acesso.ficha ? lerBloco('ficha', () => lerFicha(db, accountId, contactId)) : undefined,
     acesso.campos.length > 0 ? lerBloco('campos', () => lerCampos(db, accountId, contactId, acesso.campos)) : undefined,
-    acesso.negocio ? lerBloco('negocio', () => lerNegocio(db, accountId, contactId, args.dealId)) : undefined,
+    acesso.negocio ? lerBloco('negocio', () => lerNegocio(db, accountId, contactId, args.dealId, args.agenteId ?? null)) : undefined,
     acesso.etiquetas ? lerBloco('etiquetas', () => lerEtiquetas(db, accountId, contactId)) : undefined,
     acesso.cobrancas ? lerBloco('cobrancas', () => lerCobrancas(db, accountId, contactId, agora)) : undefined,
     acesso.reuniao ? lerBloco('reuniao', () => lerProximaReuniao(db, accountId, contactId, agora)) : undefined,
@@ -627,6 +665,7 @@ export async function lerOQueOAgenteVe(
       accountId: args.accountId,
       contactId: args.contactId,
       dealId: args.dealId,
+      agenteId: args.agente.id,
       acesso: args.agente.acesso,
       agora: args.agora,
     }),
