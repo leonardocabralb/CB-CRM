@@ -125,6 +125,8 @@ function agente(id: string, extra: Record<string, unknown> = {}) {
     acesso: { ficha: false, campos: [], negocio: false, etiquetas: false, cobrancas: true, reuniao: false },
     ferramentas: {},
     retomada: { ativa: false, cadencia: [15, 60], janela: { inicio: '08:00', fim: '21:00' } },
+    // A forma do `obterAgente` real (`lerLinhaDoAgente` sempre dá a lista, 1131).
+    frasesAutorizadas: [],
     ...extra,
   }
 }
@@ -661,6 +663,17 @@ describe('POST /api/cb/ia/agentes/[id]/playground — o RASCUNHO da tela (DC4, 2
     await enviar()
     expect(vi.mocked(generateReply).mock.calls[0][0].systemPrompt).toContain('INSTRUCAO SALVA')
     expect(conferirRascunho).not.toHaveBeenCalled()
+  })
+
+  it('⚠️ as frases autorizadas do rascunho (1131) entram no pedido testado; forma inválida é o 400 do salvar, marcado', async () => {
+    const FRASE = 'A primeira reunião com o advogado não tem custo.'
+    expect((await enviar({ rascunho: { frases_autorizadas: [FRASE] } })).status).toBe(200)
+    const pedido = vi.mocked(generateReply).mock.calls[0][0].systemPrompt as string
+    expect(pedido).toContain(`AUTHORIZED STATEMENTS (written by the office; say them only when relevant, keep their meaning, never extend them):\n- ${FRASE}`)
+    const recusada = await enviar({ rascunho: { frases_autorizadas: [FRASE, FRASE.toUpperCase()] } })
+    expect(recusada.status).toBe(400)
+    expect(recusada.headers.get('x-rascunho-recusado')).toBe('1')
+    expect((await recusada.json()).code).toBe('corpo_invalido')
   })
 
   it('o provedor e o modelo do rascunho geram — a chave lida é a do provedor do rascunho; o uso fica no agente, com o nome SALVO', async () => {

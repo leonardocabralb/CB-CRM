@@ -203,3 +203,40 @@ describe('1128 — "Conduz o fechamento"', () => {
     expect(atualizarAgente).not.toHaveBeenCalled()
   })
 })
+
+describe('1131 — as frases autorizadas', () => {
+  it('PATCH com a lista: vai ao repositório numa linha só e aparada (e a lista vazia tira todas)', async () => {
+    const res = await patch({ frases_autorizadas: ['  A primeira reunião\ncom o advogado não tem custo. '] })
+    expect(res.status).toBe(200)
+    expect(vi.mocked(atualizarAgente).mock.calls[0][3]).toEqual({
+      frasesAutorizadas: ['A primeira reunião com o advogado não tem custo.'],
+    })
+    vi.mocked(atualizarAgente).mockClear()
+    expect((await patch({ frases_autorizadas: [] })).status).toBe(200)
+    expect(vi.mocked(atualizarAgente).mock.calls[0][3]).toEqual({ frasesAutorizadas: [] })
+  })
+
+  it('⚠️ fora da forma (não lista, item que não é texto, vazia, longa, repetida, mais de 10): 400 corpo_invalido, sem gravar', async () => {
+    for (const v of [
+      'Sem custo.',
+      null,
+      ['Sem custo.', 1],
+      [''],
+      ['x'.repeat(401)],
+      ['Sem custo.', 'SEM CUSTO.'],
+      Array.from({ length: 11 }, (_, i) => `Frase ${i}.`),
+    ]) {
+      const res = await patch({ frases_autorizadas: v })
+      expect(res.status, JSON.stringify(v)).toBe(400)
+      expect((await res.json()).code).toBe('corpo_invalido')
+    }
+    expect(atualizarAgente).not.toHaveBeenCalled()
+  })
+
+  it('só administrador', async () => {
+    papelRecusado = true
+    const res = await patch({ frases_autorizadas: ['Sem custo.'] })
+    expect(res.status).toBe(403)
+    expect(atualizarAgente).not.toHaveBeenCalled()
+  })
+})

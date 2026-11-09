@@ -14,6 +14,7 @@
 // ============================================================
 
 import type { AiProvider } from '@/lib/ai/types'
+import { normalizarFrase } from '@/lib/ia-agentes/agente'
 import { LIMITES_DA_RETOMADA, type ConfigDaRetomada } from '@/lib/ia-agentes/retomada'
 import {
   CAIXAS_DO_ACESSO,
@@ -42,10 +43,24 @@ export interface Rascunho {
   etapas: string[]
   /** "Conduz o fechamento" (1128): troca duas regras do sistema. */
   conduzFechamento: boolean
+  /** As frases autorizadas (1131) como digitadas no campo: UMA POR LINHA. */
+  frasesAutorizadas: string
 }
 
 function regrasLimpas(regras: string[]): string[] {
   return regras.map((r) => r.trim()).filter((r) => r.length > 0)
+}
+
+/**
+ * As frases autorizadas (1131) do campo da tela, uma por linha: cada linha
+ * como a rota a grava (`normalizarFrase`: numa linha só, aparada), sem as
+ * linhas em branco. É o que vai no PATCH e o que se compara com o salvo.
+ */
+export function frasesDoTexto(texto: string): string[] {
+  return texto
+    .split('\n')
+    .map(normalizarFrase)
+    .filter((f) => f.length > 0)
 }
 
 /** Listas de ids que são CONJUNTO (a ordem não conta). */
@@ -84,6 +99,12 @@ export function alteracoesDoRascunho(salvo: IaAgente, r: Rascunho): Record<strin
   // As etapas vão INTEIRAS (a rota apaga as que saíram e insere as novas).
   if (!mesmoConjunto(r.etapas, salvo.etapas.map((e) => e.stageId))) corpo.etapas = r.etapas
   if (r.conduzFechamento !== salvo.conduzFechamento) corpo.conduz_fechamento = r.conduzFechamento
+  // As frases (1131) vão INTEIRAS, já como a rota as grava: linha em branco e
+  // espaço a mais não contam como mudança; a ORDEM conta (é a do pedido).
+  const frases = frasesDoTexto(r.frasesAutorizadas)
+  if (frases.length !== salvo.frasesAutorizadas.length || frases.some((f, i) => f !== salvo.frasesAutorizadas[i])) {
+    corpo.frases_autorizadas = frases
+  }
   return corpo
 }
 

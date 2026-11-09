@@ -12,6 +12,12 @@
 // mostra a lista do RASCUNHO, e mudar a opção avisa, antes de salvar, o que
 // passa a valer e o que continua proibido.
 //
+// As FRASES AUTORIZADAS (1131, decisão do operador 50=c de 04/10/2026,
+// confirmada em 09/11/2026), logo abaixo do "Conduz o fechamento" — também
+// mexem nas regras do sistema: uma por linha, conferidas pela MESMA função
+// da rota antes do Salvar (`lerFrasesAutorizadasDoCorpo`), com o aviso em
+// âmbar quando a lista mudou; o cartão mostra as exceções do RASCUNHO.
+//
 // ⚠️ Conexões: NENHUMA marcada = o agente não atende em conexão nenhuma
 // (nunca "todas": há número de uso pessoal na conta). Idem as etapas.
 //
@@ -37,7 +43,7 @@ import { fetchAccountMembersOrNull, memberLabel } from '@/lib/account/members';
 import { opcoesDeResponsavel } from '@/lib/account/suspensao';
 import { modeloRecomendado } from '@/lib/ai/defaults';
 import type { AiProvider } from '@/lib/ai/types';
-import { LIMITES } from '@/lib/ia-agentes/agente';
+import { LIMITES, lerFrasesAutorizadasDoCorpo } from '@/lib/ia-agentes/agente';
 import { ehInstagram } from '@/lib/cb-channels/transporte';
 import { cn } from '@/lib/utils';
 import type { AccountMember } from '@/types';
@@ -50,7 +56,7 @@ import {
   type IaAgente,
 } from './tipos';
 import { textoDoCodigo } from './textos';
-import { alteracoesDoRascunho, lerTeto, type RascunhoDaAba } from './rascunho';
+import { alteracoesDoRascunho, frasesDoTexto, lerTeto, type RascunhoDaAba } from './rascunho';
 import { OndeAtua } from './onde-atua';
 import { listaDaChave, QuemLeAMidia, SeletorDeModelo, useModelosDasChaves } from './provedor-e-modelo';
 import { RegrasDoSistema } from './regras-do-sistema';
@@ -97,6 +103,9 @@ export function ConfiguracaoDoAgente({
   const [podePassarPara, setPodePassarPara] = useState<string[]>(agente.podePassarPara);
   const [etapas, setEtapas] = useState<string[]>(() => agente.etapas.map((e) => e.stageId));
   const [conduzFechamento, setConduzFechamento] = useState(agente.conduzFechamento);
+  // As frases são TEXTO enquanto se digita (uma por linha), como o teto: lidas
+  // por `frasesDoTexto` para comparar, conferir e salvar.
+  const [frasesTexto, setFrasesTexto] = useState(() => agente.frasesAutorizadas.join('\n'));
   const [salvando, setSalvando] = useState(false);
   const [confirmandoArquivar, setConfirmandoArquivar] = useState(false);
 
@@ -126,6 +135,10 @@ export function ConfiguracaoDoAgente({
   }
 
   const teto = lerTeto(tetoTexto, LIMITES.tetoMin, LIMITES.tetoMax);
+  const frases = useMemo(() => frasesDoTexto(frasesTexto), [frasesTexto]);
+  // A MESMA conferência da rota (até 10, 1 a 400 caracteres, sem repetir):
+  // fora dela, o campo avisa e o Salvar trava — a rota responderia 400.
+  const frasesValidas = lerFrasesAutorizadasDoCorpo(frases) !== null;
   // Só o que MUDOU vai no PATCH (e é o que diz "há alteração não salva").
   const alteracoes = useMemo(
     () =>
@@ -144,10 +157,12 @@ export function ConfiguracaoDoAgente({
         podePassarPara,
         etapas,
         conduzFechamento,
+        frasesAutorizadas: frasesTexto,
       }),
-    [agente, nome, descricao, instrucoes, regras, provedor, modelo, ativo, conexoes, horario, teto, transferirPara, podePassarPara, etapas, conduzFechamento]
+    [agente, nome, descricao, instrucoes, regras, provedor, modelo, ativo, conexoes, horario, teto, transferirPara, podePassarPara, etapas, conduzFechamento, frasesTexto]
   );
   const naoSalvo = Object.keys(alteracoes).length > 0 || teto === null;
+  const frasesMudaram = 'frases_autorizadas' in alteracoes;
 
   useEffect(() => {
     aoMudarNaoSalvo?.(naoSalvo);
@@ -179,7 +194,7 @@ export function ConfiguracaoDoAgente({
   );
 
   async function salvar() {
-    if (teto === null || Object.keys(alteracoes).length === 0) return;
+    if (teto === null || !frasesValidas || Object.keys(alteracoes).length === 0) return;
     setSalvando(true);
     try {
       const res = await fetch(`/api/cb/ia/agentes/${agente.id}`, {
@@ -256,8 +271,9 @@ export function ConfiguracaoDoAgente({
         </div>
         {/* As regras do sistema (27/09/2026): só leitura, e vêm ANTES das
             instruções no pedido — a ordem da tela é a do pedido. A lista é
-            a do rascunho: com "Conduz o fechamento", duas delas trocam. */}
-        <RegrasDoSistema conduzFechamento={conduzFechamento} />
+            a do rascunho: com "Conduz o fechamento", duas delas trocam; com
+            frases autorizadas, duas ganham a exceção e a lista vem no fim. */}
+        <RegrasDoSistema conduzFechamento={conduzFechamento} frasesAutorizadas={frases} />
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-3 rounded-md border border-border p-3">
             <div className="min-w-0">
@@ -274,6 +290,27 @@ export function ConfiguracaoDoAgente({
           {conduzFechamento !== agente.conduzFechamento ? (
             <p className="text-xs text-amber-700 dark:text-amber-300">
               {conduzFechamento ? t('campo.conduzFechamentoLigando') : t('campo.conduzFechamentoDesligando')}
+            </p>
+          ) : null}
+        </div>
+        {/* As frases autorizadas (1131): uma por linha. Fora da forma, o campo
+            avisa em vermelho e o Salvar trava; mudou, o aviso em âmbar vem
+            ANTES do Salvar. */}
+        <div className="space-y-1.5">
+          <Label htmlFor="ag-frases">{t('campo.frasesAutorizadas')}</Label>
+          <p className="text-xs text-muted-foreground">{t('campo.frasesAutorizadasDica')}</p>
+          <Textarea
+            id="ag-frases"
+            rows={3}
+            value={frasesTexto}
+            aria-invalid={!frasesValidas}
+            onChange={(e) => setFrasesTexto(e.target.value)}
+          />
+          {!frasesValidas ? (
+            <p className="text-xs text-red-700 dark:text-red-300">{t('campo.frasesAutorizadasInvalidas')}</p>
+          ) : frasesMudaram ? (
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              {frases.length > 0 ? t('campo.frasesAutorizadasMudando') : t('campo.frasesAutorizadasSemFrases')}
             </p>
           ) : null}
         </div>
@@ -560,7 +597,7 @@ export function ConfiguracaoDoAgente({
         )}
         <Button
           onClick={() => void salvar()}
-          disabled={salvando || !nome.trim() || !modelo.trim() || teto === null || !naoSalvo}
+          disabled={salvando || !nome.trim() || !modelo.trim() || teto === null || !frasesValidas || !naoSalvo}
         >
           {t('config.salvar')}
         </Button>

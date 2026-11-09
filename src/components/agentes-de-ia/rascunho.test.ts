@@ -7,6 +7,7 @@ import {
   ferramentasDoRascunho,
   ferramentasMudaram,
   ferramentasParaSalvar,
+  frasesDoTexto,
   juntarRascunhos,
   lerTeto,
   listaDaFerramenta,
@@ -43,6 +44,7 @@ const SALVO: IaAgente = {
   ferramentas: { mover_etapa: { etapas: ['e1', 'e2'] }, etiquetar: { etiquetas: ['t1'] } },
   retomada: { ativa: true, cadencia: [15, 60, 180], janela: { inicio: '08:00', fim: '21:00' } },
   conduzFechamento: false,
+  frasesAutorizadas: [],
   createdAt: '2026-09-25T00:00:00Z',
   updatedAt: '2026-09-25T00:00:00Z',
 }
@@ -63,6 +65,8 @@ function rascunhoDe(a: IaAgente): Rascunho {
     podePassarPara: [...a.podePassarPara],
     etapas: a.etapas.map((e) => e.stageId),
     conduzFechamento: a.conduzFechamento,
+    // O campo da tela: uma frase por linha.
+    frasesAutorizadas: a.frasesAutorizadas.join('\n'),
   }
 }
 
@@ -104,6 +108,29 @@ describe('alteracoesDoRascunho — o Salvar manda só o que mudou', () => {
     const ligado = { ...SALVO, conduzFechamento: true }
     expect(alteracoesDoRascunho(ligado, { ...rascunhoDe(ligado), conduzFechamento: false })).toEqual({ conduz_fechamento: false })
     expect(alteracoesDoRascunho(ligado, rascunhoDe(ligado))).toEqual({})
+  })
+
+  it('frases autorizadas (1131): vão INTEIRAS e como a rota as grava; linha em branco e espaço a mais não contam; a ordem conta', () => {
+    const A = 'A primeira reunião com o advogado não tem custo.'
+    const B = 'O resultado depende de cada caso e não é garantido.'
+    expect(alteracoesDoRascunho(SALVO, { ...rascunhoDe(SALVO), frasesAutorizadas: `  ${A}\n\n   \n${B}  ` })).toEqual({
+      frases_autorizadas: [A, B],
+    })
+    const comFrases = { ...SALVO, frasesAutorizadas: [A, B] }
+    expect(alteracoesDoRascunho(comFrases, rascunhoDe(comFrases))).toEqual({})
+    expect(alteracoesDoRascunho(comFrases, { ...rascunhoDe(comFrases), frasesAutorizadas: `\n${A}   \n\n ${B}\n` })).toEqual({})
+    expect(alteracoesDoRascunho(comFrases, { ...rascunhoDe(comFrases), frasesAutorizadas: `${B}\n${A}` })).toEqual({
+      frases_autorizadas: [B, A],
+    })
+    // Apagar todas manda a lista vazia (tira as frases).
+    expect(alteracoesDoRascunho(comFrases, { ...rascunhoDe(comFrases), frasesAutorizadas: '  \n ' })).toEqual({
+      frases_autorizadas: [],
+    })
+  })
+
+  it('frasesDoTexto: uma frase por linha, cada uma numa linha só e aparada, sem as linhas em branco', () => {
+    expect(frasesDoTexto('')).toEqual([])
+    expect(frasesDoTexto(' Uma   frase. \n\n\tOutra.\n ')).toEqual(['Uma frase.', 'Outra.'])
   })
 
   it('escolher a fila (nulo) no lugar de quem saiu é mudança, e vai com o nome da rota', () => {
@@ -316,7 +343,18 @@ describe('NAO_MUDAM_A_RESPOSTA — o que a tela diz que não muda o teste', () =
   })
 
   it('o que muda o pedido ao modelo nunca está na lista', () => {
-    for (const chave of ['instrucoes', 'regras', 'provedor', 'modelo', 'pode_passar_para', 'acesso', 'ferramentas', 'retomada', 'conduz_fechamento']) {
+    for (const chave of [
+      'instrucoes',
+      'regras',
+      'provedor',
+      'modelo',
+      'pode_passar_para',
+      'acesso',
+      'ferramentas',
+      'retomada',
+      'conduz_fechamento',
+      'frases_autorizadas',
+    ]) {
       expect(NAO_MUDAM_A_RESPOSTA.has(chave), chave).toBe(false)
     }
   })
