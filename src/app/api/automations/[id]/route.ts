@@ -14,8 +14,10 @@ import {
   validateAtlasSituacaoForActivation,
   validateTriggerForActivation,
   validateCustomFieldConditionsForActivation,
+  validateAcervoForActivation,
 } from '@/lib/automations/validate'
 import { carregarCamposParaCondicoes } from '@/lib/automations/condicao-por-campo'
+import { carregarAcervoDosPassos } from '@/lib/automations/midia-do-passo'
 import { soRodaPeloDisparador } from '@/lib/automations/so-pelo-disparador'
 import { normalizarAssinatura } from '@/lib/assinatura/assinatura'
 import { ehAreaDeOutraConta, lerIdDaArea } from '@/lib/automations/areas'
@@ -156,6 +158,14 @@ export async function PATCH(
       mergedSteps as { step_type: string; step_config: Record<string, unknown> }[],
     )
     if (!campos) console.error('[automations] field-condition check skipped: lookup failed', { id })
+    // NOSSO (09/11/2026): o item do acervo do "Enviar arquivo" ainda existe
+    // nesta conta? Leitura que falha pula — o motor continua sendo a guarda.
+    const acervo = await carregarAcervoDosPassos(
+      supabaseAdmin(),
+      existing.account_id as string,
+      mergedSteps as { step_type: string; step_config: Record<string, unknown> }[],
+    )
+    if (!acervo) console.error('[automations] media-library check skipped: lookup failed', { id })
     const issues = [
       ...validateTriggerForActivation(mergedTriggerType, mergedTriggerConfig),
       ...validateStepsForActivation(mergedSteps),
@@ -171,6 +181,10 @@ export async function PATCH(
       ...validateCustomFieldConditionsForActivation(
         mergedSteps as { step_type: string; step_config: Record<string, unknown> }[],
         campos,
+      ),
+      ...validateAcervoForActivation(
+        mergedSteps as { step_type: string; step_config: Record<string, unknown> }[],
+        acervo,
       ),
     ]
     if (issues.length > 0) {

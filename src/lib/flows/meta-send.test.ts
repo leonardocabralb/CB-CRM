@@ -378,3 +378,70 @@ describe('robô: transporte da Evolution quebrado não é tentativa', () => {
     expect(h.numerosDaConversa).toEqual([])
   })
 })
+
+// NOSSO (09/11/2026): o "Enviar arquivo" do acervo das AUTOMAÇÕES passa o link
+// como FUNÇÃO (a cópia do item, `automations/midia-do-passo.ts`), e o remetente
+// só a chama depois das recusas dele e antes da tentativa. Copiando antes, a
+// ficha do Instagram ou sem telefone deixava uma cópia inteira órfã no bucket a
+// cada execução, com o passo falhando do mesmo jeito.
+describe('mídia: o link produzido pelo remetente (o acervo das automações)', () => {
+  const COPIA = 'https://x.test/account-acc-1/1762700000000123456-gestante.mp4'
+
+  it('pela Meta: a função roda UMA vez, e a URL dela vai ao provedor e à mensagem gravada', async () => {
+    const link = vi.fn(async () => COPIA)
+    await engineSendMedia({ ...BASE, kind: 'video', link })
+    expect(link).toHaveBeenCalledTimes(1)
+    expect(meta.sendMediaMessage).toHaveBeenCalledWith(expect.objectContaining({ link: COPIA }))
+    expect(h.mensagens[0]?.media_url).toBe(COPIA)
+  })
+
+  it('pela Evolution: idem', async () => {
+    h.canal = CANAL_EVOLUTION
+    h.contato = { id: 'contact-1', phone: '+5583988887777', wa_user_id: null }
+    const link = vi.fn(async () => COPIA)
+    await engineSendMedia({ ...BASE, kind: 'video', link })
+    expect(link).toHaveBeenCalledTimes(1)
+    expect(evolution.sendMedia).toHaveBeenCalledWith(expect.objectContaining({ media: COPIA }))
+    expect(h.mensagens[0]?.media_url).toBe(COPIA)
+  })
+
+  it('recusa ANTES do provedor (a ficha do Instagram, sem destino): a função NÃO roda — nada é copiado', async () => {
+    h.contato = { id: 'contact-1', phone: null, wa_user_id: null }
+    const link = vi.fn(async () => COPIA)
+    await expect(engineSendMedia({ ...BASE, kind: 'video', link })).rejects.toThrow(/Instagram-only contact/)
+    expect(link).not.toHaveBeenCalled()
+  })
+
+  it('transporte da Evolution quebrado (configuração): a função NÃO roda', async () => {
+    h.canal = CANAL_EVOLUTION
+    h.contato = { id: 'contact-1', phone: '+5583988887777', wa_user_id: null }
+    const { evolutionTransportFor } = await import('@/lib/cb-channels/engine-send')
+    vi.mocked(evolutionTransportFor).mockImplementationOnce(() => {
+      throw new Error('bad decrypt')
+    })
+    const link = vi.fn(async () => COPIA)
+    await expect(engineSendMedia({ ...BASE, kind: 'video', link })).rejects.toThrow(/bad decrypt/)
+    expect(link).not.toHaveBeenCalled()
+  })
+
+  it('a função que LANÇA (a cópia falhou): nada foi tentado — sem provedor, sem bolha, sem número', async () => {
+    const link = vi.fn(async (): Promise<string> => {
+      throw new Error('a cópia do arquivo do acervo falhou (x); nada foi enviado')
+    })
+    await expect(engineSendMedia({ ...BASE, kind: 'video', link })).rejects.toThrow(
+      /cópia do arquivo do acervo falhou/,
+    )
+    expect(meta.sendMediaMessage).not.toHaveBeenCalled()
+    expect(h.mensagens).toEqual([])
+    expect(h.numerosDaConversa).toEqual([])
+  })
+
+  it('o provedor RECUSA: a bolha "não enviada" aponta a URL produzida (a cópia)', async () => {
+    meta.sendMediaMessage.mockRejectedValue(new Error(RECUSA_131030))
+    const link = vi.fn(async () => COPIA)
+    await expect(engineSendMedia({ ...BASE, kind: 'video', link })).rejects.toThrow(/131030/)
+    expect(h.mensagens).toEqual([
+      expect.objectContaining({ status: 'failed', nao_saiu: true, media_url: COPIA }),
+    ])
+  })
+})

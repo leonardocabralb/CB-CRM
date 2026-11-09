@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import en from '../../../messages/en.json'
 import ptBR from '../../../messages/pt-BR.json'
 import { MOTIVO_RETOMADA_INTERROMPIDA } from '@/lib/automations/retomada'
+import { MOTIVO_ITEM_DO_ACERVO_APAGADO } from '@/lib/automations/midia-do-passo'
 import { CHAVES_DO_MOTOR, ehAvisoDeTentativa, lerTextoDoMotor } from './texto-do-motor'
 
 // ============================================================
@@ -59,6 +60,13 @@ describe('lerTextoDoMotor', () => {
     expect(lerTextoDoMotor('Error: Connection Closed')).toEqual([{ chave: 'conexaoCaiu', valores: {} }])
     expect(lerTextoDoMotor('number 5511900000000 is not on WhatsApp')).toEqual([
       { chave: 'semWhatsApp', valores: { numero: '5511900000000' } },
+    ])
+  })
+
+  it('o item do acervo apagado do "Enviar arquivo" (09/11/2026) vira a frase — o texto do MOTOR, inteiro', () => {
+    expect(lerTextoDoMotor(MOTIVO_ITEM_DO_ACERVO_APAGADO)).toEqual([{ chave: 'arquivoDoAcervoApagado', valores: {} }])
+    expect(lerTextoDoMotor(`${MOTIVO_ITEM_DO_ACERVO_APAGADO} x`)).toEqual([
+      { texto: `${MOTIVO_ITEM_DO_ACERVO_APAGADO} x` },
     ])
   })
 
@@ -160,6 +168,7 @@ describe('as frases nos dois dicionários (chave montada)', () => {
       'tarefa criada (a)',
       'Connection Closed',
       'number 1 is not on WhatsApp',
+      MOTIVO_ITEM_DO_ACERVO_APAGADO,
       MOTIVO_RETOMADA_INTERROMPIDA,
       'a — tentativa 1 de 3; nova tentativa em 30s',
       'a — desisti depois de 3 tentativas',

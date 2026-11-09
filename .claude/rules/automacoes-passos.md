@@ -11,6 +11,8 @@ paths:
   - "src/lib/automations/sem-conversa*"
   - "src/lib/automations/condicao-por-campo*"
   - "src/lib/automations/nao-repetir*"
+  - "src/lib/automations/midia-do-passo*"
+  - "src/lib/automations/conferir-para-ligar*"
   - "src/lib/notes/anotacao-da-automacao*"
   - "src/components/automations/automation-builder.tsx"
   - "src/components/automations/condicao-por-campo-fields*"
@@ -23,7 +25,7 @@ condições "Janela de 24h da Meta aberta", "Hora do dia" e "Campo
 personalizado da ficha", no "Aguardar até estar dentro do horário" (Fase 2
 do plano do previdenciário, 26/09/2026), no "Aguardar N sem conversa"
 (03/10/2026), no "Fixar a conversa no número", no "Escrever anotação
-interna" e na opção
+interna", no "Enviar arquivo" do acervo (09/11/2026) e na opção
 "Não repetir para o mesmo contato por N horas" do gatilho. As regras são puras e testadas:
 `parametros-do-modelo.ts`, `responsavel-da-tarefa.ts`, `janela-da-meta.ts`,
 `hora-do-dia.ts`, `sem-conversa.ts` e `condicao-por-campo.ts`, em
@@ -266,6 +268,41 @@ quem cuida, marcando a pessoa. `src/lib/notes/anotacao-da-automacao.ts`
   `PASSOS_DE_ENVIO`: não repete.
 - **Não cria conversa** (não fala com o cliente, como o `set_ai`): ficha sem
   conversa falha com motivo próprio (o de `resolveConversationId` fala em envio).
+
+### "Enviar arquivo" do ACERVO (`send_media` com `acervo_id`, 09/11/2026)
+
+O vídeo das gestantes que a automação executada pelo agente de IA manda
+depois do link do ZapSign. `midia-do-passo.ts` (puro + a cópia), o mesmo
+campo do nó "Enviar mídia" do robô (`whatsapp-envio.md`).
+
+- ⚠️⚠️ **O motor COPIA o item a cada envio** (`prepararMidiaDoPasso` →
+  `copiarDoAcervo`): a mensagem aponta para a cópia, e apagar ou trocar o
+  item não mexe no que saiu (`midia.md`). `acervo_id` VENCE `url` — a URL
+  guardada é só da tela (e o que um motor antigo mandaria num rollback). O
+  TIPO e a regra da legenda (áudio sem) são os do ITEM; o `kind` do passo é
+  a foto da escolha.
+- ⚠️⚠️ **Duas etapas**: o item é CONFERIDO por leitura ANTES da conversa
+  (apagado falha sem criar conversa para a ficha que não tinha), e a CÓPIA é
+  do remetente — `engineSendMedia` recebe o `link` como FUNÇÃO e só a chama
+  depois das recusas dele (contato, conversa, canal, alvo, conexão) e antes
+  da tentativa. Copiando antes, a ficha do Instagram ou sem telefone deixava
+  uma cópia inteira órfã a cada execução (revisão do PR). Erro de banco é
+  `leitura`, nunca "apagado". A cópia não é apagada quando o envio falha (a
+  Meta baixa depois), e a retentativa (4xx da Evolution) copia de novo:
+  órfãos aceitos. O motivo de item apagado tem frase no "Já rodou"
+  (`texto-do-motor.ts`, escrito por extenso; o teste amarra à constante).
+- ⚠️⚠️ **Ligar confere o item NA CONTA**, como a ativação do robô:
+  `validateAcervoForActivation` nas duas rotas (`carregarAcervoDosPassos`;
+  leitura que falha pula) e na tela (`conferirParaLigar` com
+  `acervoParaConferir`). A tela falha ABERTA: `null` com a lista carregando,
+  falhando ou no teto (`TETO_DA_LEITURA_DO_ACERVO`), e soma os escolhidos
+  NESTA tela — o seletor leu o acervo na hora, a lista pode ser de antes.
+  Apagar item usado NÃO é barrado (como no robô): a automação ligada falha
+  no passo com o motivo, e a próxima edição ligada é recusada.
+- **O construtor**: trocar o tipo ou subir arquivo SOLTA o item (o motor
+  ignoraria o upload); escolher troca o tipo pelo do item, com aviso; o
+  título vem da lista lida na RAIZ (só quando algum passo aponta item) ou do
+  escolhido agora; "apagado" só com a lista carregada.
 
 ### "Não repetir para o mesmo contato por N horas" (`trigger_config.nao_repetir_horas`)
 

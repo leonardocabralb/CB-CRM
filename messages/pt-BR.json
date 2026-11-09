@@ -1045,6 +1045,7 @@
         "tarefaCriada": "tarefa criada: {tarefa}",
         "conexaoCaiu": "a conexão do WhatsApp caiu durante o envio",
         "semWhatsApp": "o número {numero} não tem WhatsApp: nada foi enviado",
+        "arquivoDoAcervoApagado": "o arquivo do acervo escolhido neste passo foi apagado — escolha outro arquivo no passo",
         "tentativa": "recusado: nova tentativa agendada para {segundos} s depois (tentativa {n} de {de})",
         "desistiu": "desistiu depois de {n} tentativas",
         "naoRepetiu": "não tentou de novo: a execução já tinha sido interrompida"
@@ -3000,7 +3001,14 @@
         "nomeLabel": "Nome exibido para quem recebe",
         "nomeHelp": "Só documentos — o WhatsApp ignora nos outros tipos.",
         "legendaLabel": "Legenda (opcional)",
-        "audioSemLegenda": "Áudio não tem legenda. A nota de voz do WhatsApp não carrega texto — o que fosse escrito aqui apareceria no fio para a sua equipe e nunca chegaria ao cliente."
+        "audioSemLegenda": "Áudio não tem legenda. A nota de voz do WhatsApp não carrega texto — o que fosse escrito aqui apareceria no fio para a sua equipe e nunca chegaria ao cliente.",
+        "escolherDoAcervo": "Escolher do acervo",
+        "doAcervo": "do acervo",
+        "abrirDoAcervo": "Abrir o arquivo do acervo",
+        "tirarArquivo": "Tirar o arquivo",
+        "itemApagado": "Este arquivo foi apagado do acervo — escolha outro, senão a automação falha neste passo.",
+        "tipoSegueOAcervo": "O tipo do passo mudou para {tipo}, o do arquivo escolhido no acervo.",
+        "audioNaoOgg": "Este áudio não é .ogg: no número oficial ele chega ao cliente como ARQUIVO de áudio, não como nota de voz. Para sair como nota de voz, converta-o para .ogg (Opus) e suba de novo no acervo."
       },
       "tarefa": {
         "tituloLabel": "Título da tarefa",
@@ -3181,6 +3189,7 @@
           "midia_tipo_invalido": "Escolha o tipo do arquivo: imagem, vídeo, documento ou áudio.",
           "audio_com_legenda": "Apague a legenda: nota de voz não leva texto, e ele não chegaria ao cliente.",
           "legenda_longa": "Encurte a legenda para no máximo 1024 caracteres.",
+          "midia_do_acervo_apagada": "O arquivo escolhido foi apagado do acervo de mídias — escolha outro.",
           "mensagem_sem_texto": "Escreva o texto da mensagem.",
           "interativa_invalida": "Revise os botões ou a lista deste passo: o aviso dentro do passo diz o que falta.",
           "modelo_nao_escolhido": "Escolha o modelo (template) a enviar.",
@@ -5741,7 +5750,7 @@
     },
     "acervo": {
       "title": "Acervo de mídias",
-      "description": "Arquivos que o escritório deixa prontos — contratos, imagens, áudios — para a equipe enviar de dentro da conversa, sem procurar no computador. Quem envia usa o clipe da caixa de mensagem → “Do acervo”.",
+      "description": "Arquivos que o escritório deixa prontos — contratos, imagens, áudios — para a equipe enviar de dentro da conversa, sem procurar no computador. Quem envia usa o clipe da caixa de mensagem → “Do acervo”. Robôs (“Enviar mídia”) e automações (“Enviar arquivo”) também mandam arquivos daqui — uma cópia a cada envio.",
       "add": "Adicionar arquivo",
       "empty": "Nenhum arquivo no acervo ainda. Adicione o primeiro para a equipe usar nas conversas.",
       "uncategorized": "Geral",
@@ -5755,7 +5764,7 @@
       "cancel": "Cancelar",
       "save": "Salvar",
       "titleRequired": "Dê um nome ao item.",
-      "confirmDelete": "Remover “{titulo}” do acervo? As mensagens já enviadas com este arquivo não mudam — a equipe só deixa de poder enviá-lo de novo.",
+      "confirmDelete": "Remover “{titulo}” do acervo? As mensagens já enviadas com este arquivo não mudam — a equipe deixa de poder enviá-lo de novo, e o robô ou a automação que o envia passa a falhar nesse passo até alguém escolher outro arquivo.",
       "addedToast": "Arquivo adicionado ao acervo.",
       "uploadError": "Não foi possível adicionar o arquivo.",
       "unsupportedType": "Este tipo de arquivo não é aceito pelo WhatsApp.",

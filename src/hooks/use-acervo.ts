@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
+import { TETO_DA_LEITURA_DO_ACERVO } from '@/lib/acervo/filtro';
 import { createClient } from '@/lib/supabase/client';
 import type { MediaLibraryItem } from '@/types';
 
@@ -53,7 +54,7 @@ export function useAcervo(ativo = true, contaId?: string) {
       // o acervo de um escritório é dezenas de arquivos, não milhares. Se um
       // dia passar disto, a lista fica INCOMPLETA com cara de completa — quem
       // paginar revisa o filtro junto, que hoje roda todo no cliente.
-      .limit(500);
+      .limit(TETO_DA_LEITURA_DO_ACERVO);
 
     if (!valeAinda()) return;
 

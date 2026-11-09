@@ -4,7 +4,14 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import type { CustomField } from '@/types'
-import { camposParaConferir, conferirParaLigar, TETO_DE_LINHAS, type ConferenciaParaLigar } from './conferir-para-ligar'
+import { TETO_DA_LEITURA_DO_ACERVO } from '@/lib/acervo/filtro'
+import {
+  acervoParaConferir,
+  camposParaConferir,
+  conferirParaLigar,
+  TETO_DE_LINHAS,
+  type ConferenciaParaLigar,
+} from './conferir-para-ligar'
 import { localizarPendencias } from './pendencias'
 
 const base: ConferenciaParaLigar = {
@@ -14,6 +21,7 @@ const base: ConferenciaParaLigar = {
   steps: [],
   canais: [],
   campos: new Map(),
+  acervo: new Set(),
 }
 
 describe('conferirParaLigar', () => {
@@ -67,6 +75,37 @@ describe('conferirParaLigar', () => {
     // Com a lista carregada e sem o campo, é pendência (o que a rota diria).
     expect(conferirParaLigar({ ...base, steps }).map((i) => i.path)).toEqual(['steps[0].operand'])
   })
+
+  it('o item do ACERVO apagado (09/11/2026): pendência com a lista carregada; pulada com ela null', () => {
+    const item = '00000000-0000-4000-8000-0000000000aa'
+    const steps = [{ step_type: 'send_media', step_config: { kind: 'video', url: 'https://x/v.mp4', acervo_id: item } }]
+    expect(conferirParaLigar({ ...base, steps }).map((i) => [i.path, i.codigo])).toEqual([
+      ['steps[0].acervo_id', 'midia_do_acervo_apagada'],
+    ])
+    expect(conferirParaLigar({ ...base, steps, acervo: new Set([item]) })).toEqual([])
+    expect(conferirParaLigar({ ...base, steps, acervo: null })).toEqual([])
+  })
+})
+
+describe('acervoParaConferir (09/11/2026)', () => {
+  const item = (id: string, account_id: string) => ({ id, account_id })
+
+  it('só os itens DA CONTA, somados aos escolhidos agora no seletor', () => {
+    const ids = acervoParaConferir([item('a', 'c1'), item('b', 'c2')], 'c1', ['novo'])
+    expect([...(ids ?? [])].sort()).toEqual(['a', 'novo'])
+  })
+
+  it('o escolhido AGORA conta mesmo que a lista lida seja de antes dele (subido noutra aba)', () => {
+    expect(acervoParaConferir([], 'c1', new Set(['recém-subido']).keys())?.has('recém-subido')).toBe(true)
+  })
+
+  it('falha ABERTA: sem conta, sem lista (carregando ou falhou) ou com a lista no teto = null', () => {
+    expect(acervoParaConferir([item('a', 'c1')], null)).toBeNull()
+    expect(acervoParaConferir(null, 'c1', ['x'])).toBeNull()
+    const cheia = Array.from({ length: TETO_DA_LEITURA_DO_ACERVO }, (_, i) => item(`i${i}`, 'c1'))
+    expect(acervoParaConferir(cheia, 'c1')).toBeNull()
+    expect(acervoParaConferir(cheia.slice(1), 'c1')?.size).toBe(TETO_DA_LEITURA_DO_ACERVO - 1)
+  })
 })
 
 describe('camposParaConferir', () => {
@@ -99,7 +138,7 @@ describe('pino: as mesmas validações das rotas de automação', () => {
 
   it('criar, editar e a conferência da tela chamam o mesmo conjunto', () => {
     const daTela = nomes('src/lib/automations/conferir-para-ligar.ts')
-    expect(daTela.size).toBe(6)
+    expect(daTela.size).toBe(7)
     expect(nomes('src/app/api/automations/route.ts')).toEqual(daTela)
     expect(nomes('src/app/api/automations/[id]/route.ts')).toEqual(daTela)
   })

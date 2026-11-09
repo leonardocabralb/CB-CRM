@@ -9,6 +9,13 @@
 
 import type { TipoDeMidia } from './tipos';
 
+/**
+ * O teto da leitura do acervo (`useAcervo`). Lista que chega NELE pode ter
+ * vindo cortada: quem afirma "este item não existe" a partir dela (a
+ * conferência de ligar a automação, `acervoParaConferir`) não afirma nada.
+ */
+export const TETO_DA_LEITURA_DO_ACERVO = 500;
+
 export interface ItemFiltravel {
   titulo: string;
   categoria: string | null;

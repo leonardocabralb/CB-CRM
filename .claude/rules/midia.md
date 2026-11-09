@@ -210,10 +210,12 @@ Tabela `cb_media_library`, `src/lib/acervo/` (puro, com teste), rotas em
   áudio sai como nota de voz. O editor do robô avisa
   (`audioViraNotaDeVozNaMeta`, `src/lib/flows/tipo-da-midia.ts`); o selo "como
   nota de voz" do seletor do acervo no compositor ainda afirma sem distinguir.
-- **A cópia mora em `copiarDoAcervo` (`src/lib/acervo/copiar.ts`)**, com DOIS
-  chamadores: a rota `copiar` (compositor) e o nó "Enviar mídia" do robô, que
-  copia a cada envio (`.claude/rules/whatsapp-envio.md`). Erro de banco é
-  `leitura`, nunca `nao_encontrado`.
+- **A cópia mora em `copiarDoAcervo` (`src/lib/acervo/copiar.ts`)**, com TRÊS
+  chamadores: a rota `copiar` (compositor), o nó "Enviar mídia" do robô e o
+  passo "Enviar arquivo" das automações (`midia-do-passo.ts`, 09/11/2026), os
+  dois últimos copiando a cada envio (`whatsapp-envio.md`,
+  `automacoes-passos.md`). Erro de banco é `leitura`, nunca `nao_encontrado`.
+  Chamador novo entra no pino `arquivos-do-chat-media.chamadores.test.ts`.
 
 ### Arquivo que SAI do `chat-media`: a fila (1097)
 

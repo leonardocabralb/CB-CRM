@@ -49,6 +49,7 @@ import { ehGatilhoDaRegua, PASSOS_QUE_FALAM_COM_O_CONTATO } from '@/lib/asaas/re
 import { GATILHO_DO_ATLAS, soRodaPeloDisparador } from './so-pelo-disparador';
 import { rodouNoPrazo } from './nao-repetir';
 import { gravarMotivoDoPasso, motivoDoPasso } from './motivo-do-passo';
+import { prepararMidiaDoPasso } from './midia-do-passo';
 
 /**
  * Os passos que calam o agente de IA quando rodam por causa da mensagem do
@@ -2544,20 +2545,27 @@ async function runStep(
     case 'send_media': {
       const cfg = step.step_config as SendMediaStepConfig;
       if (!args.contactId) throw new Error('send_media precisa de um contato');
-      if (!cfg.url) throw new Error('send_media precisa de um arquivo');
+
+      // NOSSO (09/11/2026): o arquivo pode vir do ACERVO (`acervo_id`),
+      // COPIADO a cada envio — `midia-do-passo.ts`; o passo antigo (`url`)
+      // segue igual. O item é CONFERIDO aqui, ANTES da conversa (item apagado
+      // falha sem criar conversa para a ficha que não tinha); a CÓPIA, o
+      // remetente faz depois das recusas dele (`midia.link` é função).
+      const midia = await prepararMidiaDoPasso(db, args.automation.account_id, cfg);
 
       // ⚠️ ÁUDIO NÃO LEVA LEGENDA, e o dano é silencioso: a nota de voz sai por
       // `sendWhatsAppAudio`, que não tem campo de legenda. O texto seria
       // gravado em `messages.content_text`, apareceria no fio para a equipe e
       // NÃO viajaria ao cliente — a equipe leria uma conversa que o cliente
       // nunca teve. Mesma guarda da 932, aqui em terceiro lugar (banco, tela,
-      // motor), porque a config pode ter sido gravada antes desta regra.
+      // motor), porque a config pode ter sido gravada antes desta regra. O
+      // tipo é o do ARQUIVO que sai (o do item, no acervo).
       // A conversa ANTES da legenda, como no texto (Codex, #322).
       const conversationId = await resolveConversationId(args, {
         criarSeFaltar: true,
       });
       const legenda =
-        cfg.kind === 'audio'
+        midia.kind === 'audio'
           ? undefined
           : (await interpolate(cfg.caption ?? '', args)) || undefined;
 
@@ -2567,14 +2575,14 @@ async function runStep(
         userId: args.automation.user_id,
         conversationId,
         contactId: args.contactId,
-        kind: cfg.kind,
-        link: cfg.url,
+        kind: midia.kind,
+        link: midia.link,
         caption: legenda,
         // Só documento; o WhatsApp ignora nos demais.
-        filename: cfg.kind === 'document' ? cfg.filename : undefined,
+        filename: midia.filename,
         preferredChannelId: stepChannel(cfg, args),
       });
-      return `${cfg.kind} enviado (${whatsapp_message_id})`;
+      return `${midia.kind} enviado (${whatsapp_message_id})`;
     }
 
     case 'send_webhook': {
