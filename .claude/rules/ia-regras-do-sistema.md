@@ -57,7 +57,10 @@ assinado (o webhook do ZapSign move o card).
   delicadeza, do jeito que as instruções mandam, e só passa para a equipe,
   com os dois marcadores, se o cliente INSISTIR depois da recusa — decisão do
   operador de 08/11/2026, noite: com o "passa para a equipe" direto, o Sonnet
-  5.5 transferia já no 1º pedido de desconto) e `sem_compromisso` →
+  5.5 transferia já no 1º pedido de desconto; e, desde 09/11, RECLAMAÇÃO do
+  preço, mesmo irritada, é objeção a responder, nunca passagem sozinha — o
+  "is upset or complaining" do texto-base dava `[[HANDOFF]]` mudo a "35% é
+  roubo", medido) e `sem_compromisso` →
   `fechamento` (convida
   a assinar pelo link escrito, responde objeções com a verdade; a contratação
   só acontece pela assinatura — o agente não fecha nem confirma acordo, NEM

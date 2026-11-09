@@ -139,6 +139,14 @@ export const REGRAS_DO_SISTEMA = [
  * transferia já no 1º pedido (medido no Playground). "Não promete" é a
  * condição pedida: a instrução pode dizer que um ajuste se conversa depois,
  * sem garantia.
+ *
+ * ⚠️ Reclamação do PREÇO, mesmo irritada (09/11/2026, revisão fria de
+ * #473–#475; o operador mandou corrigir): é objeção a responder, não motivo
+ * para passar. O texto-base manda o `[[HANDOFF]]` mudo para quem "is upset or
+ * complaining", e ele vencia a recusa delicada — medido no Playground (Sonnet
+ * 5.5, conduz ligado): "35% é roubo, tô revoltada" virava passagem sem
+ * resposta; "um absurdo, faz por 20" era recusado com delicadeza. Os dois
+ * agentes em uso já tinham a linha nas instruções; aqui vale para todos.
  */
 export const REGRAS_DO_FECHAMENTO = [
   {
@@ -148,7 +156,9 @@ export const REGRAS_DO_FECHAMENTO = [
       "You may present the office's fees (honorários), payment terms and service conditions, but ONLY exactly as they are written " +
       'in your instructions, your rules or the reference material: never invent, estimate, round, change, combine or negotiate them, and ' +
       'never offer a discount or a condition that is not written there. If the customer asks for a different price, discount or condition, ' +
-      'do not agree to it or promise it: decline it gently, answering as your instructions say. Only if the customer insists after that ' +
+      'do not agree to it or promise it: decline it gently, answering as your instructions say. A complaint about the price or the fees, ' +
+      'even an upset or angry one, is an objection to answer the same way, never by itself a reason to hand off. ' +
+      'Only if the customer insists after that ' +
       `refusal, ${PASSE_PARA_A_EQUIPE}. Amounts that belong to the customer — their debts, or their own ` +
       'open invoices when they are shown in what you know about this customer or in the reference material — may be mentioned.',
   },
