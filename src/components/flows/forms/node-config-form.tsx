@@ -51,6 +51,7 @@ import { uploadAccountMedia, MEDIA_MAX_BYTES } from "@/lib/storage/upload-media"
 import { mensagemDoUpload } from "@/lib/storage/erro-de-upload";
 import { AcervoPicker } from "@/components/inbox/acervo-picker";
 import { useAcervo } from "@/hooks/use-acervo";
+import { TETO_DA_LEITURA_DO_ACERVO } from "@/lib/acervo/filtro";
 import { audioViraNotaDeVozNaMeta } from "@/lib/flows/tipo-da-midia";
 import type { MediaLibraryItem } from "@/types";
 import { slugify, type BuilderNode } from "../shared";
@@ -970,8 +971,15 @@ function SendMediaForm({
       ? escolhido
       : (acervo.itens.find((i) => i.id === acervoId) ?? null)
     : null;
+  // "Apagado" só com a lista INTEIRA: no teto da leitura ela pode ter vindo
+  // cortada, e o item fora do corte não sumiu (09/11/2026, a régua do
+  // construtor de automações).
   const itemApagado =
-    Boolean(acervoId) && acervo.jaCarregou && !acervo.falhou && !itemDoAcervo;
+    Boolean(acervoId) &&
+    acervo.jaCarregou &&
+    !acervo.falhou &&
+    acervo.itens.length < TETO_DA_LEITURA_DO_ACERVO &&
+    !itemDoAcervo;
   // ⚠️ No número OFICIAL só .ogg (Opus) vira nota de voz; .mp3/.m4a gravado
   // no celular chega como ARQUIVO de áudio. Avisar aqui é o que evita o
   // operador contar com a "voz do Dr." e o cliente receber um anexo.

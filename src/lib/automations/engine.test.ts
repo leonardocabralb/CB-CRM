@@ -727,7 +727,7 @@ vi.mock('@/lib/notes/anotacao-da-automacao', async (original) => ({
   ...(await original<typeof import('@/lib/notes/anotacao-da-automacao')>()),
   escreverAnotacaoDaAutomacao: anotacaoMock.escreverAnotacaoDaAutomacao,
 }));
-// "Enviar arquivo" do ACERVO (09/11/2026): a cópia (`copiarDoAcervo`) e a
+// "Enviar arquivo" do ACERVO (09/11/2026): a cópia (`copiaCongeladaDoAcervo`) e a
 // régua da origem são testadas em `midia-do-passo.test.ts`, e o link-função no
 // remetente em `flows/meta-send.test.ts`; aqui, o que o motor faz com elas — o
 // TIPO que chega ao remetente, a URL que ele produz, e a falha que encerra o
@@ -744,11 +744,11 @@ const midiaMock = vi.hoisted(() => {
         return { whatsapp_message_id: 'mid-1' };
       }
     ),
-    copiarDoAcervo: vi.fn<(db: unknown, conta: string, itemId: string) => Promise<unknown>>(async () => ({
+    copiaCongeladaDoAcervo: vi.fn<(db: unknown, conta: string, itemId: string) => Promise<unknown>>(async () => ({
       ok: true,
       tipo: 'video',
-      mediaUrl: 'https://storage/account-acct-1/1762700000000123456-gestante.mp4',
-      path: 'account-acct-1/1762700000000123456-gestante.mp4',
+      mediaUrl: 'https://storage/account-acct-1/acervo/enviados/00000000-0000-4000-8000-0000000000a1/gestante.mp4',
+      path: 'account-acct-1/acervo/enviados/00000000-0000-4000-8000-0000000000a1/gestante.mp4',
       filename: 'gestante.mp4',
     })),
   };
@@ -759,7 +759,7 @@ vi.mock('@/lib/flows/meta-send', async (original) => ({
 }));
 vi.mock('@/lib/acervo/copiar', async (original) => ({
   ...(await original<typeof import('@/lib/acervo/copiar')>()),
-  copiarDoAcervo: midiaMock.copiarDoAcervo,
+  copiaCongeladaDoAcervo: midiaMock.copiaCongeladaDoAcervo,
 }));
 
 import {
@@ -6980,11 +6980,11 @@ describe('valoresParaPrevia — a prévia usa as funções do envio e só lê', 
 
 describe('"Enviar arquivo": o arquivo subido no passo ou um item do ACERVO (09/11/2026)', () => {
   const ITEM = '00000000-0000-4000-8000-0000000000a1';
-  const URL_DA_COPIA = 'https://storage/account-acct-1/1762700000000123456-gestante.mp4';
+  const URL_DA_COPIA = 'https://storage/account-acct-1/acervo/enviados/00000000-0000-4000-8000-0000000000a1/gestante.mp4';
 
   beforeEach(() => {
     midiaMock.engineSendMedia.mockClear();
-    midiaMock.copiarDoAcervo.mockClear();
+    midiaMock.copiaCongeladaDoAcervo.mockClear();
     midiaMock.linksEnviados.length = 0;
     destinatarioMock.conversaDoContato.mockClear();
     h.state.itemDoAcervo = { id: ITEM, tipo: 'video', filename: 'gestante.mp4' };
@@ -7014,7 +7014,7 @@ describe('"Enviar arquivo": o arquivo subido no passo ou um item do ACERVO (09/1
       caption: 'Segue o contrato',
     });
 
-    expect(midiaMock.copiarDoAcervo).not.toHaveBeenCalled();
+    expect(midiaMock.copiaCongeladaDoAcervo).not.toHaveBeenCalled();
     expect(midiaMock.engineSendMedia).toHaveBeenCalledTimes(1);
     expect(midiaMock.engineSendMedia.mock.calls[0]?.[0]).toMatchObject({
       accountId: ACCOUNT,
@@ -7027,7 +7027,7 @@ describe('"Enviar arquivo": o arquivo subido no passo ou um item do ACERVO (09/1
     });
   });
 
-  it('COM acervo: o tipo é o do ITEM, e o remetente recebe a CÓPIA como função — uma cópia nova a cada envio', async () => {
+  it('COM acervo: o tipo é o do ITEM, e o remetente recebe a CÓPIA CONGELADA como função — a mesma em todo envio', async () => {
     const passo = {
       // foto velha da escolha: o motor manda com o tipo do ITEM
       kind: 'image',
@@ -7047,11 +7047,11 @@ describe('"Enviar arquivo": o arquivo subido no passo ou um item do ACERVO (09/1
     });
     // A cópia é do REMETENTE (depois das recusas dele): o motor só entrega a função.
     expect(typeof envio.link).toBe('function');
-    expect(midiaMock.copiarDoAcervo).toHaveBeenCalledTimes(2);
-    expect(midiaMock.copiarDoAcervo).toHaveBeenCalledWith(expect.anything(), ACCOUNT, ITEM);
+    expect(midiaMock.copiaCongeladaDoAcervo).toHaveBeenCalledTimes(2);
+    expect(midiaMock.copiaCongeladaDoAcervo).toHaveBeenCalledWith(expect.anything(), ACCOUNT, ITEM);
     expect(midiaMock.linksEnviados).toEqual([URL_DA_COPIA, URL_DA_COPIA]);
     // A URL do item (guardada só para a tela) nunca vai ao WhatsApp.
-    expect(midiaMock.linksEnviados.join(' ')).not.toContain('/acervo/');
+    expect(midiaMock.linksEnviados).not.toContain(passo.url);
   });
 
   it('item de ÁUDIO do acervo: sai sem legenda, mesmo com legenda gravada no passo (o tipo é o do item)', async () => {
@@ -7068,7 +7068,7 @@ describe('"Enviar arquivo": o arquivo subido no passo ou um item do ACERVO (09/1
 
     expect(h.state.logUpdates).toContainEqual(expect.objectContaining({ desfecho: 'falhou' }));
     expect(midiaMock.engineSendMedia).not.toHaveBeenCalled();
-    expect(midiaMock.copiarDoAcervo).not.toHaveBeenCalled();
+    expect(midiaMock.copiaCongeladaDoAcervo).not.toHaveBeenCalled();
     expect(destinatarioMock.conversaDoContato).not.toHaveBeenCalled();
     expect(JSON.stringify(h.state.logUpdates)).toContain(
       'o arquivo do acervo escolhido neste passo foi apagado'
@@ -7088,7 +7088,7 @@ describe('"Enviar arquivo": o arquivo subido no passo ou um item do ACERVO (09/1
   });
 
   it('a CÓPIA que falha dentro do remetente falha o passo com o motivo — e não volta para a fila', async () => {
-    midiaMock.copiarDoAcervo.mockResolvedValueOnce({ ok: false, erro: 'copia', detalhe: 'Object not found' });
+    midiaMock.copiaCongeladaDoAcervo.mockResolvedValueOnce({ ok: false, erro: 'copia', detalhe: 'Object not found' });
     await executar({ kind: 'video', url: '', acervo_id: ITEM });
 
     expect(midiaMock.linksEnviados).toEqual([]);
@@ -7099,7 +7099,7 @@ describe('"Enviar arquivo": o arquivo subido no passo ou um item do ACERVO (09/1
   it('sem arquivo nenhum (nem subido, nem do acervo): falha antes de ler, copiar ou enviar', async () => {
     await executar({ kind: 'image', url: '' });
 
-    expect(midiaMock.copiarDoAcervo).not.toHaveBeenCalled();
+    expect(midiaMock.copiaCongeladaDoAcervo).not.toHaveBeenCalled();
     expect(midiaMock.engineSendMedia).not.toHaveBeenCalled();
     expect(JSON.stringify(h.state.logUpdates)).toContain('send_media precisa de um arquivo');
   });

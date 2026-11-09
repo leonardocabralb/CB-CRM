@@ -47,6 +47,8 @@ function bancoComAcervo(opts: {
 }) {
   const copias: Array<[string, string]> = [];
   const filtros: Array<[string, unknown]> = [];
+  // O bucket guarda o que já foi copiado: a cópia CONGELADA do item é uma só.
+  const bucket = new Set<string>();
   const db = {
     from: () => {
       const b = {
@@ -66,9 +68,16 @@ function bancoComAcervo(opts: {
     },
     storage: {
       from: () => ({
+        // A forma do storage-js: AUSENTE resolve com data:false E error.
+        exists: (p: string) =>
+          Promise.resolve(
+            bucket.has(p) ? { data: true, error: null } : { data: false, error: { message: 'Object not found' } },
+          ),
         copy: (de: string, para: string) => {
           copias.push([de, para]);
-          return Promise.resolve({ error: opts.erroCopia ? { message: opts.erroCopia } : null });
+          if (opts.erroCopia) return Promise.resolve({ error: { message: opts.erroCopia } });
+          bucket.add(para);
+          return Promise.resolve({ error: null });
         },
         getPublicUrl: (p: string) => ({ data: { publicUrl: `https://storage/${p}` } }),
       }),
@@ -85,7 +94,7 @@ describe('prepararMidiaDoNo', () => {
     filename: 'boas-vindas.ogg',
   };
 
-  it('ACERVO: copia o item e manda a CÓPIA — o tipo vem do item', async () => {
+  it('ACERVO: manda a CÓPIA CONGELADA do item — o tipo vem do item', async () => {
     const { db, copias, filtros } = bancoComAcervo({ item: ITEM });
     const m = await prepararMidiaDoNo(db, 'acc', {
       // o nó diz imagem (foto velha): quem manda é o item
@@ -96,13 +105,22 @@ describe('prepararMidiaDoNo', () => {
     expect(m.tipo).toBe('audio');
     expect(copias).toHaveLength(1);
     expect(copias[0][0]).toBe(ITEM.media_path);
-    // A cópia sai do acervo/ — é um anexo como outro qualquer.
-    expect(copias[0][1]).toMatch(/^account-acc\/\d+-boas-vindas\.ogg$/);
+    // UMA cópia por item (09/11/2026), dentro de acervo/: a 954 e a 1097 a
+    // protegem, e nada a apaga.
+    expect(copias[0][1]).toBe('account-acc/acervo/enviados/item-1/boas-vindas.ogg');
     expect(m.link).toBe(`https://storage/${copias[0][1]}`);
     expect(m.copia).toBe(copias[0][1]);
     expect(m.filename).toBe('boas-vindas.ogg');
     // Cercado pela conta: service role ignora RLS.
     expect(filtros).toContainEqual(['account_id', 'acc']);
+  });
+
+  it('ACERVO: o 2º envio REAPROVEITA a cópia congelada — nenhum arquivo novo', async () => {
+    const { db, copias } = bancoComAcervo({ item: ITEM });
+    const a = await prepararMidiaDoNo(db, 'acc', { media_type: 'audio', acervo_id: 'item-1' });
+    const b = await prepararMidiaDoNo(db, 'acc', { media_type: 'audio', acervo_id: 'item-1' });
+    expect(copias).toHaveLength(1);
+    expect(b.link).toBe(a.link);
   });
 
   it('ACERVO: item apagado falha com motivo legível', async () => {

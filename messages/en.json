@@ -5757,7 +5757,7 @@
     },
     "acervo": {
       "title": "Media library",
-      "description": "Files the office keeps ready — contracts, images, audio — for the team to send from inside a conversation instead of hunting on their computer. Senders use the paperclip in the message box → “From library”. Robots (“Send media”) and automations (“Send file”) also send files from here — a copy on every send.",
+      "description": "Files the office keeps ready — contracts, images, audio — for the team to send from inside a conversation instead of hunting on their computer. Senders use the paperclip in the message box → “From library”. Robots (“Send media”) and automations (“Send file”) also send files from here, through a copy kept apart: what was already sent does not change or disappear if the item is removed.",
       "add": "Add file",
       "empty": "No files in the library yet. Add the first one for the team to use in conversations.",
       "uncategorized": "General",

@@ -123,6 +123,10 @@ export async function DELETE(
       return NextResponse.json({ error: 'Item not found' }, { status: 404 });
     }
 
+    // ⚠️ Só o ORIGINAL. A cópia CONGELADA do item (`acervo/enviados/<item>/`,
+    // a que o robô e as automações mandam, `copiaCongeladaDoAcervo`) FICA:
+    // as mensagens já enviadas apontam para ela, e tirá-la deixaria
+    // "indisponível" o histórico de quem recebeu.
     const { error: erroStorage } = await admin.storage
       .from(CHAT_MEDIA_BUCKET)
       .remove([apagado.media_path as string]);

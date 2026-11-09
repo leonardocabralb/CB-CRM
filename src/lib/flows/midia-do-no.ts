@@ -11,7 +11,7 @@
 // editor avisa).
 //
 // Duas origens, e o nó antigo continua valendo sem mudança nenhuma:
-//   · `acervo_id` — o item do acervo, COPIADO a cada envio (abaixo o porquê);
+//   · `acervo_id` — o item do acervo, pela CÓPIA CONGELADA dele (abaixo);
 //   · `media_url` — o upload antigo do construtor (bucket `flow-media`).
 //
 // ⚠️⚠️ POR QUE COPIAR, se o robô nunca apaga o objeto? A primeira razão da
@@ -23,11 +23,15 @@
 // nó ainda falha de forma VISÍVEL (run `failed`, motivo escrito) quando o item
 // foi apagado — em vez de mandar à Meta um link morto, que só apareceria
 // depois como bolha vermelha.
+//
+// ⚠️ UMA cópia por ITEM, não por envio (decisão do operador, 09/11/2026,
+// `copiaCongeladaDoAcervo`): feita no primeiro envio e reaproveitada nos
+// seguintes. Uma por envio custava o arquivo inteiro a cada cliente.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { copiarDoAcervo } from '@/lib/acervo/copiar';
+import { copiaCongeladaDoAcervo } from '@/lib/acervo/copiar';
 import { ehTipoDaMidiaDoNo, type TipoDaMidiaDoNo } from './tipo-da-midia';
 import type { SendMediaNodeConfig } from './types';
 
@@ -78,7 +82,8 @@ export interface MidiaPreparada {
 }
 
 /**
- * I/O: resolve o arquivo que vai sair. Com `acervo_id`, copia o item AGORA
+ * I/O: resolve o arquivo que vai sair. Com `acervo_id`, a cópia CONGELADA do
+ * item (feita no primeiro envio, reaproveitada nos seguintes)
  * (a URL pública da cópia é a que vai para o WhatsApp e para o fio).
  *
  * Lança com motivo legível — quem chama registra no run e o encerra como
@@ -101,7 +106,7 @@ export async function prepararMidiaDoNo(
     };
   }
 
-  const copia = await copiarDoAcervo(db, accountId, origem.acervoId);
+  const copia = await copiaCongeladaDoAcervo(db, accountId, origem.acervoId);
   if (!copia.ok) {
     if (copia.erro === 'nao_encontrado') {
       throw new Error('the media library item was deleted — pick another file in the robot');

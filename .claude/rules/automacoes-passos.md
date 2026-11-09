@@ -275,22 +275,24 @@ O vídeo das gestantes que a automação executada pelo agente de IA manda
 depois do link do ZapSign. `midia-do-passo.ts` (puro + a cópia), o mesmo
 campo do nó "Enviar mídia" do robô (`whatsapp-envio.md`).
 
-- ⚠️⚠️ **O motor COPIA o item a cada envio** (`prepararMidiaDoPasso` →
-  `copiarDoAcervo`): a mensagem aponta para a cópia, e apagar ou trocar o
-  item não mexe no que saiu (`midia.md`). `acervo_id` VENCE `url` — a URL
+- ⚠️⚠️ **O motor manda a CÓPIA CONGELADA do item** (`prepararMidiaDoPasso` →
+  `copiaCongeladaDoAcervo`): UMA por item, criada no 1º envio e
+  reaproveitada (decisão do operador, 09/11/2026; por envio, o vídeo de
+  13,85 MB custava o arquivo inteiro a cada cliente). A mensagem aponta para
+  ela, e apagar ou trocar o item não mexe no que saiu (`midia.md`).
+  `acervo_id` VENCE `url` — a URL
   guardada é só da tela (e o que um motor antigo mandaria num rollback). O
   TIPO e a regra da legenda (áudio sem) são os do ITEM; o `kind` do passo é
   a foto da escolha.
 - ⚠️⚠️ **Duas etapas**: o item é CONFERIDO por leitura ANTES da conversa
-  (apagado falha sem criar conversa para a ficha que não tinha), e a CÓPIA é
-  do remetente — `engineSendMedia` recebe o `link` como FUNÇÃO e só a chama
-  depois das recusas dele (contato, conversa, canal, alvo, conexão) e antes
-  da tentativa. Copiando antes, a ficha do Instagram ou sem telefone deixava
-  uma cópia inteira órfã a cada execução (revisão do PR). Erro de banco é
-  `leitura`, nunca "apagado". A cópia não é apagada quando o envio falha (a
-  Meta baixa depois), e a retentativa (4xx da Evolution) copia de novo:
-  órfãos aceitos. O motivo de item apagado tem frase no "Já rodou"
-  (`texto-do-motor.ts`, escrito por extenso; o teste amarra à constante).
+  (apagado falha sem criar conversa para a ficha que não tinha), e a cópia é
+  pedida pelo remetente — `engineSendMedia` recebe o `link` como FUNÇÃO e só
+  a chama depois das recusas dele (contato, conversa, canal, alvo, conexão)
+  e antes da tentativa: a recusa não toca o Storage (revisão do #487). Erro
+  de banco é `leitura`, nunca "apagado". A cópia congelada nunca é apagada
+  (a Meta baixa depois do aceite), e a retentativa a reaproveita. O motivo de
+  item apagado tem frase no "Já rodou" (`texto-do-motor.ts`, escrito por
+  extenso; o teste amarra à constante).
 - ⚠️⚠️ **Ligar confere o item NA CONTA**, como a ativação do robô:
   `validateAcervoForActivation` nas duas rotas (`carregarAcervoDosPassos`;
   leitura que falha pula) e na tela (`conferirParaLigar` com

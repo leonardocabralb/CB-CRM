@@ -1927,7 +1927,7 @@ export interface RunFlowStepConfig {
  * automação quebrada a partir do segundo disparo.
  *
  * NOSSO (09/11/2026): o arquivo também pode vir do ACERVO de mídias
- * (`acervo_id`), COPIADO a cada envio — `src/lib/automations/midia-do-passo.ts`.
+ * (`acervo_id`), pela cópia congelada do item — `src/lib/automations/midia-do-passo.ts`.
  */
 export interface SendMediaStepConfig {
   /** Com `acervo_id`, é a foto do tipo do item na hora da escolha: o motor usa o do item. */
@@ -1941,8 +1941,9 @@ export interface SendMediaStepConfig {
   url: string;
   /**
    * Item do acervo (`cb_media_library.id`) — o mesmo nome do nó "Enviar mídia"
-   * do robô. Presente VENCE `url`: o motor copia o item (`copiarDoAcervo`), e a
-   * mensagem enviada aponta para a cópia. Ausente = o arquivo subido no passo.
+   * do robô. Presente VENCE `url`: o motor manda a cópia congelada do item
+   * (`copiaCongeladaDoAcervo`, uma por item), e a mensagem aponta para ela.
+   * Ausente = o arquivo subido no passo.
    */
   acervo_id?: string | null;
   /**

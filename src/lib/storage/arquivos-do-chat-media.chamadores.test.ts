@@ -145,7 +145,7 @@ const DECLARADOS: Record<string, Uso> = {
   },
   'src/lib/acervo/copiar.ts': {
     papel: 'só sobe e devolve a URL',
-    nota: 'copia o item do acervo para um caminho de anexo (ver AJUDANTES)',
+    nota: 'copia o item do acervo: por envio (compositor) ou a cópia congelada (robô e automação) — ver AJUDANTES',
   },
   'src/lib/whatsapp/mirror-inbound-media.ts': {
     papel: 'só sobe e devolve a URL',
@@ -234,15 +234,23 @@ const AJUDANTES: {
     chamadores: {
       'src/app/api/cb/acervo/[id]/copiar/route.ts': {
         grava: [MSG, ...AGENDADA],
-        nota: 'devolve o rascunho ao compositor, que envia ou agenda',
+        nota: 'uma cópia por envio: devolve o rascunho ao compositor, que envia ou agenda (e apaga o rascunho que morre)',
       },
+    },
+  },
+  {
+    // 09/11/2026: UMA cópia por item, em acervo/enviados/<item>/ (a 1097 a
+    // deixa fora da fila de apagar, como todo o acervo).
+    funcao: 'copiaCongeladaDoAcervo',
+    modulo: 'src/lib/acervo/copiar.ts',
+    chamadores: {
       'src/lib/flows/midia-do-no.ts': {
         grava: [MSG],
-        nota: 'o nó "Enviar mídia" do robô copia a cada envio',
+        nota: 'o nó "Enviar mídia" do robô manda a cópia congelada do item',
       },
       'src/lib/automations/midia-do-passo.ts': {
         grava: [MSG],
-        nota: 'o passo "Enviar arquivo" da automação copia a cada envio, de dentro do engineSendMedia (o link é função), que grava a mensagem',
+        nota: 'o passo "Enviar arquivo" da automação manda a cópia congelada, pedida de dentro do engineSendMedia (o link é função), que grava a mensagem',
       },
     },
   },
