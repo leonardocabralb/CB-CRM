@@ -70,4 +70,10 @@ describe('toGeminiContents', () => {
       { role: 'user', parts: [{ text: 'em outubro' }] },
     ])
   })
+
+  it('só o escritório falou: nunca termina num turno do modelo (o Gemini recusaria)', () => {
+    expect(toGeminiContents([escritorio('Bom dia!')])).toEqual([
+      { role: 'user', parts: [{ text: NOTA_SEM_MENSAGEM_DO_CLIENTE }] },
+    ])
+  })
 })
