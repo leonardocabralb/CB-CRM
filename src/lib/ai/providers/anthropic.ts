@@ -1,7 +1,7 @@
 import { AiError, type ChatMessage, type ProviderResult } from '../types'
 import { MAX_OUTPUT_TOKENS } from '../defaults'
+import { comecarNoCliente } from './comeca-no-cliente'
 import {
-  mergeConsecutive,
   normalizeUsage,
   providerHttpError,
   respostaCortada,
@@ -20,20 +20,14 @@ interface AnthropicResponse {
 
 /**
  * Anthropic's Messages API requires strictly alternating roles that
- * begin with `user`. Merge consecutive turns, then drop any leading
- * assistant turns (an agent greeting before the customer said anything)
- * so the transcript always starts on the customer. Guarantees a valid,
+ * begin with `user`. ⚠️ NOSSO (09/11/2026): the business's own opening
+ * messages (the ad form, a message from the CRM) are KEPT behind a system
+ * note instead of dropped — dropped, the model saw only the customer's
+ * answer without the question (`comeca-no-cliente.ts`). Guarantees a valid,
  * non-empty payload.
  */
 function normalizeForAnthropic(messages: ChatMessage[]): ChatMessage[] {
-  const merged = mergeConsecutive(messages)
-  while (merged.length > 0 && merged[0].role === 'assistant') {
-    merged.shift()
-  }
-  if (merged.length === 0) {
-    return [{ role: 'user', content: '(The customer has not sent a message yet.)' }]
-  }
-  return merged
+  return comecarNoCliente(messages)
 }
 
 /**
