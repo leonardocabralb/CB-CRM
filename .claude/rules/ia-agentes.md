@@ -291,6 +291,10 @@ testados; `prepararMidias` em `turno.ts`; `contexto.ts` e `pedido.ts`.
     prazo fica gravada e o turno reagenda.
   - ⚠️ **Borrado vira `[ilegível]`** (`MARCA_ILEGIVEL`, nas duas instruções):
     sem ela o Gemini completava a data borrada sem avisar (medido 08/11).
+  - ⚠️ **A leitura COMEÇA pelos fatos** (`FATOS_NO_TOPO`): "FATOS:" e 3–6
+    linhas do arquivo INTEIRO, depois o texto. O agente recebe só 4.000
+    caracteres, cortados pelo FIM (08/11: 13 de 40 passavam). Imagem só
+    quando é documento. Mesmas regras: só o escrito, `[ilegível]`.
 - ⚠️ **No turno** (`prepararMidias`, depois do áudio): as mídias do CLIENTE
   entre as mensagens que vão ao modelo (as últimas N da conexão, não só a
   rajada), sem leitura, até 5 TENTATIVAS por rodada (o `sem_leitor` não
