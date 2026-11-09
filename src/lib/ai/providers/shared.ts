@@ -4,10 +4,22 @@ import { AiError, type AiUsage, type ChatMessage } from '../types'
 // Bits shared by the OpenAI + Anthropic adapters.
 // ============================================================
 
+/**
+ * NOSSO (09/11/2026): um pedaço do system prompt. `cache` = o provedor pode
+ * guardá-lo (só a Anthropic usa: `cache_control`). Juntos, na ordem, os
+ * pedaços SÃO o `systemPrompt` (`juntarPartes`, `ia-agentes/pedido.ts`).
+ */
+export interface ParteDoSistema {
+  texto: string
+  cache: boolean
+}
+
 export interface ProviderArgs {
   apiKey: string
   model: string
   systemPrompt: string
+  /** NOSSO (09/11/2026): o mesmo `systemPrompt` em pedaços, para o cache. Ausente = um bloco só. */
+  systemPartes?: readonly ParteDoSistema[]
   messages: ChatMessage[]
   timeoutMs: number
 }
@@ -18,11 +30,16 @@ export interface ProviderArgs {
  * omit counts). Returns null when there's nothing usable, so logging can
  * distinguish "no usage reported" from "zero tokens". `total` falls back
  * to prompt + completion when the provider doesn't send it (Anthropic).
+ * NOSSO (09/11/2026): `cacheRead`/`cacheWrite` (o que veio do cache e o que
+ * foi gravado nele) entram no resultado só quando há; `prompt` já é a entrada
+ * INTEIRA (quem chama soma as partes, na Anthropic).
  */
 export function normalizeUsage(raw: {
   prompt?: unknown
   completion?: unknown
   total?: unknown
+  cacheRead?: unknown
+  cacheWrite?: unknown
 }): AiUsage | null {
   const num = (v: unknown): number =>
     typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0
@@ -33,7 +50,15 @@ export function normalizeUsage(raw: {
   if (promptTokens === 0 && completionTokens === 0 && totalTokens === 0) {
     return null
   }
-  return { promptTokens, completionTokens, totalTokens }
+  const cacheReadTokens = num(raw.cacheRead)
+  const cacheWriteTokens = num(raw.cacheWrite)
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    ...(cacheReadTokens > 0 ? { cacheReadTokens } : {}),
+    ...(cacheWriteTokens > 0 ? { cacheWriteTokens } : {}),
+  }
 }
 
 /** Map a fetch rejection (timeout / DNS / offline) to a typed AiError. */

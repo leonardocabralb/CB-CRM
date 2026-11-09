@@ -164,7 +164,7 @@ import {
 import { anotarNaConversa, executarAcoes } from './executar-acoes'
 import { opcoesDoAgente } from './ferramentas'
 import { aberturaDeHoje, dentroDoHorario, ERRO_DA_ESPERA_DO_HORARIO, proximaAbertura } from './horario'
-import { lerPassagem, montarPedidoDaRetomada, montarPedidoDoAgente } from './pedido'
+import { juntarPartes, lerPassagem, partesDoPedidoDaRetomada, partesDoPedidoDoAgente } from './pedido'
 import { vazouOPedido } from './regras-do-sistema'
 import {
   abreTurno,
@@ -1246,7 +1246,9 @@ async function conduzir(
     sinal: andamento.cancelarDigitando.signal,
   })
 
-  const pedido = montarPedidoDoAgente({
+  // Em pedaços, com os FIXOS marcados para o cache do provedor (09/11/2026,
+  // `.claude/rules/ia-cache-do-pedido.md`); `pedido` é o mesmo texto, junto.
+  const partes = partesDoPedidoDoAgente({
     instrucoes: agente.instrucoes,
     regras: agente.regras,
     conduzFechamento: agente.conduzFechamento,
@@ -1257,6 +1259,7 @@ async function conduzir(
     acoes: opcoesDeAcao,
     agenda: agenda ? { lida: agenda.lida, temEmail: agenda.temEmail, reuniaoMarcada: agenda.reuniaoMarcada } : null,
   })
+  const pedido = juntarPartes(partes)
 
   let texto: string
   let handoff: boolean
@@ -1264,6 +1267,7 @@ async function conduzir(
     const r = await generateReply({
       config: configDoAgente(agente, apiKey),
       systemPrompt: pedido,
+      systemPartes: partes,
       messages: conversa,
       timeoutMs: restante,
       tetoMs: PRAZO_DA_GERACAO_MS,
@@ -1923,7 +1927,8 @@ async function conduzirRetomada(
   if (restante < 3_000) return { status: 'falhou', erro: 'o prazo do turno acabou antes de gerar' }
 
   const semResposta = tempoEmIngles(agora.getTime() - Date.parse(ancora.gravada_em))
-  const pedido = montarPedidoDaRetomada({
+  // A parte fixa do agente é a MESMA do turno: o cache dele serve aqui.
+  const partes = partesDoPedidoDaRetomada({
     instrucoes: agente.instrucoes,
     regras: agente.regras,
     conduzFechamento: agente.conduzFechamento,
@@ -1936,6 +1941,7 @@ async function conduzirRetomada(
       semResposta,
     },
   })
+  const pedido = juntarPartes(partes)
 
   let texto: string
   let handoff: boolean
@@ -1943,6 +1949,7 @@ async function conduzirRetomada(
     const r = await generateReply({
       config: configDoAgente(agente, apiKey),
       systemPrompt: pedido,
+      systemPartes: partes,
       messages: comNotaDaRetomada(conversa, semResposta),
       timeoutMs: restante,
       tetoMs: PRAZO_DA_GERACAO_MS,

@@ -25,7 +25,7 @@ import { aplicarAlteracao, lerAlteracao, PRAZO_DA_GERACAO_MS } from '@/lib/ia-ag
 import { consultaDaUltimaMensagem } from '@/lib/ia-agentes/conhecimento'
 import { opcoesDoAgente } from '@/lib/ia-agentes/ferramentas'
 import { conferirRascunho, obterAgente } from '@/lib/ia-agentes/repo'
-import { lerPassagem, montarPedidoDaRetomada, montarPedidoDoAgente } from '@/lib/ia-agentes/pedido'
+import { juntarPartes, lerPassagem, partesDoPedidoDaRetomada, partesDoPedidoDoAgente } from '@/lib/ia-agentes/pedido'
 import { vazouOPedido } from '@/lib/ia-agentes/regras-do-sistema'
 import { recusa, respostaDoErro } from '@/lib/ia-agentes/resposta'
 import { tempoEmIngles } from '@/lib/ia-agentes/retomada'
@@ -51,9 +51,10 @@ const CABECALHO_DO_RASCUNHO_RECUSADO = 'x-rascunho-recusado'
  * POST /api/cb/ia/agentes/[id]/playground
  * `{ messages, contactId?, rascunho?, verPedido?, retomada?, tentativa? }`  (admin, D14)
  *
- * Conversa de TESTE com um agente, sem WhatsApp: o mesmo pedido
- * (`montarPedidoDoAgente`: texto-base, data e hora, instruções, regras,
- * passagens, os blocos de acesso e a base do agente) e o mesmo
+ * Conversa de TESTE com um agente, sem WhatsApp: o mesmo pedido, nos mesmos
+ * pedaços com cache (`partesDoPedidoDoAgente`: texto-base, instruções,
+ * regras, passagens e ações; depois a data e hora, os blocos de acesso e a
+ * base do agente) e o mesmo
  * provedor/modelo que a produção vai usar — os do agente salvo ou, com
  * `rascunho`, os da tela (abaixo). O agente pode estar desligado — é
  * para isso que o Playground existe. O gasto é gravado como `agente_teste`
@@ -256,7 +257,7 @@ export async function POST(request: Request, { params }: Contexto) {
         consulta: consultaDaUltimaMensagem(mensagens),
         agora: agoraDaRetomada,
       })
-      const pedido = montarPedidoDaRetomada({
+      const partes = partesDoPedidoDaRetomada({
         instrucoes: agente.instrucoes,
         regras: agente.regras,
         conduzFechamento: agente.conduzFechamento,
@@ -265,6 +266,7 @@ export async function POST(request: Request, { params }: Contexto) {
         conhecimento: visto.trechos.map((t) => t.content),
         retomada: { tentativa, de: cadencia.length, semResposta },
       })
+      const pedido = juntarPartes(partes)
       const gerada = await generateReply({
         config: {
           provider: agente.provedor,
@@ -279,6 +281,7 @@ export async function POST(request: Request, { params }: Contexto) {
           embeddingsApiKey: null,
         },
         systemPrompt: pedido,
+        systemPartes: partes,
         messages: comNotaDaRetomada(mensagens, semResposta),
         tetoMs: PRAZO_DA_GERACAO_MS,
       })
@@ -345,7 +348,8 @@ export async function POST(request: Request, { params }: Contexto) {
     const opcoesDeAcao =
       agenda && agenda.horarios.length > 0 ? { ...opcoesSemAgenda, marcar_reuniao: agenda.horarios } : opcoesSemAgenda
 
-    const pedido = montarPedidoDoAgente({
+    // Em pedaços, como no turno: o Playground também usa o cache do provedor.
+    const partes = partesDoPedidoDoAgente({
       instrucoes: agente.instrucoes,
       regras: agente.regras,
       conduzFechamento: agente.conduzFechamento,
@@ -356,6 +360,7 @@ export async function POST(request: Request, { params }: Contexto) {
       acoes: opcoesDeAcao,
       agenda: agenda ? { lida: agenda.lida, temEmail: agenda.temEmail, reuniaoMarcada: agenda.reuniaoMarcada } : null,
     })
+    const pedido = juntarPartes(partes)
     const resultado = await generateReply({
       config: {
         provider: agente.provedor,
@@ -370,6 +375,7 @@ export async function POST(request: Request, { params }: Contexto) {
         embeddingsApiKey: null,
       },
       systemPrompt: pedido,
+      systemPartes: partes,
       messages: mensagens,
       tetoMs: PRAZO_DA_GERACAO_MS,
     })

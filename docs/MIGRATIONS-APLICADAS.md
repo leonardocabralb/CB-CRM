@@ -1929,3 +1929,23 @@ nome da época em que foram aplicadas.
   clean database") passou. Também o replay LOCAL completo (252 migrations +
   `verify-schema.sql`, aplicada duas vezes). Conferida: a coluna em `boolean`,
   NOT NULL, padrão `false`; os 23 agentes da tabela com a opção desligada.
+
+- **1129_cb_ia_uso_com_cache** — `cache_leitura_tokens` e `cache_escrita_tokens`
+  (integer, nulos) em `ai_usage_log`, e `cb_ia_uso` recriada (DROP + CREATE)
+  com as somas `tokens_cache_leitura`/`tokens_cache_escrita`: o pedido do
+  agente de IA vai em pedaços com cache do provedor, e o custo cobra o lido a
+  ~10% e o gravado a 2× (`.claude/rules/ia-cache-do-pedido.md`). PR #482.
+
+  ADITIVA, ANTES do deploy: o app novo grava as colunas quando há cache (sem
+  elas, o PostgREST recusa e o custo da chamada sumiria); o antigo não as
+  grava e lê a função pelo nome. Autorização do operador em 09/11/2026 ("Pode
+  gravar", à pergunta de aplicar a 1129 no banco de produção), aplicada em
+  09/11/2026 (histórico `20261109123515`) pela Management API, com o arquivo
+  idêntico ao do commit `64d6302d` (sha256 `c93d2412…`), cujo replay do CI
+  ("Apply to a clean database") passou. Também o replay LOCAL completo (253
+  migrations + `verify-schema.sql`, aplicada duas vezes, e a soma conferida com
+  dado como `service_role`). Conferida: as duas colunas em `integer`; uma só
+  `cb_ia_uso`, com as saídas novas e a faixa; `anon`/`authenticated` sem
+  EXECUTE, `service_role` executa e lê o log. ⚠️ A worktree da sessão
+  `revisao-ia` tinha uma `1129_cb_ia_correcoes_da_revisao.sql` sem commit:
+  avisada para renumerar.

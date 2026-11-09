@@ -9,11 +9,18 @@ import { HANDOFF_SENTINEL, aiRequestTimeoutMs } from './defaults'
 import { generateOpenAi } from './providers/openai'
 import { generateAnthropic } from './providers/anthropic'
 import { generateGemini } from './providers/gemini'
+import type { ParteDoSistema } from './providers/shared'
 
 export interface GenerateArgs {
   config: AiConfig
   /** Fully-built system prompt (see `buildSystemPrompt`). */
   systemPrompt: string
+  /**
+   * NOSSO (09/11/2026): o MESMO `systemPrompt` em pedaços, com os fixos
+   * marcados para o cache do provedor (o agente de IA: `partesDoPedidoDoAgente`).
+   * Só a Anthropic os usa; os outros mandam o texto inteiro.
+   */
+  systemPartes?: readonly ParteDoSistema[]
   /** Recent conversation turns, oldest first. */
   messages: ChatMessage[]
   /** Teto desta chamada (o turno do agente passa o que sobra do prazo dele).
@@ -33,13 +40,14 @@ export interface GenerateArgs {
  * of the raw text. Throws `AiError` on any provider/network failure.
  */
 export async function generateReply(args: GenerateArgs): Promise<GenerateResult> {
-  const { config, systemPrompt, messages } = args
+  const { config, systemPrompt, systemPartes, messages } = args
   const teto = args.tetoMs !== undefined && args.tetoMs > 0 ? args.tetoMs : aiRequestTimeoutMs()
   const timeoutMs = args.timeoutMs !== undefined && args.timeoutMs > 0 ? Math.min(args.timeoutMs, teto) : teto
   const providerArgs = {
     apiKey: config.apiKey,
     model: config.model,
     systemPrompt,
+    systemPartes,
     messages,
     timeoutMs,
   }

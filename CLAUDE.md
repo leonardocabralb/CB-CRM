@@ -571,6 +571,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 - `.claude/rules/ia-sandbox.md` — o Playground testa o RASCUNHO (DC4):
   conferido como o salvar, conversa que não zera, comparar, roteiro, pedido,
   nada escreve além do custo de teste.
+- `.claude/rules/ia-cache-do-pedido.md` — o pedido em pedaços (fixo primeiro,
+  variável no fim) e o cache do provedor (1129): uso somado, custo com cache.
 - `.claude/rules/reunioes.md` — agenda (EXCLUDE, fuso), pauta e Reagendar
   (1081), aviso de no-show, tl;dv e transcrições.
 - `.claude/rules/agendadas.md` — mensagem agendada, anexo e citação, tela

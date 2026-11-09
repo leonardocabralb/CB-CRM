@@ -18,6 +18,8 @@ function linha(p: Partial<LinhaDeUso>): LinhaDeUso {
     tokensEntrada: 1_000_000,
     tokensSaida: 1_000_000,
     tokensTotal: 2_000_000,
+    tokensCacheLeitura: 0,
+    tokensCacheEscrita: 0,
     ...p,
   }
 }
@@ -110,6 +112,14 @@ describe('resumirUso', () => {
   })
 })
 
+describe('resumirUso com o cache (1129)', () => {
+  it('o custo usa a parte lida do cache: 1M lido no Sonnet = US$ 0,20, não 2,00', () => {
+    const l = linha({ modo: 'agente', provedor: 'anthropic', modelo: 'claude-sonnet-5-5', dia: '2026-11-09', tokensEntrada: 1_000_000, tokensSaida: 0, tokensTotal: 1_000_000, tokensCacheLeitura: 1_000_000 })
+    expect(resumirUso([l], null).total.dolar).toBeCloseTo(0.2, 6)
+    expect(resumirUso([{ ...l, tokensCacheLeitura: 0 }], null).total.dolar).toBeCloseTo(2, 6)
+  })
+})
+
 describe('lerLinhaDeUso', () => {
   it('bigint chega como texto do PostgREST e vira número', () => {
     const l = lerLinhaDeUso({ dia: '2026-09-25', modo: 'agente', provedor: 'gemini', modelo: 'm', chamadas: '3', tokens_entrada: '10', tokens_saida: 5, tokens_total: '15' })
@@ -120,6 +130,11 @@ describe('lerLinhaDeUso', () => {
     expect(lerLinhaDeUso({ ...base, acima_da_faixa: true })?.acimaDaFaixa).toBe(true)
     expect(lerLinhaDeUso({ ...base, acima_da_faixa: false })?.acimaDaFaixa).toBe(false)
     expect(lerLinhaDeUso(base)?.acimaDaFaixa).toBeNull()
+  })
+  it('as partes do cache (1129) são lidas; ausentes (a função de antes) viram 0 — o custo erra para cima', () => {
+    const base = { dia: '2026-11-09', modo: 'agente', provedor: 'anthropic', modelo: 'claude-sonnet-5-5', chamadas: 1, acima_da_faixa: false }
+    expect(lerLinhaDeUso({ ...base, tokens_cache_leitura: '10518', tokens_cache_escrita: 0 })).toMatchObject({ tokensCacheLeitura: 10518, tokensCacheEscrita: 0 })
+    expect(lerLinhaDeUso(base)).toMatchObject({ tokensCacheLeitura: 0, tokensCacheEscrita: 0 })
   })
   it('forma estranha é descartada', () => {
     expect(lerLinhaDeUso({ dia: 1 })).toBeNull()

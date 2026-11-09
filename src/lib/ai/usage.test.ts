@@ -34,6 +34,32 @@ describe('logAiUsage', () => {
     })
   })
 
+  it('NOSSO (1129): grava as partes do CACHE só quando houve', async () => {
+    const { db, insert } = fakeDb()
+    await logAiUsage(db, {
+      accountId: 'acct-1',
+      conversationId: 'conv-1',
+      mode: 'agente',
+      provider: 'anthropic',
+      model: 'claude-sonnet-5-5',
+      usage: { promptTokens: 10_818, completionTokens: 500, totalTokens: 11_318, cacheReadTokens: 10_518 },
+    })
+    expect(insert).toHaveBeenCalledWith(
+      expect.objectContaining({ prompt_tokens: 10_818, cache_leitura_tokens: 10_518 }),
+    )
+    expect(insert.mock.calls[0][0]).not.toHaveProperty('cache_escrita_tokens')
+    await logAiUsage(db, {
+      accountId: 'acct-1',
+      conversationId: 'conv-1',
+      mode: 'agente',
+      provider: 'anthropic',
+      model: 'claude-sonnet-5-5',
+      usage: { promptTokens: 10_685, completionTokens: 272, totalTokens: 10_957, cacheWriteTokens: 10_518 },
+    })
+    expect(insert.mock.calls[1][0]).toMatchObject({ cache_escrita_tokens: 10_518 })
+    expect(insert.mock.calls[1][0]).not.toHaveProperty('cache_leitura_tokens')
+  })
+
   it('is a no-op when the provider reported no usage', async () => {
     const { db, from } = fakeDb()
     await logAiUsage(db, {

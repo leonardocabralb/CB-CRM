@@ -22,6 +22,8 @@ export interface GeminiResponse {
     promptTokenCount?: number
     candidatesTokenCount?: number
     totalTokenCount?: number
+    /** O que veio do cache IMPLÍCITO (já contado em `promptTokenCount`), cobrado a 10% da entrada. */
+    cachedContentTokenCount?: number
   }
 }
 
@@ -56,11 +58,18 @@ export function geminiText(data: GeminiResponse | null): string {
   )
 }
 
+/**
+ * O uso de uma chamada. O Gemini faz cache SOZINHO (implícito, a partir de
+ * 4.096 tokens iguais no começo do pedido, 09/11/2026): o que veio dele já
+ * está em `promptTokenCount` e sai também em `cacheReadTokens`, para o custo
+ * cobrar 10% dessa parte (`precos.ts`). Não há gravação a pagar.
+ */
 export function geminiUsage(data: GeminiResponse | null) {
   return normalizeUsage({
     prompt: data?.usageMetadata?.promptTokenCount,
     completion: data?.usageMetadata?.candidatesTokenCount,
     total: data?.usageMetadata?.totalTokenCount,
+    cacheRead: data?.usageMetadata?.cachedContentTokenCount,
   })
 }
 
