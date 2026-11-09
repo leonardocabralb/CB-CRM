@@ -157,7 +157,7 @@ Todos apontam para `82.25.76.63` e entram pelo `websecure`.
 | `postgres` | `postgres_postgres` | `postgres:14` | 1 |
 | `redis` | `redis_redis` | `redis:latest` | 1 |
 | `pgvector` | `pgvector_pgvector` | `pgvector/pgvector:pg16` | 1 |
-| `evolution` | `evolution_evolution` | `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao-foto-sessao-status-recibo` (por digest) | 1 |
+| `evolution` | `evolution_evolution` | `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao-foto-sessao-status-recibo-criar` (por digest) | 1 |
 | `crm` | `crm_crm` | `ghcr.io/leonardocabralb/cb-crm:<sha>` | 1 |
 | `crm` | `crm_agendador` | `curlimages/curl:8.11.1` | 1 |
 | `n8n` | `n8n_n8n_editor` / `_webhook` / `_worker` | `n8nio/n8n:latest` | 1 / 1 / 1 |
@@ -165,21 +165,25 @@ Todos apontam para `82.25.76.63` e entram pelo `websecure`.
 | `portainer` | `portainer_portainer` / `_agent` | `portainer/*` | 1 / global |
 | `openclaw` | `openclaw_openclaw-gateway` | `ghcr.io/openclaw/openclaw:latest` | 1 |
 
-⚠️ **A Evolution é uma IMAGEM NOSSA**, não a oficial — desde **05/11/2026
-09:20 BRT**: `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao-foto-sessao-status-recibo@sha256:5cbbfe22fe402644a6f9c7cec7224c8f67af73562934604e0fccf7773cac0507`
+⚠️ **A Evolution é uma IMAGEM NOSSA**, não a oficial — desde **09/11/2026
+16:51 BRT**: `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao-foto-sessao-status-recibo-criar@sha256:e204451fea23531c4fffbbad203833dd3ba7dda4e8ff8a3b00cbc65e7da166d5`
 (Evolution **2.4.0** / Baileys **7.0.0-rc13**, construída pelo workflow
 `.github/workflows/evolution-cb.yml` a partir do commit `e273b904` do
-`develop` oficial, com CINCO patches — a citação do cliente, a foto de perfil
+`develop` oficial, com SEIS patches — a citação do cliente, a foto de perfil
 que travava a fila de entrada em 1 msg/min (`docs/PLANO-baileys-7.md`, 5.10),
 a sessão única com a reconexão depois do logout e do 408 (§8, 06/10), na
-Baileys, o ack do stanza `<status>` (§8, 04/11) e o recibo de grupo por
-participante repassado ao webhook (§8, 05/11) — e o `prisma.config.ts`
-dentro — ver `docker/evolution-cb/README.md`). De 04/11 10:04 a 05/11 09:20
-rodou a `…-citacao-foto-sessao-status@sha256:fdfa22fab01147d67f2b6b9d1752efa991b1c36f9b62e0c266f8151966b069ac`
-(os quatro primeiros), que é o **rollback curto** de hoje: mesmo commit, mesmas
+Baileys, o ack do stanza `<status>` (§8, 04/11), o recibo de grupo por
+participante repassado ao webhook (§8, 05/11) e o nome da instância de volta
+no create (§8, 09/11) — e o `prisma.config.ts` dentro — ver
+`docker/evolution-cb/README.md`). De 05/11 09:20 a 09/11 16:51 rodou a
+`…-citacao-foto-sessao-status-recibo@sha256:5cbbfe22fe402644a6f9c7cec7224c8f67af73562934604e0fccf7773cac0507`
+(os cinco primeiros), que é o **rollback curto** de hoje: mesmo commit, mesmas
 migrations, `docker service update --image <ela> evolution_evolution`, sem
-mount — e devolve a mensagem de grupo parada em ✓ (o CRM deixa de receber o
-recibo por participante; §8, 05/11). Antes dela, de 08/10 10:41 a 04/11 10:04,
+mount — e devolve o create quebrado (nenhuma conexão nova nasce; §8, 09/11).
+De 04/11 10:04 a 05/11 09:20, a
+`…-citacao-foto-sessao-status@sha256:fdfa22fab01147d67f2b6b9d1752efa991b1c36f9b62e0c266f8151966b069ac`
+(os quatro primeiros) devolve também a mensagem de grupo parada em ✓ (o CRM
+deixa de receber o recibo por participante; §8, 05/11). Antes dela, de 08/10 10:41 a 04/11 10:04,
 a `…-citacao-foto-sessao@sha256:f73197c61fe2ea227df45d6117f101fddd1f2f367709b1817389dba6a3c43805`
 (os três primeiros) devolve também a queda a cada 50 min na conta que recebe
 `<status>` (§8, 04/11). De 17/09 12:39 a 08/10 10:41, a
@@ -413,6 +417,42 @@ o `stack deploy` manual descrito no `DEPLOY-VPS.md`.
 ---
 
 ## 8. Histórico de incidentes
+
+### 2026-11-09 — a 2.4 não criava instância nova: o 6º patch
+
+**Sintoma.** Ao criar a conexão "Previdenciario - Comercial" por QR, o CRM
+respondeu 502 duas vezes (16:26 e 16:27 BRT) e nada foi gravado. Nenhuma
+conexão Evolution tinha sido criada desde a troca para a 2.4 (09/09): o
+caminho nunca tinha rodado nela.
+
+**Causa (lida no log e no fonte de `e273b904`).** A correção de segurança do
+upstream `7a55a2bf` (PR #2549, CWE-639 de #2435) faz o `dataValidate` tirar
+`instanceName` e `instanceId` da query e do corpo. O `POST /instance/create`
+não tem o nome na URL, então a instância chegava ao controller SEM nome:
+`Ignoring attempt to override protected field "instanceName"` → o
+`saveInstance` recusa (`Argument \`name\` is missing`) → o webhook bate na FK
+`Webhook_instanceId_fkey` → `Instance "undefined" - REMOVED`. O `/manager`
+falha igual. Nada sobrou: o banco `evolution` seguiu com as 4 instâncias e 0
+webhook órfão.
+
+**Conserto (autorizado pelo operador).** Sexto patch,
+`docker/evolution-cb/criar-instancia-com-nome.patch`: só a rota `/create`
+devolve o nome, a partir do corpo validado; o `sanitizeUntrustedInput` fica
+intacto (o ramo do create casa a query de qualquer rota, e afrouxá-lo
+reabriria o CVE). Imagem `…-recibo-criar@sha256:e204451f…` (run 42685358402,
+com o `tsc --noEmit` do build; a rota compilada conferida na camada do GHCR e
+de novo dentro da imagem, na VPS, antes da troca).
+- **Fila antes:** atraso de 0,9–1,5 s nas 4 conexões, medido em até 11 min.
+- **Backups** em `/root/backups/*20261109T194921Z*`: o log (35 MB), o dump do
+  banco `evolution` (46 MB, 38 tabelas com dados), a spec do serviço e a cópia
+  da stack. No db 9, as chaves `backup:evolution:instance:<id>:20261109T194921Z`.
+- **Troca** por `docker service update --image` (stop-first), de 16:51:35 a
+  16:51:46 BRT (11 s). As 4 conexões reabriram às 16:51:54–55, 14 s depois de o
+  contêiner subir, sem QR, sem queda, sem erro de stream ou de licença;
+  `prisma migrate deploy` sem pendência. Nenhum envio da equipe caiu na janela
+  (os últimos antes, entregues; o primeiro depois, às 16:52:28, saiu), e a
+  primeira mensagem de cliente medida depois chegou com 3,1 s.
+  `/root/evolution-stack.yml` atualizado; a imagem de rollback segue no disco.
 
 ### 2026-11-05 — troca para o 5º patch: o recibo de grupo por participante
 
@@ -668,11 +708,12 @@ Movido do `CLAUDE.md` em 24/09/2026 (a seção "Baileys 7 / Evolution 2.4"),
 sem reescrever. É estado que envelhece: confira com `docker service inspect`
 antes de agir. O que foi medido e decidido está em `docs/PLANO-baileys-7.md`.
 
-- Operação (estado em 05/11/2026 09:20 BRT): a imagem é a NOSSA,
-  `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao-foto-sessao-status-recibo@sha256:5cbbfe22…`
+- Operação (estado em 09/11/2026 16:51 BRT): a imagem é a NOSSA,
+  `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao-foto-sessao-status-recibo-criar@sha256:e204451f…`
   (commit `e273b904` do `develop` + patch da citação do cliente + patch da
   foto de perfil + patch da sessão única + o ack do `<status>` na Baileys +
-  o recibo de grupo por participante + `prisma.config.ts` dentro —
+  o recibo de grupo por participante + o nome no create +
+  `prisma.config.ts` dentro —
   `docker/evolution-cb/`), SEMPRE por digest; `TELEMETRY_ENABLED=false`;
   a licença está ativa (tabela `RuntimeConfig` do banco `evolution`); a stack
   completa está em `ops/vps/evolution-stack.yml` (= `/root/evolution-stack.yml`,
@@ -682,21 +723,24 @@ antes de agir. O que foi medido e decidido está em `docs/PLANO-baileys-7.md`.
   compartilhado com outros serviços); o log da Evolution morre no reinício do
   contêiner; o cron `docker image prune -af` apaga as imagens de rollback na
   madrugada seguinte (são públicas, voltam com `pull`).
-  ⚠️ **Desde 05/11/2026 09:20 BRT a imagem carrega CINCO patches** (o da
+  ⚠️ **Desde 09/11/2026 16:51 BRT a imagem carrega SEIS patches** (o da
   citação; o da foto de perfil que travava a fila de entrada — ver o
   `docs/PLANO-baileys-7.md`, 5.10 e a seção 16; o da sessão única com a
   reconexão — §8, 06/10; o ack do `<status>`, aplicado na Baileys pelo
-  `patch-package` — §8, 04/11; e o recibo de grupo por participante — §8,
-  05/11). Trocada por `docker service update --image …@sha256:5cbbfe22…`
-  (stop-first: 11 s de troca, as 4 conexões voltaram `open` sozinhas 21 s
-  depois de o contêiner subir, sem QR, `prisma migrate deploy` sem pendência;
-  as anteriores, a `-status` em 04/11 e a `-sessao` em 08/10, entraram do
-  mesmo jeito, em 11 s). Rollback = o digest anterior,
-  `…citacao-foto-sessao-status@sha256:fdfa22fa…` (mesmo commit, mesmas
-  migrations; devolve o grupo parado em ✓). Dois passos atrás, a
-  `…citacao-foto-sessao@sha256:f73197c6…` devolve também a queda de 50 min da
-  §8, 04/11; três passos atrás, a `…citacao-foto@sha256:a7d56788…` devolve
-  também os avisos sem o patch da sessão, abaixo. O `.yml` da stack acompanha
+  `patch-package` — §8, 04/11; o recibo de grupo por participante — §8,
+  05/11; e o nome da instância no create — §8, 09/11). Trocada por
+  `docker service update --image …@sha256:e204451f…` (stop-first: 11 s de
+  troca, as 4 conexões voltaram `open` sozinhas 14 s depois de o contêiner
+  subir, sem QR, `prisma migrate deploy` sem pendência; as anteriores, a
+  `-recibo` em 05/11, a `-status` em 04/11 e a `-sessao` em 08/10, entraram
+  do mesmo jeito, em 11 s). Rollback = o digest anterior,
+  `…citacao-foto-sessao-status-recibo@sha256:5cbbfe22…` (mesmo commit, mesmas
+  migrations; devolve o create quebrado). Dois passos atrás, a
+  `…citacao-foto-sessao-status@sha256:fdfa22fa…` devolve também o grupo
+  parado em ✓; três passos atrás, a `…citacao-foto-sessao@sha256:f73197c6…`
+  devolve também a queda de 50 min da §8, 04/11; quatro passos atrás, a
+  `…citacao-foto@sha256:a7d56788…` devolve também os avisos sem o patch da
+  sessão, abaixo. O `.yml` da stack acompanha
   o digest. ⚠️⚠️ **Trocar o
   contêiner com a fila de entrada represada PERDE a fila para o CRM** (a
   Baileys acka ao servidor ANTES do handler; medido em 17/09: os ~27 min
@@ -748,7 +792,7 @@ espere chegar uma mensagem nova.
   logout SEMPRE apaga credencial e chaves, mesmo com o socket já morto — e aí o
   WhatsApp não é avisado: depois de um Reparear, conferir "Aparelhos conectados"
   no celular e remover o aparelho antigo (conta no limite de 4). ⚠️ A imagem de
-  rollback (`…-status@sha256:fdfa22fa…`, desde 05/11) ficou sem contêiner e o
+  rollback (`…-recibo@sha256:5cbbfe22…`, desde 09/11) ficou sem contêiner e o
   `docker image prune -af` da madrugada a apaga: rollback = `docker pull` antes
   (pública) — segurá-la com um contêiner parado é a P12, decisão do operador.
 - ⚠️ **Voltar de versão da imagem está DESCARTADO por decisão do operador**:

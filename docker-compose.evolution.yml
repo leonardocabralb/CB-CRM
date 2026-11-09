@@ -16,8 +16,9 @@
 #   - a 2.4 oficial (homolog), mesmo commit, sem os patches: a citação do
 #     cliente some, a entrada anda uma mensagem por minuto, dois sockets se
 #     derrubam em laço, o 408 desfaz o pareamento, a conexão de algumas contas
-#     cai a cada ~50 min (o <status> sem ack) e a mensagem enviada a grupo não
-#     passa de ✓ (os recibos de grupo não chegam ao CRM).
+#     cai a cada ~50 min (o <status> sem ack), a mensagem enviada a grupo não
+#     passa de ✓ (os recibos de grupo não chegam ao CRM) e nenhuma conexão
+#     nova nasce (o create perde o nome da instância).
 # Por isso não há valor padrão: sem EVOLUTION_IMAGE, o compose recusa subir.
 # A imagem é só linux/amd64 (o workflow só monta essa); num Mac com Apple
 # Silicon ela roda emulada. A 2.4 exige ativar a licença gratuita no

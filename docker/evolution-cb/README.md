@@ -184,19 +184,44 @@ produção (`e273b904`, build de 14/07/2026), com estas diferenças:
    número (outra conexão no mesmo grupo) sai como o de qualquer participante:
    quem o separa é o CRM (`docs/PLANO-recibos-de-grupo.md`). A imagem sem o
    patch não manda nada, como antes. Um arquivo, +82/−1 linhas.
+7. `criar-instancia-com-nome.patch` (09/11/2026) — **nenhuma instância nova
+   nascia.** A correção de segurança do upstream (commit `7a55a2bf`, PR #2549,
+   CWE-639 de #2435) fez o `dataValidate` (`abstract.router.ts`) tirar
+   `instanceName` e `instanceId` da query e do corpo antes de juntá-los à
+   instância da rota: era assim que a chave da instância A operava a B
+   (`/chat/findMessages/A?instanceName=B`). Mas o `POST /instance/create` não
+   tem `:instanceName` na URL: o nome só existe no corpo, e o create recebia a
+   instância SEM nome. O `saveInstance` recusa ("Argument `name` is missing"),
+   o webhook da instância bate na FK `Webhook_instanceId_fkey` e a Evolution
+   desfaz tudo ("Instance "undefined" - REMOVED"); no CRM, 502 ao criar
+   conexão por QR, e o `/manager` falha igual. Medido em produção em
+   09/11/2026 (nenhuma conexão Evolution tinha sido criada desde a troca para
+   a 2.4, em 09/09); o `develop` do upstream ainda tem o defeito.
+   O patch devolve o nome SÓ na rota `/create`, a partir do `data` (o corpo já
+   validado pelo `instanceSchema`): `instance.instanceName = data.instanceName`.
+   O `sanitizeUntrustedInput` fica intacto, de propósito: o ramo do create no
+   `dataValidate` testa `originalUrl.includes('/instance/create')`, que casa
+   também a QUERY de qualquer rota (`/chat/…/A?x=/instance/create`) —
+   afrouxá-lo ali reabriria o CVE. Na rota `/create` só chega a chave GLOBAL
+   (`auth.guard.ts`: sem `:instanceName`, a chave de instância só passa no
+   `fetchInstances`), e o `instanceLoggedGuard` já lia o nome do mesmo corpo
+   para recusar nome repetido. O `instanceId` continua fora: o controller o
+   gera. Um arquivo, +14/−1 linhas.
 
 Mesmo commit = mesmas migrations: trocar entre esta imagem e a `homolog` não
 mexe no banco. O rollback é só trocar a imagem de volta.
 
 A ordem de aplicação é a do workflow (`2708-citacao`, `foto-de-perfil`,
-`sessao-unica-e-reconexao` e depois `recibo-de-grupo`); cada um foi gerado
-sobre os anteriores, em regiões distintas de `whatsapp.baileys.service.ts` (o
-terceiro mexe também em `instance.controller.ts` e `monitor.service.ts`). O da
+`sessao-unica-e-reconexao`, `recibo-de-grupo` e depois
+`criar-instancia-com-nome`); cada um foi gerado sobre os anteriores, em
+regiões distintas de `whatsapp.baileys.service.ts` (o terceiro mexe também em
+`instance.controller.ts` e `monitor.service.ts`; o último, só em
+`routes/instance.router.ts`). O da
 Baileys não passa pelo `git apply`: vai para `patches/` e é aplicado na
 instalação das dependências. Quando a Evolution subir a Baileys, ele tem de
 ser refeito para a versão nova (ou sai, se ela já trouxer o `CB:status`).
 
 Quando o upstream mesclar o #2708, corrigir a foto de perfil E o ciclo de
-conexão e repassar o recibo de grupo (ou publicar uma `homolog` com tudo
+conexão, repassar o recibo de grupo e devolver o nome ao create (ou publicar uma `homolog` com tudo
 isso), esta imagem deixa de ser necessária. Plano vivo:
 `docs/PLANO-baileys-7.md`, P10.

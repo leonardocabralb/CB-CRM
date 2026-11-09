@@ -230,7 +230,9 @@ repositório.
   (408) desfazia o pareamento; a mensagem enviada a um grupo nunca passava
   de ✓, porque a Evolution não repassava ao CRM os recibos de grupo (vêm um
   por participante: num grupo grande, centenas de avisos ao webhook por
-  mensagem); e o ack do `<status>` (mais abaixo). Detalhes em
+  mensagem); nenhuma conexão nova podia ser criada, porque uma correção de
+  segurança da Evolution passou a descartar o nome da instância no pedido de
+  criação; e o ack do `<status>` (mais abaixo). Detalhes em
   `docker/evolution-cb/README.md`.
 
 O repositório traz um `docker-compose.evolution.yml` para desenvolvimento
@@ -241,7 +243,7 @@ local, com a mesma imagem. Para o servidor, o essencial é:
 services:
   evolution:
     # A imagem do passo 3 acima, COM o digest.
-    image: ghcr.io/<seu-usuário>/evolution-api-cb:2.4.0-e273b904-citacao-foto-sessao-status-recibo@sha256:<digest>
+    image: ghcr.io/<seu-usuário>/evolution-api-cb:2.4.0-e273b904-citacao-foto-sessao-status-recibo-criar@sha256:<digest>
     environment:
       SERVER_URL: https://api.seudominio.com
       AUTHENTICATION_API_KEY: <a-sua-chave-global>   # invente uma longa
