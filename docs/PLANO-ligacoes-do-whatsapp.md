@@ -15,7 +15,7 @@ tentou ligar, para alguém ver e retornar?"
 | 3 | Aplicar a 1044 → teste ponta a ponta no preview → merge → deploy | ✅ 26/09/2026 (PR #300) |
 | 4 | "Ressincronizar" o Bancário - Comercial → ligações de teste do operador → conferir | ✅ 26/09/2026 — achado de ordem corrigido no PR #304 (no ar) |
 | 5 | "Ressincronizar" as outras conexões por QR Code | ✅ 26/09/2026 |
-| 6 | Pesquisa: atender e ligar pelo sistema (Wavoip) | ✅ 25/09/2026 — resumo na seção 8; sem decisão de seguir |
+| 6 | Pesquisa: atender e ligar pelo sistema (Wavoip) | ✅ 25/09/2026 — resumo na seção 8; Wavoip descartada em 10/11/2026: segue em `docs/PLANO-ligar-pelo-crm.md` |
 
 ## 1. O que foi medido (Fase 0, 25/09/2026, só leitura)
 
@@ -301,3 +301,6 @@ testado.
 - **Se for seguir:** teste grátis com um número de TESTE, antes de qualquer
   contrato; pedir por escrito preço, país dos dados, prazo de guarda e
   contrato de tratamento de dados.
+- **Desfecho (10/11/2026):** Wavoip descartada, e a oficial da Meta também
+  (o operador quer solução não oficial). Ligar pelo CRM segue por uma máquina
+  central com WhatsApp Web: `docs/PLANO-ligar-pelo-crm.md`.

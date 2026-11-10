@@ -95,7 +95,7 @@ Esta é a ordem de reconstrução. Cada camada precisa da anterior de pé.
 2. Rede overlay CBAdvNet
 3. Traefik            (TLS, roteamento)  ─┐
 4. Postgres, Redis    (dados)             ├─ infra compartilhada
-5. Evolution, n8n, Typebot, pgvector, Portainer, OpenClaw
+5. Evolution, n8n, Typebot, pgvector, Portainer   (o OpenClaw saiu em 10/11/2026, §8)
 6. CRM  (crm_crm + crm_agendador)
 ```
 
@@ -143,13 +143,13 @@ Todos apontam para `82.25.76.63` e entram pelo `websecure`.
 | `painel.cbadvogados.com` | `portainer_portainer` | 9000 |
 | `typebot.cbadvogados.com` | `typebot_typebot-builder` | 3000 |
 | `bot.cbadvogados.com` | `typebot_typebot-viewer` | 3000 |
-| `openclaw.cbadvogados.com` | `openclaw_openclaw-gateway` | 18789 |
+| ~~`openclaw.cbadvogados.com`~~ | removido em 10/11/2026 (§8); o registro DNS ainda aponta para cá e o Traefik responde 404 | — |
 
 ---
 
 ## 4. Inventário completo (2026-08-04)
 
-**10 stacks, 16 serviços.**
+**10 stacks, 16 serviços** (desde 10/11/2026, 9 e 15: o OpenClaw saiu, §8).
 
 | Stack | Serviço | Imagem | Réplicas |
 |---|---|---|---|
@@ -163,7 +163,42 @@ Todos apontam para `82.25.76.63` e entram pelo `websecure`.
 | `n8n` | `n8n_n8n_editor` / `_webhook` / `_worker` | `n8nio/n8n:latest` | 1 / 1 / 1 |
 | `typebot` | `typebot_typebot-builder` / `-viewer` / `-db` | `baptistearno/*`, `postgres:16` | 1 cada |
 | `portainer` | `portainer_portainer` / `_agent` | `portainer/*` | 1 / global |
-| `openclaw` | `openclaw_openclaw-gateway` | `ghcr.io/openclaw/openclaw:latest` | 1 |
+| ~~`openclaw`~~ | ~~`openclaw_openclaw-gateway`~~ | removido em 10/11/2026 (§8) | — |
+
+⚠️ **Contêiner AVULSO `ligacoes-teste` (desde 10/11/2026, fora do Swarm,
+PARADO entre as sessões de teste):** os Testes A e B de
+`docs/PLANO-ligar-pelo-crm.md`. Um Chrome (157) com o WhatsApp Web da conexão
+Previdenciario - Comercial (um aparelho conectado a mais nesse número) e a
+ponte de áudio do Teste B. Imagem montada na VPS a partir de
+`ops/vps/ligacoes-teste/` (`docker build -t ligacoes-teste:<n>
+/root/ligacoes-teste/imagem`); o contêiner foi criado com:
+
+```bash
+docker create --name ligacoes-teste --hostname ligacoes-teste \
+  --memory 1536m --memory-swap 1536m --cpus 2 --cpu-shares 256 --pids-limit 1024 --shm-size 256m \
+  -p 127.0.0.1:6080:6080 -p 127.0.0.1:8090:8090 \
+  -v /root/ligacoes-teste/perfil:/perfil -v /root/ligacoes-teste/audio:/audio \
+  -e TELA=800x600 -e CHROME_EXTRA="--force-prefers-reduced-motion --disable-smooth-scrolling" \
+  --log-opt max-size=10m --log-opt max-file=2 \
+  ligacoes-teste:5
+```
+
+- Ligar para uma sessão de teste: `docker start ligacoes-teste`; ao terminar,
+  `docker stop ligacoes-teste`. Sem `--restart`: se cair, fica caído. Peso
+  256: o CRM e a Evolution, com 1024, passam na frente no processador.
+- ⚠️ **Exposição:** as portas 6080 (noVNC) e 8090 (sinalização da ponte) são
+  publicadas só no `127.0.0.1` da VPS (acesso pelo Mac por túnel SSH), mas
+  escutam em todas as interfaces DENTRO do contêiner: qualquer processo da
+  VPS chega nelas pelo IP do contêiner na bridge (`172.17.0.x`, medido em
+  10/11). Os serviços do Swarm NÃO chegam (medido do contêiner do CRM). O
+  VNC e a sinalização NÃO têm senha: quem chega lê as conversas do número,
+  pode ligar e pode ouvir ou injetar áudio numa ligação. O Chrome roda sem a
+  caixa de areia (`--no-sandbox`) e abre mídia que qualquer pessoa manda ao
+  número. Por isso fica parado fora das sessões.
+- Perfil do Chrome (a sessão do WhatsApp; um perfil por contêiner, nunca dois
+  montando o mesmo) e áudios em `/root/ligacoes-teste/`. Remover: `docker rm -f
+  ligacoes-teste`, `docker rmi ligacoes-teste:5`, apagar `/root/ligacoes-teste`
+  e tirar o aparelho em "Aparelhos conectados" no celular do número.
 
 ⚠️ **A Evolution é uma IMAGEM NOSSA**, não a oficial — desde **05/11/2026
 09:20 BRT**: `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao-foto-sessao-status-recibo@sha256:5cbbfe22fe402644a6f9c7cec7224c8f67af73562934604e0fccf7773cac0507`
@@ -202,8 +237,8 @@ banco novo = cadastrar de novo. O label `com.docker.stack.image` ainda diz
 `evoapicloud/evolution-api:latest` — **engana**, nunca pinar por ele. O que
 foi medido, decidido e testado está em `docs/PLANO-baileys-7.md`.
 
-⚠️ **Várias imagens estão em `:latest`** (n8n, redis, portainer, typebot,
-openclaw). Um `docker service update --force` nelas pode trazer versão nova sem
+⚠️ **Várias imagens estão em `:latest`** (n8n, redis, portainer, typebot).
+Um `docker service update --force` nelas pode trazer versão nova sem
 ninguém pedir. O CRM e a Evolution estão fixados por digest — que é o certo.
 
 ### Arquivos de stack, todos em `/root/`
@@ -349,8 +384,8 @@ o `stack deploy` manual descrito no `DEPLOY-VPS.md`.
 
 ## 6. Reconstruir do zero
 
-1. **DNS** — apontar `crm`, `api`, `n8n`, `webhook`, `painel`, `typebot`, `bot`,
-   `openclaw` (todos `.cbadvogados.com`) para o IP novo.
+1. **DNS** — apontar `crm`, `api`, `n8n`, `webhook`, `painel`, `typebot` e `bot`
+   (todos `.cbadvogados.com`) para o IP novo.
 2. **Docker + Swarm** — `docker swarm init`.
 3. **Rede** — `docker network create --driver overlay --subnet 10.0.1.0/24 CBAdvNet`.
 4. **Volumes** — restaurar do backup. ⚠️ **Hoje não existe backup**; ver §7.
@@ -405,7 +440,7 @@ o `stack deploy` manual descrito no `DEPLOY-VPS.md`.
    avisada por ela.
 4. **Ubuntu 20.04 fora de suporte** (163 atualizações de segurança pendentes).
 5. **3,7 GB de volumes órfãos** (`chatwoot_*`, `traefik-letsencrypt`).
-6. **Imagens em `:latest`** em 5 serviços — atualização silenciosa num
+6. **Imagens em `:latest`** em 4 serviços — atualização silenciosa num
    `--force`.
 7. **`crm.env` como variável de ambiente**, não Docker secret.
 8. **Sem swap** em 7,8 GB de RAM.
@@ -413,6 +448,30 @@ o `stack deploy` manual descrito no `DEPLOY-VPS.md`.
 ---
 
 ## 8. Histórico de incidentes
+
+### 2026-11-10 — OpenClaw removido
+
+Não foi incidente: o operador confirmou que não usa o OpenClaw e pediu a
+remoção, para liberar memória para o teste de ligações
+(`docs/PLANO-ligar-pelo-crm.md`, Fase 0).
+
+- **O que havia:** um gateway de agente de IA (stack `openclaw`, desde
+  08/04/2026), com os arquivos em `/opt/openclaw` (montados no contêiner) e a
+  rota `openclaw.cbadvogados.com`. O canal de WhatsApp estava habilitado mas
+  nunca foi pareado (sem credencial: não ocupava vaga de aparelho em nenhum
+  número). O agente, pelo OpenRouter, falhava por falta de crédito. Nenhum
+  fluxo do n8n e nada no CRM o citavam.
+- **Cópia** em `/root/backups/openclaw-20261110T172838Z.tar.gz` (1,3 MB, só
+  root): config, workspace, os dois arquivos de stack, o `.env` e o
+  `auto-approve.sh`. O resto era um clone do código público (commit
+  `fdf60c06b0`), sem mudança local.
+- **Remoção:** `docker stack rm openclaw`, as imagens (3,17 GB) e
+  `rm -rf /opt/openclaw`.
+- **Depois:** memória disponível de 3,7 GB para 4,9 GB; disco de 36 GB para
+  32 GB usados. Os 15 serviços em 1/1, o CRM em 307, a Evolution em 200, o
+  cron em 401 e o domínio do OpenClaw em 404.
+- **Falta (operador):** apagar o registro DNS `openclaw`, revogar a chave do
+  OpenRouter (está na cópia) e apagar a cópia quando quiser.
 
 ### 2026-11-05 — troca para o 5º patch: o recibo de grupo por participante
 

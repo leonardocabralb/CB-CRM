@@ -4,6 +4,7 @@ paths:
   - "src/components/inbox/aviso-de-ligacao.tsx"
   - "supabase/migrations/*ligacoes*"
   - "docs/PLANO-ligacoes-do-whatsapp.md"
+  - "docs/PLANO-ligar-pelo-crm.md"
 ---
 
 # Ligações de WhatsApp — regras
@@ -14,6 +15,16 @@ I/O), o ramo `call` da rota do webhook da Evolution, a faixa
 `aviso-de-ligacao.tsx` e todo leitor de `messages.content_type`. Plano vivo,
 medições e decisões do operador: `docs/PLANO-ligacoes-do-whatsapp.md`. As
 obrigações gerais de caminho de entrada estão em `.claude/rules/ingestao.md`.
+
+## Ligar pelo CRM (em plano)
+
+- ⚠️ **Solução NÃO oficial, por decisão do operador (10/11/2026):** nem a
+  API de ligações da Meta nem a Wavoip. O caminho é uma máquina central com
+  um Chrome (WhatsApp Web) por número, e o áudio do atendente pela aba do CRM.
+  A extensão por atendente foi descartada: cada número aceita só 4 aparelhos
+  conectados. Fases, medições e decisões: `docs/PLANO-ligar-pelo-crm.md`.
+- Quando a ligação FEITA entrar no fio, esta regra inteira muda: hoje ela
+  parte de que a feita pelo escritório não existe no CRM.
 
 ## O aviso CALL
 
