@@ -14,7 +14,7 @@ ligação de WhatsApp do que a telefônica. Vizinho deste plano:
 | 1    | Teste A: a máquina liga, com áudio de arquivo              | em curso (10/11/2026)  |
 | 2    | Teste B: o áudio no navegador do atendente                 | ✅ 10/11/2026 (falta P8) |
 | 3    | Decidir a máquina: upgrade para a KVM 4 × segunda VPS      | ✅ 10/11/2026: fica na VPS atual (D8) |
-| 4    | Ligar e atender pelo CRM: botão, toque, gravação, transcrição | desenho pronto (§8); espera D6, D7, D9–D15 |
+| 4    | Ligar e atender pelo CRM: botão, toque, gravação, transcrição | desenho pronto (§8), decisões tomadas (§8.10); próxima: 4a |
 | 5    | Atender pelo CRM (ligação recebida)                        | incorporada à Fase 4   |
 
 ## 1. Por que uma máquina central (o que foi descartado)
@@ -364,8 +364,8 @@ preciso:
 
 Pedido do operador: desenhar JÁ a estrutura inteira, nos dois sentidos — como
 a ligação toca na tela, a gravação, a transcrição e as informações. A antiga
-Fase 5 (atender) entrou aqui. Nada disto está construído; as decisões D6, D7
-e D9–D13 (§8.10) são do operador.
+Fase 5 (atender) entrou aqui. Nada disto está construído; as decisões do
+operador (D6, D7, D9–D15) foram tomadas em 10/11/2026 (§8.10).
 
 ### 8.1 O que o atendente vê
 
@@ -391,9 +391,9 @@ e D9–D13 (§8.10) são do operador.
   também no celular do escritório". Botões **Atender** e **Silenciar** (só
   para mim; não recusa — recusar num aparelho derruba a chamada em todos,
   D12).
-- Quem vê o toque: D9 (recomendado: quem tem o poder e cujo perfil vê a
-  conexão, com o CRM aberto). Com a aba em segundo plano, sai também a
-  notificação do navegador que o CRM já usa.
+- Quem vê o toque (D9): os atendentes cujo perfil vê a conexão, com o CRM
+  aberto. Com a aba em segundo plano, sai também a notificação do navegador
+  que o CRM já usa.
 - O primeiro que clica em Atender fica com a ligação; para os outros o cartão
   vira "Atendida por Ana" e some. Se o celular do escritório atender antes,
   vira "Atendida no celular". Se o cliente desistir, some e a ligação
@@ -476,8 +476,10 @@ de perfis (`catalogo.ts`), decisão à parte.
    gravação) → encerrada (quem desligou, duração). Também: não atendida,
    ocupado, número sem WhatsApp, falhou.
 5. Ao encerrar: a faixa "feita" entra no fio (o WhatsApp não avisa a Evolution
-   das ligações feitas: quem registra é o CRM), a linha ao vivo sai, a máquina
-   envia a gravação e o CRM põe a transcrição na fila.
+   das ligações feitas: quem registra é o CRM) como SÓ REGISTRO (D6: não
+   reabre, não mexe nas não lidas nem no "em atraso", não pausa a IA), a
+   linha ao vivo sai, a máquina envia a gravação e o CRM a transcreve.
+   A máquina encerra sozinha aos 30 minutos (D13).
 6. Se a ponte cair por mais de 15 s (o atendente fechou a aba, a rede caiu),
    a máquina DESLIGA: o cliente não fica falando com o vazio.
 
@@ -555,9 +557,18 @@ de perfis (`catalogo.ts`), decisão à parte.
     só repete o que falhou. Esperar o laço deixaria a transcrição até 15 min
     atrasada.
 - **Resumo** (D11): 2–3 linhas pela IA da conta, sobre a transcrição.
-- **Prazo e exclusão** (D7): a gravação e a transcrição saem quando a ficha
-  for excluída de vez (Lixeira, "Excluir agora") — a fila de arquivos de
-  hoje só conhece o `chat-media`, e o bucket novo entra nela.
+- **No contexto da IA** (D11): a transcrição entra no que o agente de IA lê da
+  conversa, como o áudio transcrito (com o mesmo teto por linha), e a
+  ligação continua sem abrir turno. Mexe em `ia-agentes/contexto.ts` e na
+  regra `ligacoes.md` ("sem texto, fica fora do contexto" deixa de valer
+  para a ligação transcrita).
+- **Prazo** (decidido): o ÁUDIO sai do Storage 180 dias depois da ligação,
+  por um passo novo no laço lento (`rodarManutencaoDoCiclo`), e a faixa
+  passa a dizer "gravação expirada". A transcrição e o resumo ficam
+  (assumido, §8.10).
+- **Exclusão:** a ficha excluída de vez (Lixeira, "Excluir agora") leva
+  gravação e transcrição — a fila de arquivos de hoje só conhece o
+  `chat-media`, e o bucket novo entra nela.
 
 ### 8.6 Dados (migration a partir da 1133)
 
@@ -610,15 +621,18 @@ de perfis (`catalogo.ts`), decisão à parte.
   aceita o CRM (segredo no cabeçalho). O áudio vai direto entre o navegador e
   a máquina, cifrado (WebRTC).
 - Gravação e transcrição são dado sensível: bucket privado, URL assinada
-  curta, leitura só por rota com o recorte do perfil, saída junto com a
-  ficha (§8.5), aviso de gravação (D7).
+  curta, leitura só por rota com o recorte do perfil, áudio por 180 dias e
+  saída junto com a ficha (§8.5). Sem aviso falado de gravação (D7,
+  decisão do operador).
 
 ### 8.8 Regras de uso
 
 - **Uma ligação por vez por número** (um Chrome por número, e a KVM 2 dá
   conta de uma por vez, D8). A segunda tentativa vê "linha ocupada".
-- **Anti-bloqueio** (D13): ligar só de conversa existente e com teto por
-  número por hora; nunca discagem automática (só clique de gente).
+- **Anti-bloqueio** (D13): ligar só de conversa existente, até 20 ligações
+  por hora por número; nunca discagem automática (só clique de gente).
+- **Duração máxima** (D13): a máquina encerra sozinha aos 30 minutos; o
+  painel avisa o atendente aos 28.
 - **O que NÃO roda** continua valendo (`.claude/rules/ligacoes.md`): robô,
   automações e IA não reagem a ligação, e a ligação não para as sequências
   "parar se o cliente responder".
@@ -637,40 +651,47 @@ antes do merge; merge = deploy, com o operador ciente)
 - **4c — Tela:** botão, painel, cartão com toque, faixa estendida com ▶,
   poder no perfil, textos nos dois dicionários. Pronto quando: ligar e
   atender de ponta a ponta pelo CRM, com o lead de teste.
-- **4d — Transcrição e resumo:** a fila, o diálogo na faixa.
+- **4d — Transcrição e resumo:** a fila, o diálogo na faixa, a transcrição
+  no contexto do agente de IA (D11) e a saída do áudio aos 180 dias.
 - **4e — Conexões e operação:** estado e QR do computador na tela Conexões;
   a sentinela vigia o sinal de vida; doc e ajuda na tela.
 
-### 8.10 Decisões do operador pendentes (com a recomendação)
+### 8.10 Decisões do operador (tomadas em 10/11/2026)
 
-- **D6 — a ligação FEITA pelo CRM no fio.** Recomendado: conta como resposta
-  de gente (apaga o "em atraso" e pausa o agente de IA da conversa), reabre a
-  conversa encerrada com quem ligou como responsável, e NÃO para as
-  sequências; a não atendida entra no fio como tentativa, sem esses efeitos.
-- **D7 — gravação.** Recomendado: gravar toda ligação feita ou atendida pelo
-  CRM, com um aviso falado no começo ("esta ligação pode ser gravada"),
-  tocado pela máquina; guardar enquanto a ficha existir; ouve quem vê a
-  conversa.
-- **D9 — quem vê o toque.** Recomendado: quem tem o poder "Ligações pelo CRM"
-  e cujo perfil vê a conexão, com o CRM aberto.
-- **D10 — quais números.** Recomendado: só a Previdenciario - Comercial
-  agora; cada número a mais custa ~0,6–1 GB de memória parado e uma vaga de
-  aparelho.
-- **D11 — transcrição.** Recomendado: automática em toda ligação gravada, com
-  resumo curto; fora do contexto do agente de IA por enquanto.
-- **D12 — recusar.** Recomendado: sem "Recusar", só "Silenciar".
-- **D13 — anti-bloqueio.** Recomendado: só de conversa existente, até 20
-  ligações por hora por número.
-- **D14 — quem transcreve.** Recomendado: o provedor de IA da conta (Gemini,
-  senão OpenAI), como as notas de voz; transcrição local na VPS só com
-  máquina maior.
-- **D15 — o computador de ligações na VPS de produção.** A D8 pesou
-  processador e memória; a revisão a frio mostrou o risco de segurança
-  (§8.7): um Chrome que abre conteúdo de qualquer pessoa, rodando ao lado do
-  CRM e da Evolution. Com as defesas do §8.7 o risco fica baixo, não zero.
-  Recomendado: seguir na VPS atual COM as defesas, e levar o computador para
-  uma VPS só dele se a caixa de areia não funcionar dentro do Swarm (§8.12)
-  ou se o número de computadores crescer.
+- **Formato da gravação:** Opus estéreo 24 kbps, cliente num canal e
+  atendente no outro ("pra manter quem falou"). **Guarda: 180 dias.**
+- **D6 — a ligação FEITA pelo CRM no fio: só REGISTRO.** Nas palavras do
+  operador: "não pausa a IA, não reabre a conversa e não marca como lida a
+  conversa nem retira o 'em atraso'". Também não para as sequências. ⚠️ Hoje
+  toda linha `agent` inserida aciona o gatilho da 972 (apaga o "em atraso")
+  e a pausa da IA (`cb_pausar_ia_por_gente`): a faixa da feita tem de ficar
+  FORA desses gatilhos e de qualquer caminho que mexa nas não lidas, com
+  teste provando cada um (4b).
+- **D7 — gravação:** gravar TODA ligação feita ou atendida pelo CRM, SEM
+  aviso falado no começo. Ouve quem vê a conversa.
+- **D9 — quem vê o toque:** os atendentes cujo perfil vê a conexão, com o CRM
+  aberto.
+- **D10 — quais números:** o desenho vale para TODA conexão por QR ("todos
+  possíveis"); ligado agora só na Previdenciario - Comercial.
+- **D11 — transcrição:** automática, com resumo curto, e DENTRO do contexto
+  do agente de IA (como o áudio transcrito; a ligação continua sem abrir
+  turno — o agente não "responde" a uma ligação).
+- **D12 — recusar:** sem "Recusar", só "Silenciar".
+- **D13 — anti-bloqueio e duração:** ligar só de conversa existente, até 20
+  ligações por hora por número; e a máquina ENCERRA SOZINHA a ligação aos 30
+  minutos (o painel avisa aos 28).
+- **D14 — quem transcreve:** o provedor de IA da conta (Gemini, senão
+  OpenAI), como as notas de voz.
+- **D15 — segurança:** seguir na VPS atual com TODAS as defesas do §8.7; se a
+  caixa de areia não funcionar dentro do Swarm (§8.12), a máquina vai para uma
+  VPS só dela.
+
+**Assumido, a confirmar com o operador** (não decidido em palavras):
+- A RECEBIDA atendida pelo CRM segue a regra da atendida de hoje (no
+  celular): apaga o "em atraso" e pausa a IA, porque é atendimento de gente.
+  A D6 fala só da feita.
+- Aos 180 dias sai só o ÁUDIO; a transcrição e o resumo ficam enquanto a
+  ficha existir (eles alimentam a IA, D11). A exclusão da ficha leva tudo.
 
 ### 8.11 Onde encaixa no código (mapa de 10/11/2026)
 
@@ -785,12 +806,14 @@ Incorporada à Fase 4 (§8), a pedido do operador (10/11/2026).
 - **D8 (10/11/2026):** depois dos testes A e B, a máquina fica na VPS atual,
   sem upgrade; migrar (KVM 4 ou segunda VPS) só se der problema. Substitui o
   "validado, migrar" da D3.
-- **D6 (pendente, Fase 4):** os efeitos da ligação feita no fio.
-- **D7 (pendente, Fase 4):** gravação: quando, aviso ao cliente, acesso e
-  prazo.
+- **D6, D7 e D9–D15 (10/11/2026):** as decisões da Fase 4, no §8.10
+  (gravação em Opus estéreo por 180 dias, sem aviso; a ligação feita é só
+  registro; transcrição automática com resumo, dentro do contexto da IA;
+  encerrar aos 30 min; e as demais).
 
-Quando a Fase 4 sair, as decisões de produto viram linha em
-`docs/DECISOES-DO-OPERADOR.md` e detalhe em `.claude/rules/ligacoes.md`.
+As decisões de produto da Fase 4 já têm linha em
+`docs/DECISOES-DO-OPERADOR.md`; o detalhe vai para `.claude/rules/ligacoes.md`
+quando cada entrega sair.
 
 ## 12. Fontes
 

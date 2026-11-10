@@ -217,4 +217,12 @@ qualquer uma é pergunta ao operador.
 - Ligar pelo CRM (10/11/2026): solução NÃO oficial (nem a API de ligações da
   Meta nem a Wavoip), por uma máquina central com WhatsApp Web, um Chrome por
   número; a extensão do Chrome por atendente foi descartada; a máquina fica
-  na VPS atual, com upgrade só se der problema (`ligacoes.md`).
+  na VPS atual, com upgrade só se der problema (`ligacoes.md`). Na Fase 4: a
+  ligação FEITA pelo CRM é só registro no fio (não reabre, não mexe nas não
+  lidas nem no "em atraso", não pausa a IA, não para sequências); grava TODA
+  ligação pelo CRM, sem aviso falado, em Opus estéreo (um lado por canal), e
+  o áudio fica 180 dias; transcrição automática com resumo, DENTRO do
+  contexto da IA; sem "Recusar" (só "Silenciar"); toca para quem o perfil
+  vê a conexão; ligar só de conversa existente, até 20 por hora por número,
+  e a máquina encerra sozinha aos 30 min (`docs/PLANO-ligar-pelo-crm.md`,
+  §8.10).
