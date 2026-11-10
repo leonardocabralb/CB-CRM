@@ -13,7 +13,9 @@ import {
   ehDiaUtil,
   ehGatilhoDaRegua,
   entrouNaRegua,
+  fimDaJanela,
   horaDeEnvioValida,
+  horaDeLembreteValida,
   janelaAberta,
   lerAutomacaoDaRegua,
   linhaDaParcela,
@@ -242,6 +244,47 @@ describe("agruparPorCliente (D11) — uma mensagem por cliente, através das aut
     const a = parcela({ vencimento: "2026-09-11", vista_vencida_em: "2026-09-12T03:00:00Z", asaas_customer_id: "cus_a" });
     const b = parcela({ id: "c-2", asaas_payment_id: "pay_2", vencimento: "2026-09-11", vista_vencida_em: "2026-09-12T03:00:00Z", asaas_customer_id: "cus_b" });
     expect(agruparPorCliente([cobranca(1)], [a, b], ctx("2026-09-14"), segunda).map((g) => g.asaasCustomerId).sort()).toEqual(["cus_a", "cus_b"]);
+  });
+});
+
+describe("o lembrete da NOITE (1133, D12 revista em 10/11/2026)", () => {
+  const noite = (extra: Partial<AutomacaoDaRegua> = {}) => lembrete({ id: "a-noite", marco: 1, horaEnvio: "20:00", ...extra });
+
+  it("a hora decide o turno: antes das 18:00 é o do dia (marco 0), a partir das 18:00 é o da noite (marco 1), até 20:30", () => {
+    expect(lerAutomacaoDaRegua({ id: "x", name: "x", trigger_type: "asaas_cobranca_vence_hoje", trigger_config: { hora_envio: "09:00" } })).toMatchObject({ marco: 0, horaEnvio: "09:00" });
+    expect(lerAutomacaoDaRegua({ id: "x", name: "x", trigger_type: "asaas_cobranca_vence_hoje", trigger_config: { hora_envio: "20:00" } })).toMatchObject({ marco: 1, horaEnvio: "20:00" });
+    // fora das duas faixas: o padrão (08:00, do dia) — como antes
+    expect(lerAutomacaoDaRegua({ id: "x", name: "x", trigger_type: "asaas_cobranca_vence_hoje", trigger_config: { hora_envio: "17:30" } })).toMatchObject({ marco: 0, horaEnvio: "08:00" });
+    expect(horaDeLembreteValida("20:30")).toBe(true);
+    expect(horaDeLembreteValida("20:45")).toBe(false);
+    expect(horaDeLembreteValida("17:30")).toBe(false);
+    // a cobrança de atraso continua só até as 17:00
+    expect(horaDeEnvioValida("20:00")).toBe(false);
+    expect(fimDaJanela(noite())).toBe("21:00");
+    expect(fimDaJanela(lembrete())).toBe("18:00");
+    expect(fimDaJanela(cobranca(1))).toBe("18:00");
+  });
+
+  it("a janela da noite vai das 20:00 às 21:00; o lembrete do dia não sai à noite", () => {
+    const hoje = parcela({ status: "PENDING", vencimento: "2026-09-14", vista_vencida_em: null, asaas_customer_id: "cus_a" });
+    const as2010 = agruparLembretes([lembrete(), noite()], [hoje], new Set(), ctx("2026-09-14"), em("2026-09-14", "20:10"));
+    expect(as2010.map((g) => [g.asaasCustomerId, g.automacao.id, g.automacao.marco])).toEqual([["cus_a", "a-noite", 1]]);
+    expect(agruparLembretes([lembrete(), noite()], [hoje], new Set(), ctx("2026-09-14"), em("2026-09-14", "21:00"))).toEqual([]);
+    expect(agruparLembretes([lembrete(), noite()], [hoje], new Set(), ctx("2026-09-14"), em("2026-09-14", "19:30"))).toEqual([]);
+    // de manhã, só o do dia
+    expect(agruparLembretes([lembrete(), noite()], [hoje], new Set(), ctx("2026-09-14"), em("2026-09-14", "08:10")).map((g) => g.automacao.id)).toEqual(["a-0"]);
+  });
+
+  it("o da noite NÃO cede a vez a quem teve cobrança hoje (lembra quem ainda não pagou o que vence hoje); o do dia cede", () => {
+    const hoje = parcela({ status: "PENDING", vencimento: "2026-09-14", vista_vencida_em: null, asaas_customer_id: "cus_b" });
+    expect(agruparLembretes([lembrete({ horaEnvio: "08:00" })], [hoje], new Set(["cus_b"]), ctx("2026-09-14"), em("2026-09-14", "10:00"))).toEqual([]);
+    expect(agruparLembretes([noite()], [hoje], new Set(["cus_b"]), ctx("2026-09-14"), em("2026-09-14", "20:10")).map((g) => g.asaasCustomerId)).toEqual(["cus_b"]);
+  });
+
+  it("dois ligados no MESMO turno: um só envia (o de menor id)", () => {
+    const hoje = parcela({ status: "PENDING", vencimento: "2026-09-14", vista_vencida_em: null });
+    const grupos = agruparLembretes([noite({ id: "n-2" }), noite({ id: "n-1" })], [hoje], new Set(), ctx("2026-09-14"), em("2026-09-14", "20:10"));
+    expect(grupos.map((g) => g.automacao.id)).toEqual(["n-1"]);
   });
 });
 

@@ -604,6 +604,13 @@ describe('régua do Asaas — o gatilho', () => {
     expect(validateTriggerForActivation('asaas_cobranca_vence_hoje', {})).toEqual([])
   })
 
+  it('o LEMBRETE aceita também a noite (18:00–20:30, 1133); a cobrança de atraso continua até as 17:00', () => {
+    expect(validateTriggerForActivation('asaas_cobranca_vence_hoje', { hora_envio: '20:00' })).toEqual([])
+    expect(validateTriggerForActivation('asaas_cobranca_vence_hoje', { hora_envio: '20:45' }).map((i) => i.codigo)).toEqual(['gatilho_hora_do_lembrete_invalida'])
+    expect(validateTriggerForActivation('asaas_cobranca_vence_hoje', { hora_envio: '17:30' }).map((i) => i.codigo)).toEqual(['gatilho_hora_do_lembrete_invalida'])
+    expect(validateTriggerForActivation('asaas_cobranca_vencida', { dias_de_atraso: 1, hora_envio: '20:00' }).map((i) => i.codigo)).toEqual(['gatilho_hora_de_envio_invalida'])
+  })
+
   it('a hora fica entre 08:00 e 17:00, e "só dia útil" é booleano', () => {
     expect(validateTriggerForActivation('asaas_cobranca_vence_hoje', { hora_envio: '07:30' })).toHaveLength(1)
     expect(validateTriggerForActivation('asaas_cobranca_vence_hoje', { hora_envio: '17:00' })).toEqual([])

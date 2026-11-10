@@ -204,4 +204,10 @@ describe('reguaDoCartao (998)', () => {
     expect(r.marcosRepetidos).toEqual([5, 30])
     expect(r.lembreteRepetido).toBe(true)
   })
+
+  it('um lembrete do DIA e um da NOITE ligados não são repetição (1133); dois da noite são', () => {
+    const lembrete = (hora: string) => ({ trigger_type: 'asaas_cobranca_vence_hoje', trigger_config: { hora_envio: hora }, is_active: true })
+    expect(reguaDoCartao({ regua_ativa: true }, [lembrete('08:00'), lembrete('20:00')]).lembreteRepetido).toBe(false)
+    expect(reguaDoCartao({ regua_ativa: true }, [lembrete('08:00'), lembrete('20:00'), lembrete('20:30')]).lembreteRepetido).toBe(true)
+  })
 })

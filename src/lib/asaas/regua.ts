@@ -32,8 +32,22 @@ import { classificar, diaPorExtenso, diasDeAtraso, dinheiro, ehDevida, rotulosDa
  * a janela do dia, e `diaNoFuso`, para "que dia é hoje".
  */
 
-/** A hora limite: nada sai depois disto (D12). */
+/** A hora limite: nada sai depois disto (D12) — menos o lembrete da NOITE, abaixo. */
 export const HORA_LIMITE = "18:00";
+/**
+ * O LEMBRETE DA NOITE (D12 revista pelo operador em 10/11/2026): no dia do
+ * vencimento saem dois lembretes — o do dia (`hora_envio` antes das 18:00) e
+ * o da noite (a partir das 18:00), com cara de mensagem automática ("Assinar
+ * como" = "Mensagem automática"), para lembrar no fim do dia sem parecer uma
+ * pessoa cobrando. A noite vai das 18:00 às 21:00; a cobrança de atraso
+ * continua só até as 18:00. Cada turno tem a SUA trava (`marco` 0 = dia,
+ * 1 = noite; CHECK da 1133).
+ */
+export const INICIO_DA_NOITE = "18:00";
+export const HORA_LIMITE_DA_NOITE = "21:00";
+/** O último `hora_envio` aceito no lembrete da noite (a janela fecha às 21:00). */
+export const HORA_MAXIMA_DA_NOITE = "20:30";
+export type TurnoDoLembrete = "dia" | "noite";
 export const HORA_PADRAO_COBRANCA = "09:00";
 export const HORA_PADRAO_LEMBRETE = "08:00";
 /** A faixa que o editor aceita para `hora_envio` (a mesma de `validate.ts` para a tarefa). */
@@ -85,9 +99,24 @@ export const FERIADOS_NACIONAIS_FIXOS = ["01-01", "04-21", "05-01", "09-07", "10
 const RE_DIA = /^\d{4}-\d{2}-\d{2}$/;
 const RE_HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-/** `HH:MM` entre 08:00 e 17:00? */
+/** `HH:MM` entre 08:00 e 17:00? (a cobrança de atraso e o lembrete do dia) */
 export function horaDeEnvioValida(hora: unknown): hora is string {
   return typeof hora === "string" && RE_HORA.test(hora) && hora >= HORA_MINIMA && hora <= HORA_MAXIMA;
+}
+
+/** O lembrete aceita também a noite: 08:00–17:00 ou 18:00–20:30. */
+export function horaDeLembreteValida(hora: unknown): hora is string {
+  return horaDeEnvioValida(hora) || (typeof hora === "string" && RE_HORA.test(hora) && hora >= INICIO_DA_NOITE && hora <= HORA_MAXIMA_DA_NOITE);
+}
+
+/** O turno do lembrete pela hora: a partir das 18:00 é o da noite. */
+export function turnoDaHora(hora: string): TurnoDoLembrete {
+  return hora >= INICIO_DA_NOITE ? "noite" : "dia";
+}
+
+/** Até quando a janela de uma automação da régua fica aberta: 21:00 no lembrete da noite, 18:00 no resto. */
+export function fimDaJanela(a: Pick<AutomacaoDaRegua, "tipo" | "horaEnvio">): string {
+  return a.tipo === "vence_hoje" && turnoDaHora(a.horaEnvio) === "noite" ? HORA_LIMITE_DA_NOITE : HORA_LIMITE;
 }
 
 function diaEmMs(dia: string): number {
@@ -173,11 +202,11 @@ export function diaAlvoDoMarco(p: Pick<ParcelaDoEspelho, "vencimento" | "vista_v
   return ctx.somenteDiasUteis ? proximoDiaUtil(alvo) : alvo;
 }
 
-/** Puro: `agora` está entre `hora_envio` e as 18:00 do dia `hoje`, no fuso? */
-export function janelaAberta(agora: Date, hoje: string, horaEnvio: string, fuso: string = FUSO_PADRAO): boolean {
-  if (!RE_DIA.test(hoje) || !RE_HORA.test(horaEnvio)) return false;
+/** Puro: `agora` está entre `hora_envio` e o fim (18:00; 21:00 no lembrete da noite) do dia `hoje`, no fuso? */
+export function janelaAberta(agora: Date, hoje: string, horaEnvio: string, fuso: string = FUSO_PADRAO, limite: string = HORA_LIMITE): boolean {
+  if (!RE_DIA.test(hoje) || !RE_HORA.test(horaEnvio) || !RE_HORA.test(limite)) return false;
   const inicio = paraInstante(hoje, horaEnvio, fuso).getTime();
-  const fim = paraInstante(hoje, HORA_LIMITE, fuso).getTime();
+  const fim = paraInstante(hoje, limite, fuso).getTime();
   const t = agora.getTime();
   return t >= inicio && t < fim;
 }
@@ -470,7 +499,7 @@ export interface AutomacaoDaRegua {
   id: string;
   nome: string;
   tipo: "atraso" | "vence_hoje";
-  /** `dias_de_atraso` (0 no lembrete) */
+  /** `dias_de_atraso`; no lembrete, o TURNO da trava: 0 = do dia, 1 = da noite (1133) */
   marco: number;
   horaEnvio: string;
   somenteDiasUteis: boolean;
@@ -485,8 +514,8 @@ export function lerAutomacaoDaRegua(a: { id: string; name: string; trigger_type:
   const cfg = (a.trigger_config ?? {}) as Record<string, unknown>;
   const somenteDiasUteis = cfg.somente_dias_uteis !== false;
   if (a.trigger_type === "asaas_cobranca_vence_hoje") {
-    const horaEnvio = horaDeEnvioValida(cfg.hora_envio) ? cfg.hora_envio : HORA_PADRAO_LEMBRETE;
-    return { id: a.id, nome: a.name, tipo: "vence_hoje", marco: 0, horaEnvio, somenteDiasUteis };
+    const horaEnvio = horaDeLembreteValida(cfg.hora_envio) ? cfg.hora_envio : HORA_PADRAO_LEMBRETE;
+    return { id: a.id, nome: a.name, tipo: "vence_hoje", marco: turnoDaHora(horaEnvio) === "noite" ? 1 : 0, horaEnvio, somenteDiasUteis };
   }
   if (a.trigger_type === "asaas_cobranca_vencida") {
     const marco = Number(cfg.dias_de_atraso);
@@ -591,11 +620,16 @@ export interface GrupoDeLembrete {
 }
 
 /**
- * Puro: os lembretes de hoje, por cliente (D17). ⚠️ Cliente com marco de
- * cobrança cruzando hoje (`clientesComMarcoHoje`) NÃO recebe lembrete — a
- * cobrança das 9h absorve (uma mensagem só, 13/09). Se às 9h a cobrança não
- * sair (pagou as vencidas antes), o cliente deixa de ter marco e o lembrete
- * volta a ser candidato no ciclo seguinte, dentro da janela.
+ * Puro: os lembretes de hoje, por cliente e por TURNO (D17; a noite, 1133).
+ * UM lembrete por turno — o de menor id: dois ligados no mesmo turno
+ * disputariam a mesma trava. ⚠️ Só o do DIA cede a vez: cliente com marco de
+ * cobrança cruzando hoje (`clientesComMarcoHoje`) não recebe o lembrete do
+ * dia — a cobrança das 9h absorve (uma mensagem só, 13/09). Se às 9h a
+ * cobrança não sair (pagou as vencidas antes), o cliente deixa de ter marco e
+ * o lembrete volta a ser candidato no ciclo seguinte, dentro da janela. O da
+ * NOITE lembra quem AINDA não pagou o que vence hoje, tenha recebido de manhã
+ * o lembrete ou a cobrança com a linha de hoje (decisão do operador,
+ * 10/11/2026) — a releitura no Asaas antes da trava tira quem pagou no dia.
  */
 export function agruparLembretes(
   automacoes: readonly AutomacaoDaRegua[],
@@ -604,20 +638,26 @@ export function agruparLembretes(
   ctx: ContextoDaRegua,
   agora: Date,
 ): GrupoDeLembrete[] {
-  const lembrete = automacoes.find((a) => a.tipo === "vence_hoje");
-  if (!lembrete) return [];
-  if (!janelaAberta(agora, ctx.hoje, lembrete.horaEnvio, ctx.fuso)) return [];
-  const dias = new Set(diasDoLembrete(ctx.hoje, lembrete.somenteDiasUteis));
-  if (dias.size === 0) return [];
-  const grupos = new Map<string, GrupoDeLembrete>();
-  for (const p of parcelas) {
-    if (!cabeNoLembrete(p, dias, ctx.hoje)) continue;
-    if (clientesComMarcoHoje.has(p.asaas_customer_id)) continue;
-    const g = grupos.get(p.asaas_customer_id) ?? { asaasCustomerId: p.asaas_customer_id, automacao: lembrete, venceHoje: [] };
-    g.venceHoje.push(p);
-    grupos.set(p.asaas_customer_id, g);
+  const saida: GrupoDeLembrete[] = [];
+  for (const turno of [0, 1]) {
+    const lembrete = automacoes
+      .filter((a) => a.tipo === "vence_hoje" && a.marco === turno)
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))[0];
+    if (!lembrete) continue;
+    if (!janelaAberta(agora, ctx.hoje, lembrete.horaEnvio, ctx.fuso, fimDaJanela(lembrete))) continue;
+    const dias = new Set(diasDoLembrete(ctx.hoje, lembrete.somenteDiasUteis));
+    if (dias.size === 0) continue;
+    const grupos = new Map<string, GrupoDeLembrete>();
+    for (const p of parcelas) {
+      if (!cabeNoLembrete(p, dias, ctx.hoje)) continue;
+      if (turno === 0 && clientesComMarcoHoje.has(p.asaas_customer_id)) continue;
+      const g = grupos.get(p.asaas_customer_id) ?? { asaasCustomerId: p.asaas_customer_id, automacao: lembrete, venceHoje: [] };
+      g.venceHoje.push(p);
+      grupos.set(p.asaas_customer_id, g);
+    }
+    saida.push(...grupos.values());
   }
-  return [...grupos.values()];
+  return saida;
 }
 
 /**

@@ -602,6 +602,42 @@ describe("varrerRegua — a cobrança do marco", () => {
 describe("varrerRegua — o lembrete do vencimento (D17)", () => {
   const as8h = new Date("2026-09-14T11:10:00Z"); // 08:10 em São Paulo
 
+  it("o lembrete da NOITE (1133): o do dia sai às 8h, o da noite às 20h com a SUA trava (marco 1), e um terceiro ciclo à noite não repete", async () => {
+    const e = estado({
+      automations: [automacao("a-0", "asaas_cobranca_vence_hoje", { hora_envio: "08:00" }, "Lembrete"), automacao("a-noite", "asaas_cobranca_vence_hoje", { hora_envio: "20:00" }, "Lembrete · noite")],
+      cb_asaas_cobrancas: [cobranca("h1", "cus_a", { status: "PENDING", vencimento: "2026-09-14", vista_vencida_em: null })],
+    });
+    const respostas = { listas: {}, recursos: { "/payments/pay_h1": noAsaas("h1", "cus_a", { status: "PENDING", dueDate: "2026-09-14" }) } };
+    const disparos: Disparos = { chamadas: [] };
+    await varrerRegua(dubleDoSupabase(e), CONTA, deps(e, respostas, { agora: as8h }, disparos).d);
+    const as19h = new Date("2026-09-14T22:30:00Z"); // 19:30: nenhum lembrete (o do dia fechou às 18:00, o da noite abre às 20:00)
+    await varrerRegua(dubleDoSupabase(e), CONTA, deps(e, respostas, { agora: as19h }, disparos).d);
+    const as20h = new Date("2026-09-14T23:10:00Z"); // 20:10
+    const r20 = await varrerRegua(dubleDoSupabase(e), CONTA, deps(e, respostas, { agora: as20h }, disparos).d);
+    expect(r20.enviados).toBe(1);
+    const as2040 = new Date("2026-09-14T23:40:00Z");
+    const r2040 = await varrerRegua(dubleDoSupabase(e), CONTA, deps(e, respostas, { agora: as2040 }, disparos).d);
+    expect(r2040.enviados).toBe(0);
+    expect(disparos.chamadas.map((c) => c.context?.automation_id)).toEqual(["a-0", "a-noite"]);
+    expect(e.tabelas.cb_asaas_regua_envios.map((t) => ({ tipo: t.tipo, marco: t.marco, r: t.resultado, a: t.automation_id }))).toEqual([
+      { tipo: "vence_hoje", marco: 0, r: "enviado", a: "a-0" },
+      { tipo: "vence_hoje", marco: 1, r: "enviado", a: "a-noite" },
+    ]);
+  });
+
+  it("quem PAGOU durante o dia não recebe o da noite: a releitura no Asaas o tira antes da trava", async () => {
+    const e = estado({
+      automations: [automacao("a-noite", "asaas_cobranca_vence_hoje", { hora_envio: "20:00" }, "Lembrete · noite")],
+      cb_asaas_cobrancas: [cobranca("h1", "cus_a", { status: "PENDING", vencimento: "2026-09-14", vista_vencida_em: null })],
+    });
+    const respostas = { listas: {}, recursos: { "/payments/pay_h1": noAsaas("h1", "cus_a", { status: "RECEIVED", dueDate: "2026-09-14" }) } };
+    const { d, disparos } = deps(e, respostas, { agora: new Date("2026-09-14T23:10:00Z") });
+    const r = await varrerRegua(dubleDoSupabase(e), CONTA, d);
+    expect(r.enviados).toBe(0);
+    expect(disparos.chamadas).toEqual([]);
+    expect(e.tabelas.cb_asaas_regua_envios).toEqual([]);
+  });
+
   it("PENDING vencendo hoje: lembrete às 8h, com o detalhe só do que vence hoje", async () => {
     const e = estado({ cb_asaas_cobrancas: [cobranca("h1", "cus_a", { status: "PENDING", vencimento: "2026-09-14", vista_vencida_em: null })] });
     const { d, disparos } = deps(e, { listas: {}, recursos: { "/payments/pay_h1": noAsaas("h1", "cus_a", { status: "PENDING", dueDate: "2026-09-14" }) } }, { agora: as8h });

@@ -2450,9 +2450,19 @@ entre 3h e 7h, antes das 9h); régua e as 4 automações desligadas, 0 travas.
   vem depois da mensagem e antes da etiqueta: se o aviso falhar, a etiqueta
   não entra e a próxima cobrança anota de novo (repetir é melhor que calar).
 - O n8n do Asaas está desligado.
+- **D12 revista — lembrete da NOITE** (o n8n mandava três no dia: 9h, 18h e
+  20h; o operador ficou com dois): o do dia e o da noite, este de propósito
+  com cara de mensagem automática ("Assinar como" = "Mensagem automática")
+  para lembrar no fim do dia sem parecer uma pessoa cobrando. O turno sai da
+  hora: antes das 18:00 é o do dia (janela até 18:00); de 18:00 a 20:30 é o
+  da noite (janela até 21:00). Cada turno tem a sua trava (`marco` 0/1 no
+  `vence_hoje`, migration 1133). Só o do dia é absorvido pela cobrança do
+  marco; o da noite lembra quem ainda não pagou o que vence hoje, relido no
+  Asaas antes. A cobrança de atraso continua só até as 18:00.
 
-**Para ligar (com o "pode gravar"):** trocar conexão, textos e "Assinar
-como" das quatro; criar a de 15 dias; montar a condição, a anotação e a
+**Para ligar (com o "pode gravar"):** aplicar a 1133 (antes do deploy);
+trocar conexão, textos e "Assinar como" das quatro; criar a de 15 dias e o
+lembrete da noite (20:00, "Mensagem automática"); montar a condição, a anotação e a
 etiqueta nas quatro cobranças; conferir que o perfil de quem liga enxerga o
 Jurídico; ligar as automações e o interruptor depois das 18h (os primeiros
 envios saem no dia útil seguinte, 08h e 09h); acompanhar os primeiros.

@@ -2,7 +2,7 @@
 
 import { useTranslations } from "next-intl"
 
-import { HORA_MAXIMA, HORA_MINIMA } from "@/lib/asaas/regua"
+import { HORA_MAXIMA, HORA_MAXIMA_DA_NOITE, HORA_MINIMA, turnoDaHora } from "@/lib/asaas/regua"
 
 /**
  * Config dos dois gatilhos da régua do Asaas (998): o MARCO (só na cobrança
@@ -68,8 +68,12 @@ export function AsaasTriggerConfig({
       )}
       <div>
         <label className="mb-1 block text-xs font-medium text-muted-foreground">{t("horaLabel")}</label>
-        <input type="time" min={HORA_MINIMA} max={HORA_MAXIMA} step={300} value={hora} onChange={(e) => onChange({ ...config, hora_envio: e.target.value })} className={INPUT_CLASS} />
-        <p className="mt-1 text-[11px] text-muted-foreground">{t("horaAjuda")}</p>
+        {/* NOSSO: o lembrete aceita a noite (18:00–20:30, até as 21:00 — D12
+            revista, 10/11/2026); a cobrança de atraso, só até as 17:00. */}
+        <input type="time" min={HORA_MINIMA} max={type === "asaas_cobranca_vence_hoje" ? HORA_MAXIMA_DA_NOITE : HORA_MAXIMA} step={300} value={hora} onChange={(e) => onChange({ ...config, hora_envio: e.target.value })} className={INPUT_CLASS} />
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          {type === "asaas_cobranca_vence_hoje" ? (hora && turnoDaHora(hora) === "noite" ? t("horaAjudaNoite") : t("horaAjudaLembrete")) : t("horaAjuda")}
+        </p>
       </div>
       <label className="flex items-start gap-2 text-xs text-foreground">
         <input type="checkbox" checked={diasUteis} onChange={(e) => onChange({ ...config, somente_dias_uteis: e.target.checked })} className="mt-0.5" />

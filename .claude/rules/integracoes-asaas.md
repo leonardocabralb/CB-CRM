@@ -306,6 +306,14 @@ o CRM só lê. O lado do MOTOR da régua (gatilhos `asaas_*` que casam só pelo
   o dia útil; a janela vai de `hora_envio` às 18:00. Lembrete e marco no mesmo
   dia = UMA mensagem (`{{vars.vence_hoje_detalhe}}`; o lembrete é travado como
   absorvido). A negativada entra.
+- ⚠️ **DOIS lembretes no dia do vencimento** (D12 revista, 10/11/2026; 1133):
+  o turno sai da hora (`turnoDaHora`) — antes das 18:00 o do DIA (janela até
+  18:00, trava `marco = 0`), de 18:00 a 20:30 o da NOITE (janela até 21:00,
+  `fimDaJanela`, trava `marco = 1`). `semLembreteTravado` pergunta POR TURNO:
+  sem isso o do dia barraria o da noite pelo UNIQUE. Só o do dia cede a vez à
+  cobrança do marco (a trava `absorvida` é `marco = 0`); o da noite lembra quem
+  ainda não pagou o que vence hoje. Um lembrete por turno (o de menor id); o
+  cartão avisa dois no MESMO turno. A cobrança de atraso segue até as 18:00.
 - ⚠️ O interruptor é `PUT /api/cb/asaas/regua/interruptor`, NÃO o PUT da
   config: confere ROWCOUNT, e SÓ a transição desligado → ligado carimba
   `regua_ativada_em` (UPDATE cercado em `regua_ativa = false`) — um PUT

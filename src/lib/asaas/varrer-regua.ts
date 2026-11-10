@@ -24,6 +24,7 @@ import {
   diaAlvoDoMarco,
   diasDoLembrete,
   entrouNaRegua,
+  fimDaJanela,
   janelaAberta,
   lerAutomacaoDaRegua,
   montarVariaveis,
@@ -621,13 +622,15 @@ async function reconfirmar(
  * lia "outro processo pegou" o dia todo (Codex, PR #212). Quem já foi
  * lembrado sai da mensagem e da trava, como no caso dos dias corridos.
  */
-async function semLembreteTravado(admin: SupabaseClient, accountId: string, parcelas: readonly ParcelaDoEspelho[]): Promise<ParcelaDoEspelho[]> {
+async function semLembreteTravado(admin: SupabaseClient, accountId: string, parcelas: readonly ParcelaDoEspelho[], turno: number): Promise<ParcelaDoEspelho[]> {
   if (parcelas.length === 0) return [];
+  // POR TURNO (1133): o lembrete do dia já enviado não segura o da noite
   const { data, error } = await admin
     .from("cb_asaas_regua_envios")
     .select("cobranca_id, vencimento")
     .eq("account_id", accountId)
     .eq("tipo", "vence_hoje")
+    .eq("marco", turno)
     .in("cobranca_id", parcelas.map((p) => p.id));
   if (error) throw new Error(`travas de lembrete: ${error.message}`);
   const travadas = new Set(((data ?? []) as { cobranca_id: string; vencimento: string }[]).map((t) => `${t.cobranca_id}|${t.vencimento}`));
@@ -777,7 +780,9 @@ export async function varrerRegua(admin: SupabaseClient, accountId: string, deps
     // da cobrança de segunda repetia a trava `vence_hoje` — 23505 no grupo
     // inteiro, e a cobrança do marco não saía (revisão da 4ª rodada do PR
     // #206; pino em varrer-regua.test.ts, "dias CORRIDOS").
-    const lembreteDaConta = validas.find((a) => a.tipo === "vence_hoje");
+    // O do DIA (é ele que a cobrança absorve, com a trava `marco = 0`); só
+    // com o da noite ligado, o dele.
+    const lembreteDaConta = validas.find((a) => a.tipo === "vence_hoje" && a.marco === 0) ?? validas.find((a) => a.tipo === "vence_hoje");
     const diasDoLembreteHoje: ReadonlySet<string> = new Set(lembreteDaConta ? diasDoLembrete(ctx.hoje, lembreteDaConta.somenteDiasUteis) : []);
 
     // ---- as cobranças por marco (passos 3 a 7)
@@ -846,7 +851,7 @@ export async function varrerRegua(admin: SupabaseClient, accountId: string, deps
         saida.semConexao += 1;
         continue;
       }
-      const venceHoje = await semLembreteTravado(admin, accountId, frescas.filter(venceNoDia));
+      const venceHoje = await semLembreteTravado(admin, accountId, frescas.filter(venceNoDia), 0);
       // 5) o intervalo mínimo (D11, 13/09)
       const absorvida = dentroDoIntervalo(ultimaCobranca.get(grupo.asaasCustomerId) ?? null, dia, config.regua_intervalo_dias, fuso);
       if (!(await reguaAindaLigada(admin, accountId))) {
@@ -945,7 +950,7 @@ export async function varrerRegua(admin: SupabaseClient, accountId: string, deps
       // A trava de lembrete que JÁ existe é conferida ANTES da releitura: a
       // parcela lembrada não entra no grupo (senão o 23505 levava a outra
       // junto) e não gasta GET no Asaas a cada ciclo do dia (Codex, PR #212).
-      const aLembrar = await semLembreteTravado(admin, accountId, grupo.venceHoje);
+      const aLembrar = await semLembreteTravado(admin, accountId, grupo.venceHoje, automacao.marco);
       if (aLembrar.length === 0) continue;
       const venceHoje = await reconfirmar(admin, accountId, cliente, aLembrar, (p) => cabeNoLembrete(p, diasDoLembreteHoje, dia), vistoEm);
       if (venceHoje.length === 0) continue;
@@ -953,13 +958,13 @@ export async function varrerRegua(admin: SupabaseClient, accountId: string, deps
         saida.desligadaNoMeio = true;
         break;
       }
-      if (!janelaAberta(relogio(), dia, automacao.horaEnvio, fuso)) {
+      if (!janelaAberta(relogio(), dia, automacao.horaEnvio, fuso, fimDaJanela(automacao))) {
         saida.janelaFechou += 1;
         continue;
       }
       const ids = await travar(
         admin,
-        venceHoje.map((p) => ({ account_id: accountId, cobranca_id: p.id, asaas_customer_id: grupo.asaasCustomerId, tipo: "vence_hoje" as const, marco: 0, vencimento: p.vencimento, automation_id: automacao.id, automation_nome: automacao.nome, contact_id: ligado.contact_id, resultado: "reservado" as const, detalhe: null })),
+        venceHoje.map((p) => ({ account_id: accountId, cobranca_id: p.id, asaas_customer_id: grupo.asaasCustomerId, tipo: "vence_hoje" as const, marco: automacao.marco, vencimento: p.vencimento, automation_id: automacao.id, automation_nome: automacao.nome, contact_id: ligado.contact_id, resultado: "reservado" as const, detalhe: null })),
       );
       if (ids === null || ids.length === 0) continue;
       const conversationId = await conversaDoContato(admin, accountId, ligado.contact_id, automacao.channelId, automacao.id);

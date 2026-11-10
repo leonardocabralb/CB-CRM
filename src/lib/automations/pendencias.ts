@@ -308,6 +308,8 @@ export const CODIGOS_DE_PENDENCIA = [
   'gatilho_webhook_invalido',
   'gatilho_dias_de_atraso_invalido',
   'gatilho_hora_de_envio_invalida',
+  // O lembrete da noite da régua (1133, 10/11/2026)
+  'gatilho_hora_do_lembrete_invalida',
   'gatilho_dias_uteis_invalido',
   'gatilho_status_invalidos',
   // Situação mudou no Atlas (1073)

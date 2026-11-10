@@ -11,7 +11,7 @@ import {
   problemaDaFormaDaCondicao,
   type CampoParaCondicao,
 } from './condicao-por-campo'
-import { ehGatilhoDaRegua, horaDeEnvioValida } from '@/lib/asaas/regua'
+import { ehGatilhoDaRegua, horaDeEnvioValida, horaDeLembreteValida } from '@/lib/asaas/regua'
 import { problemaDosLimites } from './situacao-da-cobranca'
 import { ehMeta, ehWhatsApp } from '@/lib/cb-channels/transporte'
 import type { CbChannelKind } from '@/lib/cb-channels/repo'
@@ -883,7 +883,13 @@ export function validateTriggerForActivation(
         issues.push({ path: 'trigger.dias_de_atraso', message: 'days overdue must be a whole number from 1 to 365', codigo: 'gatilho_dias_de_atraso_invalido' })
       }
     }
-    if (cfg.hora_envio != null && cfg.hora_envio !== '' && !horaDeEnvioValida(cfg.hora_envio)) {
+    // O LEMBRETE aceita também a noite (18:00–20:30, a janela fecha às 21:00
+    // — D12 revista, 10/11/2026); a cobrança de atraso continua até as 17:00.
+    if (triggerType === 'asaas_cobranca_vence_hoje') {
+      if (cfg.hora_envio != null && cfg.hora_envio !== '' && !horaDeLembreteValida(cfg.hora_envio)) {
+        issues.push({ path: 'trigger.hora_envio', message: 'reminder time must be HH:MM between 08:00 and 17:00 (day) or 18:00 and 20:30 (night)', codigo: 'gatilho_hora_do_lembrete_invalida' })
+      }
+    } else if (cfg.hora_envio != null && cfg.hora_envio !== '' && !horaDeEnvioValida(cfg.hora_envio)) {
       issues.push({ path: 'trigger.hora_envio', message: 'send time must be HH:MM between 08:00 and 17:00', codigo: 'gatilho_hora_de_envio_invalida' })
     }
     if (cfg.somente_dias_uteis != null && typeof cfg.somente_dias_uteis !== 'boolean') {
