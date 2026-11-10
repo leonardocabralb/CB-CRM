@@ -7,6 +7,7 @@ import {
   idsDasNotasDosAvisos,
   type LinhaDaNotaDoAviso,
 } from "@/lib/notifications/nota-do-aviso";
+import { useAoVoltarParaOApp } from "@/hooks/use-ao-voltar-para-o-app";
 import { createClient } from "@/lib/supabase/client";
 import type { Notification } from "@/types";
 
@@ -23,6 +24,12 @@ import type { Notification } from "@/types";
  * aviso de uma anotação viva diria "apagada". Devolve `null` ("não sei")
  * enquanto a leitura da lista ATUAL não volta, e se ela falhar.
  *
+ * ⚠️ RELÊ a cada lista nova de avisos (recarga, tempo real, marcar lida) e ao
+ * VOLTAR para o app, não só quando os ids mudam (achado do Codex no #491): a
+ * anotação apagada ou restaurada com a tela aberta deixaria o aviso dizendo o
+ * contrário para sempre. Enquanto relê, o mapa anterior continua valendo —
+ * os ids são os mesmos, então nada pisca.
+ *
  * Os ids vão num `in` (o sino lê até 100 avisos; o Meu dia, menos): cabe na
  * URL e no teto de 1000 linhas.
  */
@@ -35,7 +42,10 @@ export function useNotasDosAvisos(
     de: string;
     mapa: ReadonlyMap<string, LinhaDaNotaDoAviso>;
   } | null>(null);
+  const [volta, setVolta] = useState(0);
+  useAoVoltarParaOApp(() => setVolta((v) => v + 1));
 
+  // `avisos` e `volta` não entram no corpo: são os gatilhos da RELEITURA.
   useEffect(() => {
     if (!chave) return;
     let vivo = true;
@@ -56,7 +66,7 @@ export function useNotasDosAvisos(
     return () => {
       vivo = false;
     };
-  }, [chave]);
+  }, [chave, avisos, volta]);
 
   if (!chave) return VAZIO;
   return lida && lida.de === chave ? lida.mapa : null;

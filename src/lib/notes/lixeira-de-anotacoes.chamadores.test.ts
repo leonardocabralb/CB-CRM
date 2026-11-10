@@ -21,11 +21,6 @@ const RAIZ = join(__dirname, '..', '..', '..');
 
 /** Arquivo → quantas consultas SEM o filtro, e por quê. */
 const EXCECOES: Record<string, { quantas: number; motivo: string }> = {
-  'src/hooks/use-conversation-notes.ts': {
-    quantas: 1,
-    motivo:
-      'Lê vivas E apagadas: devolve as duas listas (`notas` e `apagadas`, a lixeira da aba) derivadas por `estaApagada`.',
-  },
   'src/hooks/use-notas-dos-avisos.ts': {
     quantas: 1,
     motivo: 'A marca é a pergunta: o aviso diz "Anotação apagada" pela linha marcada.',

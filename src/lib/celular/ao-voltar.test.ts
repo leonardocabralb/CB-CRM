@@ -51,6 +51,10 @@ describe("as telas que se atualizam ao voltar", () => {
     // A pauta de reuniões: o resultado de quem voltou do WhatsApp tem de
     // aparecer sem recarregar a página.
     "src/components/reunioes/pauta-de-reunioes.tsx",
+    // O aviso de anotação apagada (1132), no sino e no Meu dia: a anotação
+    // apagada ou restaurada com a tela aberta não pode ficar dizendo o
+    // contrário (Codex, #491).
+    "src/hooks/use-notas-dos-avisos.ts",
   ])("%s chama useAoVoltarParaOApp", (caminho) => {
     expect(ler(caminho)).toContain("useAoVoltarParaOApp(");
   });

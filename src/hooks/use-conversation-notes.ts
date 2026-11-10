@@ -112,25 +112,39 @@ export function useConversationNotes(
       }
       setCarregando(true);
       const supabase = createClient();
-      const { data, error } = await supabase
-        .from('cb_conversation_notes')
-        .select('*')
-        .eq('conversation_id', conversationId)
-        // Mesmo teto de segurança da trilha: busca as mais recentes e deixa a
-        // ordenação final para o `intercalar`, que ordena o fio inteiro.
-        // ⚠️ O cartão de nota FIXADA (951) deriva DESTA janela: fixada mais
-        // velha que as 200 notas mais recentes não entra e o sticky some em
-        // silêncio. Hoje o máximo real é 2 notas/conversa — é a família de
-        // teto-que-chega-por-crescimento já documentada (924/929); quem
-        // paginar isto revisa a fixada junto. As APAGADAS (1132) vêm junto,
-        // sem filtro de `apagada_em`, de propósito: são a lixeira da aba
-        // Notas, e o tempo real move a linha de uma lista para a outra. O
-        // vencimento de 90 dias as tira do banco; até lá, contam no teto.
-        .order('created_at', { ascending: false })
-        .limit(200);
+      // ⚠️ DUAS leituras, cada uma com o seu teto (1132, achado do Codex no
+      // #491): numa só, 200 apagadas mais novas ocupariam o teto inteiro e as
+      // VIVAS mais antigas — a fixada inclusive — sumiriam do fio e da aba,
+      // vivas no banco. Antes da lixeira, apagar tirava a linha e abria a vaga.
+      const [vivas, lixeira] = await Promise.all([
+        supabase
+          .from('cb_conversation_notes')
+          .select('*')
+          .eq('conversation_id', conversationId)
+          .is('apagada_em', null)
+          // Mesmo teto de segurança da trilha: busca as mais recentes e deixa a
+          // ordenação final para o `intercalar`, que ordena o fio inteiro.
+          // ⚠️ O cartão de nota FIXADA (951) deriva DESTA janela: fixada mais
+          // velha que as 200 notas mais recentes não entra e o sticky some em
+          // silêncio. Hoje o máximo real é 2 notas/conversa — é a família de
+          // teto-que-chega-por-crescimento já documentada (924/929); quem
+          // paginar isto revisa a fixada junto.
+          .order('created_at', { ascending: false })
+          .limit(200),
+        // A lixeira da aba Notas: as apagadas mais RECENTEMENTE primeiro (as
+        // que alguém ainda quer de volta), com teto próprio.
+        supabase
+          .from('cb_conversation_notes')
+          .select('*')
+          .eq('conversation_id', conversationId)
+          .not('apagada_em', 'is', null)
+          .order('apagada_em', { ascending: false })
+          .limit(200),
+      ]);
 
       if (!valeAinda()) return;
 
+      const error = vivas.error ?? lixeira.error;
       if (error) {
         // Falha aqui não pode derrubar a conversa — anotação é acessória ao
         // atendimento e o chat precisa abrir de qualquer jeito.
@@ -138,7 +152,7 @@ export function useConversationNotes(
         setNotas([]);
         setCarregada({ de: conversationId, ok: false });
       } else {
-        setNotas((data ?? []) as ConversationNote[]);
+        setNotas(juntarSemRepetir(vivas.data ?? [], lixeira.data ?? []));
         setCarregada({ de: conversationId, ok: true });
       }
       setCarregando(false);
@@ -347,4 +361,17 @@ export function useConversationNotes(
     colocar,
     aplicarFixacao,
   };
+}
+
+/**
+ * As duas leituras correm juntas, e uma anotação apagada ou restaurada ENTRE
+ * elas viria nas duas. Fica a VIVA: sumir do fio uma anotação viva é o erro
+ * que a lixeira existe para evitar; o tempo real traz a linha certa logo depois.
+ */
+function juntarSemRepetir(
+  vivas: ConversationNote[],
+  apagadas: ConversationNote[]
+): ConversationNote[] {
+  const ids = new Set(vivas.map((n) => n.id));
+  return [...vivas, ...apagadas.filter((n) => !ids.has(n.id))];
 }
