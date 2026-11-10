@@ -1,0 +1,158 @@
+<!doctype html>
+<!--
+  Página-ponte do Teste B (docs/PLANO-ligar-pelo-crm.md, Fase 2). Roda numa
+  aba do Chrome da máquina, ao lado do WhatsApp Web:
+  - manda ao atendente o que sai do "AltoFalante", pela fonte "VozDoCliente"
+    (o monitor dele remapeado: o Chrome esconde os monitores da lista);
+  - toca a voz do atendente no "EntradaMic", cujo monitor é o "Microfone" do
+    WhatsApp.
+  Abrir EXATAMENTE em http://127.0.0.1:8090/ponte.html: a política do Chrome
+  libera o microfone só para essa origem (por localhost:8090 ele pediria um
+  clique, e a ponte travaria esperando).
+-->
+<html lang="pt-BR">
+<meta charset="utf-8" />
+<title>Ponte de áudio</title>
+<pre id="log"></pre>
+<audio id="saida"></audio>
+<script>
+  const STUN = [{ urls: "stun:stun.l.google.com:19302" }];
+  const LINHAS_NA_TELA = 200;
+  const ESPERA_DA_QUEDA_MS = 10000;
+  let ultima = 0;
+  let pc = null;
+  let fluxo = null;
+  let relogio = null;
+  let queda = null;
+
+  function log(texto) {
+    const tela = document.getElementById("log");
+    const linhas = (tela.textContent + new Date().toLocaleTimeString() + " " + texto + "\n").split("\n");
+    tela.textContent = linhas.slice(-LINHAS_NA_TELA - 1).join("\n");
+    fetch("/log", { method: "POST", headers: { "X-Origem": "ponte" }, body: texto }).catch(() => {});
+  }
+
+  // Larga TUDO da conexão atual: a captura do áudio do cliente (o close() da
+  // conexão não para as faixas do getUserMedia), a medição e a conexão.
+  function encerrar(motivo) {
+    clearInterval(relogio);
+    clearTimeout(queda);
+    relogio = null;
+    queda = null;
+    if (fluxo) fluxo.getTracks().forEach((t) => t.stop());
+    fluxo = null;
+    if (pc) pc.close();
+    pc = null;
+    const audio = document.getElementById("saida");
+    audio.pause();
+    audio.srcObject = null;
+    if (motivo) log("conexão encerrada: " + motivo);
+  }
+
+  function esperarCandidatos(conexao) {
+    return new Promise((pronto) => {
+      if (conexao.iceGatheringState === "complete") return pronto();
+      const aoMudar = () => {
+        if (conexao.iceGatheringState === "complete") {
+          conexao.removeEventListener("icegatheringstatechange", aoMudar);
+          pronto();
+        }
+      };
+      conexao.addEventListener("icegatheringstatechange", aoMudar);
+      setTimeout(pronto, 4000);
+    });
+  }
+
+  async function dispositivos() {
+    // Sem permissão concedida, os nomes vêm vazios; a política a concede.
+    const provisorio = await navigator.mediaDevices.getUserMedia({ audio: true });
+    provisorio.getTracks().forEach((t) => t.stop());
+    const lista = await navigator.mediaDevices.enumerateDevices();
+    log("dispositivos: " + lista.map((d) => d.kind + ":" + d.label).join(" | "));
+    return {
+      monitor: lista.find((d) => d.kind === "audioinput" && /VozDoCliente/i.test(d.label)),
+      entrada: lista.find((d) => d.kind === "audiooutput" && /EntradaMic/i.test(d.label)),
+    };
+  }
+
+  async function medir() {
+    if (!pc) return;
+    const stats = await pc.getStats();
+    stats.forEach((s) => {
+      if (s.type === "inbound-rtp" && s.kind === "audio") {
+        const buffer = s.jitterBufferEmittedCount ? (s.jitterBufferDelay / s.jitterBufferEmittedCount) * 1000 : null;
+        log(
+          `chegada da voz do atendente: jitter ${Math.round((s.jitter || 0) * 1000)} ms, ` +
+            `perdidos ${s.packetsLost}/${(s.packetsLost || 0) + (s.packetsReceived || 0)}, ` +
+            `espera no buffer ${buffer == null ? "?" : Math.round(buffer)} ms`
+        );
+      }
+    });
+  }
+
+  async function atender(oferta) {
+    encerrar(pc ? "chegou oferta nova" : null);
+    const { monitor, entrada } = await dispositivos();
+    if (!monitor || !entrada) {
+      log("ERRO: não achei a fonte VozDoCliente ou a saída EntradaMic");
+      return;
+    }
+    fluxo = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        deviceId: { exact: monitor.deviceId },
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+      },
+    });
+    const conexao = new RTCPeerConnection({ iceServers: STUN });
+    pc = conexao;
+    fluxo.getTracks().forEach((t) => conexao.addTrack(t, fluxo));
+    conexao.ontrack = async (evento) => {
+      const audio = document.getElementById("saida");
+      audio.srcObject = evento.streams[0];
+      await audio.setSinkId(entrada.deviceId);
+      await audio.play();
+      log("voz do atendente indo para o microfone do WhatsApp");
+    };
+    conexao.oniceconnectionstatechange = () => {
+      if (pc !== conexao) return; // uma conexão antiga avisando depois de trocada
+      const estado = conexao.iceConnectionState;
+      log("rede: " + estado);
+      clearTimeout(queda);
+      if (estado === "failed" || estado === "closed") encerrar("rede " + estado);
+      else if (estado === "disconnected") queda = setTimeout(() => encerrar("caiu e não voltou em 10 s"), ESPERA_DA_QUEDA_MS);
+    };
+    await conexao.setRemoteDescription({ type: "offer", sdp: oferta.sdp });
+    await conexao.setLocalDescription(await conexao.createAnswer());
+    await esperarCandidatos(conexao);
+    if (pc !== conexao) return; // trocada no meio
+    await fetch("/resposta", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: oferta.id, sdp: conexao.localDescription.sdp }),
+      signal: AbortSignal.timeout(10000),
+    });
+    log("resposta enviada para a oferta " + oferta.id);
+    relogio = setInterval(medir, 5000);
+  }
+
+  async function vigiar() {
+    try {
+      const r = await fetch("/oferta?depois=" + ultima, { signal: AbortSignal.timeout(10000) });
+      if (r.status === 200) {
+        const oferta = await r.json();
+        ultima = oferta.id;
+        log("oferta " + oferta.id + " do atendente");
+        await atender(oferta);
+      }
+    } catch (erro) {
+      log("erro: " + erro.message);
+    }
+    setTimeout(vigiar, 1000);
+  }
+
+  log("ponte de pé");
+  vigiar();
+</script>
+</html>

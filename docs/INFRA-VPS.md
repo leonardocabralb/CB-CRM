@@ -165,19 +165,40 @@ Todos apontam para `82.25.76.63` e entram pelo `websecure`.
 | `portainer` | `portainer_portainer` / `_agent` | `portainer/*` | 1 / global |
 | ~~`openclaw`~~ | ~~`openclaw_openclaw-gateway`~~ | removido em 10/11/2026 (§8) | — |
 
-⚠️ **Contêiner AVULSO `ligacoes-teste` (desde 10/11/2026, fora do Swarm):** o
-Teste A de `docs/PLANO-ligar-pelo-crm.md`, um Chrome com o WhatsApp Web da
-conexão Previdenciario - Comercial (aparelho conectado a mais nesse número). Imagem
-`ligacoes-teste:2`, montada na VPS a partir de `ops/vps/ligacoes-teste/`;
-`docker run --hostname ligacoes-teste --memory 1536m --memory-swap 1536m
---cpus 2 --cpu-shares 256 --shm-size 256m -e TELA=800x600 -e
-CHROME_EXTRA="--force-prefers-reduced-motion --disable-smooth-scrolling"`
-(peso 256: o CRM e a Evolution, com 1024, passam na frente), sem
-`--restart`; a tela (noVNC) só em
-`127.0.0.1:6080` (acesso por túnel SSH); perfil do Chrome (a sessão do
-WhatsApp) e áudios em `/root/ligacoes-teste/`. Remover: `docker rm -f
-ligacoes-teste`, apagar `/root/ligacoes-teste` e tirar o aparelho em
-"Aparelhos conectados" no celular do número.
+⚠️ **Contêiner AVULSO `ligacoes-teste` (desde 10/11/2026, fora do Swarm,
+PARADO entre as sessões de teste):** os Testes A e B de
+`docs/PLANO-ligar-pelo-crm.md`. Um Chrome (157) com o WhatsApp Web da conexão
+Previdenciario - Comercial (um aparelho conectado a mais nesse número) e a
+ponte de áudio do Teste B. Imagem montada na VPS a partir de
+`ops/vps/ligacoes-teste/` (`docker build -t ligacoes-teste:<n>
+/root/ligacoes-teste/imagem`); o contêiner foi criado com:
+
+```bash
+docker create --name ligacoes-teste --hostname ligacoes-teste \
+  --memory 1536m --memory-swap 1536m --cpus 2 --cpu-shares 256 --pids-limit 1024 --shm-size 256m \
+  -p 127.0.0.1:6080:6080 -p 127.0.0.1:8090:8090 \
+  -v /root/ligacoes-teste/perfil:/perfil -v /root/ligacoes-teste/audio:/audio \
+  -e TELA=800x600 -e CHROME_EXTRA="--force-prefers-reduced-motion --disable-smooth-scrolling" \
+  --log-opt max-size=10m --log-opt max-file=2 \
+  ligacoes-teste:5
+```
+
+- Ligar para uma sessão de teste: `docker start ligacoes-teste`; ao terminar,
+  `docker stop ligacoes-teste`. Sem `--restart`: se cair, fica caído. Peso
+  256: o CRM e a Evolution, com 1024, passam na frente no processador.
+- ⚠️ **Exposição:** as portas 6080 (noVNC) e 8090 (sinalização da ponte) são
+  publicadas só no `127.0.0.1` da VPS (acesso pelo Mac por túnel SSH), mas
+  escutam em todas as interfaces DENTRO do contêiner: qualquer processo da
+  VPS chega nelas pelo IP do contêiner na bridge (`172.17.0.x`, medido em
+  10/11). Os serviços do Swarm NÃO chegam (medido do contêiner do CRM). O
+  VNC e a sinalização NÃO têm senha: quem chega lê as conversas do número,
+  pode ligar e pode ouvir ou injetar áudio numa ligação. O Chrome roda sem a
+  caixa de areia (`--no-sandbox`) e abre mídia que qualquer pessoa manda ao
+  número. Por isso fica parado fora das sessões.
+- Perfil do Chrome (a sessão do WhatsApp; um perfil por contêiner, nunca dois
+  montando o mesmo) e áudios em `/root/ligacoes-teste/`. Remover: `docker rm -f
+  ligacoes-teste`, `docker rmi ligacoes-teste:5`, apagar `/root/ligacoes-teste`
+  e tirar o aparelho em "Aparelhos conectados" no celular do número.
 
 ⚠️ **A Evolution é uma IMAGEM NOSSA**, não a oficial — desde **05/11/2026
 09:20 BRT**: `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao-foto-sessao-status-recibo@sha256:5cbbfe22fe402644a6f9c7cec7224c8f67af73562934604e0fccf7773cac0507`

@@ -19,7 +19,17 @@ RUN apt-get update \
  && rm -f /tmp/chrome.deb \
  && rm -rf /var/lib/apt/lists/*
 
+# Teste B (Fase 2): a sinalização da ponte de áudio roda em Python, só com a
+# biblioteca padrão — o `python3` COMPLETO: o `python3-minimal` não traz
+# `json` nem `http.server` (estão em `libpython3.11-stdlib`; até aqui eles só
+# vinham porque o websockify puxa o python3). Camada separada para não
+# refazer a do Chrome.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 \
+ && rm -rf /var/lib/apt/lists/*
+
 COPY politica.json /etc/opt/chrome/policies/managed/politica.json
+COPY ponte/ /ponte/
 COPY iniciar.sh /usr/local/bin/iniciar.sh
 RUN chmod 755 /usr/local/bin/iniciar.sh \
  && useradd -m -u 1000 -s /bin/bash chrome

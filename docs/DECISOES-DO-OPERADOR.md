@@ -216,5 +216,5 @@ qualquer uma é pergunta ao operador.
   só o original. O compositor segue com uma cópia por envio (`midia.md`).
 - Ligar pelo CRM (10/11/2026): solução NÃO oficial (nem a API de ligações da
   Meta nem a Wavoip), por uma máquina central com WhatsApp Web, um Chrome por
-  número; a extensão do Chrome por atendente foi descartada; testar na VPS
-  atual com um número antes de decidir a máquina (`ligacoes.md`).
+  número; a extensão do Chrome por atendente foi descartada; a máquina fica
+  na VPS atual, com upgrade só se der problema (`ligacoes.md`).
