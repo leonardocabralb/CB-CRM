@@ -69,7 +69,7 @@ import {
  *  6. TRAVA o grupo num INSERT só (23505 em qualquer parcela = outro
  *     processo pegou → o grupo inteiro sai), reconferindo o interruptor
  *     antes; a conversa da ficha nasce aqui se não existir (a ficha da D2
- *     não tem conversa), com o canal do passo e sem pino. Desde 27/09/2026 o
+ *     não tem conversa), ENCERRADA, com o canal do passo e sem pino. Desde 27/09/2026 o
  *     passo `send_message` também a criaria, mas ENCERRADA e sem canal — a
  *     da régua nasce antes, e o motor a encontra.
  *  7. Dispara SÓ a automação carimbada (`automation_id` no contexto) e mede
@@ -517,6 +517,12 @@ async function reconciliarNaFila(admin: SupabaseClient, accountId: string, agora
 /**
  * A conversa 1:1 do contato — a mais antiga; senão nasce aqui, com o canal
  * do passo e sem pino, e `user_id` = o DONO da conta (`dono-duravel`).
+ *
+ * ⚠️ Nasce ENCERRADA (decisão do operador, 10/11/2026: a cobrança não abre
+ * conversa), como a do motor (`conversaNovaEncerrada`, 27/09/2026): sem o
+ * `status`, o padrão da coluna (`open`) punha na caixa "Abertas" uma conversa
+ * que só tem a mensagem do robô. A resposta do cliente a reabre pela
+ * ingestão (`reopen.ts`).
  */
 async function conversaDoContato(
   admin: SupabaseClient,
@@ -541,7 +547,7 @@ async function conversaDoContato(
   const { data: nova, error: erroNova } = await marcarOrigem(
     admin
       .from("conversations")
-      .insert({ account_id: accountId, user_id: dono, contact_id: contactId, channel_id: channelId, channel_pinned: false }),
+      .insert({ account_id: accountId, user_id: dono, contact_id: contactId, channel_id: channelId, channel_pinned: false, status: "closed" }),
     { via: "regua", ref: automacaoId },
   )
     .select("id")
@@ -740,8 +746,13 @@ export async function varrerRegua(admin: SupabaseClient, accountId: string, deps
       if (e.tipo === "atraso" && RESULTADOS_QUE_CONTAM_COMO_ENVIO.has(e.resultado) && !ultimaCobranca.has(e.asaas_customer_id)) ultimaCobranca.set(e.asaas_customer_id, e.criado_em);
     }
 
-    const { data: conta } = await admin.from("accounts").select("name").eq("id", accountId).maybeSingle();
-    const escritorio = typeof conta?.name === "string" ? conta.name : "";
+    // `{{vars.escritorio_nome}}` é o nome AUTOMÁTICO da assinatura (o do
+    // escritório, `nomeParaAssinar`), não `accounts.name` — que nesta conta é
+    // o nome do dono, e a mensagem diria "Aqui é do <dono>" (medido em
+    // 10/11/2026). Sem ele, o nome da conta, como antes.
+    const { data: conta } = await admin.from("accounts").select("name, assinatura_nome_automatica").eq("id", accountId).maybeSingle();
+    const nomeAutomatico = typeof conta?.assinatura_nome_automatica === "string" ? conta.assinatura_nome_automatica.trim() : "";
+    const escritorio = nomeAutomatico || (typeof conta?.name === "string" ? conta.name : "");
     const cliente = deps.cliente ?? (await (async () => { const c = await clienteDaConta(admin, accountId); if (!c.ok) throw new ParadaDaVarredura(c.codigo); return c.cliente; })());
 
     const porCliente = new Map<string, ParcelaDoEspelho[]>();

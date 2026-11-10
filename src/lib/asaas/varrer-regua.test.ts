@@ -249,9 +249,10 @@ describe("varrerRegua — a cobrança do marco", () => {
     expect(ch.context?.channel_id).toBe(CANAL);
     expect(ch.context?.vars?.cobranca_quantidade).toBe("1");
     expect(ch.context?.vars?.dias_de_atraso).toBe("3");
-    // a conversa nasceu com o dono da conta e o canal do passo, sem pino
+    // a conversa nasceu ENCERRADA (a cobrança não abre conversa), com o dono
+    // da conta e o canal do passo, sem pino
     const conversa = e.tabelas.conversations[0];
-    expect(conversa).toMatchObject({ account_id: CONTA, user_id: DONO, contact_id: "ct-a", channel_id: CANAL, channel_pinned: false });
+    expect(conversa).toMatchObject({ account_id: CONTA, user_id: DONO, contact_id: "ct-a", channel_id: CANAL, channel_pinned: false, status: "closed" });
     expect(ch.context?.conversation_id).toBe(conversa.id);
     // a trava é do marco, com o desfecho
     expect(e.tabelas.cb_asaas_regua_envios).toHaveLength(1);
@@ -312,6 +313,18 @@ describe("varrerRegua — a cobrança do marco", () => {
     expect(vars.cobranca_quantidade).toBe("1");
     expect(vars.cobranca_detalhe).not.toMatch(/11\/08/);
     expect(e.tabelas.cb_asaas_cobrancas.find((c) => c.id === "c-ago")).toMatchObject({ status: "RECEIVED" });
+  });
+
+  it("{{vars.escritorio_nome}} é o nome automático da assinatura, não o nome da conta (que pode ser o do dono); sem ele, o nome da conta", async () => {
+    const comAssinatura = estado({ accounts: [{ id: CONTA, owner_user_id: DONO, name: "Fulano de Tal", assinatura_nome_automatica: "  CB Advogados " }] });
+    const a = deps(comAssinatura, { listas: {}, recursos: { "/payments/pay_c1": noAsaas("c1", "cus_a") } });
+    await varrerRegua(dubleDoSupabase(comAssinatura), CONTA, a.d);
+    expect(a.disparos.chamadas[0].context?.vars?.escritorio_nome).toBe("CB Advogados");
+
+    const semAssinatura = estado({ accounts: [{ id: CONTA, owner_user_id: DONO, name: "Escritório Exemplo", assinatura_nome_automatica: null }] });
+    const b = deps(semAssinatura, { listas: {}, recursos: { "/payments/pay_c1": noAsaas("c1", "cus_a") } });
+    await varrerRegua(dubleDoSupabase(semAssinatura), CONTA, b.d);
+    expect(b.disparos.chamadas[0].context?.vars?.escritorio_nome).toBe("Escritório Exemplo");
   });
 
   it("a mensagem lista TODAS as vencidas do cliente (D11) e só a que cruzou o marco é travada", async () => {

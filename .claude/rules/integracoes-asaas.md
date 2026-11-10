@@ -230,8 +230,8 @@ o CRM só lê. O lado do MOTOR da régua (gatilhos `asaas_*` que casam só pelo
 
 - ⚠️⚠️ **SÓ DISPARA PELA VARREDURA** (`regua.ts` puro; `varrer-regua.ts` no
   cron, depois do sync e do webhook). A varredura reconfirma cada parcela no
-  Asaas ANTES da trava, cria a conversa da ficha que não tem (dono durável,
-  canal do passo, sem pino), passa `{ automation_id, conversation_id,
+  Asaas ANTES da trava, cria a conversa da ficha que não tem (ENCERRADA — a
+  cobrança não abre conversa —, dono durável, canal do passo, sem pino), passa `{ automation_id, conversation_id,
   channel_id, vars }` e mede o desfecho no `automation_logs` DEPOIS — por isso
   grupos do mesmo contato saem em SEQUÊNCIA, e o log de um disparo nunca
   responde por outra trava (`logsConsumidos`).
