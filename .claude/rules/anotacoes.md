@@ -20,6 +20,11 @@ paths:
   - "src/app/api/cb/notes/**"
   - "src/app/api/v1/notes/**"
   - "supabase/migrations/1102_cb_anotacao_com_anexos.sql"
+  - "supabase/migrations/1132_cb_lixeira_de_anotacoes.sql"
+  - "src/components/inbox/lixeira-de-anotacoes.tsx"
+  - "src/components/notifications/nota-apagada-no-aviso.tsx"
+  - "src/hooks/use-notas-dos-avisos.ts"
+  - "src/lib/notifications/nota-do-aviso*"
 ---
 
 # Anotações internas — regras
@@ -35,15 +40,16 @@ menção), o agente de IA (`anotarNaConversa`) e o passo de automação
 "Escrever anotação interna" (autor nulo; `.claude/rules/automacoes-passos.md`)
 — regra nova de escrita vale em todos. Anexo, SÓ a rota do painel. EDITAR,
 só o autor e só pelo `PUT /api/cb/notes/[id]` (o navegador segue sem UPDATE
-na tabela; a API v1 não edita).
+na tabela; a API v1 não edita). APAGAR manda para a LIXEIRA (1132, abaixo).
 
 ### Anotação interna: são QUATRO telas
 
 `src/hooks/use-apagar-nota.ts` e `src/components/inbox/cartao-de-nota.tsx`.
 
-- ⚠️⚠️ **Apagar SEMPRE pelo `useApagarNota`**: a policy é "autor OU admin", e
-  RLS que barra DELETE devolve 0 linhas sem erro — sem o `count`, a nota some
-  da tela e volta na próxima abertura.
+- ⚠️⚠️ **Apagar SEMPRE pelo `useApagarNota`** (a ficha de `/contatos`, pelo
+  `deleteNote` dela): a rota `DELETE /api/cb/notes/[id]` MARCA (1132), e a
+  resposta que não é 2xx RECARREGA a lista — senão a nota some da tela e volta
+  na próxima abertura.
 - ⚠️ **`podeApagar` = `author_user_id === user.id || useCan('manage-members')`**,
   igual nas telas; divergir mostra lixeira que a RLS recusa.
 - ⚠️ **Nota de GRUPO não fixa** (o índice parcial exige `contact_id`): sem
@@ -261,3 +267,45 @@ modo `editando` do `InternalNoteBox` e `<MarcaDeEditada>`. Pinos:
   desenha o texto da nota: um sexto lugar reprova até montá-la.
 - **Tempo real**: o UPDATE troca a linha no hook (para quem não editou
   também); a citação (`notasPorId`) e a faixa fixada leem dessa lista.
+
+### Lixeira de anotações (1132)
+
+Pedido do operador (10/11/2026), depois do aviso de menção que levava a uma
+anotação apagada pela autora sem nada dizer isso. Decisões: vê a lixeira quem
+vê as anotações; restaura o AUTOR ou admin/dono (a régua de apagar); 90 dias e
+sai de vez, com os anexos; o aviso diz "Anotação apagada" com o texto INTEIRO,
+quem apagou e quando. `src/lib/notes/lixeira.ts` (puro),
+`lixeira-no-servidor.ts` (`mudarNaLixeira`: o `DELETE` e o
+`POST …/restaurar`), `lixeira-de-anotacoes.tsx` e `nota-do-aviso.ts`.
+
+- ⚠️⚠️ **Apagar MARCA (`apagada_em`, `apagada_por`, `apagada_por_nome`), nunca
+  apaga**: a linha fica, com o mesmo id — restaurar devolve o lugar no fio, os
+  anexos, a menção e as respostas, e o aviso (`note_id`) segue apontando. O
+  DELETE de verdade é só o vencimento (`vencer-lixeira-de-anotacoes.ts`, no
+  ciclo de manutenção, antes da drenagem: aí o gatilho da 1102 leva os anexos).
+  A policy de DELETE do navegador segue de pé (tirá-la é restritiva, depois do
+  deploy); nenhum código a usa.
+- ⚠️⚠️ **Todo leitor de anotação VIVA filtra `apagada_em IS NULL`** (fio, abas,
+  fixada, ficha, API v1, responder, fixar, editar). Pino default-deny
+  `lixeira-de-anotacoes.chamadores.test.ts`: consulta nova sem o filtro reprova
+  até entrar na lista com o motivo. O `useConversationNotes` lê TODAS e devolve
+  `notas` (vivas) e `apagadas`; quem desenha lê `notas`.
+- ⚠️ **A apagada nunca fica fixada** (CHECK da 1132; a rota desafixa na mesma
+  escrita): seguraria o índice "uma fixada por cliente". Restaurar não refixa.
+- ⚠️ **Marcar não toca `anexos`**: o gatilho da 1102 é `UPDATE OF anexos`, e a
+  conferência da 1132 cobra a forma. `cb_arquivos_citados` conta a apagada, e
+  a drenagem não leva o arquivo dela. A Lixeira de contatos e a união levam a
+  marca junto (provado no Postgres local).
+- **A aba Notas (painel e grupo) tem o ícone discreto no topo**, com a
+  contagem só com a lista RESPONDIDA. Aberta, a lixeira toma o lugar da lista,
+  CARIMBADA com a conversa (`lixeiraDe`), e a caixa de escrever fica MONTADA e
+  escondida (o rascunho mora nela). Ordem: a da escrita, a mais recente em
+  cima (a da aba). O fio e a ficha de `/contatos` não têm lixeira.
+- **Apagar avisa com "Desfazer"** (toast do `useApagarNota`, que restaura).
+- **O aviso de anotação apagada** (sino e Meu dia, `useNotasDosAvisos` +
+  `<NotaApagadaNoAviso>`): linha marcada = texto da linha e quem apagou; linha
+  que NÃO existe (apagada antes da 1132, vencida, ficha na Lixeira) = o `body`
+  do aviso (até 280 caracteres), sem autoria. Leitura que falhou = "não sei":
+  o aviso fica como era. A leitura é carimbada com a CHAVE dos ids — o mapa
+  velho diria "apagada" sobre a anotação de um aviso novo. O clique segue
+  `rotaDoAviso` (o salto não acha a âncora e só abre a conversa).

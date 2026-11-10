@@ -2,24 +2,27 @@
 // O que o ciclo das agendadas (`/api/cb/scheduled/cron`, laço de 15 min)
 // faz DEPOIS da resposta, em `after()`: os alarmes de conexão no sino (1122),
 // as tarefas recorrentes (1074), o vencimento da Lixeira de contatos (1097),
-// a poda do conteúdo dos turnos dos agentes de IA (1110) e a drenagem da fila
-// de arquivos a apagar (1097) — nesta ordem, sob UM prazo comum.
+// o da lixeira de anotações (1132), a poda do conteúdo dos turnos dos agentes
+// de IA (1110) e a drenagem da fila de arquivos a apagar (1097) — nesta
+// ordem, sob UM prazo comum.
 //
 // ⚠️ Por que nesta rota, e não numa nova: rota nova no agendador só roda
 // depois de mudar o `command` do `docker-stack.yml` E de um `docker stack
 // deploy` manual na VPS (`.claude/rules/deploy.md`). Tirar esta chamada da
-// rota (ou a rota do laço) para as cinco coisas, sem erro nenhum — pinos
+// rota (ou a rota do laço) para as seis coisas, sem erro nenhum — pinos
 // `tarefas-recorrentes-1074.test.ts` e `manutencao-do-ciclo.test.ts`.
 //
 // ⚠️ A ORDEM: os alarmes vêm primeiro: são rápidos (duas leituras por
 // conexão) e são o aviso que precisa chegar a alguém em minutos. O vencimento
 // põe arquivos na fila, e a drenagem do MESMO ciclo já os leva. As tarefas vêm
-// antes do vencimento porque são o que alguém vê hoje. A poda vem DEPOIS do
+// antes do vencimento porque são o que alguém vê hoje. O vencimento das
+// anotações também enche a fila (o gatilho da 1102 leva os anexos da
+// anotação excluída de vez), então vem antes da drenagem. A poda vem DEPOIS do
 // vencimento (a ficha excluída de vez limpa os turnos dela como `exclusao`; a
 // poda leva o resto como `prazo`) e antes da drenagem, que é quem pode gastar
 // o prazo inteiro.
 //
-// ⚠️ Cada passo é ISOLADO: os cinco já nunca lançam, e mesmo assim cada um
+// ⚠️ Cada passo é ISOLADO: os seis já nunca lançam, e mesmo assim cada um
 // roda dentro do próprio try — a falha (ou um defeito futuro que lance) de um
 // não impede o seguinte.
 // ============================================================
@@ -32,6 +35,7 @@ import {
   drenarArquivosAApagar,
   vencerLixeira,
 } from '@/lib/storage/arquivos-a-apagar';
+import { vencerLixeiraDeAnotacoes } from '@/lib/notes/vencer-lixeira-de-anotacoes';
 import { gerarTarefasRecorrentes } from '@/lib/tasks/gerar-recorrentes';
 
 /**
@@ -47,7 +51,7 @@ import { gerarTarefasRecorrentes } from '@/lib/tasks/gerar-recorrentes';
  */
 export const PRAZO_DA_MANUTENCAO_MS = 5 * 60_000;
 
-/** Um passo que lançou (não devia: os cinco engolem) não derruba os outros. */
+/** Um passo que lançou (não devia: os seis engolem) não derruba os outros. */
 async function isolado(
   nome: string,
   passo: () => Promise<unknown>
@@ -71,6 +75,9 @@ export async function rodarManutencaoDoCiclo(
   await isolado('alarmes de conexão', () => avisarAlarmesDeConexao(admin, agora));
   await isolado('tarefas recorrentes', () => gerarTarefasRecorrentes(admin));
   await isolado('vencimento da Lixeira', () => vencerLixeira(admin, prazo));
+  await isolado('vencimento da lixeira de anotações', () =>
+    vencerLixeiraDeAnotacoes(admin, agora)
+  );
   await isolado('conteúdo dos turnos da IA', () =>
     podarConteudoDosTurnos(admin, prazo)
   );

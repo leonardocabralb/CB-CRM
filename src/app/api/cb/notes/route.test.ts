@@ -19,7 +19,7 @@ const CAIO = 'b0000000-0000-4000-8000-00000000000c';
 // A conta com forma de UUID: o caminho do anexo é conferido contra ela (1102).
 const CONTA = 'c1000000-0000-4000-8000-000000000001';
 
-type Nota = { id: string; resposta_de: string | null; author_user_id: string | null };
+type Nota = { id: string; resposta_de: string | null; author_user_id: string | null; apagada_em?: string | null };
 type Filtro = { op: string; col: string; val: unknown };
 
 const estado = vi.hoisted(() => ({
@@ -73,7 +73,13 @@ function resolver(tabela: string, filtros: Filtro[], modo: 'uma' | 'lista') {
   }
   if (tabela === 'cb_conversation_notes' && modo === 'uma') {
     const nota = estado.notas.find((n) => n.id === eq('id'));
-    return { data: nota && eq('conversation_id') === CONVERSA ? { id: nota.id } : null, error: null };
+    // A respondida tem de estar VIVA (1132): a leitura cerca `apagada_em`.
+    const exigeViva = filtros.some((f) => f.op === 'is' && f.col === 'apagada_em' && f.val === null);
+    const viva = !(nota as { apagada_em?: string | null } | undefined)?.apagada_em;
+    return {
+      data: nota && eq('conversation_id') === CONVERSA && (!exigeViva || viva) ? { id: nota.id } : null,
+      error: null,
+    };
   }
   if (tabela === 'cb_conversation_notes') {
     if (estado.erroDaConversaDaNota) return { data: null, error: { message: 'falhou' } };
@@ -96,6 +102,7 @@ function consulta(tabela: string) {
     eq: (col: string, val: unknown) => (filtros.push({ op: 'eq', col, val }), builder),
     in: (col: string, val: unknown) => (filtros.push({ op: 'in', col, val }), builder),
     gt: (col: string, val: unknown) => (filtros.push({ op: 'gt', col, val }), builder),
+    is: (col: string, val: unknown) => (filtros.push({ op: 'is', col, val }), builder),
     order: () => builder,
     limit: (n: number) => (filtros.push({ op: 'limit', col: '', val: n }), builder),
     maybeSingle: () => Promise.resolve(resolver(tabela, filtros, 'uma')),
@@ -245,6 +252,16 @@ describe('POST /api/cb/notes — resposta à anotação (1075)', () => {
 
   it('respondida que não existe nesta conversa é 409 REPLIED_NOTE_NOT_FOUND, sem gravar', async () => {
     const res = await POST(pedido({ resposta_de: RESPOSTA_DA_BIA }));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'REPLIED_NOTE_NOT_FOUND' });
+    expect(estado.inserts).toEqual([]);
+  });
+
+  it('respondida na LIXEIRA (1132) é 409 REPLIED_NOTE_NOT_FOUND, sem gravar: ninguém mais a vê', async () => {
+    estado.notas = [
+      { id: ORIGINAL, resposta_de: null, author_user_id: ANA, apagada_em: "2026-11-10T12:00:00Z" },
+    ];
+    const res = await POST(pedido({ resposta_de: ORIGINAL }));
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: 'REPLIED_NOTE_NOT_FOUND' });
     expect(estado.inserts).toEqual([]);

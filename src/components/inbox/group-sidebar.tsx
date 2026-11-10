@@ -55,6 +55,10 @@ import { useConversationNotes } from "@/hooks/use-conversation-notes";
 import { useEdicaoDeNota } from "@/hooks/use-edicao-de-nota";
 import { useParticipantesDoGrupo } from "@/hooks/use-participantes-do-grupo";
 import { CartaoDeNota } from "@/components/inbox/cartao-de-nota";
+import {
+  BotaoDaLixeiraDeAnotacoes,
+  LixeiraDeAnotacoes,
+} from "@/components/inbox/lixeira-de-anotacoes";
 import { nomeDoGrupo, nomeRealSobApelido, podeRenomearNoWhatsApp } from "@/lib/cb-groups/display";
 import { pedirConversaComContato } from "@/lib/inbox/conversar-com-contato";
 import { ParticipantesDoGrupo } from "@/components/inbox/painel/participantes-do-grupo";
@@ -119,11 +123,13 @@ export function GroupSidebar({
   const { channels } = useChannels();
   const {
     notas,
+    apagadas: notasApagadas,
     pronta: notasProntas,
     falhou: notasFalharam,
     recarregar: recarregarNotas,
     acrescentar: acrescentarNota,
     substituir: substituirNota,
+    colocar: colocarNota,
     remover: removerNotaLocal,
   } = useConversationNotes(conversationId);
   // EDITAR no lugar (Fase 3) — o mesmo do painel do contato.
@@ -139,7 +145,15 @@ export function GroupSidebar({
   // régua do cartão de contato (`conversar-com-contato.ts`).
   const podeConversar = useCan("send-messages");
   const participantes = useParticipantesDoGrupo(grupo?.id ?? null, onGrupoAtualizado);
-  const { apagarNota } = useApagarNota(removerNotaLocal, recarregarNotas);
+  // Apagar manda para a LIXEIRA (1132), de onde o autor ou admin restaura.
+  const { apagarNota, restaurarNota } = useApagarNota(
+    removerNotaLocal,
+    recarregarNotas,
+    colocarNota,
+  );
+  // A lixeira aberta, CARIMBADA com a conversa (a mesma do painel do contato).
+  const [lixeiraDe, setLixeiraDe] = useState<string | null>(null);
+  const vendoLixeira = !!conversationId && lixeiraDe === conversationId;
   // Responder a uma anotação (1075) — o mesmo do painel do contato,
   // carimbado com a conversa pelo mesmo motivo.
   const [respondendo, setRespondendo] = useState<{
@@ -489,6 +503,28 @@ export function GroupSidebar({
           keepMounted
           className="min-h-0 flex-1 overflow-y-auto p-4"
         >
+          {/* A lixeira (1132), como no painel do contato: a caixa de escrever
+              fica MONTADA (escondida) enquanto ela está aberta. */}
+          {conversationId && !vendoLixeira && (
+            <div className="-mt-1 mb-1 flex justify-end">
+              <BotaoDaLixeiraDeAnotacoes
+                quantas={notasProntas ? notasApagadas.length : null}
+                onAbrir={() => setLixeiraDe(conversationId)}
+              />
+            </div>
+          )}
+          {vendoLixeira && (
+            <LixeiraDeAnotacoes
+              apagadas={notasApagadas}
+              pronta={notasProntas}
+              falhou={notasFalharam}
+              usuarioId={user?.id}
+              administra={podeAdministrar}
+              onRestaurar={restaurarNota}
+              onVoltar={() => setLixeiraDe(null)}
+            />
+          )}
+          <div className={cn(vendoLixeira && "hidden")}>
           {conversationId ? (
             <InternalNoteBox
               key={conversationId}
@@ -571,6 +607,7 @@ export function GroupSidebar({
                 {t("noNotes")}
               </p>
             )}
+          </div>
           </div>
         </TabsContent>
 

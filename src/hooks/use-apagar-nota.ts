@@ -4,54 +4,96 @@ import { useTranslations } from 'next-intl';
 import { useCallback } from 'react';
 import { toast } from 'sonner';
 
-import { createClient } from '@/lib/supabase/client';
+import type { ConversationNote } from '@/types';
 
 /**
- * Apagar uma anotação interna (918), de qualquer tela.
+ * Apagar uma anotação interna (918), de qualquer tela — e, desde a 1132,
+ * restaurá-la da lixeira.
  *
- * ⚠️ Vai DIRETO do navegador — ao contrário de criar, que precisa da rota por
- * causa da notificação da menção, e de fixar (951), que precisa dela porque
- * UPDATE nesta tabela é revogado. Aqui a própria RLS decide (autor OU admin),
- * então não há o que validar no meio.
+ * ⚠️ Apagar = mandar para a LIXEIRA (1132, decisão do operador de
+ * 10/11/2026): a rota `DELETE /api/cb/notes/[id]` MARCA a anotação, e ela
+ * fica 90 dias na lixeira da aba Notas. Até a 1132 isto ia DIRETO do
+ * navegador (DELETE sob a RLS "autor OU admin"); a régua agora mora na rota
+ * (`mudarNaLixeira`), e a volta (`POST …/restaurar`) é a mesma mecânica.
  *
  * ⚠️ Mora aqui, e não dentro de cada tela, pela MESMA razão do
- * `useFixarNota`: eram DOIS call sites antes (o fio e, agora, a aba Notas do
- * painel e a do grupo), e o que os une é a guarda do `count` abaixo — a parte
- * que é fácil esquecer numa segunda cópia e cujo sintoma é silencioso.
+ * `useFixarNota`: são três call sites (o fio, a aba Notas do painel e a do
+ * grupo), e o que os une é a guarda abaixo — a parte que é fácil esquecer
+ * numa segunda cópia e cujo sintoma é silencioso.
  *
- * ⚠️⚠️ `count`, NUNCA só `error`. A policy é "autor OU admin", e RLS que barra
- * DELETE não devolve erro: devolve **0 linhas**, que pareceria sucesso. Sem
- * isto a anotação some da tela, continua no banco e reaparece na próxima
- * abertura da conversa, sem nada explicando. O botão já é escondido por
- * `podeApagar`, então este ramo só dispara quando a tela e a RLS discordam —
- * que é exatamente quando não dá para calar.
+ * ⚠️⚠️ Resposta que não é 2xx (ou a rede que caiu) RECARREGA a lista: a
+ * anotação saiu da tela antes da resposta, e sem a recarga ela sumiria e
+ * voltaria na próxima abertura, sem nada explicando. Na rede caída a marca
+ * PODE ter entrado — por isso recarregar (o banco diz), nunca "não apagou".
  *
- * @param removerLocal  tira a nota da lista antes da confirmação do banco
- *                      (quem apaga vê sumir na hora)
- * @param recarregar    desfaz o otimismo relendo a lista quando o DELETE não
- *                      alcançou nenhuma linha
+ * @param removerLocal  tira a nota da lista antes da resposta (quem apaga vê
+ *                      sumir na hora)
+ * @param recarregar    desfaz o otimismo relendo a lista quando a rota recusa
+ * @param colocar       põe na lista a linha que a rota devolveu (a apagada
+ *                      entra na lixeira; a restaurada volta às vivas) sem
+ *                      esperar o tempo real
  */
 export function useApagarNota(
   removerLocal: (id: string) => void,
-  recarregar: () => void | Promise<void>
+  recarregar: () => void | Promise<void>,
+  colocar?: (nota: ConversationNote) => void
 ) {
   const t = useTranslations('Inbox.note');
 
-  const apagarNota = useCallback(
-    async (id: string) => {
-      const supabase = createClient();
-      removerLocal(id);
-      const { error, count } = await supabase
-        .from('cb_conversation_notes')
-        .delete({ count: 'exact' })
-        .eq('id', id);
-      if (error || !count) {
-        toast.error(t('deleteFailed'));
-        void recarregar();
+  /** Devolve `true` quando a anotação voltou (quem chama decide o que mostrar). */
+  const restaurarNota = useCallback(
+    async (id: string): Promise<boolean> => {
+      const { ok, nota } = await pedir(`/api/cb/notes/${id}/restaurar`, 'POST');
+      if (ok) {
+        if (nota) colocar?.(nota);
+        else void recarregar();
+        return true;
       }
+      toast.error(t('restoreFailed'));
+      void recarregar();
+      return false;
     },
-    [removerLocal, recarregar, t]
+    [recarregar, colocar, t]
   );
 
-  return { apagarNota };
+  const apagarNota = useCallback(
+    async (id: string) => {
+      removerLocal(id);
+      const { ok, nota } = await pedir(`/api/cb/notes/${id}`, 'DELETE');
+      if (ok) {
+        // Sem a linha na resposta (corpo ilegível), o banco diz pela recarga.
+        if (nota) colocar?.(nota);
+        else void recarregar();
+        // A proteção contra o clique sem querer (o pedido da 1132): diz onde
+        // ela ficou e oferece desfazer ali mesmo.
+        toast.success(t('movedToTrash'), {
+          action: { label: t('undoDelete'), onClick: () => void restaurarNota(id) },
+        });
+        return;
+      }
+      toast.error(t('deleteFailed'));
+      void recarregar();
+    },
+    [removerLocal, recarregar, colocar, restaurarNota, t]
+  );
+
+  return { apagarNota, restaurarNota };
+}
+
+/**
+ * `ok` = a rota aceitou (2xx); `nota` = a linha que ela devolveu, quando o
+ * corpo se lê. Recusa e rede caída = `ok: false`.
+ */
+async function pedir(
+  url: string,
+  method: 'DELETE' | 'POST'
+): Promise<{ ok: boolean; nota: ConversationNote | null }> {
+  try {
+    const res = await fetch(url, { method });
+    if (!res.ok) return { ok: false, nota: null };
+    const corpo = (await res.json().catch(() => null)) as { note?: ConversationNote } | null;
+    return { ok: true, nota: corpo?.note ?? null };
+  } catch {
+    return { ok: false, nota: null };
+  }
 }

@@ -23,6 +23,10 @@ import { createClient } from '@/lib/supabase/client';
 import { useConversationNotes } from '@/hooks/use-conversation-notes';
 import { useEdicaoDeNota } from '@/hooks/use-edicao-de-nota';
 import { CartaoDeNota } from '@/components/inbox/cartao-de-nota';
+import {
+  BotaoDaLixeiraDeAnotacoes,
+  LixeiraDeAnotacoes,
+} from '@/components/inbox/lixeira-de-anotacoes';
 import { useApagarNota } from '@/hooks/use-apagar-nota';
 import { useFixarNota } from '@/hooks/use-fixar-nota';
 import { useCan } from '@/hooks/use-can';
@@ -536,9 +540,12 @@ export function PainelDoContato({
    */
   const {
     notas,
+    apagadas: notasApagadas,
     pronta: notasProntas,
+    falhou: notasFalharam,
     acrescentar: acrescentarNota,
     substituir: substituirNota,
+    colocar: colocarNota,
     aplicarFixacao,
     remover: removerNotaLocal,
     recarregar: recarregarNotas,
@@ -551,12 +558,22 @@ export function PainelDoContato({
     pararDeEditar: pararDeEditarNota,
   } = useEdicaoDeNota(conversationId, notas, notasProntas);
   /**
-   * Apagar (918). ⚠️ No HOOK pela mesma razão do `useFixarNota` logo abaixo:
-   * o que os call sites precisam ter em comum é a guarda do `count` — RLS que
-   * barra DELETE devolve 0 linhas SEM erro, e uma segunda cópia sem ela faz a
-   * anotação sumir da tela, ficar no banco e voltar na próxima abertura.
+   * Apagar (918) e restaurar da lixeira (1132). ⚠️ No HOOK pela mesma razão
+   * do `useFixarNota` logo abaixo: o que os call sites precisam ter em comum
+   * é a guarda da resposta — a rota que recusa tem de recarregar, senão a
+   * anotação some da tela e volta na próxima abertura.
    */
-  const { apagarNota } = useApagarNota(removerNotaLocal, recarregarNotas);
+  const { apagarNota, restaurarNota } = useApagarNota(
+    removerNotaLocal,
+    recarregarNotas,
+    colocarNota
+  );
+  /**
+   * A lixeira da aba Notas (1132) aberta — CARIMBADA com a conversa: trocar
+   * de cliente volta à lista, sem efeito de limpeza (derivado no render).
+   */
+  const [lixeiraDe, setLixeiraDe] = useState<string | null>(null);
+  const vendoLixeira = !!conversationId && lixeiraDe === conversationId;
   /**
    * Fixar/desafixar (951). ⚠️ A ação mora no hook porque a faixa do topo do
    * fio faz a MESMA coisa: duas cópias das guardas divergiriam, e a
@@ -1864,6 +1881,29 @@ export function PainelDoContato({
           keepMounted
           className="min-h-0 flex-1 overflow-y-auto p-4"
         >
+          {/* A lixeira (1132): o ícone discreto no topo da aba; aberta, ela
+              toma o lugar da lista. ⚠️ A caixa de escrever fica MONTADA
+              (escondida): o rascunho mora dentro dela. */}
+          {conversationId && !vendoLixeira && (
+            <div className="-mt-1 mb-1 flex justify-end">
+              <BotaoDaLixeiraDeAnotacoes
+                quantas={notasProntas ? notasApagadas.length : null}
+                onAbrir={() => setLixeiraDe(conversationId)}
+              />
+            </div>
+          )}
+          {vendoLixeira && (
+            <LixeiraDeAnotacoes
+              apagadas={notasApagadas}
+              pronta={notasProntas}
+              falhou={notasFalharam}
+              usuarioId={user?.id}
+              administra={podeAdministrar}
+              onRestaurar={restaurarNota}
+              onVoltar={() => setLixeiraDe(null)}
+            />
+          )}
+          <div className={cn(vendoLixeira && 'hidden')}>
           {/* A MESMA caixa amarela do compositor (918/919): menção por `@`
               com autocomplete e aviso quando o sino de menção falha. `key`
               pela conversa — a caixa guarda rascunho próprio, e sem o
@@ -1981,6 +2021,7 @@ export function PainelDoContato({
               />
               )
             )}
+          </div>
           </div>
         </TabsContent>
 

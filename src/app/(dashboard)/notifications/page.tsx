@@ -13,6 +13,9 @@ import {
   type AvisoComContato,
 } from "@/lib/notifications/texto-do-aviso";
 import { LinhaDoCliente } from "@/components/notifications/linha-do-cliente";
+import { NotaApagadaNoAviso } from "@/components/notifications/nota-apagada-no-aviso";
+import { useNotasDosAvisos } from "@/hooks/use-notas-dos-avisos";
+import { notaDoAviso } from "@/lib/notifications/nota-do-aviso";
 import { rotaDoAviso } from "@/lib/notifications/rota-do-aviso";
 import {
   AtSign,
@@ -65,6 +68,8 @@ export default function NotificationsPage() {
   );
   const [error, setError] = useState<string | null>(null);
   const [markingAll, setMarkingAll] = useState(false);
+  // A anotação de cada aviso de menção/resposta ainda existe? (1132)
+  const notasDosAvisos = useNotasDosAvisos(notifications);
 
   const load = useCallback(async () => {
     if (!accountId) return;
@@ -167,7 +172,8 @@ export default function NotificationsPage() {
       if (!n.read_at) markRead(n.id);
       // ⚠️ Tarefa ANTES de conversa (944) — a regra mora em `rotaDoAviso`,
       // a mesma do card de notificações do Meu dia. `de=notificacoes` liga na
-      // conversa a faixa que volta para cá.
+      // conversa a faixa que volta para cá. Anotação apagada (1132): o salto
+      // não acha a âncora e só abre a conversa — o aviso já disse por quê.
       const rota = rotaDoAviso(n, "notificacoes");
       if (rota) router.push(rota);
     },
@@ -258,6 +264,8 @@ export default function NotificationsPage() {
               n.actor_user_id ? (nomePorUsuario.get(n.actor_user_id) ?? null) : null,
               tTipos,
             );
+            const nota = notaDoAviso(n, notasDosAvisos);
+            const apagada = nota?.estado === "apagada" ? nota : null;
             return (
               <li key={n.id}>
                 <button
@@ -303,7 +311,11 @@ export default function NotificationsPage() {
                     </div>
                     {/* De quem é o aviso — o cliente ou o grupo (28/10/2026). */}
                     <LinhaDoCliente cliente={clienteDoAviso(n)} className="mt-0.5" />
-                    {texto.corpo && (
+                    {/* Anotação apagada (1132): diz isso e mostra o texto
+                        INTEIRO, no lugar do corpo cortado. */}
+                    {apagada ? (
+                      <NotaApagadaNoAviso nota={apagada} className="mt-1" />
+                    ) : texto.corpo && (
                       <p
                         className={cn(
                           "mt-0.5 text-xs text-muted-foreground",

@@ -1,11 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { ordem, alarmes, gerar, vencer, podar, drenar } = vi.hoisted(() => ({
+const { ordem, alarmes, gerar, vencer, vencerNotas, podar, drenar } = vi.hoisted(() => ({
   ordem: [] as string[],
   alarmes: vi.fn(),
   gerar: vi.fn(),
   vencer: vi.fn(),
+  vencerNotas: vi.fn(),
   podar: vi.fn(),
   drenar: vi.fn(),
 }));
@@ -20,6 +21,12 @@ vi.mock('@/lib/tasks/gerar-recorrentes', () => ({
   gerarTarefasRecorrentes: (...a: unknown[]) => {
     ordem.push('tarefas');
     return gerar(...a);
+  },
+}));
+vi.mock('@/lib/notes/vencer-lixeira-de-anotacoes', () => ({
+  vencerLixeiraDeAnotacoes: (...a: unknown[]) => {
+    ordem.push('notas');
+    return vencerNotas(...a);
   },
 }));
 vi.mock('@/lib/ia-agentes/conteudo-dos-turnos', () => ({
@@ -51,6 +58,7 @@ beforeEach(() => {
   alarmes.mockResolvedValue(undefined);
   gerar.mockResolvedValue({ geradas: 0, semAviso: 0, erro: null });
   vencer.mockResolvedValue({ excluidas: 0, arquivos: 0, erro: null });
+  vencerNotas.mockResolvedValue({ excluidas: 0, erro: null });
   podar.mockResolvedValue({ limpos: 0, erro: null });
   drenar.mockResolvedValue({
     apagados: 0,
@@ -62,11 +70,13 @@ beforeEach(() => {
 });
 
 describe('a manutenção do ciclo das agendadas', () => {
-  it('roda os cinco passos EM SEQUÊNCIA: alarmes → tarefas → vencimento → poda dos turnos da IA → fila (o aviso de conexão primeiro; o vencimento enche a fila que a drenagem leva; a poda vem depois da exclusão definitiva)', async () => {
+  it('roda os seis passos EM SEQUÊNCIA: alarmes → tarefas → vencimento da Lixeira → vencimento das anotações → poda dos turnos da IA → fila (o aviso de conexão primeiro; os dois vencimentos enchem a fila que a drenagem leva; a poda vem depois da exclusão definitiva)', async () => {
     await rodarManutencaoDoCiclo(admin, 1_000);
-    expect(ordem).toEqual(['alarmes', 'tarefas', 'vencer', 'podar', 'drenar']);
+    expect(ordem).toEqual(['alarmes', 'tarefas', 'vencer', 'notas', 'podar', 'drenar']);
     expect(alarmes).toHaveBeenCalledWith(admin, 1_000);
     expect(gerar).toHaveBeenCalledWith(admin);
+    // O vencimento das anotações mede os 90 dias a partir do INÍCIO.
+    expect(vencerNotas).toHaveBeenCalledWith(admin, 1_000);
   });
 
   it('UM prazo comum, contado do início', async () => {
@@ -87,9 +97,10 @@ describe('a manutenção do ciclo das agendadas', () => {
     vencer.mockImplementation(() => {
       throw new Error('vencimento quebrou');
     });
+    vencerNotas.mockRejectedValue(new Error('anotações quebrou'));
     podar.mockRejectedValue(new Error('poda quebrou'));
     await expect(rodarManutencaoDoCiclo(admin, 1_000)).resolves.toBeUndefined();
-    expect(ordem).toEqual(['alarmes', 'tarefas', 'vencer', 'podar', 'drenar']);
+    expect(ordem).toEqual(['alarmes', 'tarefas', 'vencer', 'notas', 'podar', 'drenar']);
     expect(podar).toHaveBeenCalledTimes(1);
     expect(drenar).toHaveBeenCalledTimes(1);
   });

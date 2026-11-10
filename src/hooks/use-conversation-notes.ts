@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 
+import { estaApagada } from '@/lib/notes/lixeira';
 import { createClient } from '@/lib/supabase/client';
 import type { ConversationNote } from '@/types';
 
@@ -30,11 +31,21 @@ import type { ConversationNote } from '@/types';
  * TEMPO, cada um com sua instância deste hook. Apagar no fio removia a
  * anotação de lá e a deixava intacta na ficha, a dois centímetros, até
  * recarregar a página.
+ *
+ * LIXEIRA (1132): apagar MARCA (`apagada_em`, pela rota), e a linha fica. O
+ * hook guarda TODAS as linhas da conversa e devolve duas listas derivadas:
+ * `notas` (as VIVAS — o que o fio, as abas e a fixada desenham) e `apagadas`
+ * (a lixeira da aba Notas). ⚠️ Quem desenha anotação lê `notas`, nunca as
+ * linhas cruas: a apagada apareceria no fio. Marcar e restaurar chegam como
+ * UPDATE (a linha passa de uma lista para a outra sozinha, para quem não
+ * apagou também), e a Lixeira de contatos pode REINSERIR uma linha já marcada
+ * (INSERT de apagada). O DELETE de verdade é só o vencimento dos 90 dias.
  */
 export function useConversationNotes(
   conversationId: string | null | undefined,
   token = 0
 ) {
+  /** TODAS as linhas da conversa, vivas e apagadas (1132). Ver o cabeçalho. */
   const [notas, setNotas] = useState<ConversationNote[]>([]);
   const [carregando, setCarregando] = useState(false);
   /**
@@ -111,7 +122,10 @@ export function useConversationNotes(
         // velha que as 200 notas mais recentes não entra e o sticky some em
         // silêncio. Hoje o máximo real é 2 notas/conversa — é a família de
         // teto-que-chega-por-crescimento já documentada (924/929); quem
-        // paginar isto revisa a fixada junto.
+        // paginar isto revisa a fixada junto. As APAGADAS (1132) vêm junto,
+        // sem filtro de `apagada_em`, de propósito: são a lixeira da aba
+        // Notas, e o tempo real move a linha de uma lista para a outra. O
+        // vencimento de 90 dias as tira do banco; até lá, contam no teto.
         .order('created_at', { ascending: false })
         .limit(200);
 
@@ -191,8 +205,13 @@ export function useConversationNotes(
         },
         (payload) => {
           const linha = payload.new as ConversationNote;
+          // Troca, ou ACRESCENTA: a linha que voltou da lixeira (ou foi para
+          // ela) pode não estar aqui — quem apagou a tirou da lista na hora,
+          // antes da resposta da rota (1132).
           setNotas((anteriores) =>
-            anteriores.map((n) => (n.id === linha.id ? linha : n))
+            anteriores.some((n) => n.id === linha.id)
+              ? anteriores.map((n) => (n.id === linha.id ? linha : n))
+              : [...anteriores, linha]
           );
         }
       )
@@ -264,6 +283,20 @@ export function useConversationNotes(
   }, []);
 
   /**
+   * Põe a linha devolvida pela LIXEIRA (1132: apagar ou restaurar), troque
+   * ela alguma ou não — quem apagou já a tirou da lista. Sem esperar o tempo
+   * real; outra conversa morre aqui, pela régua de `acrescentar`.
+   */
+  const colocar = useCallback((nota: ConversationNote) => {
+    if (nota.conversation_id !== conversaAtualRef.current) return;
+    setNotas((anteriores) =>
+      anteriores.some((n) => n.id === nota.id)
+        ? anteriores.map((n) => (n.id === nota.id ? nota : n))
+        : [...anteriores, nota]
+    );
+  }, []);
+
+  /**
    * ⚠️ O que sai daqui é sempre da conversa do render ATUAL.
    *
    * O estado é esvaziado num efeito, e efeito é PASSIVO: no primeiro render
@@ -279,9 +312,18 @@ export function useConversationNotes(
    * `conversaAtualRef` descreve: ali o id vem de um closure do passado;
    * aqui, do prop do render atual contra o estado velho.
    */
-  const notasDaConversa = useMemo(
+  const linhasDaConversa = useMemo(
     () => notas.filter((n) => n.conversation_id === conversationId),
     [notas, conversationId]
+  );
+  // As duas listas da 1132, das linhas DESTA conversa.
+  const notasDaConversa = useMemo(
+    () => linhasDaConversa.filter((n) => !estaApagada(n)),
+    [linhasDaConversa]
+  );
+  const apagadasDaConversa = useMemo(
+    () => linhasDaConversa.filter(estaApagada),
+    [linhasDaConversa]
   );
 
   // Derivados contra o PROP do render atual, nunca contra o estado velho —
@@ -289,7 +331,10 @@ export function useConversationNotes(
   const daConversaAtual = carregada !== null && carregada.de === conversationId;
 
   return {
+    /** As VIVAS: o que o fio, as abas e a fixada desenham. */
     notas: notasDaConversa,
+    /** A lixeira da aba Notas (1132): as apagadas há menos de 90 dias. */
+    apagadas: apagadasDaConversa,
     carregando,
     /** A lista é RESPOSTA para esta conversa: uma busca voltou bem. Só aí o vazio quer dizer "sem nota". */
     pronta: daConversaAtual && carregada.ok,
@@ -299,6 +344,7 @@ export function useConversationNotes(
     remover,
     acrescentar,
     substituir,
+    colocar,
     aplicarFixacao,
   };
 }

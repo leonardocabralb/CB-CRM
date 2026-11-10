@@ -1182,7 +1182,24 @@
       "ampliarAnexo": "Enlarge {nome}",
       "edit": "Edit",
       "editada": "edited {quando}",
-      "editadaEm": "Edited on {quando}"
+      "editadaEm": "Edited on {quando}",
+      "restoreFailed": "Could not restore the note.",
+      "movedToTrash": "Note deleted. It stays in the Notes tab trash for 90 days.",
+      "undoDelete": "Undo",
+      "lixeira": {
+        "abrir": "Deleted notes",
+        "titulo": "Deleted notes",
+        "voltar": "Back to notes",
+        "explica": "They stay here for {dias} days after being deleted. The author, or an admin, can restore them.",
+        "vazia": "No notes deleted in the last {dias} days.",
+        "carregando": "Loading…",
+        "erro": "Could not load the deleted notes.",
+        "apagadaPor": "Deleted by {nome} on {quando}",
+        "apagadaEm": "Deleted on {quando}",
+        "vence": "{dias, plural, =0 {leaves the trash today} one {leaves the trash in # day} other {leaves the trash in # days}}",
+        "restaurar": "Restore",
+        "restaurando": "Restoring…"
+      }
     },
     "scheduled": {
       "sectionTitle": "Scheduled",
@@ -1446,7 +1463,7 @@
       "toastNoteAddFailed": "Failed to add note",
       "toastNoteAdded": "Note added",
       "toastNoteDeleteFailed": "Failed to delete note",
-      "toastNoteDeleted": "Note deleted",
+      "toastNoteDeleted": "Note deleted. It stays in the conversation's Notes tab trash for 90 days.",
       "toastTemplateSent": "Template \"{name}\" sent",
       "toastTemplateFailed": "Failed to send template: {reason}",
       "toastNoteNeedsConversation": "This contact has no conversation yet, so there is nowhere to attach the note. Send a message first.",
@@ -7045,6 +7062,11 @@
         "corpoSemAutor": "The conversation with {contato} was assigned to you",
         "contatoSemNome": "a contact"
       }
+    },
+    "notaApagada": {
+      "apagada": "Note deleted",
+      "apagadaPor": "Note deleted by {nome} on {quando}",
+      "apagadaEm": "Note deleted on {quando}"
     }
   },
   "SignupPage": {
