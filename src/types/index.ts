@@ -1808,7 +1808,15 @@ export type ConditionSubject =
    * `value`. Lê `contact_custom_values` na hora do passo. Regra em
    * `src/lib/automations/condicao-por-campo.ts`.
    */
-  | 'custom_field';
+  | 'custom_field'
+  /**
+   * NOSSO (10/11/2026) — SÓ na régua do Asaas: o cliente tem pelo menos
+   * `cobranca_parcelas` vencidas OU a mais antiga com pelo menos
+   * `cobranca_dias` de atraso? Lê as `vars` que a varredura passa
+   * (`automations/situacao-da-cobranca.ts`); noutro gatilho responde "não" e a
+   * ativação recusa.
+   */
+  | 'asaas_situacao';
 
 /** Operadores da condição por campo personalizado (`subject: 'custom_field'`). */
 export type OperadorDoCampo = 'equals' | 'contains' | 'empty' | 'not_empty';
@@ -1832,6 +1840,10 @@ export interface ConditionStepConfig {
    * escritório (só o booleano `true` liga). Ausente = todos os dias.
    */
   somente_seg_a_sex?: boolean;
+  /** Só na "Situação da cobrança": a partir de quantas parcelas vencidas (1–99). Ausente = não olha. */
+  cobranca_parcelas?: number;
+  /** Só na "Situação da cobrança": a partir de quantos dias de atraso da mais antiga (1–365). Ausente = não olha. */
+  cobranca_dias?: number;
 }
 
 export interface SendWebhookStepConfig {

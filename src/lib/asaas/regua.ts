@@ -1,6 +1,6 @@
 import { diaNoFuso, FUSO_PADRAO, paraInstante } from "@/lib/agenda/fuso";
 
-import { classificar, diaPorExtenso, diasDeAtraso, dinheiro, ehDevida, rotuloDaParcela, rotulosDasParcelas, valorAtualizado, type ParcelaDoEspelho } from "./inadimplencia";
+import { classificar, diaPorExtenso, diasDeAtraso, dinheiro, ehDevida, rotulosDasParcelas, valorAtualizado, type ParcelaDoEspelho } from "./inadimplencia";
 
 /**
  * A RÉGUA DE COBRANÇA — a parte PURA (Fase 3 do plano do Asaas, §3.6):
@@ -241,30 +241,141 @@ export function dentroDoIntervalo(ultimaCobrancaEm: string | null, hoje: string,
   return somarDias(ultima, intervaloDias) > hoje;
 }
 
-/** Uma linha de `cobranca_detalhe`: "• Parcela 3/12 — R$ 648,20 (atualizado) — venceu em 23/08/2026 — https://…" */
+/**
+ * Pessoa física ou jurídica, pelo CPF/CNPJ do espelho (só dígitos): 11 = CPF,
+ * 14 = CNPJ; o resto é `null` (não sei) e é tratado como pessoa — 59 dos 73
+ * devedores com ficha eram CPF, nenhum sem documento (10/11/2026). O
+ * documento em si nunca sai daqui: só o tipo.
+ */
+export type TipoDePessoa = "fisica" | "juridica" | null;
+
+export function tipoDePessoa(cpfCnpj: string | null | undefined): TipoDePessoa {
+  const digitos = (cpfCnpj ?? "").replace(/\D/g, "");
+  return digitos.length === 11 ? "fisica" : digitos.length === 14 ? "juridica" : null;
+}
+
+const DIAS_DA_SEMANA = ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"];
+const NUMEROS_POR_EXTENSO = ["", "uma", "duas", "três", "quatro", "cinco", "seis", "sete", "oito", "nove", "dez"];
+
+/** `DD/MM`, com o ano só quando não é o de `hoje` (11/09; 11/12/2025). */
+function diaCurto(dia: string, hoje: string): string {
+  if (!RE_DIA.test(dia)) return dia;
+  const [a, m, d] = dia.split("-");
+  return a === hoje.slice(0, 4) ? `${d}/${m}` : `${d}/${m}/${a}`;
+}
+
+/**
+ * Quando venceu ou vence, como se fala (10/11/2026, pedido do operador: o
+ * texto tem de parecer escrito para aquela pessoa): "vence hoje", "vence
+ * amanhã", "venceu ontem", "venceu na sexta-feira (07/11)" até 6 dias, e
+ * "venceu em 11/09" daí para trás. Relativo ao dia da MENSAGEM (`hoje`, no
+ * fuso do escritório) — a varredura só manda no próprio dia.
+ */
+export function quandoVence(vencimento: string, hoje: string): string {
+  if (!RE_DIA.test(vencimento) || !RE_DIA.test(hoje)) return "";
+  if (vencimento === hoje) return "vence hoje";
+  if (vencimento === somarDias(hoje, 1)) return "vence amanhã";
+  if (vencimento > hoje) return `vence em ${diaCurto(vencimento, hoje)}`;
+  if (vencimento === somarDias(hoje, -1)) return "venceu ontem";
+  if (vencimento >= somarDias(hoje, -6)) {
+    const s = diaDaSemana(vencimento);
+    return `venceu ${s === 0 || s === 6 ? "no" : "na"} ${DIAS_DA_SEMANA[s]} (${diaCurto(vencimento, hoje)})`;
+  }
+  return `venceu em ${diaCurto(vencimento, hoje)}`;
+}
+
+/**
+ * O rótulo que VAI AO CLIENTE: "Parcela 3 de 12", ou "Cobrança" na avulsa.
+ * ⚠️⚠️ NUNCA a descrição da cobrança (`rotuloDaParcela` a usa, e a aba
+ * Cobranças da equipe continua usando): medido em 10/11/2026, as avulsas
+ * guardam ANOTAÇÃO INTERNA da equipe na descrição ("pediu para colocar para
+ * após…", "recriada em nome de…", "promessa de pagamento…"), que iria
+ * inteira para o WhatsApp do cliente.
+ */
+function rotuloParaOCliente(p: Pick<ParcelaDoEspelho, "parcela_numero" | "parcela_total">): string {
+  if (p.parcela_numero === null) return "Cobrança";
+  return p.parcela_total !== null && p.parcela_total > 0 ? `Parcela ${p.parcela_numero} de ${p.parcela_total}` : `Parcela ${p.parcela_numero}`;
+}
+
+function comJuros(p: Pick<ParcelaDoEspelho, "juros_e_multa">): boolean {
+  return p.juros_e_multa !== null && p.juros_e_multa > 0;
+}
+
+/**
+ * Uma linha de `cobranca_detalhe`, com o link na linha de baixo:
+ * "• Parcela 3 de 12 — R$ 648,20 (com juros e multa) — venceu ontem\n  https://…".
+ * Sem juros, só o valor (0 das parcelas em aberto tinham juros em 10/11/2026,
+ * e "(valor original)" em toda linha era ruído).
+ */
 export function linhaDaParcela(p: ParcelaDoEspelho, hoje: string): string {
-  const rotulo = p.parcela_numero !== null ? `Parcela ${rotuloDaParcela(p)}` : rotuloDaParcela(p);
-  const comJuros = p.juros_e_multa !== null && p.juros_e_multa > 0;
-  const valor = comJuros ? `${dinheiro(valorAtualizado(p))} (atualizado)` : `${dinheiro(p.valor)} (valor original)`;
-  const quando = p.vencimento === hoje ? `vence hoje (${diaPorExtenso(p.vencimento)})` : p.vencimento > hoje ? `vence em ${diaPorExtenso(p.vencimento)}` : `venceu em ${diaPorExtenso(p.vencimento)}`;
+  const valor = comJuros(p) ? `${dinheiro(valorAtualizado(p))} (com juros e multa)` : dinheiro(p.valor);
   const link = p.link_fatura ?? p.link_boleto ?? "";
-  return `• ${rotulo} — ${valor} — ${quando}${link ? ` — ${link}` : ""}`;
+  return `• ${rotuloParaOCliente(p)} — ${valor} — ${quandoVence(p.vencimento, hoje)}${link ? `\n  ${link}` : ""}`;
 }
 
 function somaAtualizada(parcelas: readonly ParcelaDoEspelho[]): number {
   return Math.round(parcelas.reduce((s, p) => s + valorAtualizado(p), 0) * 100) / 100;
 }
 
-function primeiroNome(nome: string): string {
+/** "MARIA-JOSÉ" → "Maria-José": a inicial de cada parte em maiúscula, o resto em minúscula. */
+function comIniciais(palavra: string): string {
+  return palavra.toLowerCase().replace(/(^|[-'’])(\p{L})/gu, (_, antes: string, letra: string) => antes + letra.toUpperCase());
+}
+
+/**
+ * O primeiro nome. Pessoa (CPF, ou sem documento) ganha a inicial maiúscula
+ * mesmo vindo em CAIXA ALTA — 49 dos 73 devedores com ficha tinham o nome
+ * assim no Asaas (10/11/2026), e "Olá, JOÃO!" soa como cobrança automática.
+ * Empresa (CNPJ) continua como está: a sigla em caixa alta é o nome.
+ */
+function primeiroNome(nome: string, pessoa: TipoDePessoa): string {
   const limpo = nome.trim().split(/\s+/)[0] ?? "";
-  // Nome de empresa em caixa alta continua como está; nome de gente ganha a
-  // primeira maiúscula.
-  if (limpo.length <= 1 || limpo === limpo.toUpperCase()) return limpo;
-  return limpo.charAt(0).toUpperCase() + limpo.slice(1).toLowerCase();
+  if (pessoa === "juridica") return limpo;
+  if (limpo.length <= 1) return limpo.toUpperCase();
+  return comIniciais(limpo);
+}
+
+/** "Olá, Maria!" — ou só "Olá!" para empresa (CNPJ) e cliente sem nome. */
+function saudacao(nome: string, pessoa: TipoDePessoa): string {
+  const primeiro = pessoa === "juridica" ? "" : primeiroNome(nome, pessoa);
+  return primeiro.length > 1 ? `Olá, ${primeiro}!` : "Olá!";
+}
+
+/**
+ * A situação numa frase, para seguir "Vi aqui que …" (minúscula no começo,
+ * sem ponto no fim), com singular e plural certos:
+ * - uma: "a parcela 3 de 12, de R$ 450,00, venceu ontem";
+ * - várias, na cobrança: "duas parcelas estão em aberto, somando R$ 900,00, e
+ *   a mais antiga venceu em 11/10";
+ * - várias, no lembrete: "duas parcelas vencem hoje, somando R$ 750,00";
+ * - o lembrete empurrado do fim de semana acrescenta "… e pode(m) ser
+ *   paga(s) hoje sem juros" (a mesma promessa do `vencimento_texto`, D17).
+ * "parcelas" quando todas são de parcelamento; senão "cobranças".
+ */
+function fraseDaSituacao(lista: readonly ParcelaDoEspelho[], ehLembrete: boolean, hoje: string): string {
+  if (lista.length === 0) return "";
+  if (lista.length === 1) {
+    const p = lista[0];
+    const qual = p.parcela_numero === null ? "a cobrança" : rotuloParaOCliente(p).replace(/^Parcela/, "a parcela");
+    const valor = comJuros(p) ? `${dinheiro(valorAtualizado(p))} com juros e multa` : dinheiro(p.valor);
+    // o lembrete empurrado do fim de semana/feriado (D17): ainda sem juros hoje
+    const semJuros = ehLembrete && p.vencimento < hoje ? " e pode ser paga hoje sem juros" : "";
+    return `${qual}, de ${valor}, ${quandoVence(p.vencimento, hoje)}${semJuros}`;
+  }
+  const n = lista.length;
+  const quantas = `${NUMEROS_POR_EXTENSO[n] ?? String(n)} ${lista.every((p) => p.parcela_numero !== null) ? "parcelas" : "cobranças"}`;
+  const total = dinheiro(somaAtualizada(lista));
+  if (ehLembrete) {
+    const todasHoje = lista.every((p) => p.vencimento === hoje);
+    return todasHoje ? `${quantas} vencem hoje, somando ${total}` : `${quantas} venceram ou vencem hoje, somando ${total}, e podem ser pagas hoje sem juros`;
+  }
+  return `${quantas} estão em aberto, somando ${total}, e a mais antiga ${quandoVence(lista[0].vencimento, hoje)}`;
 }
 
 export interface DadosDasVariaveis {
   clienteNome: string;
+  /** pelo CPF/CNPJ do espelho (`tipoDePessoa`); ausente = `null`, tratado como pessoa */
+  pessoa?: TipoDePessoa;
   escritorioNome: string;
   /** TODAS as vencidas do cliente, da mais antiga para a mais nova (D11) */
   vencidas: readonly ParcelaDoEspelho[];
@@ -282,24 +393,46 @@ export interface DadosDasVariaveis {
  * cliente deve (D11); no lembrete, só o que vence hoje. `dias_de_atraso` é
  * o da parcela que cruzou o marco (vencida na sexta, o marco de 1 dia sai
  * na segunda com "3"); `dias_de_atraso_maior`, o da mais antiga.
+ *
+ * As do texto humano (10/11/2026): `saudacao` ("Olá, Maria!"/"Olá!"),
+ * `cobranca_situacao` (a frase, com concordância) e `cobranca_links` (o link
+ * sozinho quando há UMA cobrança a pagar; com várias — inclusive a que
+ * vence hoje junto —, a lista com um por linha: o mesmo texto serve aos dois
+ * casos, sem ramo por quantidade).
+ * `vencidas_quantidade` é SEMPRE o número de vencidas (0 no
+ * lembrete, ao contrário de `cobranca_quantidade`): é o que a condição
+ * "Situação da cobrança" lê (`automations/situacao-da-cobranca.ts`).
  */
 export function montarVariaveis(d: DadosDasVariaveis): Record<string, string> {
   const fuso = d.fuso ?? FUSO_PADRAO;
+  const pessoa = d.pessoa ?? null;
   const ehLembrete = d.vencidas.length === 0 && d.venceHoje.length > 0;
-  const detalhe = (ehLembrete ? d.venceHoje : d.vencidas).map((p) => linhaDaParcela(p, d.hoje)).join("\n");
+  const daMensagem = ehLembrete ? d.venceHoje : d.vencidas;
+  const detalhe = daMensagem.map((p) => linhaDaParcela(p, d.hoje)).join("\n");
   const maisAntiga = d.vencidas[0] ?? null;
   const cruzou = d.cruzaram[0] ?? null;
   const dias = (p: ParcelaDoEspelho | null) => (p ? String(Math.max(0, diasDeAtraso(p.vencimento, d.agora, fuso) ?? 0)) : "0");
   const venceHojeDetalhe = d.venceHoje.map((p) => linhaDaParcela(p, d.hoje)).join("\n");
+  // O que dá para pagar a partir desta mensagem: as vencidas e, na cobrança
+  // que sai no dia de outro vencimento, também a de hoje (D17) — assim o
+  // texto não precisa da linha solta `vence_hoje_detalhe`.
+  const paraPagar = ehLembrete ? d.venceHoje : [...d.vencidas, ...d.venceHoje];
+  const unica = paraPagar.length === 1 ? paraPagar[0] : null;
+  const linhasParaPagar = paraPagar.map((p) => linhaDaParcela(p, d.hoje)).join("\n");
   return {
+    saudacao: saudacao(d.clienteNome, pessoa),
     cliente_nome: d.clienteNome.trim(),
-    cliente_primeiro_nome: primeiroNome(d.clienteNome),
+    cliente_primeiro_nome: primeiroNome(d.clienteNome, pessoa),
     escritorio_nome: d.escritorioNome.trim(),
+    cobranca_situacao: fraseDaSituacao(daMensagem, ehLembrete, d.hoje),
+    cobranca_links: unica ? unica.link_fatura || unica.link_boleto || linhasParaPagar : linhasParaPagar,
     cobranca_detalhe: detalhe,
-    cobranca_parcelas: rotulosDasParcelas(ehLembrete ? d.venceHoje : d.vencidas, 12),
+    // sem a descrição da avulsa (`rotuloParaOCliente`): pode ser anotação interna
+    cobranca_parcelas: rotulosDasParcelas(daMensagem.map((p) => ({ ...p, descricao: null })), 12),
     cobranca_valor: dinheiro(somaAtualizada(ehLembrete ? d.venceHoje : d.vencidas)),
     cobranca_vencimento: maisAntiga ? diaPorExtenso(maisAntiga.vencimento) : d.venceHoje[0] ? diaPorExtenso(d.venceHoje[0].vencimento) : "",
-    cobranca_quantidade: String(ehLembrete ? d.venceHoje.length : d.vencidas.length),
+    cobranca_quantidade: String(daMensagem.length),
+    vencidas_quantidade: String(d.vencidas.length),
     dias_de_atraso: dias(cruzou),
     dias_de_atraso_maior: dias(maisAntiga),
     marco_detalhe: d.cruzaram.map((p) => linhaDaParcela(p, d.hoje)).join("\n"),

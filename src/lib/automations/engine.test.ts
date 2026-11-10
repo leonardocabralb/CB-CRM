@@ -6137,6 +6137,52 @@ describe("condição 'hora do dia' — no fuso do escritório", () => {
   });
 });
 
+describe("condição 'Situação da cobrança' — régua do Asaas (10/11/2026)", () => {
+  // O motor lê as `vars` que a varredura passa; o gatilho aqui é outro só
+  // para o disparo andar (a régua casa pelo `automation_id`).
+  const condicao = {
+    id: 'cond-cobranca',
+    automation_id: 'a1',
+    step_type: 'condition',
+    position: 0,
+    parent_step_id: null,
+    step_config: { subject: 'asaas_situacao', cobranca_parcelas: 2, cobranca_dias: 15 },
+  };
+  const ramo = (branch: 'yes' | 'no', text: string) => ({
+    ...sendStep({ text }),
+    id: `ramo-${branch}`,
+    parent_step_id: 'cond-cobranca',
+    branch,
+    position: 0,
+  });
+
+  async function avaliar(vars: Record<string, unknown> | undefined) {
+    vi.mocked(engineSendText).mockClear();
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [condicao, ramo('yes', 'ligar'), ramo('no', 'só a mensagem')];
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { conversation_id: 'conv1', ...(vars ? { vars } : {}) },
+    });
+    return vi.mocked(engineSendText).mock.calls[0]?.[0]?.text;
+  }
+
+  it('duas vencidas ou 15 dias: Sim; uma com 3 dias: Não — e o registro diz o que leu', async () => {
+    expect(await avaliar({ vencidas_quantidade: '2', dias_de_atraso_maior: '3' })).toBe('ligar');
+    expect(await avaliar({ vencidas_quantidade: '1', dias_de_atraso_maior: '15' })).toBe('ligar');
+    expect(await avaliar({ vencidas_quantidade: '1', dias_de_atraso_maior: '3' })).toBe('só a mensagem');
+    expect(JSON.stringify(h.state.logUpdates)).toContain('1 parcela vencida, a mais antiga com 3 dias de atraso');
+  });
+
+  it('sem as vars da cobrança (fora da régua): Não, e o registro diz por quê', async () => {
+    expect(await avaliar(undefined)).toBe('só a mensagem');
+    expect(JSON.stringify(h.state.logUpdates)).toContain('só a régua do Asaas');
+  });
+});
+
 describe('Aguardar até estar dentro do horário (B6a, 26/09/2026)', () => {
   // Instantes UTC explícitos (Brasília = UTC-3). Relógio falso SÓ do Date:
   // timers de verdade, senão os awaits do motor não andam. 25/09/2026 é

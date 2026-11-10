@@ -12,6 +12,7 @@ import {
   type CampoParaCondicao,
 } from './condicao-por-campo'
 import { ehGatilhoDaRegua, horaDeEnvioValida } from '@/lib/asaas/regua'
+import { problemaDosLimites } from './situacao-da-cobranca'
 import { ehMeta, ehWhatsApp } from '@/lib/cb-channels/transporte'
 import type { CbChannelKind } from '@/lib/cb-channels/repo'
 import { TIPOS_DE_CONTRATO } from '@/lib/atlas/formatar'
@@ -399,6 +400,16 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
         // duas automações ligadas com este critério têm o `value` preenchido.
         if (!nonEmpty(c.value)) {
           issues.push({ path: `${path}.value`, message: 'condition text is required', codigo: 'condicao_sem_texto' })
+        }
+      } else if (c.subject === 'asaas_situacao') {
+        // A situação da cobrança (régua do Asaas) não tem operando: tem os
+        // dois limites, e pelo menos um (`situacao-da-cobranca.ts`). Que ela
+        // só vale na régua é de `validateAsaasReguaForActivation`.
+        const problema = problemaDosLimites(c)
+        if (problema === 'sem_limite') {
+          issues.push({ path: `${path}.cobranca_parcelas`, message: 'billing status condition needs at least one limit', codigo: 'condicao_cobranca_sem_limite' })
+        } else if (problema === 'limite_invalido') {
+          issues.push({ path: `${path}.cobranca_parcelas`, message: 'billing status limits must be whole numbers (1–99 installments, 1–365 days)', codigo: 'condicao_cobranca_limite_invalido' })
         }
       } else if (c.subject !== 'meta_window_open' && !nonEmpty(c.operand)) {
         // Um código por critério: a frase na tela diz O QUE escolher ("Escolha
@@ -941,7 +952,24 @@ export function validateAsaasReguaForActivation(
   steps: StepLike[],
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = []
-  if (!ehGatilhoDaRegua(triggerType)) return issues
+  if (!ehGatilhoDaRegua(triggerType)) {
+    // A "Situação da cobrança" (10/11/2026) só existe na régua: noutro
+    // gatilho não há `vars` da cobrança e ela responderia sempre "não" — um
+    // ramo morto, ligado, sem nada dizendo por quê.
+    const fora = (lista: StepLike[], prefixo: string) => {
+      lista.forEach((s, i) => {
+        const path = `${prefixo}steps[${i}]`
+        if (s.step_type !== 'condition') return
+        if (s.step_config?.subject === 'asaas_situacao') {
+          issues.push({ path: `${path}.subject`, message: 'the billing status condition only works in the Asaas collection sequence', codigo: 'condicao_cobranca_fora_da_regua' })
+        }
+        if (s.branches?.yes) fora(s.branches.yes, `${path}.yes.`)
+        if (s.branches?.no) fora(s.branches.no, `${path}.no.`)
+      })
+    }
+    fora(steps, '')
+    return issues
+  }
   // ⚠️ UMA conexão para TODOS os envios da automação (D19): a varredura
   // resolve e confere a saúde da conexão do PRIMEIRO `send_message` e a
   // passa em `context.channel_id`; um segundo envio apontado para outra

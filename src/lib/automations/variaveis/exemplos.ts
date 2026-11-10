@@ -87,6 +87,8 @@ export function exemplosDoGatilho(
       const deHoje = parcela({ vencimento: hoje });
       return montarVariaveis({
         clienteNome: nome,
+        // o exemplo é de pessoa (a maioria dos clientes): "Olá, Maria!"
+        pessoa: 'fisica',
         escritorioNome: escritorio,
         vencidas: [atrasada],
         cruzaram: [atrasada],
@@ -99,6 +101,8 @@ export function exemplosDoGatilho(
     case 'asaas_cobranca_vence_hoje':
       return montarVariaveis({
         clienteNome: nome,
+        // o exemplo é de pessoa (a maioria dos clientes): "Olá, Maria!"
+        pessoa: 'fisica',
         escritorioNome: escritorio,
         vencidas: [],
         cruzaram: [],

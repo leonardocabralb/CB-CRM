@@ -154,6 +154,7 @@ import {
 import { janelaDaMetaAberta } from './janela-da-meta';
 import { campoAtendeACondicao, ehIdDeCampo, operadorDaCondicao } from './condicao-por-campo';
 import { avaliarHoraDoDia, esperaPeloHorario } from './hora-do-dia';
+import { avaliarSituacaoDaCobranca } from './situacao-da-cobranca';
 import {
   decidirSemConversa,
   ehRecontagemDaEspera,
@@ -1541,14 +1542,23 @@ async function executeStepsFrom(
         // coisa que não pode ficar num log (a senha do gov.br do previdenciário).
         const campo =
           cfg.subject === 'custom_field' ? await avaliarCampoPersonalizado(cfg, args) : null;
+        // A situação da cobrança (régua do Asaas, 10/11/2026) diz no registro
+        // o que LEU — quantas vencidas e o maior atraso —, ou que não havia
+        // situação (fora da régua).
+        const cobranca =
+          cfg.subject === 'asaas_situacao'
+            ? avaliarSituacaoDaCobranca(cfg, args.context.vars)
+            : null;
         const taken = janela
           ? janela.aberta
           : hora
             ? hora.sim
             : campo
               ? campo.sim
-              : await evaluateCondition(cfg, args);
-        const nota = janela?.nota ?? hora?.nota ?? campo?.nota;
+              : cobranca
+                ? cobranca.sim
+                : await evaluateCondition(cfg, args);
+        const nota = janela?.nota ?? hora?.nota ?? campo?.nota ?? cobranca?.nota;
         results.push({
           step_id: step.id,
           step_type: 'condition',
@@ -3845,6 +3855,12 @@ async function evaluateCondition(
      */
     case 'custom_field':
       return (await avaliarCampoPersonalizado(cfg, args)).sim;
+    /**
+     * A situação da cobrança (régua do Asaas) — `situacao-da-cobranca.ts`.
+     * ⚠️ `executeStepsFrom` também desvia este critério ANTES (pela nota).
+     */
+    case 'asaas_situacao':
+      return avaliarSituacaoDaCobranca(cfg, args.context.vars).sim;
     default:
       return false;
   }

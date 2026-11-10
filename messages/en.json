@@ -2851,7 +2851,8 @@
           "channel": "Channel",
           "deal_stage": "Deal is in stage",
           "deal_status": "Deal is",
-          "meta_window_open": "Meta 24h window is open"
+          "meta_window_open": "Meta 24h window is open",
+          "asaas_situacao": "Billing status (Asaas)"
         },
         "operandLabel": "Operand",
         "horaDoDiaInicio": "Start",
@@ -2864,6 +2865,15 @@
         "horaDoDiaIncompleta": "Pick the start and the end — without both, the condition always answers No.",
         "horaDoDiaSegASex": "Monday to Friday only",
         "horaDoDiaSegASexHelp": "Saturday and Sunday answer No (holidays aren't checked). In a window that crosses midnight, the early morning counts for the day the window started: Saturday's is Friday night.",
+        "cobrancaParcelasLabel": "Overdue installments: from",
+        "cobrancaParcelasAjuda": "How many overdue installments the client has, across all of their charges (2 = two or more). Leave blank to ignore.",
+        "cobrancaDiasLabel": "Days overdue of the oldest: from",
+        "cobrancaDiasAjuda": "Calendar days since the oldest installment was due (15 = day 15 itself counts). Leave blank to ignore.",
+        "cobrancaAjuda": "Answers Yes when EITHER limit is reached. The status is the one the collection sequence just checked on Asaas for this message. Only works in the collection sequence.",
+        "cobrancaSemLimite": "Fill in at least one of the two — with neither, the condition always answers No.",
+        "cobrancaResumoParcelas": "{n, plural, one {# installment or more} other {# installments or more}}",
+        "cobrancaResumoDias": "{n, plural, one {# day overdue or more} other {# days overdue or more}}",
+        "cobrancaResumoOu": " or ",
         "mensagemContemLabel": "Text the message contains",
         "negocioAberto": "Open",
         "escolhaStatus": "Pick a status",
@@ -3247,6 +3257,9 @@
           "condicao_sem_conexao": "Choose the connection the condition checks.",
           "condicao_horario_invalido": "Choose the start and end times of the condition (different from each other).",
           "condicao_dias_uteis_invalido": "Tick or untick the “Monday to Friday only” option of the condition again.",
+          "condicao_cobranca_sem_limite": "Fill in at least one billing status limit (installments or days overdue).",
+          "condicao_cobranca_limite_invalido": "Billing status limits are whole numbers: 1 to 99 installments and 1 to 365 days.",
+          "condicao_cobranca_fora_da_regua": "The “Billing status” condition only works in the Asaas collection sequence: change the criterion.",
           "webhook_sem_endereco": "Write the webhook address (URL).",
           "webhook_endereco_invalido": "Fix the webhook address: it must start with http:// or https://.",
           "numero_sem_telefone": "Write the phone number that receives the message.",
@@ -3399,25 +3412,37 @@
         }
       },
       "evento": {
+        "saudacao": {
+          "rotulo": "Greeting",
+          "legenda": "“Olá, Maria!” with the first name; for a company (CNPJ) or a client without a name, just “Olá!”."
+        },
         "cliente_nome": {
           "rotulo": "Customer name in Asaas",
           "legenda": "The full name, as it is in Asaas."
         },
         "cliente_primeiro_nome": {
           "rotulo": "Customer first name",
-          "legenda": "Only the first name, capitalized."
+          "legenda": "Just the first name, capitalized (even when Asaas has it in all caps); a company (CNPJ) is kept as is."
         },
         "escritorio_nome": {
           "rotulo": "Office name",
-          "legenda": "The account name."
+          "legenda": "The automatic signature name (Settings → Signature); without it, the account name."
+        },
+        "cobranca_situacao": {
+          "rotulo": "Status in one sentence",
+          "legenda": "To follow “Vi aqui que…”: the single installment with value and due date, or how many are open, the total and when the oldest was due (in Portuguese)."
+        },
+        "cobranca_links": {
+          "rotulo": "Payment link(s)",
+          "legenda": "With ONE charge to pay, just its link; with more than one (including one due today), the list with one link per line — the same text works for both cases."
         },
         "cobranca_detalhe": {
           "rotulo": "Open installments",
-          "legenda": "Every overdue installment, one per line, with amount, due date and payment link. In the reminder, only the one due today."
+          "legenda": "Every overdue installment, one per line, with value, due date and the link on the line below. In the reminder, only the one due today. Never the charge description."
         },
         "cobranca_parcelas": {
           "rotulo": "Installment numbers",
-          "legenda": "Which installments are open (2/12, 3/12…)."
+          "legenda": "Which installments are open (2/12, 3/12…); a one-off charge shows as “cobrança”."
         },
         "cobranca_valor": {
           "rotulo": "Open amount",
@@ -3429,7 +3454,11 @@
         },
         "cobranca_quantidade": {
           "rotulo": "Number of installments",
-          "legenda": "How many installments are open."
+          "legenda": "How many installments the message lists (the overdue ones; in the reminder, the ones due today)."
+        },
+        "vencidas_quantidade": {
+          "rotulo": "Overdue count",
+          "legenda": "How many overdue installments the client has; 0 in the due-date reminder."
         },
         "dias_de_atraso": {
           "rotulo": "Days overdue (the milestone)",

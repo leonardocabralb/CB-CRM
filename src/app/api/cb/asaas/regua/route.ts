@@ -9,7 +9,9 @@ import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit
 /**
  * POST /api/cb/asaas/regua  (admin+) — "Criar régua padrão" (§3.6): cria,
  * DESLIGADAS, as automações que ainda faltam — "Cobrança · 1 dia", "· 5
- * dias", "· 30 dias" (gatilho `asaas_cobranca_vencida`) e "Lembrete · vence
+ * dias", "· 15 dias", "· 30 dias" (gatilho `asaas_cobranca_vencida`; o de 15
+ * entrou em 10/11/2026, pedido do operador: entre 5 e 30 o cliente de uma
+ * parcela só ficava 25 dias sem contato) e "Lembrete · vence
  * hoje" (`asaas_cobranca_vence_hoje`) —, cada uma com um passo de mensagem
  * editável, pulando o marco que já existe. O operador troca o texto no
  * editor de sempre e liga uma a uma; mais marcos são automações novas do
@@ -26,18 +28,21 @@ import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit
  * desconsidere" porque o boleto pago no caixa fica PENDING até compensar.
  */
 
-const MARCOS_PADRAO = [1, 5, 30] as const;
+const MARCOS_PADRAO = [1, 5, 15, 30] as const;
 
+// `saudacao` em vez de "Olá, {{vars.cliente_primeiro_nome}}!": empresa (CNPJ)
+// recebe só "Olá!", e o nome de pessoa sai com a inicial maiúscula (10/11/2026).
 const TEXTO_DA_COBRANCA = [
-  "Olá, {{vars.cliente_primeiro_nome}}! Aqui é do {{vars.escritorio_nome}}.",
-  "Constam em aberto no seu cadastro {{vars.cobranca_quantidade}} parcela(s), num total de {{vars.cobranca_valor}}:",
+  "{{vars.saudacao}} Aqui é do {{vars.escritorio_nome}}.",
+  "Ainda não identificamos o pagamento de:",
   "{{vars.cobranca_detalhe}}",
   "{{vars.vence_hoje_detalhe}}",
+  "Total em aberto: {{vars.cobranca_valor}}.",
   "Se já pagou, pode desconsiderar esta mensagem. Qualquer dúvida, é só responder por aqui.",
 ].join("\n");
 
 const TEXTO_DO_LEMBRETE = [
-  "Olá, {{vars.cliente_primeiro_nome}}! Aqui é do {{vars.escritorio_nome}}.",
+  "{{vars.saudacao}} Aqui é do {{vars.escritorio_nome}}.",
   "Passando para lembrar que {{vars.vencimento_texto}}:",
   "{{vars.cobranca_detalhe}}",
   "Se já pagou, pode desconsiderar. Qualquer dúvida, é só responder por aqui.",

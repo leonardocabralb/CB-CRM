@@ -160,6 +160,11 @@ qualquer uma é pergunta ao operador.
   grade; as antigas não mudam (18/09/2026).
 - Asaas: o CRM cria a ficha, com nome fixado; ligar a régua não é
   retroativo.
+- Régua do Asaas (10/11/2026): a cobrança não abre conversa encerrada nem
+  marca lida (a ficha sem conversa ganha uma ENCERRADA); a descrição da
+  cobrança NUNCA vai ao cliente; marcos 1, 5, 15 e 30 dias; cliente com 2
+  parcelas vencidas ou mais, ou 15 dias de atraso ou mais, gera UMA anotação
+  marcando quem liga, até ela tirar a etiqueta (`integracoes-asaas.md`).
 - Atlas: vincular/desvincular à mão só admin; a faixa acende também com
   suspenso e inativo; a linha do Atlas aparece a todos (sem recorte de
   perfil); o Atlas "ativo" NÃO apaga a linha do funil (30/09/2026).

@@ -32,11 +32,13 @@ import {
   RECOLHER_TRAVA_MS,
   RESULTADOS_QUE_CONTAM_COMO_ENVIO,
   resultadoDoLog,
+  tipoDePessoa,
   vencidasDoCliente,
   type AutomacaoDaRegua,
   type ContextoDaRegua,
   type GrupoDeCobranca,
   type GrupoDeLembrete,
+  type TipoDePessoa,
 } from "./regua";
 
 /**
@@ -181,6 +183,8 @@ interface ClienteLigado {
   asaas_customer_id: string;
   contact_id: string;
   nome: string;
+  /** pelo CPF/CNPJ (`tipoDePessoa`): a saudação e o primeiro nome dependem dele; o documento não sai daqui */
+  pessoa: TipoDePessoa;
 }
 
 interface AutomacaoPronta extends AutomacaoDaRegua {
@@ -317,11 +321,11 @@ async function conexoesDaConta(admin: SupabaseClient, accountId: string): Promis
  * (Codex, 4ª rodada do PR #206).
  */
 async function lerClientesLigados(admin: SupabaseClient, accountId: string, saida: ResultadoDaRegua): Promise<Map<string, ClienteLigado>> {
-  const linhas = await lerTudo<{ asaas_customer_id: string; contact_id: string; nome: string | null }>(
+  const linhas = await lerTudo<{ asaas_customer_id: string; contact_id: string; nome: string | null; cpf_cnpj: string | null }>(
     (de, ate) =>
       admin
         .from("cb_asaas_clientes")
-        .select("asaas_customer_id, contact_id, nome")
+        .select("asaas_customer_id, contact_id, nome, cpf_cnpj")
         .eq("account_id", accountId)
         .eq("deleted", false)
         .eq("regua_desligada", false)
@@ -344,7 +348,7 @@ async function lerClientesLigados(admin: SupabaseClient, accountId: string, said
       saida.semTelefone += 1;
       continue;
     }
-    mapa.set(l.asaas_customer_id, { asaas_customer_id: l.asaas_customer_id, contact_id: l.contact_id, nome: l.nome ?? "" });
+    mapa.set(l.asaas_customer_id, { asaas_customer_id: l.asaas_customer_id, contact_id: l.contact_id, nome: l.nome ?? "", pessoa: tipoDePessoa(l.cpf_cnpj) });
   }
   return mapa;
 }
@@ -894,7 +898,7 @@ export async function varrerRegua(admin: SupabaseClient, accountId: string, deps
       // 4ª rodada do PR #206).
       const daQueManda = (p: ParcelaDoEspelho) => Number(marcoDe.get(p.id)?.id === automacao.id);
       const cruzaramNaMensagem = [...cruzaram].sort((a, b) => daQueManda(b) - daQueManda(a) || (a.vencimento < b.vencimento ? -1 : a.vencimento > b.vencimento ? 1 : 0));
-      const vars = montarVariaveis({ clienteNome: ligado.nome, escritorioNome: escritorio, vencidas, cruzaram: cruzaramNaMensagem, venceHoje, hoje: dia, agora, fuso });
+      const vars = montarVariaveis({ clienteNome: ligado.nome, pessoa: ligado.pessoa, escritorioNome: escritorio, vencidas, cruzaram: cruzaramNaMensagem, venceHoje, hoje: dia, agora, fuso });
       const carimbo = new Date().toISOString();
       const disparo = await disparar({
         accountId,
@@ -956,7 +960,7 @@ export async function varrerRegua(admin: SupabaseClient, accountId: string, deps
       );
       if (ids === null || ids.length === 0) continue;
       const conversationId = await conversaDoContato(admin, accountId, ligado.contact_id, automacao.channelId, automacao.id);
-      const vars = montarVariaveis({ clienteNome: ligado.nome, escritorioNome: escritorio, vencidas: [], cruzaram: [], venceHoje, hoje: dia, agora, fuso });
+      const vars = montarVariaveis({ clienteNome: ligado.nome, pessoa: ligado.pessoa, escritorioNome: escritorio, vencidas: [], cruzaram: [], venceHoje, hoje: dia, agora, fuso });
       const carimbo = new Date().toISOString();
       const disparo = await disparar({
         accountId,

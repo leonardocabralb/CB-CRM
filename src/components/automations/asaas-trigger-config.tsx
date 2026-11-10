@@ -14,14 +14,18 @@ import { HORA_MAXIMA, HORA_MINIMA } from "@/lib/asaas/regua"
  */
 
 const VARIAVEIS_DA_COBRANCA = [
+  "saudacao",
   "cliente_nome",
   "cliente_primeiro_nome",
   "escritorio_nome",
+  "cobranca_situacao",
+  "cobranca_links",
   "cobranca_detalhe",
   "cobranca_parcelas",
   "cobranca_valor",
   "cobranca_vencimento",
   "cobranca_quantidade",
+  "vencidas_quantidade",
   "dias_de_atraso",
   "dias_de_atraso_maior",
   "marco_detalhe",

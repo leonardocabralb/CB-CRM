@@ -254,6 +254,10 @@ export const CODIGOS_DE_PENDENCIA = [
   'condicao_sem_conexao',
   'condicao_horario_invalido',
   'condicao_dias_uteis_invalido',
+  // A "Situação da cobrança" da régua do Asaas (10/11/2026)
+  'condicao_cobranca_sem_limite',
+  'condicao_cobranca_limite_invalido',
+  'condicao_cobranca_fora_da_regua',
   'webhook_sem_endereco',
   'webhook_endereco_invalido',
   'numero_sem_telefone',
