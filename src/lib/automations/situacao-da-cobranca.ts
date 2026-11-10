@@ -17,9 +17,11 @@
 // marco de 15 dias pegar quem atrasou uma parcela só). Limite em branco não
 // é olhado; os dois em branco a ativação recusa.
 //
-// ⚠️ Fora da régua não há `vars` da cobrança: responde NÃO e diz isso no
-// registro — e a ativação recusa a condição em outro gatilho
-// (`validateAsaasReguaForActivation`), para não haver ramo morto em silêncio.
+// ⚠️ Fora da régua não há `vars` da cobrança, e no LEMBRETE do vencimento a
+// varredura não passa vencida nenhuma: nos dois responde NÃO (fora da régua,
+// dizendo isso no registro) — e a ativação recusa a condição em todo gatilho
+// que não seja a cobrança de atraso (`validateAsaasReguaForActivation`), para
+// não haver ramo morto em silêncio.
 // ============================================================
 
 export const TETO_DE_PARCELAS = 99;
@@ -51,12 +53,14 @@ export function lerLimitesDaCobranca(cfg: ConfigDaCobranca): LimitesDaCobranca {
  * faixa (o motor o ignoraria, e o operador acharia que vale), ou nenhum
  * limite (a condição responderia sempre "não"). `null` = está certa.
  */
-export function problemaDosLimites(cfg: Record<string, unknown>): 'limite_invalido' | 'sem_limite' | null {
+export function problemaDosLimites(
+  cfg: Record<string, unknown>,
+): { codigo: 'limite_invalido'; campo: 'cobranca_parcelas' | 'cobranca_dias' } | { codigo: 'sem_limite' } | null {
   const presente = (v: unknown) => v !== undefined && v !== null && v !== '';
-  if (presente(cfg.cobranca_parcelas) && inteiroNaFaixa(cfg.cobranca_parcelas, TETO_DE_PARCELAS) === null) return 'limite_invalido';
-  if (presente(cfg.cobranca_dias) && inteiroNaFaixa(cfg.cobranca_dias, TETO_DE_DIAS) === null) return 'limite_invalido';
+  if (presente(cfg.cobranca_parcelas) && inteiroNaFaixa(cfg.cobranca_parcelas, TETO_DE_PARCELAS) === null) return { codigo: 'limite_invalido', campo: 'cobranca_parcelas' };
+  if (presente(cfg.cobranca_dias) && inteiroNaFaixa(cfg.cobranca_dias, TETO_DE_DIAS) === null) return { codigo: 'limite_invalido', campo: 'cobranca_dias' };
   const l = lerLimitesDaCobranca(cfg);
-  return l.parcelas === null && l.dias === null ? 'sem_limite' : null;
+  return l.parcelas === null && l.dias === null ? { codigo: 'sem_limite' } : null;
 }
 
 /** "3" ou 3 → 3; o resto → null. As `vars` da varredura são texto. */

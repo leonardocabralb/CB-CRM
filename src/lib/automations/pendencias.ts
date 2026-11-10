@@ -258,6 +258,7 @@ export const CODIGOS_DE_PENDENCIA = [
   'condicao_cobranca_sem_limite',
   'condicao_cobranca_limite_invalido',
   'condicao_cobranca_fora_da_regua',
+  'condicao_cobranca_no_lembrete',
   'webhook_sem_endereco',
   'webhook_endereco_invalido',
   'numero_sem_telefone',

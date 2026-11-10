@@ -626,7 +626,9 @@ describe('régua do Asaas — os passos', () => {
     expect(validateStepsForActivation([situacao({ cobranca_dias: 15 })])).toEqual([])
     expect(validateStepsForActivation([situacao({})]).map((i) => i.codigo)).toEqual(['condicao_cobranca_sem_limite'])
     expect(validateStepsForActivation([situacao({ cobranca_parcelas: 0 })]).map((i) => i.codigo)).toEqual(['condicao_cobranca_limite_invalido'])
-    expect(validateStepsForActivation([situacao({ cobranca_dias: 366 })]).map((i) => i.codigo)).toEqual(['condicao_cobranca_limite_invalido'])
+    expect(validateStepsForActivation([situacao({ cobranca_dias: 366 })]).map((i) => [i.path, i.codigo])).toEqual([['steps[0].cobranca_dias', 'condicao_cobranca_limite_invalido']])
+    // no LEMBRETE a varredura não passa vencida nenhuma: sempre "não" → recusada (revisão do PR #494)
+    expect(validateAsaasReguaForActivation('asaas_cobranca_vence_hoje', [msg('c1'), situacao({ cobranca_parcelas: 2 })]).map((i) => [i.path, i.codigo])).toEqual([['steps[1].subject', 'condicao_cobranca_no_lembrete']])
     // noutro gatilho não há `vars` da cobrança: ramo morto, recusado (inclusive dentro de um ramo)
     expect(validateAsaasReguaForActivation('keyword_match', [msg(), situacao({ cobranca_parcelas: 2 })]).map((i) => [i.path, i.codigo])).toEqual([['steps[1].subject', 'condicao_cobranca_fora_da_regua']])
     const aninhada = [{ step_type: 'condition', step_config: { subject: 'tag_presence', operand: 't' }, branches: { yes: [], no: [situacao({ cobranca_parcelas: 2 })] } }]

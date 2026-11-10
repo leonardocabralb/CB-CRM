@@ -31,20 +31,21 @@ import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit
 const MARCOS_PADRAO = [1, 5, 15, 30] as const;
 
 // `saudacao` em vez de "Olá, {{vars.cliente_primeiro_nome}}!": empresa (CNPJ)
-// recebe só "Olá!", e o nome de pessoa sai com a inicial maiúscula (10/11/2026).
+// recebe só "Olá!", e o nome de pessoa sai com a inicial maiúscula. A frase
+// da situação e os links servem a uma cobrança e a várias, e os links já
+// trazem a que vence hoje junto (10/11/2026) — um "Total em aberto" depois
+// dela somaria só as vencidas (revisão do PR #494).
 const TEXTO_DA_COBRANCA = [
   "{{vars.saudacao}} Aqui é do {{vars.escritorio_nome}}.",
-  "Ainda não identificamos o pagamento de:",
-  "{{vars.cobranca_detalhe}}",
-  "{{vars.vence_hoje_detalhe}}",
-  "Total em aberto: {{vars.cobranca_valor}}.",
+  "Vi aqui que {{vars.cobranca_situacao}}. Ainda não identificamos o pagamento. Para pagar:",
+  "{{vars.cobranca_links}}",
   "Se já pagou, pode desconsiderar esta mensagem. Qualquer dúvida, é só responder por aqui.",
 ].join("\n");
 
 const TEXTO_DO_LEMBRETE = [
   "{{vars.saudacao}} Aqui é do {{vars.escritorio_nome}}.",
-  "Passando para lembrar que {{vars.vencimento_texto}}:",
-  "{{vars.cobranca_detalhe}}",
+  "Passando para lembrar que {{vars.cobranca_situacao}}. Para pagar:",
+  "{{vars.cobranca_links}}",
   "Se já pagou, pode desconsiderar. Qualquer dúvida, é só responder por aqui.",
 ].join("\n");
 

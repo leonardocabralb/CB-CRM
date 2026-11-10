@@ -754,7 +754,10 @@ export async function varrerRegua(admin: SupabaseClient, accountId: string, deps
     // escritório, `nomeParaAssinar`), não `accounts.name` — que nesta conta é
     // o nome do dono, e a mensagem diria "Aqui é do <dono>" (medido em
     // 10/11/2026). Sem ele, o nome da conta, como antes.
-    const { data: conta } = await admin.from("accounts").select("name, assinatura_nome_automatica").eq("id", accountId).maybeSingle();
+    const { data: conta, error: erroDaConta } = await admin.from("accounts").select("name, assinatura_nome_automatica").eq("id", accountId).maybeSingle();
+    // Leitura que falha não vira "Aqui é do ." em todas as mensagens do ciclo:
+    // para ANTES de travar qualquer grupo (revisão do PR #494).
+    if (erroDaConta) throw new Error(`nome do escritório: ${erroDaConta.message}`);
     const nomeAutomatico = typeof conta?.assinatura_nome_automatica === "string" ? conta.assinatura_nome_automatica.trim() : "";
     const escritorio = nomeAutomatico || (typeof conta?.name === "string" ? conta.name : "");
     const cliente = deps.cliente ?? (await (async () => { const c = await clienteDaConta(admin, accountId); if (!c.ok) throw new ParadaDaVarredura(c.codigo); return c.cliente; })());

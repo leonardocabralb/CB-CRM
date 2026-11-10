@@ -3,7 +3,7 @@
 import { useTranslations } from "next-intl"
 
 import { Input } from "@/components/ui/input"
-import { lerLimitesDaCobranca, TETO_DE_DIAS, TETO_DE_PARCELAS } from "@/lib/automations/situacao-da-cobranca"
+import { problemaDosLimites, TETO_DE_DIAS, TETO_DE_PARCELAS } from "@/lib/automations/situacao-da-cobranca"
 
 /**
  * Os dois limites da condição "Situação da cobrança" (régua do Asaas,
@@ -20,7 +20,6 @@ export function SituacaoDaCobrancaFields({
   set: (patch: Record<string, unknown>) => void
 }) {
   const t = useTranslations("Automations.builder.config")
-  const limites = lerLimitesDaCobranca(cfg)
   // O que está gravado, mesmo fora da faixa: o campo mostra o que se salva.
   const mostrar = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? String(v) : "")
   const ler = (texto: string): number | undefined => {
@@ -28,7 +27,8 @@ export function SituacaoDaCobrancaFields({
     const n = Math.trunc(Number(texto))
     return Number.isFinite(n) ? n : undefined
   }
-  const semLimite = limites.parcelas === null && limites.dias === null
+  // Número digitado fora da faixa não é "em branco": o aviso diz o que é.
+  const problema = problemaDosLimites(cfg)
   return (
     <div className="space-y-2">
       <div>
@@ -58,7 +58,11 @@ export function SituacaoDaCobrancaFields({
         <p className="mt-1 text-[11px] text-muted-foreground">{t("cobrancaDiasAjuda")}</p>
       </div>
       <p className="text-[11px] text-muted-foreground">{t("cobrancaAjuda")}</p>
-      {semLimite && <p className="text-[11px] text-amber-700 dark:text-amber-300">{t("cobrancaSemLimite")}</p>}
+      {problema && (
+        <p className="text-[11px] text-amber-700 dark:text-amber-300">
+          {problema.codigo === "sem_limite" ? t("cobrancaSemLimite") : t("cobrancaLimiteInvalido")}
+        </p>
+      )}
     </div>
   )
 }

@@ -344,6 +344,27 @@ describe("as variáveis da mensagem", () => {
     );
   });
 
+  it("lembrete empurrado: nenhuma de hoje = 'venceram no fim de semana'/'no feriado', e o valor ORIGINAL ao lado de 'sem juros' (revisão do PR #494)", () => {
+    const sab = parcela({ id: "s", status: "OVERDUE", vencimento: "2026-09-12", parcela_numero: 4, juros_e_multa: 9 });
+    const dom = parcela({ id: "d", status: "OVERDUE", vencimento: "2026-09-13", parcela_numero: 2, parcela_total: 6, valor: 300 });
+    const base = { clienteNome: "Rubens", escritorioNome: "CB", vencidas: [], cruzaram: [], hoje: "2026-09-14", agora, fuso: FUSO };
+    expect(montarVariaveis({ ...base, venceHoje: [sab, dom] }).cobranca_situacao).toBe(`duas parcelas venceram no fim de semana, somando ${dinheiro(920)}, e podem ser pagas hoje sem juros`);
+    // uma só, com juros informados: o valor original, sem "com juros e multa"
+    expect(montarVariaveis({ ...base, venceHoje: [sab] }).cobranca_situacao).toBe(`a parcela 4 de 12, de ${dinheiro(620)}, venceu no sábado (12/09) e pode ser paga hoje sem juros`);
+    // 07/09 (feriado, segunda) e 08/09 (terça, mas lembrete na terça cobre só ela): feriado sozinho
+    const feriado = parcela({ id: "f", status: "OVERDUE", vencimento: "2026-09-07", parcela_numero: 1 });
+    const feriado2 = parcela({ id: "f2", status: "OVERDUE", vencimento: "2026-09-07", parcela_numero: 2 });
+    expect(montarVariaveis({ ...base, hoje: "2026-09-08", venceHoje: [feriado, feriado2] }).cobranca_situacao.startsWith("duas parcelas venceram no feriado,")).toBe(true);
+    // sábado + feriado na segunda (lembrete na terça)
+    expect(montarVariaveis({ ...base, hoje: "2026-09-08", venceHoje: [parcela({ id: "s5", vencimento: "2026-09-05" }), feriado] }).cobranca_situacao.startsWith("duas parcelas venceram no fim de semana e no feriado,")).toBe(true);
+  });
+
+  it("empresa (CNPJ) mantém o primeiro nome como antes: sigla em caixa alta fica, o resto ganha a inicial", () => {
+    const base = { escritorioNome: "CB", vencidas: [p2], cruzaram: [p2], venceHoje: [], hoje: "2026-09-14", agora, fuso: FUSO };
+    expect(montarVariaveis({ ...base, clienteNome: "padaria do bairro", pessoa: "juridica" }).cliente_primeiro_nome).toBe("Padaria");
+    expect(montarVariaveis({ ...base, clienteNome: "ACME LTDA", pessoa: "juridica" }).cliente_primeiro_nome).toBe("ACME");
+  });
+
   it("⚠️ a cobrança avulsa NUNCA leva a descrição ao cliente (é onde a equipe anota: 'pediu para colocar após…', 10/11/2026); sem link, sem a linha do link", () => {
     const avulsa = parcela({ parcela_numero: null, parcela_total: null, descricao: "Pediu para pagar depois das eleições", link_fatura: null, link_boleto: null });
     expect(linhaDaParcela(avulsa, "2026-09-14")).toBe(`• Cobrança — ${dinheiro(620)} — venceu na quinta-feira (10/09)`);

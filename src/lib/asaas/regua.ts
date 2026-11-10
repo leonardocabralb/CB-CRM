@@ -326,11 +326,15 @@ function comIniciais(palavra: string): string {
  * O primeiro nome. Pessoa (CPF, ou sem documento) ganha a inicial maiúscula
  * mesmo vindo em CAIXA ALTA — 49 dos 73 devedores com ficha tinham o nome
  * assim no Asaas (10/11/2026), e "Olá, JOÃO!" soa como cobrança automática.
- * Empresa (CNPJ) continua como está: a sigla em caixa alta é o nome.
+ * Empresa (CNPJ) fica como antes: a sigla em caixa alta continua como está, e
+ * o resto ganha a inicial maiúscula ("padaria" → "Padaria").
  */
 function primeiroNome(nome: string, pessoa: TipoDePessoa): string {
   const limpo = nome.trim().split(/\s+/)[0] ?? "";
-  if (pessoa === "juridica") return limpo;
+  if (pessoa === "juridica") {
+    if (limpo.length <= 1 || limpo === limpo.toUpperCase()) return limpo;
+    return limpo.charAt(0).toUpperCase() + limpo.slice(1).toLowerCase();
+  }
   if (limpo.length <= 1) return limpo.toUpperCase();
   return comIniciais(limpo);
 }
@@ -348,8 +352,12 @@ function saudacao(nome: string, pessoa: TipoDePessoa): string {
  * - várias, na cobrança: "duas parcelas estão em aberto, somando R$ 900,00, e
  *   a mais antiga venceu em 11/10";
  * - várias, no lembrete: "duas parcelas vencem hoje, somando R$ 750,00";
- * - o lembrete empurrado do fim de semana acrescenta "… e pode(m) ser
- *   paga(s) hoje sem juros" (a mesma promessa do `vencimento_texto`, D17).
+ * - o lembrete empurrado do fim de semana/feriado acrescenta "… e pode(m) ser
+ *   paga(s) hoje sem juros" (a mesma promessa do `vencimento_texto`, D17), e
+ *   aí o valor é o ORIGINAL — "com juros e multa" ao lado de "sem juros" se
+ *   contradiz (revisão do PR #494). Nenhuma de hoje: "venceram no fim de
+ *   semana" (ou "no feriado"); umas de hoje e outras não: "venceram ou vencem
+ *   hoje".
  * "parcelas" quando todas são de parcelamento; senão "cobranças".
  */
 function fraseDaSituacao(lista: readonly ParcelaDoEspelho[], ehLembrete: boolean, hoje: string): string {
@@ -357,17 +365,22 @@ function fraseDaSituacao(lista: readonly ParcelaDoEspelho[], ehLembrete: boolean
   if (lista.length === 1) {
     const p = lista[0];
     const qual = p.parcela_numero === null ? "a cobrança" : rotuloParaOCliente(p).replace(/^Parcela/, "a parcela");
-    const valor = comJuros(p) ? `${dinheiro(valorAtualizado(p))} com juros e multa` : dinheiro(p.valor);
     // o lembrete empurrado do fim de semana/feriado (D17): ainda sem juros hoje
-    const semJuros = ehLembrete && p.vencimento < hoje ? " e pode ser paga hoje sem juros" : "";
-    return `${qual}, de ${valor}, ${quandoVence(p.vencimento, hoje)}${semJuros}`;
+    const empurrado = ehLembrete && p.vencimento < hoje;
+    const valor = comJuros(p) && !empurrado ? `${dinheiro(valorAtualizado(p))} com juros e multa` : dinheiro(p.valor);
+    return `${qual}, de ${valor}, ${quandoVence(p.vencimento, hoje)}${empurrado ? " e pode ser paga hoje sem juros" : ""}`;
   }
   const n = lista.length;
   const quantas = `${NUMEROS_POR_EXTENSO[n] ?? String(n)} ${lista.every((p) => p.parcela_numero !== null) ? "parcelas" : "cobranças"}`;
   const total = dinheiro(somaAtualizada(lista));
   if (ehLembrete) {
-    const todasHoje = lista.every((p) => p.vencimento === hoje);
-    return todasHoje ? `${quantas} vencem hoje, somando ${total}` : `${quantas} venceram ou vencem hoje, somando ${total}, e podem ser pagas hoje sem juros`;
+    const deHoje = lista.filter((p) => p.vencimento === hoje).length;
+    if (deHoje === n) return `${quantas} vencem hoje, somando ${total}`;
+    const original = dinheiro(Math.round(lista.reduce((s, p) => s + p.valor, 0) * 100) / 100);
+    const noFimDeSemana = lista.filter((p) => [0, 6].includes(diaDaSemana(p.vencimento))).length;
+    const quando =
+      deHoje > 0 ? "venceram ou vencem hoje" : noFimDeSemana === n ? "venceram no fim de semana" : noFimDeSemana === 0 ? "venceram no feriado" : "venceram no fim de semana e no feriado";
+    return `${quantas} ${quando}, somando ${original}, e podem ser pagas hoje sem juros`;
   }
   return `${quantas} estão em aberto, somando ${total}, e a mais antiga ${quandoVence(lista[0].vencimento, hoje)}`;
 }

@@ -63,9 +63,10 @@ describe('limites', () => {
   it('problemaDosLimites: nenhum limite, ou limite presente fora da forma', () => {
     expect(problemaDosLimites(REGRA)).toBe(null);
     expect(problemaDosLimites({ cobranca_dias: 30 })).toBe(null);
-    expect(problemaDosLimites({})).toBe('sem_limite');
-    expect(problemaDosLimites({ cobranca_parcelas: null, cobranca_dias: '' })).toBe('sem_limite');
-    expect(problemaDosLimites({ cobranca_parcelas: 2, cobranca_dias: 0 })).toBe('limite_invalido');
-    expect(problemaDosLimites({ cobranca_parcelas: '2' })).toBe('limite_invalido');
+    expect(problemaDosLimites({})).toEqual({ codigo: 'sem_limite' });
+    expect(problemaDosLimites({ cobranca_parcelas: null, cobranca_dias: '' })).toEqual({ codigo: 'sem_limite' });
+    // diz QUAL campo está fora (o caminho do problema na tela)
+    expect(problemaDosLimites({ cobranca_parcelas: 2, cobranca_dias: 0 })).toEqual({ codigo: 'limite_invalido', campo: 'cobranca_dias' });
+    expect(problemaDosLimites({ cobranca_parcelas: '2' })).toEqual({ codigo: 'limite_invalido', campo: 'cobranca_parcelas' });
   });
 });

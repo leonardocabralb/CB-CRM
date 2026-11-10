@@ -550,6 +550,12 @@ interface AutomationResources {
    */
   reguaDoAsaas: boolean
   /**
+   * NOSSO: o gatilho é a COBRANÇA de atraso da régua (não o lembrete)? Só nela
+   * a condição "Situação da cobrança" tem vencidas para ler — no lembrete a
+   * varredura não passa nenhuma, e a ativação a recusa (revisão do PR #494).
+   */
+  cobrancaDeAtraso: boolean
+  /**
    * O gatilho em edição é o "Situação mudou no Atlas"? O nó Atlas esconde as
    * ações que a ativação recusa nele (`PASSOS_FORA_DO_GATILHO_DO_ATLAS`), e
    * o menu de adicionar faz o nó nascer "Criar tarefa".
@@ -682,6 +688,7 @@ interface PipelineStageOption {
 
 const ResourcesContext = createContext<AutomationResources>({
   reguaDoAsaas: false,
+  cobrancaDeAtraso: false,
   gatilhoDoAtlas: false,
   tags: [],
   members: [],
@@ -840,7 +847,7 @@ function issuesDaResposta(body: unknown): ValidationIssue[] {
  */
 function useRecursosDaAutomacao(
   automacaoAtualId: string | undefined,
-): Omit<AutomationResources, "reguaDoAsaas" | "gatilhoDoAtlas" | "acervo"> {
+): Omit<AutomationResources, "reguaDoAsaas" | "cobrancaDeAtraso" | "gatilhoDoAtlas" | "acervo"> {
   const [tags, setTags] = useState<TagRecord[]>([])
   const [members, setMembers] = useState<AccountMember[]>([])
   const [templates, setTemplates] = useState<MessageTemplate[]>([])
@@ -2138,6 +2145,7 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
             value={{
               ...recursosCarregados,
               reguaDoAsaas: ehGatilhoDaRegua(state.trigger_type),
+              cobrancaDeAtraso: state.trigger_type === "asaas_cobranca_vencida",
               gatilhoDoAtlas: state.trigger_type === GATILHO_DO_ATLAS,
               acervo: acervoDaTela,
             }}
@@ -4734,7 +4742,7 @@ function StepEditor({
   onChange: (s: BuilderStep) => void
 }) {
   const t = useTranslations("Automations.builder")
-  const { channels, pipelines, stages, templates, carga, reguaDoAsaas } = useResources()
+  const { channels, pipelines, stages, templates, carga, cobrancaDeAtraso } = useResources()
   // Mesmo agrupamento do seletor do gatilho: "Contato Acordo" existe em mais
   // de um quadro, e o nome sozinho não distingue.
   const stagesPorFunil = useMemo(
@@ -5346,10 +5354,10 @@ function StepEditor({
               )}
               <option value="deal_status">{t("config.subjects.deal_status")}</option>
               <option value="meta_window_open">{t("config.subjects.meta_window_open")}</option>
-              {/* NOSSO: só a régua do Asaas entrega a situação da cobrança
-                  (noutro gatilho a ativação recusa); gravada fora dela,
-                  continua na lista para poder ser trocada. */}
-              {(reguaDoAsaas || cfg.subject === "asaas_situacao") && (
+              {/* NOSSO: só a COBRANÇA de atraso da régua entrega a situação
+                  (no lembrete e noutro gatilho a ativação recusa); gravada
+                  fora dela, continua na lista para poder ser trocada. */}
+              {(cobrancaDeAtraso || cfg.subject === "asaas_situacao") && (
                 <option value="asaas_situacao">{t("config.subjects.asaas_situacao")}</option>
               )}
             </select>
