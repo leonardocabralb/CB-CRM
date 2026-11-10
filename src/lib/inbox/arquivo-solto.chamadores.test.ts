@@ -50,6 +50,20 @@ describe("compositor × arquivo-solto", () => {
     expect(corpo.indexOf('t("anexoSoNoQrCode")')).toBeLessThan(corpo.indexOf("if (quandoAg) {"));
   });
 
+  it("⚠️ a prévia de anexo também recebe o colar (relato do operador, 10/11/2026)", () => {
+    // A prévia SUBSTITUI o compositor e leva a caixa de texto junto: com o
+    // colar só na caixa, o segundo print colado não entrava.
+    expect(fonte).toContain("onPaste={aoColar}");
+    expect(fonte).toContain("onColar={aoColar}");
+    const previa = fonte.slice(fonte.indexOf("function MediaDraftPreview("));
+    expect(previa).toMatch(/<div className="[^"]*" onPaste=\{onColar\}>/);
+    // E a legenda pega o foco que caiu no corpo da página (a caixa sumiu),
+    // senão o Ctrl+V seguinte não chega à prévia. Só nesse caso: na troca de
+    // conversa o foco está na lista, e roubá-lo abriria o teclado do celular.
+    expect(previa).toMatch(/if \(ativo === null \|\| ativo === document\.body\) el\.focus\(\);/);
+    expect(previa).toMatch(/<input\s+ref=\{refDaLegenda\}/);
+  });
+
   it("o aviso de recusa lista o que ESTA conexão aceita", () => {
     expect(fonte).toMatch(
       /porQrCode\s*\?\s*t\("arquivoNaoSuportadoQrCode", \{ n: r\.recusados \}\)\s*:\s*t\("arquivoNaoSuportado", \{ n: r\.recusados \}\)/,
