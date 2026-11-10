@@ -11,7 +11,7 @@ ligação de WhatsApp do que a telefônica. Vizinho deste plano:
 | Fase | O quê                                                      | Estado                 |
 | ---- | ---------------------------------------------------------- | ---------------------- |
 | 0    | Remover o OpenClaw da VPS (memória para o teste)           | ✅ 10/11/2026          |
-| 1    | Teste A: a máquina liga, com áudio de arquivo              | pendente (espera a D5) |
+| 1    | Teste A: a máquina liga, com áudio de arquivo              | em curso (10/11/2026)  |
 | 2    | Teste B: o áudio no navegador do atendente                 | pendente               |
 | 3    | Decidir a máquina: upgrade para a KVM 4 × segunda VPS      | pendente               |
 | 4    | Ligar pelo CRM: botão, faixa no fio, gravação, transcrição | pendente               |
@@ -132,7 +132,7 @@ memória para o teste.
 
 **Objetivo:** responder P1–P5 antes de escrever qualquer coisa no CRM.
 
-**Montagem:**
+**Montagem** (arquivos em `ops/vps/ligacoes-teste/`; no ar desde 10/11/2026):
 
 - **Contêiner avulso** (`docker run`, fora do Swarm; a `CBAdvNet` nem aceita
   contêiner avulso), chamado `ligacoes-teste`.
@@ -175,6 +175,84 @@ do teste há 4,9 GB disponíveis.
 `docs/INFRA-VPS.md` (§4). Remover = `docker rm -f ligacoes-teste` e apagar
 `/root/ligacoes-teste`, e no celular do número tirar o aparelho em
 "Aparelhos conectados".
+
+### Registro do Teste A (10/11/2026)
+
+Montagem como acima: imagem de 1,35 GB, montada em 2 min 49 s na própria VPS.
+O QR foi lido pelo celular da Previdenciario - Comercial, e o WhatsApp Web
+abriu já com o aviso "As ligações de voz e vídeo já estão disponíveis".
+
+- ⚠️ **Teclado pela tela remota (noVNC) não serve para digitar**: o texto
+  não chegou e o Chrome buscou "a" no Google. Abrir a conversa pelo controle
+  do Chrome (porta de depuração, `PUT /json/new?<url>` e fechar a aba velha)
+  funcionou. A Fase 4 dirige o Chrome por esse controle, nunca pela tela.
+- ⚠️ **Abrir a conversa de um cliente no Chrome da máquina marca as
+  mensagens como LIDAS para o cliente.** A conversa sempre se abre pelo
+  link do número (`/send?phone=`), nunca clicando na lista. Durante o teste,
+  uma conversa da lista foi aberta pela tela e ficou lida.
+- **Ligação 1 (a máquina liga para o lead), teto de 1 núcleo:** completou
+  (40 s no WhatsApp); a fala do lead voltou gravada. **A voz que sai da
+  máquina chegou CORTANDO** (relato do operador). Causa medida: o Chrome
+  ficou em 96–125% do núcleo, e o sistema FREOU o contêiner em 14% dos
+  intervalos (91 s no total). Sem placa de vídeo, o Chrome desenha a tela
+  no processador; parado, a aba do WhatsApp gasta 35% de um núcleo.
+  Memória: ~1 GB parado e 1,05 GB em ligação.
+- **Ligação 2 (o lead liga, a máquina atende), teto de 2 núcleos com peso
+  256** (`docker update --cpus 2 --cpu-shares 256`; o CRM e a Evolution têm
+  1024 e passam na frente): o Chrome usou 85–107% (cerca de 1 núcleo), sem
+  NENHUM freio (`nr_throttled` não mudou). Carga da VPS 1,87 em 2 núcleos.
+  O toque da chamada também sai pelo alto-falante virtual e entra na
+  gravação.
+- ⚠️ **A ligação atendida pela máquina entra no CRM como PERDIDA.** A
+  Evolution viu o `offer` e o `terminate` (15 s depois: o fim do toque nos
+  outros aparelhos) e nenhum `accept`, porque quem atendeu foi um aparelho
+  conectado. A faixa saiu como perdida, a conversa reabriu, contou como não
+  lida e acendeu o "em atraso". Na Fase 5, quem atende pela máquina tem de
+  registrar o atendimento (ou corrigir o desfecho), senão toda ligação
+  atendida pelo CRM vira "perdida".
+- **Ligações 3 e 4: janela 800×600, sem animações, e a tela remota ligada
+  ou desligada** (pedido do operador: o ajuste economiza? atrapalha?). O
+  contêiner foi recriado (`-e TELA=800x600 -e CHROME_EXTRA="--force-prefers-
+  reduced-motion --disable-smooth-scrolling"`, imagem `ligacoes-teste:2`); o
+  WhatsApp voltou sem QR. Medido pela média do `cpuacct` do contêiner (as
+  leituras pontuais do `docker stats` da ligação 2 são menos precisas):
+
+  | Situação | Processador | Memória |
+  | --- | --- | --- |
+  | Parado, 1280×800, tela remota conectada | 0,08 núcleo | 1.015 MB |
+  | Parado, 1280×800, tela remota desligada | 0,05 núcleo | 1.002 MB |
+  | Parado, 800×600 sem animações, tela desligada | 0,08 núcleo | 602 MB¹ |
+  | Ligação 2: 1280×800, tela conectada, início da chamada | ~1,0 núcleo² | 1,03 GB |
+  | Ligação 3: 800×600, tela conectada, início da chamada (20 s) | 0,78 núcleo | 0,80 GB |
+  | Ligação 4: 800×600, tela DESLIGADA, meio da chamada (30 s) | 0,64 núcleo | 0,81 GB |
+  | Ligação 4: 800×600, tela conectada, fim da chamada (15 s) | 0,59 núcleo | 0,82 GB |
+
+  ¹ Chrome recém-aberto; a de antes vinha de 1 h de uso. ² Quatro leituras
+  pontuais (85–107%). Nenhum freio nas ligações 2, 3 e 4.
+
+  **Conclusões:** (1) a janela menor sem animações corta ~20–40% do
+  processador da chamada (de ~1,0 para 0,6–0,8 núcleo) e não atrapalhou
+  nada: o layout em duas colunas, o botão de ligar, o atender e o áudio
+  funcionaram. Relato do operador sobre a voz que SAI da máquina: ligação 2,
+  cortes que não atrapalharam a conversa; ligação 3, cortes quase
+  imperceptíveis; ligação 4, nenhum corte. Custa só duas opções no início:
+  **fica como padrão**.
+  (2) A tela remota NÃO pesa: na mesma ligação, 0,59 conectada × 0,64
+  desligada (ruído), e 0,03 núcleo parado. Mas a média não vê picos: a
+  ligação 3 (tela conectada) teve cortes quase imperceptíveis e a 4 (tela
+  desligada na maior parte) nenhum. Pode ser a tela ou só a rede; com uma
+  ligação de cada, não dá para separar. Ela fica desligada durante a
+  chamada, de todo jeito: na produção ninguém olha a tela (o robô usa o
+  controle do Chrome).
+  (3) As medições são de uma ligação cada; o começo da chamada gasta mais
+  que o meio.
+- **P1:** ✅ sim, nos dois sentidos. **P2:** ✅ a volta chegou inteira nas
+  quatro; a ida cortou com o teto de 1 núcleo, deixou de atrapalhar com o
+  teto de 2 e não cortou nada na ligação 4 (janela menor, tela desligada).
+  **P3:** com o ajuste, ~0,8 GB e 0,6–0,8 núcleo por ligação. Para 4
+  números ligando ao mesmo tempo, ~2,5–3 núcleos só para os Chromes: na KVM 4
+  dividida com o CRM fica APERTADO (o CRM e a Evolution precisam passar na
+  frente, peso 256 contra 1024); com 2 ligações ao mesmo tempo, folgado.
 
 ## 6. Fase 2: Teste B, o áudio no navegador do atendente
 
@@ -259,7 +337,15 @@ do teste há 4,9 GB disponíveis.
 - **D3 (10/11/2026):** testar primeiro na VPS atual, com um número; validado,
   migrar (upgrade para a KVM 4 ou segunda VPS).
 - **D4 (10/11/2026):** o OpenClaw não é usado: removido (Fase 0).
-- **D5 (pendente):** qual número faz o teste. Recomendado: chip fora do CRM.
+- **D5 (10/11/2026):** o teste usa a conexão **Previdenciario - Comercial**
+  (QR code, criada em 09/11/2026, com robô, automações e agentes
+  desligados), e não um chip fora do CRM: o risco de bloqueio fica aceito
+  nesse número. O destino é o lead de teste autorizado (o celular pessoal do
+  operador, que não é conexão do CRM), nos dois sentidos. Conferido antes: a
+  ligação RECEBIDA pela Previdenciário reabre a conversa de teste e grava a
+  faixa "Ligação", mas não abre card (o lead já tem card, perdido, no
+  Bancário; o roteador olha qualquer funil) e não troca o número da conversa
+  (fixado). A FEITA pela máquina não aparece no CRM.
 - **D6 (pendente, Fase 4):** os efeitos da ligação feita no fio.
 - **D7 (pendente, Fase 4):** gravação: quando, aviso ao cliente, acesso e
   prazo.

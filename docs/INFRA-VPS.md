@@ -165,6 +165,20 @@ Todos apontam para `82.25.76.63` e entram pelo `websecure`.
 | `portainer` | `portainer_portainer` / `_agent` | `portainer/*` | 1 / global |
 | ~~`openclaw`~~ | ~~`openclaw_openclaw-gateway`~~ | removido em 10/11/2026 (§8) | — |
 
+⚠️ **Contêiner AVULSO `ligacoes-teste` (desde 10/11/2026, fora do Swarm):** o
+Teste A de `docs/PLANO-ligar-pelo-crm.md`, um Chrome com o WhatsApp Web da
+conexão Previdenciario - Comercial (aparelho conectado a mais nesse número). Imagem
+`ligacoes-teste:2`, montada na VPS a partir de `ops/vps/ligacoes-teste/`;
+`docker run --hostname ligacoes-teste --memory 1536m --memory-swap 1536m
+--cpus 2 --cpu-shares 256 --shm-size 256m -e TELA=800x600 -e
+CHROME_EXTRA="--force-prefers-reduced-motion --disable-smooth-scrolling"`
+(peso 256: o CRM e a Evolution, com 1024, passam na frente), sem
+`--restart`; a tela (noVNC) só em
+`127.0.0.1:6080` (acesso por túnel SSH); perfil do Chrome (a sessão do
+WhatsApp) e áudios em `/root/ligacoes-teste/`. Remover: `docker rm -f
+ligacoes-teste`, apagar `/root/ligacoes-teste` e tirar o aparelho em
+"Aparelhos conectados" no celular do número.
+
 ⚠️ **A Evolution é uma IMAGEM NOSSA**, não a oficial — desde **05/11/2026
 09:20 BRT**: `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao-foto-sessao-status-recibo@sha256:5cbbfe22fe402644a6f9c7cec7224c8f67af73562934604e0fccf7773cac0507`
 (Evolution **2.4.0** / Baileys **7.0.0-rc13**, construída pelo workflow
