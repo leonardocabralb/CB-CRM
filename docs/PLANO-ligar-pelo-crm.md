@@ -510,7 +510,9 @@ de perfis (`catalogo.ts`), decisão à parte.
 5. Se o celular do escritório atender antes, a Evolution manda o `accept` do
    próprio aparelho (como hoje) e o cartão some com "Atendida no celular".
 6. Daí em diante, igual à feita: cronômetro, gravação, encerrada, faixa,
-   gravação enviada, transcrição na fila.
+   gravação enviada, transcrição na fila. E, como a feita, a faixa da
+   recebida atendida PELO CRM é só registro (D6b): não apaga o "em atraso",
+   não pausa a IA, não reabre, não mexe nas não lidas.
 
 ### 8.5 Gravação e transcrição
 
@@ -559,16 +561,16 @@ de perfis (`catalogo.ts`), decisão à parte.
 - **Resumo** (D11): 2–3 linhas pela IA da conta, sobre a transcrição.
 - **No contexto da IA** (D11): a transcrição entra no que o agente de IA lê da
   conversa, como o áudio transcrito (com o mesmo teto por linha), e a
-  ligação continua sem abrir turno. Mexe em `ia-agentes/contexto.ts` e na
+  ligação continua sem abrir turno. Depois dos 180 dias, entra só o resumo. Mexe em `ia-agentes/contexto.ts` e na
   regra `ligacoes.md` ("sem texto, fica fora do contexto" deixa de valer
   para a ligação transcrita).
-- **Prazo** (decidido): o ÁUDIO sai do Storage 180 dias depois da ligação,
-  por um passo novo no laço lento (`rodarManutencaoDoCiclo`), e a faixa
-  passa a dizer "gravação expirada". A transcrição e o resumo ficam
-  (assumido, §8.10).
-- **Exclusão:** a ficha excluída de vez (Lixeira, "Excluir agora") leva
-  gravação e transcrição — a fila de arquivos de hoje só conhece o
-  `chat-media`, e o bucket novo entra nela.
+- **Prazo** (decidido): 180 dias depois da ligação saem o ÁUDIO (do Storage)
+  e a TRANSCRIÇÃO (do banco); fica SÓ o resumo, que segue no contexto da IA.
+  Um passo novo no laço lento (`rodarManutencaoDoCiclo`) faz a poda, e a
+  faixa passa a mostrar só o resumo, com "gravação expirada".
+- **Exclusão:** a ficha excluída de vez (Lixeira, "Excluir agora") leva tudo
+  antes do prazo, inclusive o resumo — a fila de arquivos de hoje só conhece
+  o `chat-media`, e o bucket novo entra nela.
 
 ### 8.6 Dados (migration a partir da 1133)
 
@@ -652,21 +654,30 @@ antes do merge; merge = deploy, com o operador ciente)
   poder no perfil, textos nos dois dicionários. Pronto quando: ligar e
   atender de ponta a ponta pelo CRM, com o lead de teste.
 - **4d — Transcrição e resumo:** a fila, o diálogo na faixa, a transcrição
-  no contexto do agente de IA (D11) e a saída do áudio aos 180 dias.
+  no contexto do agente de IA (D11) e a poda aos 180 dias (saem o áudio e a
+  transcrição, fica o resumo).
 - **4e — Conexões e operação:** estado e QR do computador na tela Conexões;
   a sentinela vigia o sinal de vida; doc e ajuda na tela.
 
 ### 8.10 Decisões do operador (tomadas em 10/11/2026)
 
 - **Formato da gravação:** Opus estéreo 24 kbps, cliente num canal e
-  atendente no outro ("pra manter quem falou"). **Guarda: 180 dias.**
+  atendente no outro ("pra manter quem falou"). **Guarda: 180 dias**, e aí
+  saem o áudio E a transcrição; fica SÓ o resumo ("sai o áudio e fica apenas
+  o resumo").
 - **D6 — a ligação FEITA pelo CRM no fio: só REGISTRO.** Nas palavras do
   operador: "não pausa a IA, não reabre a conversa e não marca como lida a
-  conversa nem retira o 'em atraso'". Também não para as sequências. ⚠️ Hoje
-  toda linha `agent` inserida aciona o gatilho da 972 (apaga o "em atraso")
-  e a pausa da IA (`cb_pausar_ia_por_gente`): a faixa da feita tem de ficar
-  FORA desses gatilhos e de qualquer caminho que mexa nas não lidas, com
-  teste provando cada um (4b).
+  conversa nem retira o 'em atraso'". Também não para as sequências.
+- **D6b — a RECEBIDA atendida pelo CRM: a mesma regra da feita** ("o ideal é
+  não apagar. Siga a mesma orientação da ligação feita"): só registro, sem
+  apagar o "em atraso", sem pausar a IA, sem reabrir, sem mexer nas não
+  lidas. A atendida no CELULAR do escritório segue a regra de hoje (1044),
+  que ninguém mandou mudar.
+- ⚠️ Para a D6 e a D6b: hoje toda linha `agent` inserida aciona o gatilho da
+  972 (apaga o "em atraso") e a pausa da IA (`cb_pausar_ia_por_gente`) — é
+  assim que a atendida no celular faz as duas coisas. As faixas da feita e
+  da recebida atendida PELO CRM têm de ficar FORA desses gatilhos e de
+  qualquer caminho que mexa nas não lidas, com teste provando cada um (4b).
 - **D7 — gravação:** gravar TODA ligação feita ou atendida pelo CRM, SEM
   aviso falado no começo. Ouve quem vê a conversa.
 - **D9 — quem vê o toque:** os atendentes cujo perfil vê a conexão, com o CRM
@@ -686,12 +697,8 @@ antes do merge; merge = deploy, com o operador ciente)
   caixa de areia não funcionar dentro do Swarm (§8.12), a máquina vai para uma
   VPS só dela.
 
-**Assumido, a confirmar com o operador** (não decidido em palavras):
-- A RECEBIDA atendida pelo CRM segue a regra da atendida de hoje (no
-  celular): apaga o "em atraso" e pausa a IA, porque é atendimento de gente.
-  A D6 fala só da feita.
-- Aos 180 dias sai só o ÁUDIO; a transcrição e o resumo ficam enquanto a
-  ficha existir (eles alimentam a IA, D11). A exclusão da ficha leva tudo.
+As duas suposições que estavam aqui foram respondidas pelo operador em
+10/11/2026 e viraram a D6b e o prazo do formato, acima.
 
 ### 8.11 Onde encaixa no código (mapa de 10/11/2026)
 
@@ -806,10 +813,11 @@ Incorporada à Fase 4 (§8), a pedido do operador (10/11/2026).
 - **D8 (10/11/2026):** depois dos testes A e B, a máquina fica na VPS atual,
   sem upgrade; migrar (KVM 4 ou segunda VPS) só se der problema. Substitui o
   "validado, migrar" da D3.
-- **D6, D7 e D9–D15 (10/11/2026):** as decisões da Fase 4, no §8.10
-  (gravação em Opus estéreo por 180 dias, sem aviso; a ligação feita é só
-  registro; transcrição automática com resumo, dentro do contexto da IA;
-  encerrar aos 30 min; e as demais).
+- **D6, D6b, D7 e D9–D15 (10/11/2026):** as decisões da Fase 4, no §8.10
+  (gravação em Opus estéreo, sem aviso; aos 180 dias saem o áudio e a
+  transcrição e fica só o resumo; a ligação feita e a recebida atendida pelo
+  CRM são só registro; transcrição automática com resumo, dentro do contexto
+  da IA; encerrar aos 30 min; e as demais).
 
 As decisões de produto da Fase 4 já têm linha em
 `docs/DECISOES-DO-OPERADOR.md`; o detalhe vai para `.claude/rules/ligacoes.md`

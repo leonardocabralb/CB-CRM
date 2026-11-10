@@ -218,11 +218,12 @@ qualquer uma é pergunta ao operador.
   Meta nem a Wavoip), por uma máquina central com WhatsApp Web, um Chrome por
   número; a extensão do Chrome por atendente foi descartada; a máquina fica
   na VPS atual, com upgrade só se der problema (`ligacoes.md`). Na Fase 4: a
-  ligação FEITA pelo CRM é só registro no fio (não reabre, não mexe nas não
-  lidas nem no "em atraso", não pausa a IA, não para sequências); grava TODA
-  ligação pelo CRM, sem aviso falado, em Opus estéreo (um lado por canal), e
-  o áudio fica 180 dias; transcrição automática com resumo, DENTRO do
-  contexto da IA; sem "Recusar" (só "Silenciar"); toca para quem o perfil
-  vê a conexão; ligar só de conversa existente, até 20 por hora por número,
-  e a máquina encerra sozinha aos 30 min (`docs/PLANO-ligar-pelo-crm.md`,
-  §8.10).
+  ligação FEITA pelo CRM e a RECEBIDA atendida pelo CRM são só registro no
+  fio (não reabrem, não mexem nas não lidas nem no "em atraso", não pausam a
+  IA, não param sequências; a atendida no celular segue como hoje); grava
+  TODA ligação pelo CRM, sem aviso falado, em Opus estéreo (um lado por
+  canal); aos 180 dias saem o áudio e a transcrição e fica só o resumo;
+  transcrição automática com resumo, DENTRO do contexto da IA; sem
+  "Recusar" (só "Silenciar"); toca para quem o perfil vê a conexão; ligar só
+  de conversa existente, até 20 por hora por número, e a máquina encerra
+  sozinha aos 30 min (`docs/PLANO-ligar-pelo-crm.md`, §8.10).
