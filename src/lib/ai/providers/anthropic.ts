@@ -1,6 +1,7 @@
 import { AiError, type ChatMessage, type ProviderResult } from '../types'
 import { MAX_OUTPUT_TOKENS } from '../defaults'
 import { comecarNoCliente } from './comeca-no-cliente'
+import { anthropicRaciocinaPorPadrao } from './raciocinio'
 import {
   normalizeUsage,
   providerHttpError,
@@ -13,7 +14,7 @@ export const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 export const ANTHROPIC_VERSION = '2023-06-01'
 
 interface AnthropicResponse {
-  content?: { type?: string; text?: string }[]
+  content?: { type?: string; text?: string; thinking?: string }[]
   stop_reason?: string
   usage?: {
     input_tokens?: number
@@ -31,6 +32,17 @@ interface AnthropicResponse {
  * chamadas por hora do mesmo agente, o 5 min sairia mais barato.
  */
 export const TTL_DO_CACHE = '1h'
+
+/** NOSSO (10/11/2026, o Playground; quem pede: `raciocinio.ts`): o texto dos blocos `thinking` (o resumo; vazio quando o provedor o omite). */
+export function raciocinioDaAnthropic(data: AnthropicResponse | null): string {
+  return (
+    data?.content
+      ?.filter((b) => b.type === 'thinking' && typeof b.thinking === 'string')
+      .map((b) => (b.thinking as string).trim())
+      .filter((t) => t.length > 0)
+      .join('\n\n') ?? ''
+  )
+}
 
 /**
  * O `system` da Anthropic: o texto inteiro, ou — com os pedaços — um bloco
@@ -68,6 +80,8 @@ function normalizeForAnthropic(messages: ChatMessage[]): ChatMessage[] {
  */
 export async function generateAnthropic(args: ProviderArgs): Promise<ProviderResult> {
   const { apiKey, model, systemPrompt, systemPartes, messages, timeoutMs } = args
+  // NOSSO (10/11/2026): só o Playground pede; sem o pedido, o corpo é o de sempre.
+  const pedeRaciocinio = args.raciocinio === true && anthropicRaciocinaPorPadrao(model)
 
   let res: Response
   try {
@@ -83,6 +97,7 @@ export async function generateAnthropic(args: ProviderArgs): Promise<ProviderRes
         system: sistemaDaAnthropic(systemPrompt, systemPartes),
         max_tokens: MAX_OUTPUT_TOKENS,
         messages: normalizeForAnthropic(messages),
+        ...(pedeRaciocinio ? { thinking: { type: 'adaptive', display: 'summarized' } } : {}),
       }),
       signal: AbortSignal.timeout(timeoutMs),
     })
@@ -110,7 +125,8 @@ export async function generateAnthropic(args: ProviderArgs): Promise<ProviderRes
       code: 'empty_response',
     })
   }
-  return { text, usage: usoDaAnthropic(data?.usage) }
+  const raciocinio = pedeRaciocinio ? raciocinioDaAnthropic(data) : ''
+  return { text, usage: usoDaAnthropic(data?.usage), ...(raciocinio ? { raciocinio } : {}) }
 }
 
 /**

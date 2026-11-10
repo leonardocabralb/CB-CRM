@@ -244,6 +244,19 @@ export function fraseDaAcao(
 }
 
 /**
+ * O título do CARTÃO de uma ação aceita no Playground (10/11/2026): o efeito
+ * no CRM, no passado — "Campo preenchido", "Card movido para", "Etiqueta
+ * aplicada". `IaAgentes.playground.efeito.<tipo>`, chave MONTADA cobrada em
+ * `textos.test.ts`; o "responda e passe" e o tipo desconhecido têm a dele.
+ */
+export function efeitoDaAcao(t: ReturnType<typeof useTranslations>, tipo: string): string {
+  if (tipo === ACAO_TRANSFERIR) return t('playground.efeitoTransferir');
+  return (TIPOS_DE_ACAO as readonly string[]).includes(tipo)
+    ? t(`playground.efeito.${tipo}`)
+    : t('playground.efeitoDesconhecido', { tipo });
+}
+
+/**
  * Os tipos de campo personalizado (`custom_fields.field_type`, o CHECK da 948,
  * mais `email` — o campo que espelha o e-mail da ficha) que a sub-aba
  * Ferramentas mostra ao lado do nome (`IaAgentes.ferramentas.campo.<tipo>`).

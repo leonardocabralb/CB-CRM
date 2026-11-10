@@ -91,7 +91,11 @@ describe.each(['en.json', 'pt-BR.json'])('IaAgentes em %s', (arquivo) => {
       expect(em(d, `ferramentas.tipo.${tipo}.dica`), tipo).toBeTruthy()
       expect(em(d, `ferramentas.nenhum.${tipo}`), tipo).toBeTruthy()
       expect(em(d, `playground.acao.${tipo}`), tipo).toBeTruthy()
+      // O título do cartão do Playground (10/11/2026).
+      expect(em(d, `playground.efeito.${tipo}`), tipo).toBeTruthy()
     }
+    expect(em(d, 'playground.efeitoTransferir')).toBeTruthy()
+    expect(em(d, 'playground.efeitoDesconhecido')).toBeTruthy()
     expect(em(d, 'ferramentas.tipoDesconhecido')).toBeTruthy()
     expect(em(d, 'playground.acaoDesconhecida')).toBeTruthy()
     // "Responda e passe" ([[TRANSFERIR]], 27/09): o rótulo e a frase do Playground.
