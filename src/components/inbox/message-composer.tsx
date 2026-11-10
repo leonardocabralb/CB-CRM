@@ -1570,8 +1570,8 @@ export function MessageComposer({
 
   /**
    * Arquivo que chegou sem passar pelo seletor: arrastado para a conversa ou
-   * colado com Ctrl+V. Um anexo por vez — o compositor carrega um só —, e o
-   * que o seletor recusaria é recusado aqui também, com aviso.
+   * colado com Ctrl+V. ACRESCENTA à fila (até `MAX_ANEXOS`), e o que o
+   * seletor recusaria é recusado aqui também, com aviso.
    */
   const receberArquivos = useCallback(
     (arquivos: readonly File[]) => {
@@ -1648,8 +1648,11 @@ export function MessageComposer({
     [receberArquivos],
   );
 
+  // ⚠️ Em DOIS lugares: a caixa de texto e a raiz da prévia de anexo. A
+  // prévia SUBSTITUI o compositor e leva a caixa junto; só na caixa, o
+  // segundo print colado não entrava (relato do operador, 10/11/2026).
   const aoColar = useCallback(
-    (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    (e: React.ClipboardEvent<HTMLElement>) => {
       const arquivos = Array.from(e.clipboardData.files);
       // ⚠️ Colagem com texto junto NÃO vira upload — ver `colagemEhAnexo`.
       if (!colagemEhAnexo({ temArquivo: arquivos.length > 0, texto: e.clipboardData.getData("text/plain") })) {
@@ -2139,6 +2142,7 @@ export function MessageComposer({
           onDiscard={discardDraft}
           onDiscardAll={discardAll}
           onSend={() => void sendDraft()}
+          onColar={aoColar}
           // 932: a prévia SUBSTITUI o compositor, então o relógio precisa
           // existir aqui também — senão anexar um arquivo tira a opção de
           // agendar da tela.
@@ -2560,6 +2564,7 @@ function MediaDraftPreview({
   onDiscard,
   onDiscardAll,
   onSend,
+  onColar,
   ag,
   agendando,
   inputsDisabled,
@@ -2577,6 +2582,8 @@ function MediaDraftPreview({
   onDiscard: (id: string) => void;
   onDiscardAll: () => void;
   onSend: () => void;
+  /** O MESMO `aoColar` da caixa de texto, que a prévia tira da tela. */
+  onColar: (e: React.ClipboardEvent<HTMLElement>) => void;
   ag: Agendamento;
   agendando: boolean;
   inputsDisabled: boolean;
@@ -2594,8 +2601,19 @@ function MediaDraftPreview({
   // efeito. Mesma armadilha do "efeito passivo" do CLAUDE.md.
   const draft = drafts.find((d) => d.id === selecionadoId) ?? drafts[0]!;
   const varios = drafts.length > 1;
+  // ⚠️ A legenda pega o foco ao montar SÓ quando o foco caiu no corpo da
+  // página: a caixa de texto que o tinha acabou de sumir sob a prévia
+  // (colou, soltou, escolheu pelo clipe). Sem isso o segundo Ctrl+V não
+  // caía em lugar nenhum. Quem chega trocando de conversa está com o foco na
+  // lista: a legenda não o rouba (nem abre o teclado do celular).
+  const refDaLegenda = useCallback((el: HTMLInputElement | null) => {
+    if (!el) return;
+    const ativo = document.activeElement;
+    if (ativo === null || ativo === document.body) el.focus();
+  }, []);
   return (
-    <div className="rounded-xl border border-border bg-muted/40 p-3">
+    // O colar na RAIZ (o evento sobe da legenda e de qualquer botão focado).
+    <div className="rounded-xl border border-border bg-muted/40 p-3" onPaste={onColar}>
       {/* Tira de miniaturas — só com mais de um. Com um só ela não escolhe
           nada e ocuparia altura à toa. */}
       {varios && (
@@ -2676,6 +2694,7 @@ function MediaDraftPreview({
       <div className="mt-2 flex items-end gap-2">
         {podeTerLegenda(draft.kind) && (
           <input
+            ref={refDaLegenda}
             value={draft.caption}
             maxLength={tetoDaLegenda}
             onChange={(e) => onCaptionChange(draft.id, e.target.value)}
