@@ -1441,6 +1441,7 @@ export function MessageThread({
     remover: removerNotaLocal,
     acrescentar: acrescentarNota,
     substituir: substituirNota,
+    colocar: colocarNota,
     recarregar: recarregarNotas,
     aplicarFixacao,
   } = useConversationNotes(conversationId, resyncToken);
@@ -1573,13 +1574,15 @@ export function MessageThread({
   /**
    * Apagar anotação. ⚠️ A ação mora no hook (como `useFixarNota`) porque a
    * ABA Notas do painel e a do grupo fazem a MESMA coisa desde 2026-09-02, e
-   * o que as três precisam ter igual é a guarda do `count`: RLS que barra
-   * DELETE devolve 0 linhas SEM erro, e a cópia que a esquecesse faria a
-   * anotação sumir da tela, ficar no banco e voltar na próxima abertura.
+   * o que as três precisam ter igual é a guarda da resposta: a rota que
+   * recusa (ou a rede que cai) tem de RECARREGAR, senão a anotação some da
+   * tela e volta na próxima abertura. Desde a 1132 apagar MANDA PARA A
+   * LIXEIRA (a rota marca); a linha devolvida entra na lixeira da lista.
    */
   const { apagarNota: handleApagarNota } = useApagarNota(
     removerNotaLocal,
     recarregarNotas,
+    colocarNota,
   );
 
   // ============================================================

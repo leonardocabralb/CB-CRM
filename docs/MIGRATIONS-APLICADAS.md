@@ -1972,3 +1972,22 @@ nome da época em que foram aplicadas.
   desfeita pelo P1130. Conferida: as quatro funções na forma nova (uma de
   cada), `anon` sem EXECUTE, `service_role` executa e lê a trilha; nenhum
   agente, mensagem ou turno de conferência ficou.
+
+- **1132_cb_lixeira_de_anotacoes** — `apagada_em`, `apagada_por` (FK para
+  `auth.users`, `ON DELETE SET NULL`) e `apagada_por_nome` em
+  `cb_conversation_notes`, o CHECK `cb_conversation_notes_apagada_sem_fixar_ck`
+  (apagada nunca fixada) e o índice parcial `cb_conversation_notes_apagada_idx`:
+  apagar anotação passa a MARCAR a linha (a lixeira da aba Notas, 90 dias), e
+  o aviso de menção/resposta diz "Anotação apagada". PR #491.
+
+  ADITIVA, aplicada ANTES do deploy (o app de antes não lê as colunas).
+  Autorização do operador em 10/11/2026 ("pode", depois do CI verde no commit
+  final), aplicada em 10/11/2026 (histórico `20261110170600`) pela Management
+  API, com o arquivo idêntico ao do commit `1b119161` (sha256 `114e07d3…`),
+  cujo replay do CI ("Apply to a clean database") passou. Também o replay
+  LOCAL completo (255 migrations + `verify-schema.sql`, aplicada duas vezes) e
+  6 cenários com dado fictício. Conferida: as três colunas nos tipos certos, o
+  CHECK, o índice, `authenticated` lê e não escreve a marca; das 1190
+  anotações, nenhuma marcada. Teste de ponta a ponta no preview (lead de
+  teste): apagar marca e desafixa, a lixeira mostra, restaurar e "Desfazer"
+  desmarcam.

@@ -1175,7 +1175,24 @@
       "ampliarAnexo": "Ampliar {nome}",
       "edit": "Editar",
       "editada": "editada {quando}",
-      "editadaEm": "Editada em {quando}"
+      "editadaEm": "Editada em {quando}",
+      "restoreFailed": "Não foi possível restaurar a anotação.",
+      "movedToTrash": "Anotação excluída. Ela fica 90 dias na lixeira da aba Notas.",
+      "undoDelete": "Desfazer",
+      "lixeira": {
+        "abrir": "Anotações apagadas",
+        "titulo": "Anotações apagadas",
+        "voltar": "Voltar às anotações",
+        "explica": "Ficam aqui por {dias} dias depois de apagadas. Quem escreveu, ou um administrador, pode restaurar.",
+        "vazia": "Nenhuma anotação apagada nos últimos {dias} dias.",
+        "carregando": "Carregando…",
+        "erro": "Não foi possível carregar as anotações apagadas.",
+        "apagadaPor": "Apagada por {nome} em {quando}",
+        "apagadaEm": "Apagada em {quando}",
+        "vence": "{dias, plural, =0 {sai da lixeira hoje} one {sai da lixeira em # dia} other {sai da lixeira em # dias}}",
+        "restaurar": "Restaurar",
+        "restaurando": "Restaurando…"
+      }
     },
     "scheduled": {
       "sectionTitle": "Agendadas",
@@ -1438,7 +1455,7 @@
       "toastNoteAddFailed": "Falha ao adicionar nota",
       "toastNoteAdded": "Nota adicionada",
       "toastNoteDeleteFailed": "Falha ao excluir nota",
-      "toastNoteDeleted": "Nota excluída",
+      "toastNoteDeleted": "Anotação excluída. Ela fica 90 dias na lixeira da aba Notas da conversa.",
       "toastTemplateSent": "Modelo \"{name}\" enviado",
       "toastTemplateFailed": "Falha ao enviar o modelo: {reason}",
       "toastNoteNeedsConversation": "Este contato ainda não tem conversa, então não há onde prender a anotação. Envie uma mensagem primeiro.",
@@ -7038,6 +7055,11 @@
         "corpoSemAutor": "A conversa com {contato} foi atribuída a você",
         "contatoSemNome": "um contato"
       }
+    },
+    "notaApagada": {
+      "apagada": "Anotação apagada",
+      "apagadaPor": "Anotação apagada por {nome} em {quando}",
+      "apagadaEm": "Anotação apagada em {quando}"
     }
   },
   "SignupPage": {

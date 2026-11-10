@@ -36,6 +36,9 @@ import {
   type AvisoComContato,
 } from '@/lib/notifications/texto-do-aviso';
 import { LinhaDoCliente } from '@/components/notifications/linha-do-cliente';
+import { NotaApagadaNoAviso } from '@/components/notifications/nota-apagada-no-aviso';
+import { useNotasDosAvisos } from '@/hooks/use-notas-dos-avisos';
+import { notaDoAviso } from '@/lib/notifications/nota-do-aviso';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 import type { AccountMember, Notification } from '@/types';
@@ -108,6 +111,10 @@ export function BlocoDeNotificacoes({
   const pronto = bloco.status === 'pronto' ? bloco.dados : null;
   const avisos = pronto?.avisos.filter((a) => !abertos.has(a.id)) ?? [];
   const lista = avisos.slice(0, AVISOS_NA_LISTA);
+  // A anotação de cada aviso de menção/resposta ainda existe? (1132) — pela
+  // lista do BLOCO, não a filtrada pelos abertos: a chave da leitura mudaria
+  // a cada clique e a marca piscaria.
+  const notasDosAvisos = useNotasDosAvisos(pronto ? pronto.avisos : null);
   const restantes = avisos.length - lista.length;
 
   return (
@@ -152,6 +159,8 @@ export function BlocoDeNotificacoes({
                     : null,
                   tTipos
                 );
+                const nota = notaDoAviso(aviso, notasDosAvisos);
+                const apagada = nota?.estado === 'apagada' ? nota : null;
                 // `de=meu-dia`: a conversa ganha a faixa que volta para cá.
                 const rota = rotaDoAviso(aviso, 'meu-dia');
                 const destino =
@@ -168,7 +177,9 @@ export function BlocoDeNotificacoes({
                       </span>
                       {/* De quem é o aviso, a mesma linha do sino (28/10/2026). */}
                       <LinhaDoCliente cliente={clienteDoAviso(aviso)} />
-                      {texto.corpo && (
+                      {apagada ? (
+                        <NotaApagadaNoAviso nota={apagada} className="mt-0.5" />
+                      ) : texto.corpo && (
                         <span
                           className={cn(
                             'text-muted-foreground block text-xs',

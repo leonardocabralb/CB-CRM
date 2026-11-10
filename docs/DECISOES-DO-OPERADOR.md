@@ -86,6 +86,10 @@ qualquer uma é pergunta ao operador.
   anexos de todo tipo, vários, sem transcrição nem aba Arquivos; só o autor
   edita, sem prazo, com marca "editada" (23/10/2026); o clique no aviso de
   menção ou resposta abre a conversa NO TRECHO da anotação (27/10/2026).
+- Anotação apagada vai para a LIXEIRA da aba Notas (ícone discreto): todos
+  da conta veem, o autor ou admin restaura, 90 dias e sai de vez; o aviso de
+  menção/resposta diz "apagada" com o texto inteiro, quem e quando
+  (10/11/2026).
 - Avisos (sino e Meu dia): cada um diz o cliente (ou o grupo); a conversa
   aberta por eles tem a faixa de volta à tela de origem; os avisos antigos
   sem a anotação ficam como estão, sem religação (28/10/2026).

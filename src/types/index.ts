@@ -323,6 +323,17 @@ export interface ConversationNote {
   anexos: AnexoDaNota[];
   /** Quando foi editada pela última vez (Fase 3). NULL = nunca. */
   editada_em: string | null;
+  /**
+   * Lixeira de anotações (1132): quando foi APAGADA. NULL = viva. Apagar
+   * marca (pela rota), e a anotação vai para a lixeira da aba Notas por 90
+   * dias. Opcional no tipo: a linha que o tempo real ou o app antigo trazem
+   * pode vir sem a coluna — ausente conta como viva (`estaApagada`).
+   */
+  apagada_em?: string | null;
+  /** O login de quem apagou (SET NULL quando ele some). */
+  apagada_por?: string | null;
+  /** O nome de quem apagou, congelado na hora (como `autor_nome`). */
+  apagada_por_nome?: string | null;
   created_at: string;
 }
 
