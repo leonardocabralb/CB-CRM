@@ -214,3 +214,7 @@ qualquer uma é pergunta ao operador.
   item (`acervo/enviados/<item>/`), feita no primeiro envio e reaproveitada
   em todos — nunca uma por envio; ela nunca é apagada, e apagar o item tira
   só o original. O compositor segue com uma cópia por envio (`midia.md`).
+- Ligar pelo CRM (10/11/2026): solução NÃO oficial (nem a API de ligações da
+  Meta nem a Wavoip), por uma máquina central com WhatsApp Web, um Chrome por
+  número; a extensão do Chrome por atendente foi descartada; testar na VPS
+  atual com um número antes de decidir a máquina (`ligacoes.md`).
