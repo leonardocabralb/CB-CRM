@@ -41,7 +41,11 @@ const PROIBIDOS: ReadonlyArray<{ padrao: RegExp; motivo: string }> = [
   { padrao: /wacrm\.tech/i, motivo: 'site de marketing do projeto original' },
 ]
 
-const PASTAS_COBERTAS = ['src', 'messages', 'supabase']
+// `maquina-de-ligacoes` é produto (o computador de ligações): nasceu limpo, e
+// o endereço de cada instalação chega pelo ambiente. A varredura pega as
+// extensões de EXTENSOES (o `ponte.html`, o `iniciar.sh` e o `Dockerfile` da
+// pasta ficam fora dela: conferidos limpos à mão em 10/11/2026).
+const PASTAS_COBERTAS = ['src', 'messages', 'supabase', 'maquina-de-ligacoes']
 
 const ARQUIVOS_DA_RAIZ = [
   '.env.local.example',

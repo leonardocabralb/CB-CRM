@@ -1,0 +1,122 @@
+<!doctype html>
+<!--
+  Página-ponte do computador de ligações (docs/PLANO-ligar-pelo-crm.md,
+  §8.13). Roda numa aba do Chrome da máquina, ao lado do WhatsApp Web, e o
+  orquestrador a comanda (`conectar`, `encerrar`; ela avisa a rede por
+  `avisarDaPonte`):
+  - manda ao atendente o que sai do "AltoFalante", pela fonte "VozDoCliente"
+    (o monitor dele remapeado: o Chrome esconde os monitores da lista);
+  - toca a voz do atendente no "EntradaMic", cujo monitor é o "Microfone" do
+    WhatsApp. Sem cancelamento de eco do lado da máquina (o do atendente basta).
+  Servida SÓ em http://127.0.0.1:8090: a política do Chrome libera o microfone
+  só para essa origem (por outra, ele pediria um clique e a ponte travaria).
+-->
+<html lang="pt-BR">
+  <meta charset="utf-8" />
+  <title>Ponte de áudio</title>
+  <audio id="saida"></audio>
+  <script>
+    let pc = null;
+    let fluxo = null;
+    // Cada `encerrar` (e todo `conectar` começa por um) abre uma geração nova.
+    // A montagem que estourou o prazo do orquestrador segue rodando aqui: ao
+    // voltar de cada espera ela confere a geração e, vencida, larga o que pegou
+    // sem tocar na conexão da ligação seguinte.
+    let geracao = 0;
+
+    function avisar(estado) {
+      try {
+        if (window.avisarDaPonte) window.avisarDaPonte(estado);
+      } catch {}
+    }
+
+    // Larga TUDO da conexão atual: a captura (o close() da conexão não para as
+    // faixas do getUserMedia), o áudio e a conexão. `pc = null` antes do
+    // close(): a conexão velha não avisa mais nada.
+    function encerrar() {
+      geracao += 1;
+      if (fluxo) fluxo.getTracks().forEach((t) => t.stop());
+      fluxo = null;
+      const velha = pc;
+      pc = null;
+      if (velha) velha.close();
+      const audio = document.getElementById("saida");
+      audio.pause();
+      audio.srcObject = null;
+    }
+
+    function esperarCandidatos(conexao) {
+      return new Promise((pronto) => {
+        if (conexao.iceGatheringState === "complete") return pronto();
+        const aoMudar = () => {
+          if (conexao.iceGatheringState === "complete") {
+            conexao.removeEventListener("icegatheringstatechange", aoMudar);
+            pronto();
+          }
+        };
+        conexao.addEventListener("icegatheringstatechange", aoMudar);
+        setTimeout(pronto, 4000);
+      });
+    }
+
+    async function dispositivos() {
+      // Sem permissão concedida, os nomes vêm vazios; a política a concede.
+      const provisorio = await navigator.mediaDevices.getUserMedia({ audio: true });
+      provisorio.getTracks().forEach((t) => t.stop());
+      const lista = await navigator.mediaDevices.enumerateDevices();
+      return {
+        cliente: lista.find((d) => d.kind === "audioinput" && /VozDoCliente/i.test(d.label)),
+        entrada: lista.find((d) => d.kind === "audiooutput" && /EntradaMic/i.test(d.label)),
+      };
+    }
+
+    window.encerrar = encerrar;
+
+    window.conectar = async (oferta, ice) => {
+      encerrar();
+      const minha = geracao;
+      const vencida = () => minha !== geracao;
+      const { cliente, entrada } = await dispositivos();
+      if (vencida()) throw new Error("montagem vencida: outra ligação já começou");
+      if (!cliente || !entrada) throw new Error("sem a fonte VozDoCliente ou a saída EntradaMic");
+      const captura = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: { exact: cliente.deviceId },
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+      });
+      if (vencida()) {
+        captura.getTracks().forEach((t) => t.stop());
+        throw new Error("montagem vencida: outra ligação já começou");
+      }
+      const conexao = new RTCPeerConnection({ iceServers: ice });
+      fluxo = captura;
+      pc = conexao;
+      captura.getTracks().forEach((t) => conexao.addTrack(t, captura));
+      conexao.ontrack = async (evento) => {
+        if (pc !== conexao) return;
+        const audio = document.getElementById("saida");
+        audio.srcObject = evento.streams[0];
+        try {
+          await audio.setSinkId(entrada.deviceId);
+          await audio.play();
+        } catch (erro) {
+          // O orquestrador põe no log os erros desta página: sem isto, o
+          // cliente deixaria de ouvir o atendente sem rastro nenhum.
+          console.error("a voz do atendente não tocou no microfone do WhatsApp: " + erro.message);
+        }
+      };
+      // O estado da conexão inteira (rede E cifragem), não só o da rede.
+      conexao.onconnectionstatechange = () => {
+        if (pc === conexao) avisar(conexao.connectionState);
+      };
+      await conexao.setRemoteDescription({ type: "offer", sdp: oferta });
+      await conexao.setLocalDescription(await conexao.createAnswer());
+      await esperarCandidatos(conexao);
+      if (pc !== conexao) throw new Error("a conexão foi trocada no meio");
+      return conexao.localDescription.sdp;
+    };
+  </script>
+</html>

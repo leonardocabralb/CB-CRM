@@ -10,6 +10,8 @@ paths:
   - ".nvmrc"
   - "package.json"
   - "mcp-server/package.json"
+  - "maquina-de-ligacoes/package.json"
+  - "maquina-de-ligacoes/Dockerfile"
   - "scripts/produto-gate.test.ts"
   - "scripts/env-documentado.test.ts"
   - "scripts/stack-env.test.ts"
@@ -48,10 +50,12 @@ Teste de Intl, fuso ou colação muda entre majors do V8 (já reprovou no CI o q
 passou na máquina). Por isso:
 - O CI lê `node-version-file: .nvmrc`. Merge do upstream traz `node-version:
   <n>` cravado: trocar de volta.
-- `ARG NODE_VERSION` do `Dockerfile` é o único número duplicado (`FROM` não lê
-  arquivo do contexto): mudou um, muda o outro.
-- `engines` `>=22.12.0` (raiz E `mcp-server/`) é piso DERIVADO dos `engines` de
-  `vite`/`rolldown`: não baixar sem conferir as dependências.
+- `ARG NODE_VERSION` do `Dockerfile` e o do `maquina-de-ligacoes/Dockerfile`
+  são os únicos números duplicados (`FROM` não lê arquivo do contexto): mudou
+  um, mudam todos.
+- `engines` `>=22.12.0` (raiz, `mcp-server/` e `maquina-de-ligacoes/`) é piso
+  DERIVADO dos `engines` de `vite`/`rolldown`: não baixar sem conferir as
+  dependências.
 - `packageManager: npm@10.9.9` é o npm do Node 22: subir a major sem subir o pin
   descasa CI e Dependabot.
 - Máquina nova: `nvm use` na raiz; asdf precisa de `legacy_version_file = yes`.
