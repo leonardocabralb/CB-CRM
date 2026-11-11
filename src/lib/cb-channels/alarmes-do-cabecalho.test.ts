@@ -209,3 +209,24 @@ describe('alarmesDoCabecalho — o alarme no botão das conexões (E1)', () => {
     expect(alarmes(lista)).toEqual([]);
   });
 });
+
+describe('o computador de ligações no botão (4e)', () => {
+  it('os episódios dele viram alarme, os mais leves da conexão', () => {
+    const lista = [
+      saude({
+        id: 'c1',
+        episodios: [
+          { tipo: 'computador_qr', desdeIso: HOJE_9H },
+          { tipo: 'atraso', desdeIso: ONTEM_20H },
+          { tipo: 'computador_fora', desdeIso: ONTEM_20H },
+        ],
+      }),
+    ];
+    const porConexao = alarmesPorConexao({ saude: lista, carregando: false, falhou: false });
+    expect(porConexao.get('c1')?.map((a) => a.tipo)).toEqual(['atrasada', 'ligacoes_fora', 'ligacoes_qr']);
+    expect(alarmes(lista)[0].tipo).toBe('atrasada');
+    expect(alarmes([saude({ id: 'c1', episodios: [{ tipo: 'computador_fora', desdeIso: ONTEM_20H }] })])).toEqual([
+      { canalId: 'c1', tipo: 'ligacoes_fora', rotulo: 'C1', desdeIso: ONTEM_20H },
+    ]);
+  });
+});

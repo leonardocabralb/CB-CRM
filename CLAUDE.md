@@ -493,6 +493,12 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   aviso CALL, desfecho com folga, quem ligou, o que não roda, quem lê
   `content_type`; ligar pelo CRM: a máquina, a faixa de registro, a marca
   do atendimento (1134) e a tela (botão, painel, toque, ▶).
+- `.claude/rules/ligacoes-transcricao.md` — a ligação pelo CRM transcrita
+  (1136): os dois lados com horário, o resumo, a nota no contexto da IA, a
+  poda aos 180 dias e a Lixeira das gravações.
+- `.claude/rules/ligacoes-operacao.md` — ligações pelo CRM na tela Conexões
+  (1137): o interruptor por conexão, o QR e o Reparear do computador, os
+  alarmes dele e a sentinela do contêiner.
 - `.claude/rules/whatsapp-envio.md` — núcleo de envio, entrega incerta,
   modelos da Meta por WABA, `resolveTemplateRow`, escopo da conversa.
 - `.claude/rules/canais.md` — peças de UI de canal, escopo vazio = todos,

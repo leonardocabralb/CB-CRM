@@ -25,6 +25,9 @@ obrigações gerais de caminho de entrada estão em `.claude/rules/ingestao.md`.
 
 ## Ligar pelo CRM (4a, 4b e 4c — a tela; a 4d transcreve)
 
+O interruptor por conexão, o QR, o Reparear e os alarmes do computador (4e,
+1137): `ligacoes-operacao.md`.
+
 - ⚠️ **Solução NÃO oficial, por decisão do operador (10/11/2026):** nem a
   API de ligações da Meta nem a Wavoip. O caminho é uma máquina central com
   um Chrome (WhatsApp Web) por número, e o áudio do atendente pela aba do CRM.
@@ -98,8 +101,8 @@ desenho: §8.12 e §8.13 do plano.
 - ⚠️ **O segredo não entra no ambiente do Chrome** (`env -u` no
   `iniciar.sh`): ele abre o que qualquer pessoa manda ao número.
 - **O contrato com o CRM (a 4b implementa exatamente isto):** a máquina
-  responde `GET /estado`, `GET /qr`, `POST /ligar`, `/atender` e `/desligar`
-  na 8080, com `Authorization: Bearer <LIGACOES_SEGREDO>` — o segredo DELA,
+  responde `GET /estado`, `GET /qr`, `POST /ligar`, `/atender`, `/desligar` e
+  (4e) `/desconectar` na 8080, com `Authorization: Bearer <LIGACOES_SEGREDO>` — o segredo DELA,
   derivado do do CRM (ver "O CRM, dono da ligação"); o id da ligação é
   o `cb_ligacoes.id` (só `[A-Za-z0-9-]`: nunca o `call_id` `crm:…`), e o
   número é o do JID da conversa, NUNCA um LID (a máquina não os distingue).
@@ -333,12 +336,14 @@ desenho: §8.12 e §8.13 do plano.
 - A prévia no banco é o marcador `[call]` (`PREVIA_DA_LIGACAO`), o formato de
   todo tipo sem texto; a lista, o card do funil e o tempo real
   (`comMensagemNova`) o trocam por "📞 Ligação" (`ehPreviaDeLigacao`).
-- Radar (`textoDe` do worker): a ligação é linha do transcrito.
+- Radar (`textoDe` do worker): a ligação é linha do transcrito (a pelo CRM com
+  rótulo e resumo próprios, 4d).
 - "Comparar" da possível duplicata (`comparar-fichas-dialog.tsx`, 1088): a
   ligação sai como "📞 Ligação" (`Inbox.ligacao.previa`), nunca "Anexo".
 - Agente de IA (1049): a ligação não abre turno (`abreTurno` só aceita
   `TIPOS_QUE_ABREM_TURNO`) e, sem texto, fica fora do contexto que ele lê
-  (`ia-agentes/contexto.ts`). A ATENDIDA pausa o agente da conversa
+  (`ia-agentes/contexto.ts`) — menos a pelo CRM TRANSCRITA, que entra como
+  nota (`ligacoes-transcricao.md`). A ATENDIDA pausa o agente da conversa
   (`cb_pausar_ia_por_gente`): é resposta de gente.
 - Painel: `.neq('content_type', 'call')` nas contagens de mensagem — a
   atendida é `agent`, e contaria como mensagem enviada. A série "Conversas ao

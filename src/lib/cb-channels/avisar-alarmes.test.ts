@@ -539,3 +539,109 @@ describe('avisarAlarmesDeConexao — o passo do ciclo', () => {
     expect(semMembros.tabelas.cb_alarmes_de_conexao.filter((l) => l.account_id === 'conta-1')).toHaveLength(0);
   });
 });
+
+// ------------------------------------------------------------
+// O computador de ligações (4e, 1137): sem sinal e pedindo o QR.
+// ------------------------------------------------------------
+describe('avisarAlarmesDeConexao — o computador de ligações', () => {
+  const LIGADO_EM = iso(AGORA - 30 * 24 * 60 * MIN);
+  function comComputador(banco: BancoFalso, extra: Linha = {}) {
+    banco.tabelas.cb_computadores_de_ligacao = [
+      { channel_id: 'c1', account_id: 'conta-1', whatsapp: 'conectado', ultimo_sinal_em: iso(AGORA - 30_000), ligado_em: LIGADO_EM, ...extra },
+    ];
+  }
+  const semNada = () => lerEnviosRecentes.mockResolvedValue([]);
+
+  it('ligado e sem sinal há 20 min, em horário útil: "fora do ar" para quem vê a conexão, desde o último sinal', async () => {
+    const banco = montarBanco();
+    semNada();
+    comComputador(banco, { ultimo_sinal_em: iso(AGORA - 20 * MIN) });
+    await avisarAlarmesDeConexao(banco as unknown as SupabaseClient, AGORA);
+    expect(avisos(banco).map((a) => a.user_id).sort()).toEqual(['atende-c1', 'dono']);
+    expect(String(avisos(banco)[0].title)).toBe('Ligações pelo CRM fora do ar: Comercial');
+    expect(estadoDe(banco, 'c1', 'computador_fora')).toMatchObject({ desde: iso(AGORA - 20 * MIN), avisado_em: iso(AGORA) });
+  });
+
+  it('sem sinal há 5 min (a troca da imagem): nada — e com sinal fresco o episódio avisado normaliza', async () => {
+    const banco = montarBanco();
+    semNada();
+    comComputador(banco, { ultimo_sinal_em: iso(AGORA - 5 * MIN) });
+    await avisarAlarmesDeConexao(banco as unknown as SupabaseClient, AGORA);
+    expect(avisos(banco)).toHaveLength(0);
+    expect(estadoDe(banco, 'c1', 'computador_fora')).toBeUndefined();
+
+    banco.tabelas.cb_alarmes_de_conexao.push({
+      account_id: 'conta-1',
+      channel_id: 'c1',
+      tipo: 'computador_fora',
+      desde: iso(AGORA - 60 * MIN),
+      avisado_em: iso(AGORA - 40 * MIN),
+      normalizou_em: null,
+      devido_em: null,
+      detalhe: {},
+    });
+    comComputador(banco);
+    await avisarAlarmesDeConexao(banco as unknown as SupabaseClient, AGORA);
+    expect(String(avisos(banco)[0].title)).toBe('Normalizou — Ligações pelo CRM fora do ar: Comercial');
+    expect(estadoDe(banco, 'c1', 'computador_fora')).toBeUndefined();
+  });
+
+  it('pedindo o QR: o 1º ciclo só guarda; o aviso sai quando dura 10 min', async () => {
+    const banco = montarBanco();
+    semNada();
+    comComputador(banco, { whatsapp: 'qr' });
+    await avisarAlarmesDeConexao(banco as unknown as SupabaseClient, AGORA);
+    expect(avisos(banco)).toHaveLength(0);
+    expect(estadoDe(banco, 'c1', 'computador_qr')).toMatchObject({ desde: iso(AGORA), avisado_em: null });
+
+    const depois = AGORA + 15 * MIN;
+    comComputador(banco, { whatsapp: 'qr', ultimo_sinal_em: iso(depois - 30_000) });
+    await avisarAlarmesDeConexao(banco as unknown as SupabaseClient, depois);
+    expect(String(avisos(banco)[0].title)).toBe('Ligações pelo CRM desconectadas do WhatsApp: Comercial');
+  });
+
+  it('⚠️ DESLIGADO (D16): nada acende, e o alarme aberto sai CALADO', async () => {
+    const banco = montarBanco();
+    semNada();
+    comComputador(banco, { ultimo_sinal_em: iso(AGORA - 60 * MIN), ligado_em: null });
+    banco.tabelas.cb_alarmes_de_conexao.push({
+      account_id: 'conta-1',
+      channel_id: 'c1',
+      tipo: 'computador_fora',
+      desde: iso(AGORA - 60 * MIN),
+      avisado_em: iso(AGORA - 40 * MIN),
+      normalizou_em: null,
+      devido_em: null,
+      detalhe: {},
+    });
+    await avisarAlarmesDeConexao(banco as unknown as SupabaseClient, AGORA);
+    expect(avisos(banco)).toHaveLength(0);
+    expect(estadoDe(banco, 'c1', 'computador_fora')).toBeUndefined();
+  });
+
+  it('fora do horário útil o sem sinal espera a abertura; a leitura dos computadores que falha não mexe em nada', async () => {
+    const banco = montarBanco();
+    semNada();
+    comComputador(banco, { ultimo_sinal_em: iso(MADRUGADA - 20 * MIN) });
+    await avisarAlarmesDeConexao(banco as unknown as SupabaseClient, MADRUGADA);
+    expect(avisos(banco)).toHaveLength(0);
+    expect(estadoDe(banco, 'c1', 'computador_fora')).toMatchObject({ avisado_em: null });
+
+    const outro = montarBanco();
+    semNada();
+    comComputador(outro, { ligado_em: null });
+    outro.tabelas.cb_alarmes_de_conexao.push({
+      account_id: 'conta-1',
+      channel_id: 'c1',
+      tipo: 'computador_qr',
+      desde: iso(AGORA - 60 * MIN),
+      avisado_em: null,
+      normalizou_em: null,
+      devido_em: null,
+      detalhe: {},
+    });
+    outro.falhas['cb_computadores_de_ligacao.select'] = 'fora do ar';
+    await avisarAlarmesDeConexao(outro as unknown as SupabaseClient, AGORA);
+    expect(estadoDe(outro, 'c1', 'computador_qr')).toBeDefined();
+  });
+});

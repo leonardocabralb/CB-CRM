@@ -2,7 +2,9 @@
 // Alarmes de conexão no sino — o passo do ciclo do agendador (1122).
 //
 // Roda no `rodarManutencaoDoCiclo` (laço lento, ~15 min), com a service role:
-// mede os dois alarmes de cada conexão de WhatsApp de todas as contas, decide
+// mede os alarmes de cada conexão de WhatsApp de todas as contas (os dois da
+// conexão e, onde há computador de ligações LIGADO, os dois dele — 4e, 1137:
+// sem sinal e pedindo o QR; desligado, a linha sai calada, D16), decide
 // pela régua pura (`alarmes-no-sino.ts`) e grava o aviso no sino, o
 // `whatsapp_alert` da 1085, que já tem ícone, três linhas e fica fora das
 // contagens do resumo do dia.
@@ -39,6 +41,8 @@ import {
   destinatarios,
   emHorarioUtil,
   medirAtraso,
+  medirComputadorFora,
+  medirComputadorQr,
   medirSemRecibo,
   textosDoAviso,
   type EstadoDoAlarme,
@@ -72,6 +76,17 @@ interface LinhaDoCanal {
   entrega_carimbo_em: string | null;
   entrega_recebida_em: string | null;
 }
+
+/** O computador de ligações de uma conexão (1134), como o sinal de vida o deixou. */
+interface LinhaDoComputador {
+  channel_id: string;
+  account_id: string;
+  whatsapp: string | null;
+  ultimo_sinal_em: string | null;
+  ligado_em: string | null;
+}
+
+const TIPOS_DO_COMPUTADOR = ['computador_fora', 'computador_qr'] as const;
 
 interface LinhaDoMembro {
   user_id: string | null;
@@ -142,6 +157,22 @@ async function lerCanais(admin: SupabaseClient): Promise<LinhaDoCanal[] | null> 
     if (lote.length < PAGINA_DE_CANAIS) return todos;
     depoisDe = lote[lote.length - 1].id;
   }
+}
+
+/**
+ * Os computadores de ligações de TODAS as contas (poucos: um por número), por
+ * conexão. `null` = a leitura falhou ("não sei": nenhum alarme do computador
+ * acende nem sai neste ciclo).
+ */
+async function lerComputadores(admin: SupabaseClient): Promise<Map<string, LinhaDoComputador> | null> {
+  const { data, error } = await admin
+    .from('cb_computadores_de_ligacao')
+    .select('channel_id, account_id, whatsapp, ultimo_sinal_em, ligado_em');
+  if (error) {
+    console.warn('[alarmes] não leu os computadores de ligações:', error.message);
+    return null;
+  }
+  return new Map(((data ?? []) as LinhaDoComputador[]).map((c) => [c.channel_id, c]));
 }
 
 /** Os membros ATIVOS da conta, com o perfil real de cada um. `null` = falhou. */
@@ -338,6 +369,38 @@ async function carregarConta(
   return { ctx: { admin, accountId, membros, agoraMs, horarioUtil, textos }, estados };
 }
 
+/**
+ * Os alarmes do computador de ligações da conexão (4e). Só do LIGADO; do
+ * desligado (ou do que saiu), a linha aberta sai CALADA — sem "Normalizou":
+ * desligar é tirar a ligação de cena (D16). De outra conta, nunca.
+ */
+async function avaliarComputador(
+  conta: Conta,
+  canal: LinhaDoCanal,
+  computadores: Map<string, LinhaDoComputador> | null,
+): Promise<void> {
+  if (computadores === null) return;
+  const { ctx, estados } = conta;
+  const c = computadores.get(canal.id);
+  const ligado = c && c.account_id === canal.account_id && typeof c.ligado_em === 'string' ? c : null;
+  for (const tipo of TIPOS_DO_COMPUTADOR) {
+    const atual = estados.get(`${canal.id}:${tipo}`) ?? null;
+    if (!ligado) {
+      if (atual === null) continue;
+      const { erro } = await gravar(ctx.admin, { accountId: ctx.accountId, channelId: canal.id, tipo }, atual, null, null);
+      if (erro) console.warn('[alarmes] não tirou o alarme do computador desligado %s (%s):', canal.id, tipo, erro);
+      continue;
+    }
+    const sinal = {
+      ultimoSinalIso: ligado.ultimo_sinal_em,
+      whatsapp: ligado.whatsapp,
+      ligadoEmIso: ligado.ligado_em as string,
+    };
+    const medicao = tipo === 'computador_fora' ? medirComputadorFora(sinal, ctx.agoraMs) : medirComputadorQr(sinal, ctx.agoraMs);
+    await aplicar(ctx, canal, tipo, atual, medicao);
+  }
+}
+
 async function avaliarConexao(conta: Conta, canal: LinhaDoCanal): Promise<void> {
   const { ctx, estados } = conta;
   const deRecibo = estados.get(`${canal.id}:sem_recibo`) ?? null;
@@ -370,6 +433,7 @@ export async function avisarAlarmesDeConexao(
 
     const textos = await carregarTextos();
     const horarioUtil = emHorarioUtil(new Date(agoraMs));
+    const computadores = await lerComputadores(admin);
     const contas = new Map<string, Promise<Conta | null>>();
     for (const canal of ordemDaRodada(vigiadas, aleatorio)) {
       if (Date.now() > prazo) {
@@ -383,7 +447,10 @@ export async function avisarAlarmesDeConexao(
           contas.set(canal.account_id, conta);
         }
         const carregada = await conta;
-        if (carregada) await avaliarConexao(carregada, canal);
+        if (carregada) {
+          await avaliarConexao(carregada, canal);
+          await avaliarComputador(carregada, canal, computadores);
+        }
       } catch (err) {
         console.warn('[alarmes] a conexão %s estourou:', canal.id, erroDe(err));
       }

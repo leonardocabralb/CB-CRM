@@ -27,10 +27,15 @@ export interface Computador {
   whatsapp: string | null;
   ligacao_em_curso: string | null;
   ultimo_sinal_em: string | null;
+  /**
+   * O interruptor das ligações pelo CRM desta conexão (1137, D16): quando o
+   * admin ligou. Nulo = desligado — sem botão, sem toque, sem alarme.
+   */
+  ligado_em: string | null;
 }
 
 export const COLUNAS_DO_COMPUTADOR =
-  'id, account_id, channel_id, nome, endereco, whatsapp, ligacao_em_curso, ultimo_sinal_em';
+  'id, account_id, channel_id, nome, endereco, whatsapp, ligacao_em_curso, ultimo_sinal_em, ligado_em';
 
 /** O sinal de vida vem a cada minuto: três minutos sem ele, o computador está fora. */
 export const SINAL_VELHO_MS = 3 * 60_000;
@@ -58,12 +63,41 @@ export function computadorFora(
   return !Number.isFinite(sinal) || agoraMs - sinal > SINAL_VELHO_MS;
 }
 
-/** Pronto para ligar e atender: com sinal recente e o WhatsApp conectado. */
+/**
+ * Pronto para ligar e atender: LIGADO pelo admin (1137), com sinal recente e o
+ * WhatsApp conectado. É a régua do botão "Ligar", do toque (o `offer`), do
+ * ligar e do atender — desligado, nada disso existe (D16).
+ */
 export function computadorPronto(
-  computador: Pick<Computador, 'ultimo_sinal_em' | 'whatsapp'>,
+  computador: Pick<Computador, 'ultimo_sinal_em' | 'whatsapp' | 'ligado_em'>,
   agoraMs: number,
 ): boolean {
-  return computador.whatsapp === 'conectado' && !computadorFora(computador, agoraMs);
+  return (
+    // Falha FECHADA: a consulta que esqueceu de pedir a coluna (`undefined`)
+    // conta como desligado, nunca como ligado.
+    typeof computador.ligado_em === 'string' &&
+    computador.whatsapp === 'conectado' &&
+    !computadorFora(computador, agoraMs)
+  );
+}
+
+/**
+ * O que a tela diz do computador LIGADO (4e): a tela Conexões e a linha do
+ * botão das conexões do cabeçalho. Do pior para o melhor: sem sinal há 3 min
+ * é `fora` (o contêiner parado, a máquina travada), diga o último sinal o que
+ * disser; com sinal, o WhatsApp dele pedindo o QR, carregando, ou conectado —
+ * em ligação ou pronto.
+ */
+export type SituacaoDaMaquina = 'fora' | 'qr' | 'carregando' | 'em_ligacao' | 'pronto';
+
+export function situacaoDaMaquina(
+  computador: Pick<Computador, 'ultimo_sinal_em' | 'whatsapp' | 'ligacao_em_curso'>,
+  agoraMs: number,
+): SituacaoDaMaquina {
+  if (computadorFora(computador, agoraMs)) return 'fora';
+  if (computador.whatsapp === 'qr') return 'qr';
+  if (computador.whatsapp !== 'conectado') return 'carregando';
+  return computador.ligacao_em_curso ? 'em_ligacao' : 'pronto';
 }
 
 const resumo = (texto: string) => createHash('sha256').update(texto).digest();
@@ -140,34 +174,38 @@ export type RespostaDoComputador =
 
 /** A ponte leva ~4 s (até 15 s de teto lá dentro); o pedido espera um pouco mais. */
 const PRAZO_DO_PEDIDO_MS = 25_000;
-/** As respostas da máquina são JSON pequeno; o teto só barra o absurdo. */
-const TETO_DA_RESPOSTA = 64 * 1024;
+/** As respostas da máquina são JSON pequeno (o QR, uns KB de PNG); o teto só barra o absurdo. */
+const TETO_DA_RESPOSTA = 256 * 1024;
 
 /**
- * Um pedido à API interna do computador (`/ligar`, `/atender`, `/desligar`),
- * com o segredo DELE. Nunca lança. O endereço vem do banco (configuração da
+ * Um pedido à API interna do computador, com o segredo DELE: `POST` com
+ * `corpo` (`/ligar`, `/atender`, `/desligar`, `/desconectar`), `GET` sem
+ * (`/estado`, `/qr`). Nunca lança. O endereço vem do banco (configuração da
  * instalação, rede interna), não de fora: sem `isDeliverableUrl` — ele
  * recusaria justamente o endereço privado. Sem seguir redirecionamento.
  */
 export async function pedirAoComputador(
   computador: Pick<Computador, 'nome' | 'endereco'>,
   segredoDoCrm: string,
-  caminho: '/ligar' | '/atender' | '/desligar',
+  caminho: '/ligar' | '/atender' | '/desligar' | '/desconectar' | '/estado' | '/qr',
   corpo: unknown,
   enviar: typeof fetch = fetch,
+  prazoMs: number = PRAZO_DO_PEDIDO_MS,
 ): Promise<RespostaDoComputador> {
   let resposta: Response;
+  const autorizacao = `Bearer ${segredoDoComputador(segredoDoCrm, computador.nome)}`;
   try {
     resposta = await enviar(`${computador.endereco}${caminho}`, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${segredoDoComputador(segredoDoCrm, computador.nome)}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify(corpo),
+      ...(corpo === undefined
+        ? { method: 'GET', headers: { authorization: autorizacao } }
+        : {
+            method: 'POST',
+            headers: { authorization: autorizacao, 'content-type': 'application/json' },
+            body: JSON.stringify(corpo),
+          }),
       redirect: 'manual',
       cache: 'no-store',
-      signal: AbortSignal.timeout(PRAZO_DO_PEDIDO_MS),
+      signal: AbortSignal.timeout(prazoMs),
     });
   } catch (err) {
     console.error('[ligacoes] o computador não respondeu:', computador.nome, caminho, String(err).slice(0, 160));

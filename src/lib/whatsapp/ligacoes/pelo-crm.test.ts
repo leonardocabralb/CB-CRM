@@ -84,6 +84,7 @@ beforeEach(() => {
         whatsapp: 'conectado',
         ligacao_em_curso: null,
         ultimo_sinal_em: new Date(AGORA - 30_000).toISOString(),
+        ligado_em: '2026-01-01T12:00:00.000Z',
       },
     ],
   });
@@ -338,8 +339,9 @@ describe('os avisos da máquina', () => {
     ]);
     expect(ligacoes()[0].message_id).toBe(faixas()[0].id);
     expect(aoVivo()).toEqual([]);
-    // Só registro: nada de reabrir, subir a conversa ou mexer nas não lidas.
-    expect(banco.rpcs).toEqual([]);
+    // Só registro: nada de reabrir, subir a conversa ou mexer nas não lidas —
+    // a única RPC é a da própria faixa refletindo a ligação (1136).
+    expect(banco.rpcs).toEqual([{ nome: 'cb_ligacao_sincronizar_faixa', args: { p_ligacao: ligacoes()[0].id } }]);
     expect(banco.escritas.filter((e) => e.tabela === 'conversations')).toEqual([
       // o preencher do número: a cerca `channel_id IS NULL` (a conversa já tem)
       expect.objectContaining({ op: 'update', payload: { channel_id: CANAL } }),
@@ -563,13 +565,23 @@ describe('desligar', () => {
 
 describe('a gravação', () => {
   let enviados: { caminho: string; opcoes: unknown }[];
+  let apagados: string[];
+  /** Roda DURANTE o upload (a poda ou a exclusão que cruza o envio). */
+  let duranteOEnvio: (() => void) | null;
   beforeEach(() => {
     enviados = [];
+    apagados = [];
+    duranteOEnvio = null;
     (banco.db as unknown as { storage: unknown }).storage = {
       from: (bucket: string) => ({
         upload: async (caminho: string, _corpo: Buffer, opcoes: unknown) => {
           enviados.push({ caminho: `${bucket}/${caminho}`, opcoes });
+          duranteOEnvio?.();
           return { error: null };
+        },
+        remove: async (caminhos: string[]) => {
+          apagados.push(...caminhos.map((c) => `${bucket}/${c}`));
+          return { data: [], error: null };
         },
       }),
     };
@@ -600,7 +612,9 @@ describe('a gravação', () => {
     ]);
     expect(enviados[1].opcoes).toEqual({ contentType: 'audio/ogg', upsert: true });
     expect(ligacoes()[0].gravacao_recebida_em).toEqual(expect.any(String));
-    expect(banco.tabelas.messages.find((m) => m.id === 'faixa-1')?.ligacao).toEqual({ desfecho: 'atendida', gravacao: true });
+    // A faixa passa a refletir a ligação numa escrita só, sob a trava da linha
+    // (1136): a marca da transcrição chega por outro pedido.
+    expect(banco.rpcs).toEqual([{ nome: 'cb_ligacao_sincronizar_faixa', args: { p_ligacao: ID } }]);
   });
 
   it('⚠️ de ligação NUNCA atendida não guarda nada (Codex, #500): descartada com o desfecho, cedo sem ele', async () => {
@@ -612,6 +626,40 @@ describe('a gravação', () => {
     expect(await receber('cliente.ogg')).toBe('cedo');
     expect(enviados).toEqual([]);
     expect(ligacoes()[0].gravacao_recebida_em ?? null).toBeNull();
+  });
+
+  it('o reenvio do que já saiu volta DESCARTADO (revisão da 4d): a podada ou excluída, e o lado de uma transcrição pronta', async () => {
+    const atendida = { id: ID, account_id: CONTA, channel_id: CANAL, pelo_crm: true, desfecho: 'atendida', atendida_pelo_crm_em: '2026-11-10T20:00:20.000Z' };
+    banco.tabelas.cb_ligacoes = [{ ...atendida, gravacao_expirada_em: '2026-11-11T00:00:00.000Z' }];
+    expect(await receber('estereo.ogg')).toBe('descartada');
+    banco.tabelas.cb_ligacoes = [{ ...atendida, transcricao_status: 'pronta', gravacao_recebida_em: null }];
+    expect(await receber('cliente.ogg')).toBe('descartada');
+    expect(enviados).toEqual([]);
+    // A expirada leva junto o que um envio anterior possa ter deixado.
+    expect(apagados).toEqual([`ligacoes/account-${CONTA}/ligacoes/${ID}/estereo.ogg`]);
+    // O estéreo de uma transcrição pronta ainda entra (é o que se ouve).
+    expect(await receber('estereo.ogg')).toBe('ok');
+    expect(enviados.map((e) => e.caminho)).toEqual([`ligacoes/account-${CONTA}/ligacoes/${ID}/estereo.ogg`]);
+  });
+
+  it('⚠️ a poda ou a exclusão que cruza o envio: o arquivo recém-guardado sai, e volta descartada (Codex, #506)', async () => {
+    const atendida = { id: ID, account_id: CONTA, channel_id: CANAL, pelo_crm: true, desfecho: 'atendida', atendida_pelo_crm_em: '2026-11-10T20:00:20.000Z', gravacao_recebida_em: null };
+    banco.tabelas.cb_ligacoes = [{ ...atendida }];
+    duranteOEnvio = () => {
+      banco.tabelas.cb_ligacoes[0].gravacao_expirada_em = '2026-11-11T00:00:00.000Z';
+    };
+    expect(await receber('estereo.ogg')).toBe('descartada');
+    expect(apagados).toEqual([`ligacoes/account-${CONTA}/ligacoes/${ID}/estereo.ogg`]);
+    expect(ligacoes()[0].gravacao_recebida_em).toBeNull();
+
+    // A linha apagada (a exclusão com o pedido do titular) durante o envio: idem.
+    banco.tabelas.cb_ligacoes = [{ ...atendida }];
+    apagados = [];
+    duranteOEnvio = () => {
+      banco.tabelas.cb_ligacoes = [];
+    };
+    expect(await receber('cliente.ogg')).toBe('descartada');
+    expect(apagados).toEqual([`ligacoes/account-${CONTA}/ligacoes/${ID}/cliente.ogg`]);
   });
 
   it('de ligação que não é deste computador (ou não é pelo CRM): desconhecida', async () => {

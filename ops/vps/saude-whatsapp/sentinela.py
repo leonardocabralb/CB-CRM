@@ -87,6 +87,10 @@ SERVICOS_VIGIADOS = ('crm_crm', 'crm_agendador', 'evolution_evolution',
 # chaves são do servidor e vão aos owner/admin de toda conta com conexão de
 # produção.
 PREFIXOS_DA_CONEXAO = ('conexao:', 'sem_entrada:', 'nao_gravadas:', 'falhas:', 'quedas:')
+# Chaves de UMA conta que não são de conexão (o computador de ligações, 4e): o
+# aviso vai só aos owner/admin da conta DONA, nunca aos de todas as contas do
+# servidor (levaria o nome e o incidente a quem não é dono).
+PREFIXOS_DA_CONTA = ('maquina:',)
 # Os alarmes de conexão que o botão das conexões do CRM mostra (E1, 1123): as
 # chaves do CHECK da tabela, EXATAMENTE (pino `alarmes-da-sentinela-1123.test.ts`).
 # O `conexao:` fica de fora: a sonda do CRM já vê a conexão fora do ar ao vivo.
@@ -643,6 +647,57 @@ def checar_servidor_e_conexoes(pg, producao, contas, achados):
     return conexoes
 
 
+def situacao_do_conteiner(nome):
+    """"running", "exited", "restarting"… ou "ausente" (o contêiner não existe).
+    O Docker que não respondeu (prazo, outro erro) LANÇA: "não sei" nunca vira
+    "parado" (a checagem inteira vai para o `nao_medido`)."""
+    try:
+        return rodar(['docker', 'inspect', '-f', '{{.State.Status}}', nome]).strip() or 'ausente'
+    except RuntimeError as e:
+        if 'no such' in str(e).lower():
+            return 'ausente'
+        raise
+
+
+def checar_computadores_de_ligacao(crm, achados):
+    """O computador de ligações LIGADO no CRM (4e, 1137) cujo contêiner AVULSO
+    não está rodando: fora do Swarm, ele não entra no `docker service ls`. O
+    CRM já mostra "sem sinal" no botão das conexões; aqui vai a causa (o
+    contêiner parado). Desligado no CRM, não é vigiado (D16): o episódio aberto
+    dele sai calado. Aviso aos owner/admin da conta DONA (`PREFIXOS_DA_CONTA`).
+    A suspeita só vira problema se continuar depois de RECHECAGEM_S (a troca
+    semanal da imagem). Devolve as chaves que esta execução vigiou.
+    """
+    ligados = crm.ler('cb_computadores_de_ligacao?select=nome,account_id&ligado_em=not.is.null')
+    vigiadas = set()
+    suspeitos = {}
+    for c in ligados:
+        nome = c.get('nome') or ''
+        if not re.fullmatch(r'[a-z0-9-]{1,40}', nome):
+            continue
+        vigiadas.add('maquina:' + nome)
+        situacao = situacao_do_conteiner('ligacoes-' + nome)
+        if situacao == 'running':
+            achados.normal('maquina:' + nome)
+        else:
+            suspeitos[nome] = c['account_id']
+    if not suspeitos:
+        return vigiadas
+    time.sleep(RECHECAGEM_S)
+    for nome, conta in suspeitos.items():
+        conteiner = 'ligacoes-' + nome
+        situacao = situacao_do_conteiner(conteiner)
+        if situacao == 'running':
+            achados.normal('maquina:' + nome)
+            continue
+        achados.problema('maquina:' + nome, 'Computador de ligações parado: ' + nome,
+                         'O contêiner %s está "%s": as ligações pelo CRM deste número não funcionam '
+                         'até ele voltar (docs/INFRA-VPS.md, seção 4). Desligue as ligações em '
+                         'Configurações → Conexões se a parada for de propósito.' % (conteiner, situacao),
+                         [conta])
+    return vigiadas
+
+
 def checar_mensagens(pg, crm, producao, conexoes, achados):
     """O que depende do banco da Evolution: tráfego, o que o CRM não gravou e
     falha real de entrega — só nas conexões cuja instância existe."""
@@ -888,7 +943,7 @@ def decidir(estado, achados, contas_atuais, vigiaveis):
         # (a primeira lista com conta) ou, sem medição, a guardada. Somar as
         # contas de agora — ou o dono antigo de uma instância recriada noutra
         # conta — o mandaria aos admins de OUTRA conta, com o nome e o incidente.
-        if chave.startswith(PREFIXOS_DA_CONEXAO):
+        if chave.startswith(PREFIXOS_DA_CONEXAO + PREFIXOS_DA_CONTA):
             return sorted(next((lista for lista in listas if lista), []))
         return sorted(set(contas_atuais).union(*[set(lista or []) for lista in listas]))
 
@@ -947,7 +1002,7 @@ def aplicar(estado, achados, enviados):
             continue
         atual = ativos.setdefault(chave, {'desde': iso(AGORA), 'avisado_em': None})
         atual['titulo'], atual['corpo'] = p['titulo'], p['corpo']
-        if chave.startswith(PREFIXOS_DA_CONEXAO):
+        if chave.startswith(PREFIXOS_DA_CONEXAO + PREFIXOS_DA_CONTA):
             atual['contas'] = sorted(p['contas'])  # o dono de AGORA, nunca somado ao antigo
         else:
             atual['contas'] = sorted(set(atual.get('contas') or []) | set(p['contas']))
@@ -1218,6 +1273,13 @@ def main():
         checar_sessoes_99(rd, contas, achados, simular, estado)
     except Exception as e:
         achados.nao_medido.append("sessões '.99': " + sem_segredo(e))
+    # None = a checagem não rodou ("não sei"): os episódios abertos ficam.
+    maquinas_vigiadas = None
+    if crm is not None:
+        try:
+            maquinas_vigiadas = checar_computadores_de_ligacao(crm, achados)
+        except Exception as e:
+            achados.nao_medido.append('computadores de ligações: ' + sem_segredo(e))
 
     # Coleta dos logs, desde a execução anterior (no máximo COLETA_MAXIMA_H).
     # Ou entra inteira, ou não entra: linha parcial seria contada duas vezes
@@ -1257,6 +1319,13 @@ def main():
         for canal in producao:
             for prefixo in PREFIXOS_DA_CONEXAO:
                 vigiaveis.add(prefixo + canal['instance_name'])
+        # O computador de ligações (4e): os ligados que a checagem viu; sem
+        # ela, os já abertos continuam (sem medição, não se esquece nem se
+        # normaliza). O desligado sai calado.
+        if maquinas_vigiadas is None:
+            vigiaveis |= {c for c in (estado.get('ativos') or {}) if c.startswith(PREFIXOS_DA_CONTA)}
+        else:
+            vigiaveis |= maquinas_vigiadas
 
     avisos = decidir(estado, achados, contas, vigiaveis)
     registro['problemas'] = sorted(achados.problemas)

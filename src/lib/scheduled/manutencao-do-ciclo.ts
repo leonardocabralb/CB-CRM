@@ -3,8 +3,9 @@
 // faz DEPOIS da resposta, em `after()`: os alarmes de conexão no sino (1122),
 // as tarefas recorrentes (1074), o vencimento da Lixeira de contatos (1097),
 // o da lixeira de anotações (1132), a poda do conteúdo dos turnos dos agentes
-// de IA (1110) e a drenagem da fila de arquivos a apagar (1097) — nesta
-// ordem, sob UM prazo comum.
+// de IA (1110), a poda das gravações de ligação aos 180 dias (1136), a
+// drenagem da fila de arquivos a apagar (1097) e a retomada das transcrições
+// de ligação que ficaram para trás (1136) — nesta ordem, sob UM prazo comum.
 //
 // ⚠️ Por que nesta rota, e não numa nova: rota nova no agendador só roda
 // depois de mudar o `command` do `docker-stack.yml` E de um `docker stack
@@ -20,9 +21,12 @@
 // anotação excluída de vez), então vem antes da drenagem. A poda vem DEPOIS do
 // vencimento (a ficha excluída de vez limpa os turnos dela como `exclusao`; a
 // poda leva o resto como `prazo`) e antes da drenagem, que é quem pode gastar
-// o prazo inteiro.
+// o prazo inteiro. A poda das gravações apaga do Storage direto (sem a fila)
+// e vem antes da drenagem pelo mesmo motivo. A retomada das transcrições vem
+// por ÚLTIMO: cada uma chama o provedor de IA (até minutos), e ela só começa
+// com o prazo de uma inteira sobrando — o atraso dela não segura os outros.
 //
-// ⚠️ Cada passo é ISOLADO: os seis já nunca lançam, e mesmo assim cada um
+// ⚠️ Cada passo é ISOLADO: os oito já nunca lançam, e mesmo assim cada um
 // roda dentro do próprio try — a falha (ou um defeito futuro que lance) de um
 // não impede o seguinte.
 // ============================================================
@@ -37,6 +41,8 @@ import {
 } from '@/lib/storage/arquivos-a-apagar';
 import { vencerLixeiraDeAnotacoes } from '@/lib/notes/vencer-lixeira-de-anotacoes';
 import { gerarTarefasRecorrentes } from '@/lib/tasks/gerar-recorrentes';
+import { podarGravacoesDeLigacao } from '@/lib/whatsapp/ligacoes/poda';
+import { retomarTranscricoes } from '@/lib/whatsapp/ligacoes/transcricao';
 
 /**
  * O prazo da manutenção, contado do início do `after()`: 5 min.
@@ -81,7 +87,13 @@ export async function rodarManutencaoDoCiclo(
   await isolado('conteúdo dos turnos da IA', () =>
     podarConteudoDosTurnos(admin, prazo)
   );
+  await isolado('gravações de ligação (180 dias)', () =>
+    podarGravacoesDeLigacao(admin, prazo)
+  );
   await isolado('fila de arquivos a apagar', () =>
     drenarArquivosAApagar(admin, prazo)
+  );
+  await isolado('transcrições de ligação', () =>
+    retomarTranscricoes(admin, prazo)
   );
 }

@@ -109,6 +109,10 @@ const maquina = new Maquina({
   agora: Date.now,
   esperar: (ms) => new Promise<void>((pronto) => setTimeout(pronto, ms)),
   registrar,
+  aoMudarOWhatsapp: (estado) => {
+    registrar(`whatsapp: ${estado}`)
+    sinal()
+  },
 })
 maquina.definirVersaoDoChrome(chrome.version())
 aoMudarARede = (estado) => {

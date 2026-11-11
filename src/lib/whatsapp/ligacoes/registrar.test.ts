@@ -560,6 +560,7 @@ describe('ligar pelo CRM: o toque ao vivo e a marca do atendimento (1134)', () =
         endereco: 'http://ligacoes-teste:8080',
         whatsapp: 'conectado',
         ultimo_sinal_em: new Date(relogio - 30_000).toISOString(),
+        ligado_em: '2026-01-01T12:00:00.000Z',
         ...extra,
       },
     ];

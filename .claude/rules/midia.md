@@ -232,7 +232,10 @@ Tabela `cb_media_library`, `src/lib/acervo/` (puro, com teste), rotas em
 (`src/lib/storage/arquivos-a-apagar.ts`). Quem enfileira: excluir de vez da
 Lixeira de contatos (prazo ou "Excluir agora"; `supabase.md`, "APAGAR
 CONTATO") e o gatilho da anotação (1102, origem `anotacao`: anotação apagada
-ou anexo tirado, fora do sinal `cb.lixeira`; `anotacoes.md`).
+ou anexo tirado, fora do sinal `cb.lixeira`; `anotacoes.md`). ⚠️ Desde a 1136
+a fila tem um SEGUNDO bucket, `ligacoes` (as gravações das ligações pelo CRM,
+`ligacoes-transcricao.md`): a guarda e o `remove` são POR BUCKET, e as
+citações valem só no `chat-media`.
 
 - ⚠️ **`notas/` (anexo de anotação) é subpasta com regra própria**, o par rota
   + policy da 954: o `POST /api/cb/notes` exige o prefixo e lê tamanho e tipo

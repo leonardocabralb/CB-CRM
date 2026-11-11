@@ -740,6 +740,17 @@ export interface DetalhesDaLigacao {
    * `/api/cb/ligacoes/<ligacao_id>/gravacao`. As faixas da 4b não o têm.
    */
   ligacao_id?: string;
+  /**
+   * A transcrição (4d): `transcrevendo` e `falhou` (que ainda vai repetir)
+   * = "Transcrevendo…"; `pronta` = o resumo e "Ver transcrição"; `recusada`
+   * = sem transcrição. O diálogo mora em `cb_ligacoes` (rota
+   * `/api/cb/ligacoes/<ligacao_id>/transcricao`).
+   */
+  transcricao?: 'transcrevendo' | 'pronta' | 'falhou' | 'recusada' | null;
+  /** O resumo da ligação (D11: 2–3 linhas). Fica depois dos 180 dias. */
+  resumo?: string | null;
+  /** Passados os 180 dias, saíram a gravação e a transcrição; fica o resumo. */
+  expirada?: boolean;
 }
 export type MessageStatus =
   'sending' | 'sent' | 'delivered' | 'read' | 'failed';

@@ -36,6 +36,7 @@ function duble(opcoes: {
 }) {
   const chamadas: { nome: string; args: unknown }[] = [];
   const removidos: string[][] = [];
+  const buckets: string[] = [];
   const escritas: Escrita[] = [];
   const filas = Object.fromEntries(
     Object.entries(opcoes.rpc ?? {}).map(([k, v]) => [k, [...v]])
@@ -70,7 +71,8 @@ function duble(opcoes: {
     storage: {
       from: (bucket: string) => ({
         remove: async (caminhos: string[]) => {
-          expect(bucket).toBe('chat-media');
+          expect(['chat-media', 'ligacoes']).toContain(bucket);
+          buckets.push(bucket);
           removidos.push(caminhos);
           return opcoes.remove
             ? opcoes.remove(caminhos)
@@ -80,7 +82,7 @@ function duble(opcoes: {
     },
   } as unknown as SupabaseClient;
 
-  return { admin, chamadas, removidos, escritas };
+  return { admin, chamadas, removidos, buckets, escritas };
 }
 
 function linha(
@@ -432,6 +434,66 @@ describe('drenarArquivosAApagar', () => {
         tipo: 'delete',
         patch: undefined,
         ids: ['f1'],
+        cerca: ['reivindicado_em', CARIMBO],
+      },
+    ]);
+  });
+
+  it('1136: as gravações de ligação saem do bucket DELAS, com a guarda delas; um remove por bucket', async () => {
+    const LIGACAO = 'abcdef12-2222-4333-8444-555555555555';
+    const gravacao = `account-${CONTA}/ligacoes/${LIGACAO}/estereo.ogg`;
+    const foto = `account-${CONTA}/a.jpg`;
+    const { admin, removidos, buckets, escritas } = duble({
+      rpc: {
+        cb_reivindicar_arquivos_a_apagar: [
+          {
+            data: [
+              linha('f1', foto),
+              linha('f2', gravacao, { bucket: 'ligacoes' }),
+              // Gravação de OUTRA conta e arquivo que não é de gravação: ficam.
+              linha('f3', `account-${OUTRA}/ligacoes/${LIGACAO}/estereo.ogg`, { bucket: 'ligacoes' }),
+              linha('f4', `account-${CONTA}/ligacoes/${LIGACAO}/foto.jpg`, { bucket: 'ligacoes' }),
+            ],
+            error: null,
+          },
+        ],
+      },
+    });
+    const r = await drenarArquivosAApagar(admin, LONGE());
+    expect(r).toEqual({ apagados: 2, foraDaGuarda: 2, falhas: 0, erro: null });
+    expect(buckets).toEqual(['chat-media', 'ligacoes']);
+    expect(removidos).toEqual([[foto], [gravacao]]);
+    expect(escritas.find((e) => e.tipo === 'update')?.ids).toEqual(['f3', 'f4']);
+    expect(escritas.find((e) => e.tipo === 'delete')?.ids).toEqual(['f1', 'f2']);
+  });
+
+  it('1136: o Storage recusa o segundo bucket — o primeiro sai da fila; o recusado ganha o motivo', async () => {
+    const LIGACAO = 'abcdef12-2222-4333-8444-555555555555';
+    const gravacao = `account-${CONTA}/ligacoes/${LIGACAO}/cliente.ogg`;
+    const foto = `account-${CONTA}/a.jpg`;
+    const { admin, escritas } = duble({
+      rpc: {
+        cb_reivindicar_arquivos_a_apagar: [
+          {
+            data: [linha('f1', foto), linha('f2', gravacao, { bucket: 'ligacoes' })],
+            error: null,
+          },
+        ],
+      },
+      remove: (caminhos) =>
+        caminhos[0] === gravacao
+          ? { data: null, error: { message: 'Storage fora' } }
+          : { data: [], error: null },
+    });
+    const r = await drenarArquivosAApagar(admin, LONGE());
+    expect(r).toMatchObject({ apagados: 1, falhas: 1, erro: 'o Storage recusou o lote: Storage fora' });
+    expect(escritas).toEqual([
+      { tabela: 'cb_arquivos_a_apagar', tipo: 'delete', patch: undefined, ids: ['f1'], cerca: ['reivindicado_em', CARIMBO] },
+      {
+        tabela: 'cb_arquivos_a_apagar',
+        tipo: 'update',
+        patch: { ultimo_erro: 'Storage fora' },
+        ids: ['f2'],
         cerca: ['reivindicado_em', CARIMBO],
       },
     ]);
