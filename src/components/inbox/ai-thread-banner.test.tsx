@@ -10,6 +10,8 @@ import { MOTIVOS_DO_AGENTE_QUE_NAO_ATENDE } from '@/lib/ia-agentes/quem-responde
 
 import {
   AiThreadBanner,
+  corpoDaAcao,
+  horaDaVolta,
   erroDaResposta,
   FaixaDaIa,
   faixaDaIa,
@@ -36,7 +38,16 @@ const banner = ptBR.Inbox.aiBanner;
 const TRIAGEM = { id: 'ag-1', nome: 'Triagem' };
 
 function estado(p: Partial<EstadoDaIa> = {}): EstadoDaIa {
-  return { agente: TRIAGEM, pausada: false, pausadaPor: null, naoAtende: null, ...p };
+  return {
+    agente: TRIAGEM,
+    pausada: false,
+    pausadaPor: null,
+    pausaTemporaria: false,
+    voltaAposMin: 15,
+    voltaEm: null,
+    naoAtende: null,
+    ...p,
+  };
 }
 
 const CARD_ANTIGO = { agente: TRIAGEM, motivo: 'card_antigo' } as const;
@@ -44,14 +55,14 @@ const CARD_ANTIGO = { agente: TRIAGEM, motivo: 'card_antigo' } as const;
 function desenhar(faixa: Faixa, messages: AbstractIntlMessages = ptBR as unknown as AbstractIntlMessages) {
   return renderToStaticMarkup(
     <NextIntlClientProvider locale="pt-BR" messages={messages} timeZone="America/Sao_Paulo">
-      <FaixaDaIa faixa={faixa} busy={false} aoPausar={() => {}} aoRetomar={() => {}} />
+      <FaixaDaIa faixa={faixa} busy={false} aoPausar={() => {}} aoDesativar={() => {}} aoRetomar={() => {}} />
     </NextIntlClientProvider>,
   );
 }
 
 describe('faixaDaIa — o que a faixa desenha', () => {
   it('agente da etapa atende e não há pausa: "atendendo", com o nome', () => {
-    expect(faixaDaIa(estado(), null)).toEqual({ tipo: 'atendendo', agente: 'Triagem' });
+    expect(faixaDaIa(estado(), null)).toEqual({ tipo: 'atendendo', agente: 'Triagem', minutos: 15 });
   });
 
   it('nenhum agente atende e não há pausa: não desenha', () => {
@@ -65,6 +76,7 @@ describe('faixaDaIa — o que a faixa desenha', () => {
         tipo: 'pausada',
         motivo: m,
         naoAtende: null,
+        volta: null,
       });
     }
   });
@@ -74,6 +86,7 @@ describe('faixaDaIa — o que a faixa desenha', () => {
       tipo: 'pausada',
       motivo: 'gente',
       naoAtende: null,
+      volta: null,
     });
   });
 
@@ -86,8 +99,9 @@ describe('faixaDaIa — o que a faixa desenha', () => {
       tipo: 'pausada',
       motivo: null,
       naoAtende: null,
+      volta: null,
     });
-    expect(faixaDaIa(estado({ pausada: true }), null)).toEqual({ tipo: 'pausada', motivo: null, naoAtende: null });
+    expect(faixaDaIa(estado({ pausada: true }), null)).toEqual({ tipo: 'pausada', motivo: null, naoAtende: null, volta: null });
   });
 
   it('sem resposta da rota (carregando, falhou, outra conversa): não desenha', () => {
@@ -121,6 +135,7 @@ describe('faixaDaIa — "não atende": a etapa TEM agente, mas ele não atende (
       tipo: 'pausada',
       motivo: 'gente',
       naoAtende: { agente: 'Triagem', motivo: 'card_antigo' },
+      volta: null,
     });
   });
 
@@ -143,14 +158,21 @@ describe('lerEstadoDaIa — o corpo da rota', () => {
       agente: TRIAGEM,
       pausada: true,
       pausadaPor: 'botao',
+      // Servidor sem os campos da 1138: a faixa de antes (nada de "volta sozinha").
+      pausaTemporaria: false,
+      voltaAposMin: null,
+      voltaEm: null,
       naoAtende: null,
     });
   });
   it('forma estranha: agente nulo, pausa só com o booleano true', () => {
-    expect(lerEstadoDaIa({ agente: { id: 1 }, pausada: 'true' })).toEqual({
+    expect(lerEstadoDaIa({ agente: { id: 1 }, pausada: 'true', pausaTemporaria: 'true', voltaAposMin: '15', voltaEm: 'ontem' })).toEqual({
       agente: null,
       pausada: false,
       pausadaPor: null,
+      pausaTemporaria: false,
+      voltaAposMin: null,
+      voltaEm: null,
       naoAtende: null,
     });
     expect(lerEstadoDaIa(null)).toBeNull();
@@ -165,21 +187,59 @@ describe('lerEstadoDaIa — o corpo da rota', () => {
 
 describe('FaixaDaIa — o texto, nos dois dicionários', () => {
   it('atendendo: "IA · Triagem responde nesta conversa" e Pausar', () => {
-    const html = desenhar({ tipo: 'atendendo', agente: 'Triagem' });
+    const html = desenhar({ tipo: 'atendendo', agente: 'Triagem', minutos: 0 });
     expect(html).toContain('IA · Triagem responde nesta conversa');
     expect(html).toContain(banner.pausar);
     expect(html).not.toContain(banner.resume);
+    // N = 0 na conta: o Pausar já é permanente — sem o Desativar ao lado.
+    expect(html).not.toContain(banner.desativar);
   });
 
-  it.each(MOTIVOS_DA_PAUSA)('pausada por %s: "IA pausada — <motivo>" e Retomar IA', (motivo) => {
-    const html = desenhar({ tipo: 'pausada', motivo, naoAtende: null });
+  it('atendendo com N > 0 (1138): Pausar (temporário, com a dica do N) e Desativar IA', () => {
+    const html = desenhar({ tipo: 'atendendo', agente: 'Triagem', minutos: 15 });
+    expect(html).toContain(banner.pausar);
+    expect(html).toContain(banner.desativar);
+    expect(html).toContain(banner.pausarDica.replace('{minutos}', '15'));
+  });
+
+  it.each(MOTIVOS_DA_PAUSA.filter((m) => m !== 'desativada'))('pausada por %s: "IA pausada — <motivo>" e Retomar IA', (motivo) => {
+    const html = desenhar({ tipo: 'pausada', motivo, naoAtende: null, volta: null });
     expect(html).toContain(`IA pausada — ${banner.motivo[motivo]}`);
     expect(html).toContain(banner.resume);
     expect(html).not.toContain(banner.pausar);
+    expect(html).not.toContain(banner.desativar);
+  });
+
+  it('desativada: "IA desativada nesta conversa" e só o Retomar', () => {
+    const html = desenhar({ tipo: 'pausada', motivo: 'desativada', naoAtende: null, volta: null });
+    expect(html).toContain(banner.desativadaNaConversa);
+    expect(html).toContain(banner.resume);
+    expect(html).not.toContain(`>${banner.desativar}<`);
+  });
+
+  it('pausa TEMPORÁRIA com mensagem esperando: "volta às <hora>", Retomar (agora) e Desativar', () => {
+    const html = desenhar({
+      tipo: 'pausada',
+      motivo: 'gente',
+      naoAtende: null,
+      volta: { minutos: 15, em: '2026-11-11T17:32:00Z' },
+    });
+    expect(html).toContain(`IA pausada — ${banner.motivo.gente}`);
+    // A hora sai no idioma de quem olha (`toLocaleTimeString(undefined, …)`): 14:32 ou 02:32 PM.
+    expect(html).toMatch(/A IA volta a partir de \d\d:\d\d( [AP]M)? se ninguém da equipe responder\./);
+    expect(html).toContain(banner.resume);
+    expect(html).toContain(banner.retomarAgoraDica);
+    expect(html).toContain(banner.desativar);
+  });
+
+  it('pausa TEMPORÁRIA sem mensagem esperando: "volta sozinha se o cliente esperar N min"', () => {
+    const html = desenhar({ tipo: 'pausada', motivo: 'botao', naoAtende: null, volta: { minutos: 15, em: null } });
+    expect(html).toContain(banner.voltaSeEsperar.replace('{minutos}', '15'));
+    expect(html).toContain(banner.desativar);
   });
 
   it('pausada sem motivo: só "IA pausada"', () => {
-    const html = desenhar({ tipo: 'pausada', motivo: null, naoAtende: null });
+    const html = desenhar({ tipo: 'pausada', motivo: null, naoAtende: null, volta: null });
     expect(html).toContain(`>${banner.pausada}<`);
   });
 
@@ -201,7 +261,7 @@ describe('FaixaDaIa — o texto, nos dois dicionários', () => {
   });
 
   it('pausada com a linha "não atende" embaixo: Retomar continua, e a linha diz que ele ainda não atenderia', () => {
-    const html = desenhar({ tipo: 'pausada', motivo: 'gente', naoAtende: { agente: 'Triagem', motivo: 'card_antigo' } });
+    const html = desenhar({ tipo: 'pausada', motivo: 'gente', naoAtende: { agente: 'Triagem', motivo: 'card_antigo' }, volta: null });
     expect(html).toContain(`IA pausada — ${banner.motivo.gente}`);
     expect(html).toContain(banner.resume);
     expect(html).toContain(banner.naoAtendeMotivo.card_antigo);
@@ -239,7 +299,10 @@ describe('FaixaDaIa — o texto, nos dois dicionários', () => {
   });
 
   it('desenha em inglês também, sem chave crua', () => {
-    const html = desenhar({ tipo: 'pausada', motivo: 'gente', naoAtende: null }, en as unknown as AbstractIntlMessages);
+    const html = desenhar(
+      { tipo: 'pausada', motivo: 'gente', naoAtende: null, volta: { minutos: 15, em: '2026-11-11T17:32:00Z' } },
+      en as unknown as AbstractIntlMessages,
+    );
     expect(html).toContain(en.Inbox.aiBanner.motivo.gente);
     expect(html).not.toContain('Inbox.aiBanner');
   });
@@ -284,12 +347,52 @@ describe('erroDaResposta — a recusa da rota vira frase do dicionário', () => 
       'pausou',
       'resumed',
       'retomarDica',
+      'pausarDica',
+      'desativar',
+      'desativarDica',
+      'desativou',
+      'desativadaNaConversa',
+      'voltaAs',
+      'voltaSeEsperar',
+      'retomarAgoraDica',
     ] as const;
     for (const dic of [en, ptBR]) {
       for (const c of chaves) {
         expect(typeof dic.Inbox.aiBanner[c], `Inbox.aiBanner.${c}`).toBe('string');
       }
     }
+  });
+});
+
+describe('horaDaVolta — a hora diz o dia quando não é hoje (1138)', () => {
+  it('no mesmo dia em que a rota respondeu: só a hora; noutro dia: com o dia da semana', () => {
+    const volta = '2026-11-11T17:32:00Z';
+    const mesmoDia = horaDaVolta(volta, Date.parse('2026-11-11T17:20:00Z'));
+    const outroDia = horaDaVolta(volta, Date.parse('2026-11-09T17:20:00Z'));
+    expect(mesmoDia).toMatch(/^\d\d:\d\d( [AP]M)?$/);
+    expect(outroDia.length).toBeGreaterThan(mesmoDia.length);
+    expect(horaDaVolta(volta)).toBe(mesmoDia);
+  });
+});
+
+describe('corpoDaAcao — o que cada botão manda à rota (1138)', () => {
+  it('Pausar = temporário; Desativar = permanente; Retomar limpa — e nenhum atribui ninguém', () => {
+    expect(corpoDaAcao('pausar')).toEqual({ paused: true });
+    expect(corpoDaAcao('desativar')).toEqual({ paused: true, permanente: true });
+    expect(corpoDaAcao('retomar')).toEqual({ paused: false });
+  });
+});
+
+describe('faixaDaIa — a pausa TEMPORÁRIA (1138)', () => {
+  it('temporária com o N da conta: a volta, com a hora quando há mensagem esperando', () => {
+    expect(
+      faixaDaIa(estado({ pausada: true, pausadaPor: 'gente', pausaTemporaria: true, voltaEm: '2026-11-11T17:32:00Z' }), null),
+    ).toEqual({ tipo: 'pausada', motivo: 'gente', naoAtende: null, volta: { minutos: 15, em: '2026-11-11T17:32:00Z' } });
+  });
+
+  it('N desconhecido (servidor antigo) ou 0: a faixa de antes, nunca "volta sozinha"', () => {
+    expect(faixaDaIa(estado({ pausada: true, pausadaPor: 'gente', pausaTemporaria: true, voltaAposMin: null }), null)).toMatchObject({ volta: null });
+    expect(faixaDaIa(estado({ pausada: true, pausadaPor: 'gente', pausaTemporaria: true, voltaAposMin: 0 }), null)).toMatchObject({ volta: null });
   });
 });
 
@@ -310,7 +413,7 @@ describe('pino estrutural do fonte da faixa', () => {
   });
 
   it('Pausar não atribui a conversa a ninguém (o "Assumir" saiu)', () => {
-    expect(fonte).toContain('JSON.stringify({ paused: pausar })');
+    expect(fonte).toContain('JSON.stringify(corpoDaAcao(acao))');
     expect(fonte).not.toContain('assign_to_me');
   });
 

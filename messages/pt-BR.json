@@ -1087,9 +1087,18 @@
       "pausadaComMotivo": "IA pausada — {motivo}",
       "retomarDica": "A IA só volta a responder nesta conversa com este botão.",
       "pausou": "IA pausada nesta conversa.",
+      "pausarDica": "Pausa enquanto você conduz. A IA volta sozinha se o cliente esperar {minutos} min sem resposta da equipe.",
+      "desativar": "Desativar IA",
+      "desativarDica": "A IA não responde mais nesta conversa até alguém clicar em \"Retomar IA\".",
+      "desativou": "IA desativada nesta conversa.",
+      "desativadaNaConversa": "IA desativada nesta conversa",
+      "voltaAs": "A IA volta a partir de {hora} se ninguém da equipe responder.",
+      "voltaSeEsperar": "Volta sozinha se o cliente esperar {minutos} min sem resposta da equipe.",
+      "retomarAgoraDica": "Devolve a conversa à IA agora, sem esperar.",
       "motivo": {
         "gente": "alguém da equipe respondeu",
         "botao": "pausada por alguém da equipe",
+        "desativada": "desativada por alguém da equipe",
         "transferencia": "a IA passou a conversa para uma pessoa",
         "automacao": "desligada por uma automação"
       },
@@ -3041,7 +3050,7 @@
         "aiLabel": "IA nesta conversa",
         "aiOn": "Ligar",
         "aiOff": "Desligar",
-        "aiResetWarning": "Ligar desfaz só a pausa feita por uma automação. Se alguém da equipe respondeu, ou se a própria IA passou a conversa para uma pessoa, ela continua parada até alguém clicar em \"Retomar IA\" na conversa.",
+        "aiResetWarning": "Ligar desfaz só a pausa feita por uma automação. A pausa de quando alguém da equipe respondeu volta sozinha se o cliente esperar sem resposta (o tempo é o de Agentes de IA → \"Quando a equipe responde\"); a passagem da IA para uma pessoa e o \"Desativar IA\" continuam até alguém clicar em \"Retomar IA\" na conversa.",
         "inactiveSuffix": "(desativada)",
         "selfSuffix": "(esta)"
       },
@@ -6637,6 +6646,19 @@
     "abaUso": "Uso e custo",
     "tentarDeNovo": "Tentar de novo",
     "cancelar": "Cancelar",
+    "pausaDaConta": {
+      "titulo": "Quando a equipe responde",
+      "explicacao": "Quando alguém da equipe responde (pelo CRM ou pelo celular) ou clica em \"Pausar\", a IA pausa naquela conversa. Ela volta sozinha se o cliente escrever e ninguém da equipe responder no tempo abaixo, e também cobra o cliente que não respondeu à equipe, com os follow-ups do agente. \"Desativar IA\" e a passagem para a equipe continuam até alguém clicar em \"Retomar IA\". Vale para todos os agentes.",
+      "campo": "A IA volta depois de",
+      "minutos": "minutos sem resposta da equipe",
+      "salvar": "Salvar",
+      "salva": "Salvo: a IA volta depois de {minutos} min sem resposta da equipe.",
+      "salvaDesligada": "Salvo: a IA só volta com \"Retomar IA\".",
+      "agora": "Hoje: a IA volta depois de {minutos} min sem resposta da equipe, respeitando o horário de cada agente.",
+      "agoraDesligada": "Hoje: desligado — a pausa fica até alguém clicar em \"Retomar IA\", e a IA não faz follow-up da fala da equipe.",
+      "dica": "Use 0 para desligar. Fora do horário do agente, a IA responde quando o horário abrir, se ninguém da equipe tiver respondido.",
+      "falhou": "Não foi possível carregar este ajuste."
+    },
     "lista": {
       "explicacao": "Cada agente responde os clientes cujo card está nas etapas do funil marcadas nele. Crie, teste no Playground e acompanhe o uso e os turnos de cada um.",
       "novo": "Novo agente",
@@ -7222,6 +7244,7 @@
       "retomada": "Retomada {k}/{n}",
       "prevista": "prevista para {quando}",
       "esperaOHorario": "aguardando o horário do agente · abre {quando}",
+      "esperaAEquipe": "aguardando a equipe responder · a IA volta {quando}",
       "semConversa": "Sem conversa (apagada ou na Lixeira)",
       "conteudoRemovido": "Conteúdo removido em {quando} ({por, select, prazo {prazo de {dias} dias} exclusao {ficha excluída de vez} other {—}}): ficam o desfecho e as ações, sem o texto do cliente.",
       "erroDoBanco": {
@@ -7229,7 +7252,8 @@
         "conversaEncerrada": "a conversa foi encerrada",
         "conexaoApagada": "a conexão foi apagada",
         "fichasUnidas": "as fichas foram unidas",
-        "clienteEscreveu": "o cliente escreveu antes da retomada"
+        "clienteEscreveu": "o cliente escreveu antes da retomada",
+        "equipeRespondeu": "a equipe respondeu antes da IA voltar"
       }
     },
     "dia": {
@@ -7270,6 +7294,7 @@
       "sem_mensagens": "Escreva uma mensagem para testar.",
       "sem_configuracao": "Cadastre primeiro a chave de um provedor em Integrações.",
       "cotacao_invalida": "Informe a cotação como um número, por exemplo 5,60.",
+      "minutos_invalidos": "Informe os minutos como um número inteiro de 0 a 1440.",
       "documento_invalido": "Um dos documentos marcados não existe mais na base. Recarregue a página e tente de novo.",
       "contato_nao_encontrado": "Este cliente não foi encontrado nesta conta. Escolha outro.",
       "etapa_de_resultado": "Etapa de ganho ou perdido não pode ser liberada: a IA não fecha negócio.",
@@ -7388,7 +7413,7 @@
       "janelaInvalida": "O início tem de ser antes do fim.",
       "inicio": "Início da janela",
       "fim": "Fim da janela",
-      "paradas": "As retomadas param sozinhas quando o cliente responde, quando alguém da equipe escreve ou pausa a IA, quando a conversa é encerrada, quando o card sai da etapa do agente e perto da reunião do cliente: nunca a menos de 30 min de um lembrete da reunião, e nunca nos 90 min antes dela. Numa conexão oficial da Meta, também quando a janela de 24 h fecha. Se não houver nada pendente, o agente encerra as retomadas sem mandar nada — e elas nunca passam a conversa para a equipe. Cada retomada conta no teto de respostas do agente.",
+      "paradas": "As retomadas param sozinhas quando o cliente responde, quando alguém da equipe escreve (com \"Quando a equipe responde\" ligado, a série recomeça contada da fala da equipe) ou pausa a IA, quando a conversa é encerrada, quando o card sai da etapa do agente e perto da reunião do cliente: nunca a menos de 30 min de um lembrete da reunião, e nunca nos 90 min antes dela. Numa conexão oficial da Meta, também quando a janela de 24 h fecha. Se não houver nada pendente, o agente encerra as retomadas sem mandar nada — e elas nunca passam a conversa para a equipe. Cada retomada conta no teto de respostas do agente.",
       "salvo": "Retomada salva.",
       "tentativas": "{n, plural, one {# tentativa} other {# tentativas}} (até {max})",
       "tentativasDica": "Contadas a partir da última resposta do agente que ficou sem resposta. Se uma atrasa (fora da janela, perto de um lembrete da reunião), as seguintes mantêm o intervalo entre elas — e nunca saem a menos de 30 min da anterior.",
@@ -7401,7 +7426,7 @@
       "paraQuando": "Para sozinha quando",
       "para": {
         "cliente": "o cliente responde",
-        "equipe": "a equipe escreve ou pausa a IA",
+        "equipe": "a equipe escreve (recomeça dela) ou pausa a IA",
         "encerrada": "a conversa é encerrada",
         "etapa": "o card sai da etapa do agente",
         "reuniao": "falta pouco para a reunião do cliente"

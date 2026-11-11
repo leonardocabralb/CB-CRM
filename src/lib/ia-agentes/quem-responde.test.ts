@@ -149,6 +149,35 @@ describe('quemResponde — a ordem das regras (D24–D27)', () => {
   })
 })
 
+describe('quemResponde — a pausa TEMPORÁRIA (1138)', () => {
+  it('pausada SEM a declaração de temporária: ninguém (como sempre)', () => {
+    expect(quemResponde(fatos({ pausada: true }))).toEqual({ quem: 'ninguem', motivo: 'pausada' })
+    expect(quemResponde(fatos({ pausada: true, pausaTemporaria: false }))).toEqual({ quem: 'ninguem', motivo: 'pausada' })
+  })
+
+  it('pausada e TEMPORÁRIA: as regras seguem, e o agente vem marcado `sobrePausa`', () => {
+    expect(quemResponde(fatos({ pausada: true, pausaTemporaria: true }))).toEqual({
+      quem: 'agente',
+      agenteId: 'cobranca',
+      dealId: 'deal-1',
+      stageId: 'etapa-cobranca',
+      sobrePausa: true,
+    })
+  })
+
+  it('temporária não passa por cima das outras regras (encerrada, card antigo, sem card)', () => {
+    expect(quemResponde(fatos({ pausada: true, pausaTemporaria: true, encerrada: true })).quem).toBe('ninguem')
+    expect(quemResponde(fatos({ pausada: true, pausaTemporaria: true, card: null }))).toEqual({ quem: 'ninguem', motivo: 'sem_card' })
+    expect(
+      quemResponde(fatos({ pausada: true, pausaTemporaria: true, card: { ...CARD, etapaDesde: '2026-09-25T10:15:00Z' } })),
+    ).toEqual({ quem: 'ninguem', motivo: 'card_antigo' })
+  })
+
+  it('sem pausa, `pausaTemporaria` não marca nada', () => {
+    expect(quemResponde(fatos({ pausaTemporaria: true }))).not.toHaveProperty('sobrePausa')
+  })
+})
+
 describe('abreTurno — a régua do conteúdo (a entrada e o turno usam a mesma)', () => {
   it('vídeo está entre os tipos que abrem turno (E9)', () => {
     expect(TIPOS_QUE_ABREM_TURNO.has('video')).toBe(true)

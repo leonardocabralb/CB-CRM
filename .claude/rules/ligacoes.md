@@ -344,7 +344,8 @@ desenho: §8.12 e §8.13 do plano.
   `TIPOS_QUE_ABREM_TURNO`) e, sem texto, fica fora do contexto que ele lê
   (`ia-agentes/contexto.ts`) — menos a pelo CRM TRANSCRITA, que entra como
   nota (`ligacoes-transcricao.md`). A ATENDIDA pausa o agente da conversa
-  (`cb_pausar_ia_por_gente`): é resposta de gente.
+  (`cb_pausar_ia_por_gente`): é resposta de gente — mas não pré-arma o
+  follow-up da equipe (1138, `ia-pausa.md`).
 - Painel: `.neq('content_type', 'call')` nas contagens de mensagem — a
   atendida é `agent`, e contaria como mensagem enviada. A série "Conversas ao
   longo do tempo" soma no banco (1095) e filtra lá; o tempo de resposta conta

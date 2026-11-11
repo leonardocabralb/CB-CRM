@@ -42,6 +42,7 @@ import {
   type OpcoesDeAcao,
 } from './acoes'
 import { TIPOS_DE_ACAO, type TipoDeAcao } from './agente'
+import { ROTULO_DA_EQUIPE } from './contexto'
 import { blocoDasRegrasDoSistema } from './regras-do-sistema'
 import { HORARIOS_POR_DIA, type AgendaNoPedido } from './reuniao'
 
@@ -76,6 +77,14 @@ const TEXTO_BASE = [
     'ask the customer to describe it, or to send it again as a PDF or a clear image; ' +
     `if it is essential to continue, reply with exactly ${HANDOFF_SENTINEL}. ` +
     '[sticker] is a WhatsApp sticker, a decorative picture with nothing to read: never ask about it.',
+  // As falas da EQUIPE (1138, decisão do operador de 11/11/2026): com a pausa
+  // temporária, a IA volta no meio de uma conversa que a equipe conduzia — e
+  // até aqui a fala da equipe chegava ao modelo como se fosse dele. O rótulo
+  // é posto por `contexto.ts`, sem o nome da pessoa; o que o modelo imitar
+  // sai em `lerAcoes`. Texto CONSTANTE no pedaço fixo: o cache não muda.
+  `Business messages that start with ${ROTULO_DA_EQUIPE} were written by a person from the team, not by you. ` +
+    'What they said was said by the business: never repeat it or contradict it, and follow what they agreed with the customer ' +
+    '(deadlines, documents requested, next steps). Never start your reply with that label.',
   // "Responda e passe" (27/09/2026): o `[[HANDOFF]]` sozinho não manda nada
   // ao cliente; quando ele deve ler que a equipe vai continuar, o texto sai
   // e o `[[TRANSFERIR]]` passa a conversa DEPOIS (`turno.ts`).
@@ -453,10 +462,20 @@ export function lerSemRetomada(texto: string): boolean {
   return /\[{1,2}\s*SEM[\s_-]*RETOMADA\s*\]{1,2}/i.test(texto) || /^\s*SEM[\s_-]*RETOMADA\s*[.!]?\s*$/i.test(texto)
 }
 
-/** A seção da retomada, para o MODELO (inglês). `semResposta` = "15 minutes", "3 hours"… */
-export function secaoDaRetomada(a: { tentativa: number; de: number; semResposta: string }): string {
+/**
+ * A seção da retomada, para o MODELO (inglês). `semResposta` = "15 minutes",
+ * "3 hours"… `daEquipe` (1138): a série ancorada na fala da EQUIPE — o
+ * follow-up cobra o que a pessoa da equipe pediu ou combinou.
+ */
+export function secaoDaRetomada(a: { tentativa: number; de: number; semResposta: string; daEquipe?: boolean }): string {
   return [
     `Follow-up: the customer has not replied for ${a.semResposta}. This is follow-up ${a.tentativa} of ${a.de}.`,
+    ...(a.daEquipe
+      ? [
+          `The last message to the customer was written by a person from the team (marked ${ROTULO_DA_EQUIPE}), not by you: ` +
+            'follow up on what that person asked or agreed with the customer, speaking for the business, and never contradict them.',
+        ]
+      : []),
     'Write ONE short message that gently brings the conversation back to what is pending: restate the last open question clearly — one question only. ' +
       'Never repeat a previous message word for word, and do not pressure the customer. ' +
       'On the LAST follow-up, close politely, saying you remain available whenever the customer wants to continue.',
@@ -467,7 +486,7 @@ export function secaoDaRetomada(a: { tentativa: number; de: number; semResposta:
 }
 
 export type ArgsDaRetomada = Omit<ArgsDoPedido, 'passagens' | 'acoes' | 'agenda'> & {
-  retomada: { tentativa: number; de: number; semResposta: string }
+  retomada: { tentativa: number; de: number; semResposta: string; daEquipe?: boolean }
 }
 
 /**

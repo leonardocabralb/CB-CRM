@@ -577,6 +577,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   do pedido vazado e "Conduz o fechamento" por agente (1128).
 - `.claude/rules/ia-retomada.md` — a retomada do agente quando o cliente não
   responde (1056): a fila, a cadência, o que a para e os lembretes.
+- `.claude/rules/ia-pausa.md` — a pausa temporária da IA (1138): N da conta,
+  Pausar × Desativar, o retorno, o follow-up da equipe, a fala rotulada.
 - `.claude/rules/ia-tela-do-agente.md` — modelo pela chave, quem lê a mídia,
   avisos antes de salvar, "não atende" na faixa, custo por faixa (1108).
 - `.claude/rules/ia-agentes-turno.md` — ação prometida retida, passagem com

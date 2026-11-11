@@ -1094,9 +1094,18 @@
       "pausadaComMotivo": "AI paused — {motivo}",
       "retomarDica": "The AI only answers in this conversation again through this button.",
       "pausou": "AI paused in this conversation.",
+      "pausarDica": "Pauses while you lead. The AI comes back on its own if the customer waits {minutos} min without a reply from the team.",
+      "desativar": "Turn off AI",
+      "desativarDica": "The AI no longer answers in this conversation until someone clicks \"Resume AI\".",
+      "desativou": "AI turned off in this conversation.",
+      "desativadaNaConversa": "AI turned off in this conversation",
+      "voltaAs": "The AI comes back from {hora} on if no one on the team replies.",
+      "voltaSeEsperar": "Comes back on its own if the customer waits {minutos} min without a reply from the team.",
+      "retomarAgoraDica": "Hands the conversation back to the AI now, without waiting.",
       "motivo": {
         "gente": "someone on the team replied",
         "botao": "paused by someone on the team",
+        "desativada": "turned off by someone on the team",
         "transferencia": "the AI handed the conversation to a person",
         "automacao": "turned off by an automation"
       },
@@ -3048,7 +3057,7 @@
         "aiLabel": "AI on this conversation",
         "aiOn": "Turn on",
         "aiOff": "Turn off",
-        "aiResetWarning": "Turning it on only undoes a pause made by an automation. If someone on the team replied, or the AI itself handed the conversation to a person, it stays paused until someone clicks \"Resume AI\" in the conversation.",
+        "aiResetWarning": "Turning it on only undoes a pause made by an automation. The pause from someone on the team replying comes back on its own if the customer waits without a reply (the time is set in AI agents → \"When the team replies\"); the AI handing the conversation to a person and \"Turn off AI\" last until someone clicks \"Resume AI\" in the conversation.",
         "inactiveSuffix": "(off)",
         "selfSuffix": "(this one)"
       },
@@ -6644,6 +6653,19 @@
     "abaUso": "Usage and cost",
     "tentarDeNovo": "Try again",
     "cancelar": "Cancel",
+    "pausaDaConta": {
+      "titulo": "When the team replies",
+      "explicacao": "When someone on the team replies (through the CRM or the phone) or clicks \"Pause\", the AI pauses in that conversation. It comes back on its own if the customer writes and no one on the team replies within the time below, and it also follows up with a customer who didn't answer the team, with the agent's follow-ups. \"Turn off AI\" and handing the conversation to the team last until someone clicks \"Resume AI\". Applies to every agent.",
+      "campo": "The AI comes back after",
+      "minutos": "minutes without a reply from the team",
+      "salvar": "Save",
+      "salva": "Saved: the AI comes back after {minutos} min without a reply from the team.",
+      "salvaDesligada": "Saved: the AI only comes back with \"Resume AI\".",
+      "agora": "Now: the AI comes back after {minutos} min without a reply from the team, within each agent's hours.",
+      "agoraDesligada": "Now: off — the pause lasts until someone clicks \"Resume AI\", and the AI doesn't follow up on the team's messages.",
+      "dica": "Use 0 to turn it off. Outside the agent's hours, the AI replies when the hours open, if no one on the team has replied.",
+      "falhou": "Couldn't load this setting."
+    },
     "lista": {
       "explicacao": "Each agent answers the customers whose deal is in the pipeline stages marked on it. Create, test in the Playground and follow each one's usage and turns.",
       "novo": "New agent",
@@ -7229,6 +7251,7 @@
       "retomada": "Follow-up {k}/{n}",
       "prevista": "due {quando}",
       "esperaOHorario": "waiting for the agent's hours · opens {quando}",
+      "esperaAEquipe": "waiting for the team to reply · the AI comes back {quando}",
       "semConversa": "No conversation (deleted or in the Trash)",
       "conteudoRemovido": "Content removed on {quando} ({por, select, prazo {{dias}-day limit} exclusao {record deleted for good} other {—}}): the outcome and the actions remain, without the customer's text.",
       "erroDoBanco": {
@@ -7236,7 +7259,8 @@
         "conversaEncerrada": "the conversation was closed",
         "conexaoApagada": "the connection was deleted",
         "fichasUnidas": "the records were merged",
-        "clienteEscreveu": "the customer wrote before the follow-up"
+        "clienteEscreveu": "the customer wrote before the follow-up",
+        "equipeRespondeu": "the team replied before the AI came back"
       }
     },
     "dia": {
@@ -7277,6 +7301,7 @@
       "sem_mensagens": "Write a message to test.",
       "sem_configuracao": "Add a provider's key in Integrations first.",
       "cotacao_invalida": "Enter the exchange rate as a number, for example 5.60.",
+      "minutos_invalidos": "Enter the minutes as a whole number from 0 to 1440.",
       "documento_invalido": "One of the ticked documents no longer exists in the knowledge base. Reload the page and try again.",
       "contato_nao_encontrado": "This customer was not found in this account. Choose another.",
       "etapa_de_resultado": "A won or lost stage cannot be enabled: the AI does not close deals.",
@@ -7395,7 +7420,7 @@
       "janelaInvalida": "The start must be before the end.",
       "inicio": "Window start",
       "fim": "Window end",
-      "paradas": "Follow-ups stop on their own when the customer answers, when someone from the team writes or pauses the AI, when the conversation is closed, when the deal leaves the agent's stage and near the customer's meeting: never within 30 min of a meeting reminder, and never in the 90 min before it. On an official Meta connection, also when the 24-hour window closes. If nothing is pending, the agent ends the follow-ups without sending anything — and they never hand the conversation to the team. Each follow-up counts toward the agent's reply limit.",
+      "paradas": "Follow-ups stop on their own when the customer answers, when someone from the team writes (with \"When the team replies\" on, the series starts again from the team's message) or pauses the AI, when the conversation is closed, when the deal leaves the agent's stage and near the customer's meeting: never within 30 min of a meeting reminder, and never in the 90 min before it. On an official Meta connection, also when the 24-hour window closes. If nothing is pending, the agent ends the follow-ups without sending anything — and they never hand the conversation to the team. Each follow-up counts toward the agent's reply limit.",
       "salvo": "Follow-ups saved.",
       "tentativas": "{n, plural, one {# attempt} other {# attempts}} (up to {max})",
       "tentativasDica": "Counted from the agent's last reply that got no answer. If one is delayed (outside the window, near a meeting reminder), the next ones keep their spacing — and never go out less than 30 min after the previous one.",
@@ -7408,7 +7433,7 @@
       "paraQuando": "Stops on its own when",
       "para": {
         "cliente": "the customer replies",
-        "equipe": "the team writes or pauses the AI",
+        "equipe": "the team writes (restarts from it) or pauses the AI",
         "encerrada": "the conversation is closed",
         "etapa": "the card leaves the agent's stage",
         "reuniao": "the customer's meeting is close"

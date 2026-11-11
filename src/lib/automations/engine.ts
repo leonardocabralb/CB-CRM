@@ -182,6 +182,7 @@ import {
 } from '@/lib/atlas/passos-do-atlas';
 import { escreverAnotacaoDaAutomacao, lerMarcados } from '@/lib/notes/anotacao-da-automacao';
 import { textosDaAnotacaoDaAutomacao } from '@/lib/ia-agentes/textos-do-servidor';
+import { MOTIVOS_TEMPORARIOS } from '@/lib/ia-agentes/pausa';
 
 /** O motivo do `send_to_number` recusado, na frase que o registro mostra. */
 const POR_QUE_O_NUMERO_NAO_SERVE: Record<MotivoDoTelefone, string> = {
@@ -2563,7 +2564,9 @@ async function runStep(
         throw new Error('set_ai não vale em conversa de grupo');
 
       // ⚠️ NOSSO (agentes de IA, 1049): a pausa tem MOTIVO. Desligar pausa por
-      // `automacao` (sem pisar num motivo que já estava lá). Ligar desfaz SÓ a
+      // `automacao` sem pisar num motivo PERMANENTE que já estava lá — mas por
+      // cima da pausa TEMPORÁRIA (`gente`/`botao`, 1138): senão o "Desligar IA"
+      // da automação seria ignorado e a IA voltaria em N min. Ligar desfaz SÓ a
       // pausa por `automacao`: a de gente, do botão e da transferência foram
       // decisões de gente sobre aquela conversa e só o "Retomar IA" as desfaz
       // (D26). Ligar NÃO zera o teto (o teto é contado pelas respostas do
@@ -2579,7 +2582,7 @@ async function runStep(
           })
           .eq('id', conversationId)
           .eq('account_id', args.automation.account_id)
-          .eq('ai_autoreply_disabled', false);
+          .or(`ai_autoreply_disabled.eq.false,ia_pausada_por.in.(${MOTIVOS_TEMPORARIOS.join(',')})`);
         if (upErr) throw new Error(`set_ai falhou: ${upErr.message}`);
         return 'IA desligada na conversa';
       }

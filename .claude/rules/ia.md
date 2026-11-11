@@ -321,25 +321,25 @@ ingestões), `fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron
   carimbo e nunca re-executa. Cerca de posse (`rodando` + `rodando_desde`) em
   TODA escrita no turno, menos o id do provedor (`gravarIdEnviado`): o eco
   precisa dele mesmo com o turno recolhido.
-- ⚠️⚠️ **PAUSA (D26)**: `ai_autoreply_disabled` + `ia_pausada_por` (`gente` |
-  `botao` | `transferencia` | `automacao`). Só "Retomar IA" (`POST
-  /api/ai/autoreply`: limpa e grava `ia_retomada_em`) a desfaz; mudar de etapa
-  não. A de GENTE é o gatilho da 1049: mensagem de gente (`sender_id` OU
+- ⚠️⚠️ **PAUSA (D26; 1138)**: `ai_autoreply_disabled` + `ia_pausada_por`.
+  `gente`/`botao` são TEMPORÁRIAS (voltam com N > 0 na conta); `desativada`/`transferencia`/`automacao`, só o "Retomar IA" (que
+  grava `ia_retomada_em`); mudar de etapa não retoma. Tudo isso:
+  `ia-pausa.md`. A de GENTE é o gatilho da 1049: mensagem de gente (`sender_id` OU
   `from_device`) sem `ia_agente_id`, com `gravada_em` (sem a carga), que SAIU
   (`nao_saiu` não, 1118), 1:1, e a conversa com `ia_agente_id`, OU turno
   vivo, OU o contato com card aberto numa etapa COM agente, OU SEM card aberto
   (a equipe abriu a conversa: o card nasce DEPOIS da mensagem). Card só em
   etapa sem agente NÃO pausa: é o SDR fora do território da IA, e mover o
   card entrega a conversa ao agente. O eco do turno (`mensagem_enviada_id`)
-  não pausa; a agendada e o eco antes do id pausam. O turno só LÊ a pausa. `set_ai`: desligar = `automacao` sem pisar noutro motivo; ligar
-  desfaz SÓ `automacao`, sem zerar o teto nem soltar o responsável.
+  não pausa; a agendada e o eco antes do id pausam. `set_ai`: desligar =
+  `automacao` sem pisar noutro motivo; ligar desfaz SÓ `automacao`.
 - ⚠️ **Encerrar limpa agente e pausa, recomeça o teto (`ia_retomada_em`)
   e descarta os turnos** `aguardando` e `rodando` (`cb_encerrar_limpa_ia`,
   SECURITY DEFINER: o operador encerra sob RLS), menos o que respondeu (1109).
 - ⚠️ **Falha de CONFIGURAÇÃO não transfere** (E8): chave, modelo, provedor
   fora do ar → `falhou`. Transferem o sentinela, a resposta vazia, o teto, o
   áudio que não se ouve e o envio incerto — pausa `transferencia` + pendente,
-  destino só sem responsável, anotação "IA · <agente>". Nunca por cima de pausa ou de
+  destino só sem responsável, anotação "IA · <agente>". Nunca por cima de pausa PERMANENTE ou de
   conversa encerrada (zero linhas = sem nota, `pausado_no_meio`).
 - ⚠️ **Só o turno passa `iaAgenteId`** (pino default-deny: a 972 conta `bot`
   COM `ia_agente_id` como "respondido"), e o motor na automação que o agente
@@ -355,9 +355,9 @@ ingestões), `fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron
   conexão DESCARTA os pendentes dela (senão dois colidem em (conversa, NULL)).
 - ⚠️ **A faixa do fio pergunta `GET /api/cb/ia/conversa/[id]`** quem responde;
   as colunas do realtime (pausa, motivo, último agente) só a fazem perguntar de
-  novo. Atendendo = "IA · X" + Pausar; pausada (com agente da etapa ou
-  `ia_agente_id`) = motivo + Retomar; agente que não atende = uma
-  linha (`ia-tela-do-agente.md`); senão, nada. Pausar não toca
+  novo. Atendendo = "IA · X" + Pausar (+ Desativar); pausada (com agente da
+  etapa ou `ia_agente_id`) = motivo + Retomar (`ia-pausa.md`); agente que não
+  atende = uma linha (`ia-tela-do-agente.md`); senão, nada. Pausar não toca
   `assigned_agent_id`. Motivo e status do turno são chaves MONTADAS, cobradas
   nos dois dicionários (`STATUS_DO_TURNO` lê o CHECK da 1049). A bolha mostra
   "IA · <nome>" (`nomes-dos-agentes.ts`; sem nome, "IA").
