@@ -48,7 +48,10 @@ diálogo da faixa, na poda dos 180 dias ou na limpeza da Lixeira das gravações
   fica até a poda. ⚠️ O REENVIO da máquina (o 2xx se perdeu) volta
   `descartada` para a ligação podada ou excluída (a poda e a fila pulam a
   linha expirada: o arquivo ficaria para sempre) e para o lado de uma
-  transcrição pronta (`receberGravacao`). A espera de 1 h pelos lados conta
+  transcrição pronta (`receberGravacao`), e o descarte da expirada apaga o
+  arquivo do caminho; a ligação é RELIDA depois do upload (a poda ou a
+  exclusão que cruza o envio: o arquivo recém-guardado sai — Codex, #506).
+  A espera de 1 h pelos lados conta
   do FIM da ligação (`desfecho_em`). Lado com fala e nenhum horário legível
   é falha, nunca "sem fala" (`validosOuFalha`).
 - ⚠️⚠️ **A faixa só muda por `sincronizarFaixa(ligação)`**

@@ -945,15 +945,26 @@ export async function receberGravacao(args: {
   // sem atendimento, a gravação é DESCARTADA (2xx: a máquina apaga a cópia);
   // sem desfecho ainda, é cedo (o aviso de atendimento pode estar na fila).
   if (!linha.atendida_pelo_crm_em) return linha.desfecho ? 'descartada' : 'cedo';
+  const caminho = caminhoDaGravacao(computador.account_id, ligacaoId, arquivo);
+  /**
+   * O arquivo deste caminho sai junto (melhor esforço): o de um envio
+   * anterior que cruzou a poda ou a exclusão definitiva — elas pulam a linha
+   * expirada, e ele ficaria no bucket para sempre.
+   */
+  const descartar = async (): Promise<'descartada'> => {
+    const { error: erroDaLimpeza } = await db.storage.from(BUCKET_DAS_GRAVACOES).remove([caminho]);
+    if (erroDaLimpeza) console.error('[ligacoes] apagar a gravação que sobrou falhou:', ligacaoId, arquivo, erroDaLimpeza.message);
+    return 'descartada';
+  };
   // ⚠️ O reenvio da máquina (o 2xx se perdeu) não devolve ao bucket o que já
   // saiu (revisão da 4d): a ligação podada ou excluída de vez (a poda e a fila
   // pulam a linha expirada — o arquivo ficaria para sempre) e o lado que só
   // servia a uma transcrição que já está pronta.
-  if (linha.gravacao_expirada_em) return 'descartada';
+  if (linha.gravacao_expirada_em) return descartar();
   if (arquivo !== 'estereo.ogg' && linha.transcricao_status === 'pronta') return 'descartada';
   const { error: erroDoEnvio } = await db.storage
     .from(BUCKET_DAS_GRAVACOES)
-    .upload(caminhoDaGravacao(computador.account_id, ligacaoId, arquivo), corpo, {
+    .upload(caminho, corpo, {
       contentType: 'audio/ogg',
       upsert: true,
     });
@@ -961,6 +972,18 @@ export async function receberGravacao(args: {
     console.error('[ligacoes] guardar a gravação falhou:', ligacaoId, arquivo, erroDoEnvio.message);
     return 'falhou';
   }
+  // ⚠️ Releitura DEPOIS do envio (Codex, #506): a poda ou a exclusão definitiva
+  // que correu durante o upload apagou os arquivos e marcou a linha ANTES de
+  // este chegar ao bucket. Na falha da releitura, 'falhou': a máquina manda de
+  // novo, e a próxima tentativa vê a marca e limpa.
+  const { data: depois, error: erroDaReleitura } = await db
+    .from('cb_ligacoes')
+    .select('gravacao_expirada_em')
+    .eq('id', ligacaoId)
+    .eq('account_id', computador.account_id)
+    .maybeSingle();
+  if (erroDaReleitura) return 'falhou';
+  if (!depois || depois.gravacao_expirada_em) return descartar();
   if (arquivo !== 'estereo.ogg') return 'ok';
   const { error: erroDaMarca } = await db
     .from('cb_ligacoes')
