@@ -111,9 +111,12 @@ Esta é a ordem de reconstrução. Cada camada precisa da anterior de pé.
 `LigacoesNet` (desde 10/11/2026) é a rede SÓ do CRM e dos computadores de
 ligações (§4): anexável porque eles são contêineres avulsos. Nunca pôr nela o
 Postgres, o Redis ou a Evolution. Criada com
-`docker network create --driver overlay --attachable LigacoesNet`. Na 4a do
-plano, só a máquina e a bancada entram; o `crm_crm` entra na 4b (o
-`docker-stack.yml` ganha a rede, e o deploy é o das três linhas, §10).
+`docker network create --driver overlay --attachable LigacoesNet`. Nela
+ficam os computadores de ligações e, desde a 4b (10/11/2026), o `crm_crm` (o
+`docker-stack.yml` tem a rede; o deploy foi o das três linhas, §10). A máquina
+chama o CRM por `http://crm_crm:3000`; o CRM chama a máquina pelo nome do
+contêiner (`http://ligacoes-<nome>:8080`, gravado em
+`cb_computadores_de_ligacao`).
 
 ⚠️ **`CBAdvNet` foi criada SEM `--attachable`**, então contêiner avulso
 (`docker run --network CBAdvNet`) é recusado com *"network CBAdvNet not manually
@@ -181,15 +184,18 @@ PARADO fora das sessões de teste até a 4c (nada o usa nem o vigia ainda).
 
 - **Pastas** (`/root/ligacoes`, 700): `imagem/` (cópia do subprojeto, de onde
   a imagem é montada), `criar-maquina.sh` (= `ops/vps/ligacoes/`),
-  `segredo.env` (600: `LIGACOES_SEGREDO`, o que a máquina e o CRM
-  compartilham; nunca impresso), `previdenciario/perfil` (a SESSÃO do
-  WhatsApp: protegê-la como o `postgres_data`; dono 1000) e
-  `previdenciario/gravacoes` (só até o CRM confirmar o envio).
+  `previdenciario/segredo.env` (600, gravado pelo `criar-maquina.sh`: o
+  segredo DESTE computador, HMAC do `LIGACOES_SEGREDO` do `crm.env` com o
+  nome; nunca impresso), `previdenciario/perfil` (a SESSÃO do WhatsApp:
+  protegê-la como o `postgres_data`; dono 1000) e `previdenciario/gravacoes`
+  (só até o CRM confirmar o envio). O `segredo.env` compartilhado da 4a, na
+  raiz da pasta, saiu na 4b.
 - **Montar a imagem** (na própria VPS, ~2 min; só as camadas do código, ~10 s):
   copiar o subprojeto para `/root/ligacoes/imagem/` e
   `docker build -t maquina-de-ligacoes:<data> /root/ligacoes/imagem`.
 - **Criar** (nasce parado): `sh /root/ligacoes/criar-maquina.sh previdenciario
-  maquina-de-ligacoes:<data> [url-do-crm]`. O script tem o `docker create`
+  maquina-de-ligacoes:<data> http://crm_crm:3000` (exige o `LIGACOES_SEGREDO`
+  no `/root/crm.env`; deriva e grava o segredo da máquina). O script tem o `docker create`
   inteiro: o perfil seccomp do Chrome (`imagem/seccomp/chrome.json`),
   `no-new-privileges`, `--cap-drop ALL --cap-add SYS_CHROOT` (a caixa de
   areia do Chrome, §8.12 do plano), `--init`, `--restart unless-stopped`, a
@@ -200,10 +206,21 @@ PARADO fora das sessões de teste até a 4c (nada o usa nem o vigia ainda).
 - **Ligar e parar:** `docker start ligacoes-previdenciario` /
   `docker stop ligacoes-previdenciario` (o `unless-stopped` respeita o stop,
   inclusive depois de reiniciar a VPS).
+- **No CRM (4b):** cada computador é uma linha de `cb_computadores_de_ligacao`
+  (fechada ao navegador): `account_id` e `channel_id` da conexão, `nome` (o
+  `LIGACOES_COMPUTADOR`, ex. `previdenciario`) e `endereco`
+  (`http://ligacoes-previdenciario:8080`). Gravada à mão (SQL pelo conector,
+  com autorização) até a tela da 4e. O CRM só liga e atende com sinal de vida
+  de menos de 3 min e o WhatsApp da máquina conectado: com o contêiner parado,
+  as rotas respondem `computador_fora`.
 - **Medido em 10/11:** com o WhatsApp aberto, 840–900 MiB e 170–210
   processos; a caixa de areia ativa (as páginas em outro namespace de usuário
   e de processos).
-- **A bancada (só nas sessões de teste da 4a):** `ligacoes-bancada`, um
+- **A bancada (aposentada na 4b, 10/11/2026: o CRM faz o papel dela).** Os
+  arquivos seguem em `ops/vps/ligacoes/bancada/` para depurar a máquina sem o
+  CRM: recriar a máquina com a URL `http://ligacoes-bancada:8091` e trocar,
+  no comando abaixo, o `--env-file` pelo `/root/ligacoes/<nome>/segredo.env`.
+  Na 4a: `ligacoes-bancada`, um
   `node:22-bookworm-slim` com `/root/ligacoes/bancada` (=
   `ops/vps/ligacoes/bancada/`), na `LigacoesNet`, publicado SÓ em
   `127.0.0.1:8091` (túnel SSH do Mac: `ssh -L 8091:127.0.0.1:8091 …`) e com
@@ -307,7 +324,8 @@ recupera o pareamento.
 `/root/crm.env` (fora do git, **corretamente**). Variáveis:
 
 `AUTOMATION_CRON_SECRET`, `ENCRYPTION_KEY`, `EVOLUTION_BASE_URL`,
-`EVOLUTION_GLOBAL_API_KEY`, `EVOLUTION_WEBHOOK_SECRET`,
+`EVOLUTION_GLOBAL_API_KEY`, `EVOLUTION_WEBHOOK_SECRET`, `LIGACOES_SEGREDO`
+(desde 10/11/2026: o segredo de onde sai o de cada computador de ligações),
 `NEXT_PUBLIC_APP_LOCALE`, `NEXT_PUBLIC_SITE_URL`,
 `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SUPABASE_URL`,
 `SUPABASE_SERVICE_ROLE_KEY`.

@@ -93,7 +93,9 @@ export function criarBanco(tabelas: Record<string, Linha[]> = {}): Banco {
     let ordem: { col: string; asc: boolean } | null = null;
     let limite = Infinity;
     let devolve = false;
+    /** `{ count: 'exact' }`: a contagem junto; com `head: true`, só ela. */
     let contar = false;
+    let cabeca = false;
 
     const executar = (): { data: Linha[] | null; error: unknown; count?: number } => {
       const falha = banco.falhas[tabela];
@@ -137,15 +139,17 @@ export function criarBanco(tabelas: Record<string, Linha[]> = {}): Banco {
           return (x < y ? -1 : x > y ? 1 : 0) * (asc ? 1 : -1);
         });
       }
-      if (contar) return { data: null, error: null, count: alvo.length };
-      return { data: alvo.slice(0, limite).map((l) => ({ ...l })), error: null };
+      const linhas2 = cabeca ? null : alvo.slice(0, limite).map((l) => ({ ...l }));
+      return contar ? { data: linhas2, error: null, count: alvo.length } : { data: linhas2, error: null };
     };
 
     const q = {
-      /** `{ count: 'exact', head: true }` devolve só a contagem. */
       select: (_colunas?: string, o?: { count?: string; head?: boolean }) => {
         if (op !== 'select') devolve = true;
-        else if (o?.count) contar = true;
+        else {
+          contar = Boolean(o?.count);
+          cabeca = o?.head === true;
+        }
         return q;
       },
       insert: (p: Linha) => ((op = 'insert'), (payload = p), q),

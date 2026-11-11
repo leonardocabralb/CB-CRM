@@ -18,15 +18,15 @@ I/O), o ramo `call` da rota do webhook da Evolution, a faixa
 medições e decisões do operador: `docs/PLANO-ligacoes-do-whatsapp.md`. As
 obrigações gerais de caminho de entrada estão em `.claude/rules/ingestao.md`.
 
-## Ligar pelo CRM (em plano)
+## Ligar pelo CRM (4a e 4b no ar; tela na 4c)
 
 - ⚠️ **Solução NÃO oficial, por decisão do operador (10/11/2026):** nem a
   API de ligações da Meta nem a Wavoip. O caminho é uma máquina central com
   um Chrome (WhatsApp Web) por número, e o áudio do atendente pela aba do CRM.
   A extensão por atendente foi descartada: cada número aceita só 4 aparelhos
   conectados. Fases, medições e decisões: `docs/PLANO-ligar-pelo-crm.md`.
-- Quando a ligação FEITA entrar no fio, esta regra inteira muda: hoje ela
-  parte de que a feita pelo escritório não existe no CRM.
+- A feita pelo CELULAR do escritório continua sem existir no CRM (não gera
+  aviso); a feita PELO CRM existe (`cb_ligacoes` `crm:<uuid>`, 1134).
 
 ## O computador de ligações (`maquina-de-ligacoes/`, 4a)
 
@@ -76,7 +76,8 @@ desenho: §8.12 e §8.13 do plano.
   `iniciar.sh`): ele abre o que qualquer pessoa manda ao número.
 - **O contrato com o CRM (a 4b implementa exatamente isto):** a máquina
   responde `GET /estado`, `GET /qr`, `POST /ligar`, `/atender` e `/desligar`
-  na 8080, com `Authorization: Bearer <LIGACOES_SEGREDO>`; o id da ligação é
+  na 8080, com `Authorization: Bearer <LIGACOES_SEGREDO>` — o segredo DELA,
+  derivado do do CRM (ver "O CRM, dono da ligação"); o id da ligação é
   o `cb_ligacoes.id` (só `[A-Za-z0-9-]`: nunca o `call_id` `crm:…`), e o
   número é o do JID da conversa, NUNCA um LID (a máquina não os distingue).
   Ela manda ao CRM `POST <url>/api/cb/ligacoes/eventos` (`sinal`,
@@ -90,6 +91,50 @@ desenho: §8.12 e §8.13 do plano.
   `package.json` do subprojeto E nas dependências de desenvolvimento da raiz
   (o `typecheck` da raiz confere o subprojeto, a imagem compila com o dele):
   mesma versão nos dois, com pino (`versoes.test.ts`).
+
+## O CRM, dono da ligação (4b, 1134: `pelo-crm.ts`, `computador.ts`)
+
+- ⚠️⚠️ **A faixa da ligação pelo CRM é só REGISTRO** (D6/D6b): `agent` SEM
+  `sender_id` e com `from_device` falso — a 972 e a pausa da IA (1118) não a
+  contam como gente, e a retomada (`cb_ia_reservar_envio`, 1134) a exclui.
+  Não reabre, não sobe a conversa, não mexe nas não lidas; só
+  `preencherCanalDaConversa` (a recebida de número novo). Dar autor ou
+  `from_device` a ela apaga o "em atraso" e pausa a IA, sem erro nenhum. A
+  recebida passa por `resolverDestinatario` e `routeContactToPipeline`, como
+  toda ligação.
+- ⚠️⚠️ **A marca do atendimento pelo CRM** (`atendimento_pelo_crm_desde`,
+  gravada no "Atender"; `atendida_pelo_crm_em`, na confirmação da máquina):
+  com ela, `desfechoDaLigacao` NÃO decide — o próprio atendimento faz a
+  Evolution mandar `terminate` sem `accept`, e a régua de hoje daria
+  "perdida" (o teste D da 4a). O teto da marca é 60 s. Falhou o atendimento:
+  a marca sai e `decidirLigacao` roda DEPOIS da folga, no `after()` — a
+  decisão que a marca segurou não volta sozinha.
+- A linha ao vivo (`cb_ligacoes_ao_vivo`): o `offer` abre "tocando" só com o
+  computador PRONTO (sinal de menos de 3 min e WhatsApp conectado), fora
+  vídeo e número do escritório; todo fim ou `accept` apaga a que ainda TOCA;
+  o "Atender" a reivindica (`estado = 'tocando' AND atendente_id IS NULL`).
+  Uma por número além das que tocam (índice único): é a trava do ligar e do
+  atender. A ligação ao vivo NÃO tem FK (passageira; a Lixeira recusaria).
+- ⚠️ **O segredo é POR computador**: HMAC-SHA256 do `LIGACOES_SEGREDO` do
+  CRM com o nome, em hex (`segredoDoComputador`; a VPS repete com `openssl
+  dgst -hmac` em `criar-maquina.sh`). Quem fala com o CRM é o computador cujo
+  segredo vem no cabeçalho. As rotas da máquina (`eventos`, `gravacao/…`)
+  recusam o pedido pelo domínio público (o `host` do `NEXT_PUBLIC_SITE_URL`);
+  ⚠️ nunca por `x-forwarded-for`: o próprio Next o preenche em todo pedido.
+- Os avisos da máquina são uma fila (FIFO) que repete 5xx/408/429 e LARGA
+  outro 4xx: falha de banco é 500, aviso malformado ou de ligação
+  desconhecida é 4xx. O sinal fecha como `sumiu` a ligação que a máquina não
+  tem mais (60 s de margem desde o pedido; datas comparadas como NÚMERO — o
+  PostgREST devolve `+00:00`, o JS `Z`).
+- A gravação: bucket PRIVADO `ligacoes`, `account-<conta>/ligacoes/<id>/…`;
+  ouvir só por URL assinada curta, pela rota que confere a conversa (RLS).
+  ⚠️ O Next guarda só 10 MB do corpo com o middleware e corta o resto SEM
+  erro: a rota confere o tamanho lido contra o declarado. A faixa e o
+  estéreo se cruzam (pedidos separados): escrever-e-reler dos dois lados.
+- O número à máquina: o do JID de telefone da conversa (nunca um LID); na
+  recebida, o resolvido no `offer` (`cb_ligacoes_ao_vivo.telefone`). O
+  recorte de conexões do perfil NÃO é conferido nas rotas, como em todo o
+  projeto (`cb/conversas/abrir`): a tela da 4c mostra o botão só onde pode.
 
 ## O aviso CALL
 
@@ -205,6 +250,8 @@ desenho: §8.12 e §8.13 do plano.
 
 ## Quem lê `content_type` (conferir a cada tipo novo)
 
+- `aviso-de-ligacao.tsx`: a ligação pelo CRM (`ligacao.pelo_crm`) tem texto
+  próprio, neutro (nunca vermelha), com quem ligou ou atendeu e a duração.
 - `message-bubble.tsx` (retorno cedo para `<AvisoDeLigacao>`) e
   `message-thread.tsx` (a ligação sai do `MessageActions`, como o aviso de
   grupo — senão haveria "apagar para todos" numa ligação — e desenha o
