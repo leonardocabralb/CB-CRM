@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  ehNotaDoSistema,
   montarConversa,
   MOTIVO_SEM_LEITOR,
   NOTA_DA_RESPOSTA_CRUZADA,
+  PREFIXO_DA_NOTA,
+  ROTULO_DA_EQUIPE,
+  semRotuloDaEquipe,
   terminarNoCliente,
   TETO_DA_LEITURA_NO_CONTEXTO,
+  type MensagemDoContexto,
 } from './contexto'
 
 describe('terminarNoCliente — a conversa ao modelo nunca termina na empresa (revisão de 09/11/2026)', () => {
@@ -182,5 +187,144 @@ describe('montarConversa — o que o agente lê', () => {
 
   it('texto vazio não vira turno vazio', () => {
     expect(montarConversa([{ sender_type: 'customer', content_type: 'text', content_text: '   ' }])).toEqual([])
+  })
+})
+
+describe('montarConversa — a fala da EQUIPE vai rotulada (1138, decisão do operador de 11/11/2026)', () => {
+  const linha = (p: Partial<MensagemDoContexto>): MensagemDoContexto => ({
+    sender_type: 'agent',
+    content_type: 'text',
+    content_text: 'Me manda o holerite.',
+    ...p,
+  })
+
+  it('a equipe pelo CRM (`sender_id`) e pelo celular (`from_device`): rótulo, SEM o nome da pessoa', () => {
+    const [crm, celular] = montarConversa([linha({ sender_id: 'membro-1' }), linha({ from_device: true })])
+    expect(crm).toEqual({ role: 'assistant', content: `${ROTULO_DA_EQUIPE} Me manda o holerite.` })
+    expect(celular.content).toBe(`${ROTULO_DA_EQUIPE} Me manda o holerite.`)
+  })
+
+  it('a IA, o robô, a automação e a mensagem sem autor (API) ficam sem rótulo', () => {
+    const conversa = montarConversa([
+      linha({ sender_type: 'bot', ia_agente_id: 'ag-1' }),
+      linha({ sender_type: 'bot' }),
+      linha({ sender_id: null, from_device: false }),
+      linha({ sender_type: 'agent', sender_id: 'membro-1', ia_agente_id: 'ag-1' }),
+    ])
+    expect(conversa.every((m) => !m.content.startsWith(ROTULO_DA_EQUIPE))).toBe(true)
+  })
+
+  it('a fala da cliente nunca leva rótulo', () => {
+    expect(montarConversa([linha({ sender_type: 'customer', from_device: true })])[0]).toEqual({
+      role: 'user',
+      content: 'Me manda o holerite.',
+    })
+  })
+
+  it('vazia continua fora (o rótulo sozinho não é fala)', () => {
+    expect(montarConversa([linha({ sender_id: 'membro-1', content_text: '  ' })])).toEqual([])
+  })
+})
+
+describe('semRotuloDaEquipe — o rótulo que o modelo imitou nunca chega ao cliente', () => {
+  it.each([
+    ['[Team member] Oi, tudo bem?', 'Oi, tudo bem?'],
+    ['[team member]: Oi', 'Oi'],
+    ['  [ Team Member ] — Oi', 'Oi'],
+    ['Oi!\n[Team member] Segue o link.', 'Oi!\nSegue o link.'],
+  ])('%j → %j', (de, para) => {
+    expect(semRotuloDaEquipe(de)).toBe(para)
+  })
+
+  it.each([
+    ['O [Team member] disse que sim', 'O disse que sim'],
+    ['**[Team member]** Oi', 'Oi'],
+    ['_[Team member]_: Oi', 'Oi'],
+    ['[Membro da equipe] Oi', 'Oi'],
+    ['Oi, tudo bem? Sem rótulo nenhum.', 'Oi, tudo bem? Sem rótulo nenhum.'],
+  ])('em qualquer forma: %j → %j', (de, para) => {
+    expect(semRotuloDaEquipe(de)).toBe(para)
+  })
+})
+
+describe('montarConversa — a ligação pelo CRM transcrita (4d, D11)', () => {
+  const faixa = (ligacao: Record<string, unknown>) => ({
+    sender_type: 'agent',
+    content_type: 'call',
+    content_text: null,
+    ligacao: { pelo_crm: true, ligacao_id: 'lig-1', direcao: 'feita', duracao_seg: 125, transcricao: 'pronta', ...ligacao },
+  })
+  const dialogos = new Map([
+    [
+      'lig-1',
+      {
+        resumo: 'O cliente pediu o andamento do processo.',
+        trechos: [
+          { quem: 'atendente' as const, inicio: 1, texto: 'Bom dia.' },
+          { quem: 'cliente' as const, inicio: 3, texto: 'Quero saber do processo.' },
+        ],
+      },
+    ],
+  ])
+
+  it('entra como NOTA no papel de usuário (nunca fala do agente), com o resumo antes do diálogo', () => {
+    const [m] = montarConversa([faixa({})], undefined, dialogos)
+    expect(m.role).toBe('user')
+    expect(m.content).toBe(
+      '[System note, not a message from the customer: phone call to the customer, made by the business through the CRM, about 2 min.]\n' +
+        'Summary: O cliente pediu o andamento do processo.\n' +
+        'Transcript (automatic, may contain errors):\n' +
+        '[00:01] Business: Bom dia.\n' +
+        '[00:03] Customer: Quero saber do processo.',
+    )
+  })
+
+  it('a recebida diz que o cliente ligou; passados os 180 dias, só o resumo', () => {
+    const [m] = montarConversa(
+      [faixa({ direcao: 'recebida', transcricao: null, expirada: true })],
+      undefined,
+      new Map([['lig-1', { resumo: 'Retorno combinado para amanhã.', trechos: [] }]]),
+    )
+    expect(m.content).toBe(
+      '[System note, not a message from the customer: phone call from the customer, answered by the business through the CRM, about 2 min.]\n' +
+        'Summary: Retorno combinado para amanhã.',
+    )
+  })
+
+  it('sem diálogo (não transcrita, de fora do CRM, ou a leitura falhou): fica fora, como antes', () => {
+    expect(montarConversa([faixa({})], undefined, new Map())).toEqual([])
+    expect(montarConversa([faixa({})])).toEqual([])
+    expect(montarConversa([faixa({ pelo_crm: false })], undefined, dialogos)).toEqual([])
+    expect(montarConversa([{ ...faixa({}), ligacao: null }], undefined, dialogos)).toEqual([])
+  })
+
+  it('o diálogo longo é cortado no teto da leitura, com o corte declarado', () => {
+    const longo = new Map([
+      ['lig-1', { resumo: null, trechos: [{ quem: 'cliente' as const, inicio: 0, texto: 'x'.repeat(TETO_DA_LEITURA_NO_CONTEXTO + 500) }] }],
+    ])
+    const [m] = montarConversa([faixa({})], undefined, longo)
+    expect(m.content.endsWith(' […cut]')).toBe(true)
+    expect(m.content.split('\n').slice(1).join('\n').length).toBeLessThanOrEqual(TETO_DA_LEITURA_NO_CONTEXTO + ' […cut]'.length)
+  })
+})
+
+describe('ehNotaDoSistema — as notas no papel de usuário não são fala do cliente', () => {
+  it('reconhece a resposta cruzada e a ligação transcrita; não a fala do cliente', () => {
+    expect(ehNotaDoSistema(NOTA_DA_RESPOSTA_CRUZADA)).toBe(true)
+    const [ligacao] = montarConversa(
+      [
+        {
+          sender_type: 'agent',
+          content_type: 'call',
+          content_text: null,
+          ligacao: { pelo_crm: true, ligacao_id: 'lig-9', transcricao: 'pronta' },
+        },
+      ],
+      undefined,
+      new Map([['lig-9', { resumo: 'Fulano Ficticio confirmou o horário.', trechos: [] }]]),
+    )
+    expect(ehNotaDoSistema(ligacao.content)).toBe(true)
+    expect(ehNotaDoSistema('Meu nome é Fulano Ficticio')).toBe(false)
+    expect(PREFIXO_DA_NOTA.startsWith('[System note')).toBe(true)
   })
 })

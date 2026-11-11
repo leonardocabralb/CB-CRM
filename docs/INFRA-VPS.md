@@ -184,7 +184,9 @@ WhatsApp Web da conexão Previdenciario - Comercial (um aparelho conectado a
 mais nesse número) e o orquestrador do subprojeto `maquina-de-ligacoes/`.
 PARADO fora das sessões de teste (o CRM fala com ele desde a 4b e tem a tela
 de ligar e atender desde a 4c, 11/11/2026; parado, o "Ligar" fica desligado
-e a recebida não toca no CRM; nada o vigia ainda — a sentinela é a 4e).
+e a recebida não toca no CRM). Desde a 4e, o CRM só o usa com o INTERRUPTOR
+"Ligações pelo CRM" ligado na tela Conexões (1137), e a sentinela (§12) vigia
+o contêiner do computador ligado.
 Desde 11/11/2026 (18:07 UTC): imagem `maquina-de-ligacoes:20261111-9` (a
 gravação que abre no começo do pedido e o `iniciar.sh` que limpa a pasta do
 PulseAudio, `.claude/rules/ligacoes.md`; montada à mão, abaixo), URL do CRM
@@ -238,9 +240,20 @@ PulseAudio, `.claude/rules/ligacoes.md`; montada à mão, abaixo), URL do CRM
   (fechada ao navegador): `account_id` e `channel_id` da conexão, `nome` (o
   `LIGACOES_COMPUTADOR`, ex. `previdenciario`) e `endereco`
   (`http://ligacoes-previdenciario:8080`). Gravada à mão (SQL pelo conector,
-  com autorização) até a tela da 4e. O CRM só liga e atende com sinal de vida
-  de menos de 3 min e o WhatsApp da máquina conectado: com o contêiner parado,
-  as rotas respondem `computador_fora`.
+  com autorização). O CRM só liga e atende com o INTERRUPTOR ligado
+  (`ligado_em`, 1137 — o admin liga e desliga em Configurações → Conexões →
+  "Ligações pelo CRM"), sinal de vida de menos de 3 min e o WhatsApp da
+  máquina conectado: com o contêiner parado, as rotas respondem
+  `computador_fora`.
+- **Computador para um número NOVO (D17, 4e):** a tela não cria contêiner —
+  é aqui. Conferir a memória antes (cada um ocupa ~0,8–1 GiB parado e ~1
+  núcleo em ligação; a VPS tem 2 núcleos, D8). Depois: `criar-maquina.sh
+  <nome> <imagem> http://crm_crm:3000` (o `<nome>` em `[a-z0-9-]`), a linha em
+  `cb_computadores_de_ligacao` (conta, conexão, `nome`, `endereco`
+  `http://ligacoes-<nome>:8080`; nasce DESLIGADA), `docker start
+  ligacoes-<nome>` e, na tela Conexões, ligar o interruptor e ler o QR com o
+  celular do número. O "Reparear" da mesma tela desconecta o WhatsApp da
+  máquina para um QR novo.
 - **Medido em 10/11:** com o WhatsApp aberto, 840–900 MiB e 170–210
   processos; a caixa de areia ativa (as páginas em outro namespace de usuário
   e de processos).
@@ -981,7 +994,9 @@ Redis db 8 (`HSCAN … MATCH 'session-*.99'` nos hashes `evolution:instance:*`,
 uma vez por dia, às 10h de Brasília); `/proc/meminfo` e o disco; e, pelo
 PostgREST com a service role do `/root/crm.env`, `cb_channels`, `profiles`
 (papel e perfil dos membros ativos), `cb_perfis_de_acesso` (as conexões de cada
-perfil) e `messages.message_id` (a conferência por id). **O que grava:** só
+perfil), `messages.message_id` (a conferência por id) e os computadores de
+ligações ligados (`cb_computadores_de_ligacao`, 4e), com `docker inspect` do
+contêiner de cada um. **O que grava:** só
 `/root/saude-whatsapp`, linhas `whatsapp_alert` em `notifications` (1085) e os
 alarmes de conexão abertos em `cb_alarmes_da_sentinela` (1123): upsert pela
 chave (conexão, tipo) a cada execução e, das conexões de produção, apaga o que
@@ -1001,6 +1016,7 @@ instância não tem "teste"):
 | `descartadas` | "error in handling message" no log da Evolution (mensagem descartada antes do banco: o caso da §8, 30/09). O log não diz de quem é: o aviso traz a conexão PROVÁVEL | é evento: no máximo um aviso a cada 6 h; o que chega dentro do intervalo, ou que o sino recusa, fica em `eventos_pendentes` e sai somado depois, para os destinatários de então |
 | `sessao99` | campo `session-<n>.99` em algum hash (§8), por `HSCAN … MATCH` (nunca `HKEYS`: o Redis é compartilhado), uma vez por dia a partir das 10h — e de novo a cada hora até dar certo no dia. ⚠️ Só chave do tipo HASH: a Evolution grava também `evolution:instance:whatsapp_web_version` como texto, e o `redis-cli` devolve o `WRONGTYPE` com código 0 — em 13/10 isso virou um laço que travou a execução das 15:05 (encerrada à mão) | 0 |
 | `replica:<serviço>` | só os vigiados — `crm_crm`, `crm_agendador`, `evolution_evolution`, `postgres_postgres`, `redis_redis`, `traefik_traefik` — com réplicas rodando ≠ esperadas, desligados (`scale …=0`, que aparece como "0/0") ou ausentes do Swarm, conferido de novo 60 s depois. Os outros serviços (n8n, Typebot…) ficam na semanal | iguais e diferentes de zero (⚠️ manutenção que escala a Evolution a 0 acende o aviso — é o esperado) |
+| `maquina:<nome>` | (4e) o computador de ligações com o INTERRUPTOR ligado no CRM (`cb_computadores_de_ligacao.ligado_em`, 1137) cujo contêiner avulso `ligacoes-<nome>` não está rodando (fora do Swarm, ele não aparece no `docker service ls`), conferido de novo 60 s depois. Desligado no CRM, não é vigiado. Vai aos owner/admin da conta dona; o botão das conexões do CRM já mostra o "sem sinal" por conta própria | rodando |
 | `disco` / `memoria` | disco > 85% / `MemAvailable` < 300 MB (conferida de novo) | abaixo do limite |
 | `sentinela_cega` | alguma medição falhou ("não medido") em 3 execuções seguidas — sem isto, a sentinela cega só deixaria uma linha no `sentinela.log` | uma execução sem "não medido" |
 

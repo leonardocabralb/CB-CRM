@@ -2110,12 +2110,12 @@ describe('set_ai — a pausa com MOTIVO (1049, D26)', () => {
 
   const escritasNaConversa = () => h.state.updateCalls.filter((u) => u.table === 'conversations');
 
-  it('desligar grava a pausa por automação, só se ainda não havia pausa', async () => {
+  it('desligar grava a pausa por automação sem pausa ou por cima da TEMPORÁRIA (1138), nunca da permanente', async () => {
     await rodar(false);
     const conversas = escritasNaConversa();
     expect(conversas).toHaveLength(1);
     expect(conversas[0].payload).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'automacao' });
-    expect(conversas[0].filters).toContainEqual(['eq', 'ai_autoreply_disabled', false]);
+    expect(conversas[0].filters).toContainEqual(['or', 'expr', 'ai_autoreply_disabled.eq.false,ia_pausada_por.in.(gente,botao)']);
   });
 
   it('ligar desfaz a pausa por AUTOMAÇÃO, com a condição no próprio UPDATE, e não zera o teto', async () => {

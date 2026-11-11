@@ -153,6 +153,15 @@ qualquer uma é pergunta ao operador.
   retomada dele; o disparo por evento nunca leva a marca (09/11/2026: no
   Trabalhista, o vídeo e o link da assinatura saem por automação, com o link
   por ÚLTIMO, e os follow-ups da IA seguem depois; `ia-retomada.md`).
+- Pausa da IA (11/11/2026, revisa a D26; 1138): "Pausar" e a pausa por
+  gente são TEMPORÁRIAS — a IA volta sozinha quando o cliente escreve e
+  ninguém da equipe responde em N min (configuração da CONTA, padrão 15, 0 =
+  como antes, vale para todo agente); "Desativar IA", a transferência pedida
+  pela IA e a automação seguem até "Retomar IA"; mover o card não retoma; a
+  IA também faz follow-up da fala da EQUIPE, com a cadência do agente, e o
+  follow-up que sai devolve a conversa à IA; os N min contam no relógio (fora
+  do horário, espera a abertura); a fala da equipe chega ao modelo rotulada,
+  sem o nome (`ia-pausa.md`).
 - Agente de IA fora do horário: a mensagem espera e ele responde quando o
   horário abrir, se ninguém da equipe respondeu antes; o padrão da Anthropic
   é o Haiku 5.5, e o seletor mostra os modelos da chave (25/10/2026).
@@ -245,3 +254,9 @@ qualquer uma é pergunta ao operador.
   "Recusar" (só "Silenciar"); toca para quem o perfil vê a conexão; ligar só
   de conversa existente, até 20 por hora por número, e a máquina encerra
   sozinha aos 30 min (`docs/PLANO-ligar-pelo-crm.md`, §8.10).
+- Ligações pelo CRM como interruptor (11/11/2026): ligadas ou desligadas por
+  conexão, na tela Conexões; ligado, o estado do computador, o QR e os
+  alarmes no sino e no botão das conexões; desligado, tudo some, inclusive o
+  botão Ligar e o toque. Só onde já há computador de ligações: criar um para
+  outro número é operação no servidor. A 4d e a 4e se publicam JUNTAS, com
+  o teste ao vivo logo depois (`ligacoes-operacao.md`; plano §8.17).

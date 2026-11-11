@@ -26,6 +26,19 @@ export const SELETORES = {
   conectado: 'button[aria-label="Conversas"]',
   /** O QR da tela de parear. */
   qr: 'div[data-ref] canvas, canvas[aria-label]',
+  /**
+   * O QR que VENCEU (depois de algumas trocas a tela para e pede um clique):
+   * no lugar do código, o botão de recarregar. ⚠️ A medir no teste ao vivo da
+   * 4e — sem ele, a tela vencida conta como "carregando" e o CRM não mostra QR.
+   */
+  qrVencido: 'div[data-ref] [role=button], div[data-ref] button',
+  /**
+   * O "Reparear" do CRM (4e): Configurações → "Desconectar" → confirmar no
+   * diálogo. ⚠️ A medir no teste ao vivo (o "Desconectar" derruba a sessão até
+   * alguém ler o QR novo com o celular do número).
+   */
+  configuracoes: 'button[aria-label="Configurações"]',
+  desconectar: 'Desconectar',
   abaLigacoes: 'button[aria-label="Ligações"]',
   /** O botão do discador, na aba Ligações (sem `aria-label`: vai pelo texto). */
   abrirDiscador: 'Ligar para um telefone',
@@ -61,7 +74,8 @@ function lerTela(s: typeof SELETORES): Retrato {
   })
   return {
     conectado: !!document.querySelector(s.conectado),
-    qr: !!document.querySelector(s.qr),
+    // O QR vencido também é a tela de parear: o `GET /qr` o recarrega.
+    qr: !!document.querySelector(s.qr) || !!document.querySelector(s.qrVencido),
     quadro: quadro
       ? {
           texto: quadro.innerText.replace(/\s+/g, ' ').trim(),
@@ -99,6 +113,8 @@ export function decidir(r: Retrato): { estado: EstadoDoWhatsapp; chamada: FaseDa
 }
 
 const ESPERA_DA_TELA_MS = 10_000
+/** Depois do "Desconectar", o QR novo leva alguns segundos (o WhatsApp apaga a sessão). */
+const ESPERA_DO_QR_MS = 30_000
 /** Uma leitura da tela que não volta nisso conta como falha (aba travada). */
 const PRAZO_DA_LEITURA_MS = 5_000
 /** A busca do discador se assenta depois do número inteiro (vale só o resultado dele). */
@@ -170,8 +186,41 @@ export function whatsappDaPagina(pagina: Page): WhatsApp {
 
     async qr() {
       const qr = pagina.locator(SELETORES.qr).first()
-      if ((await qr.count()) === 0) return null
+      if ((await qr.count()) === 0) {
+        // Vencido: recarrega (só acontece com o CRM pedindo o QR, a tela aberta
+        // por alguém pareando) e espera o código novo.
+        const recarregar = pagina.locator(SELETORES.qrVencido).first()
+        if ((await recarregar.count()) === 0) return null
+        await recarregar.click({ timeout: ESPERA_DA_TELA_MS })
+        await qr.waitFor({ timeout: ESPERA_DA_TELA_MS })
+      }
       return `data:image/png;base64,${(await qr.screenshot()).toString('base64')}`
+    },
+
+    async desconectar() {
+      try {
+        await pagina.locator(SELETORES.configuracoes).first().click({ timeout: ESPERA_DA_TELA_MS })
+        await pagina.getByText(SELETORES.desconectar, { exact: true }).first().click({ timeout: ESPERA_DA_TELA_MS })
+        const dialogo = pagina.locator('[role=dialog]').filter({ hasText: SELETORES.desconectar }).last()
+        await dialogo
+          .getByRole('button', { name: SELETORES.desconectar, exact: true })
+          .click({ timeout: ESPERA_DA_TELA_MS })
+      } catch (erro) {
+        // Antes do clique final nada mudou: a sessão segue; fecha o que abriu.
+        await pagina.keyboard.press('Escape').catch(() => {})
+        await pagina.keyboard.press('Escape').catch(() => {})
+        throw erro
+      }
+      // O clique final foi dado: o WhatsApp apaga a sessão e volta à tela de
+      // parear. O QR que demora não quer dizer "não desconectou" — só a sessão
+      // ainda aberta quer (a tela diria "a sessão continua de pé" sem ser).
+      try {
+        await pagina.locator(`${SELETORES.qr}, ${SELETORES.qrVencido}`).first().waitFor({ timeout: ESPERA_DO_QR_MS })
+      } catch {
+        const depois = await retrato().catch(() => null)
+        if (depois?.estado === 'conectado') throw new Error('o WhatsApp seguiu conectado depois do Desconectar')
+      }
+      return 'qr' as const
     },
   }
 }

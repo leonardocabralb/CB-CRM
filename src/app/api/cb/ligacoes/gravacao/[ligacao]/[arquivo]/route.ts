@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { after, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import {
   computadorDoCabecalho,
@@ -7,6 +7,7 @@ import {
   veioPeloDominioPublico,
 } from '@/lib/whatsapp/ligacoes/computador'
 import { ARQUIVOS_DA_GRAVACAO, receberGravacao, TETO_DA_GRAVACAO } from '@/lib/whatsapp/ligacoes/pelo-crm'
+import { transcreverLigacao } from '@/lib/whatsapp/ligacoes/transcricao'
 
 type Params = { params: Promise<{ ligacao: string; arquivo: string }> }
 
@@ -37,7 +38,10 @@ export async function PUT(request: Request, { params }: Params) {
   const computador = computadorDoCabecalho(request.headers.get('authorization'), computadores, segredo)
   if (!computador) return NextResponse.json({ error: 'sem_autorizacao' }, { status: 401 })
 
-  const { ligacao, arquivo } = await params
+  const { ligacao: idDaUrl, arquivo } = await params
+  // O id em minúsculas: o caminho no bucket, a guarda da fila e as leituras
+  // usam o do banco (o UUID da URL é aceito em qualquer caixa).
+  const ligacao = idDaUrl.toLowerCase()
   if (!UUID.test(ligacao) || !(ARQUIVOS_DA_GRAVACAO as readonly string[]).includes(arquivo)) {
     return NextResponse.json({ error: 'pedido_invalido' }, { status: 400 })
   }
@@ -55,5 +59,9 @@ export async function PUT(request: Request, { params }: Params) {
   // desfecho ainda: 409 — a máquina guarda e manda de novo depois.
   if (r === 'descartada') return NextResponse.json({ ok: true, descartada: true })
   if (r === 'cedo') return NextResponse.json({ error: 'ainda_sem_desfecho' }, { status: 409 })
+  // 4d: um LADO que chega pode completar o par — a transcrição confere no
+  // bucket e só trabalha com os dois (o cadeado segura a corrida entre os
+  // dois pedidos). Depois da resposta: a máquina não espera o provedor.
+  if (arquivo !== 'estereo.ogg') after(() => transcreverLigacao(db, ligacao).then(() => undefined))
   return NextResponse.json({ ok: true })
 }

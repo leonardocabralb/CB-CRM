@@ -14,7 +14,8 @@
 
 import { supabaseAdmin } from '@/lib/ai/admin-client'
 
-import { descartarPendente, enfileirarTurno } from './fila'
+import { descartarPendente, enfileirarTurno, marcarEsperaDaEquipe } from './fila'
+import { ehMotivoTemporario, lerVoltaAposMin, voltaDaPausaEm } from './pausa'
 import { abreTurno, lerQuemAtende, quemResponde, type ConteudoDaMensagem } from './quem-responde'
 import { agendarTurno } from './turno'
 
@@ -67,6 +68,13 @@ export async function aoChegarMensagemDoCliente(m: MensagemDoCliente): Promise<v
     const db = supabaseAdmin()
     const leitura = await lerQuemAtende(db, { accountId: m.accountId, conversationId: m.conversationId, canalId })
     if (!leitura) return
+    // A PAUSA TEMPORÁRIA (1138): com N > 0 na conta, a pausa `gente`/`botao`
+    // não cala — o turno nasce para quando a cliente estiver esperando há N
+    // min, e a resposta da equipe o descarta. Leitura da configuração que
+    // falha LANÇA: a conversa fica pausada (o lado que não fala por cima da
+    // equipe), e a próxima mensagem pergunta de novo.
+    const minutos =
+      leitura.pausada && ehMotivoTemporario(leitura.pausadaPor) ? await lerVoltaAposMin(db, m.accountId) : 0
     const decisao = quemResponde({
       ...leitura,
       canalId,
@@ -74,9 +82,14 @@ export async function aoChegarMensagemDoCliente(m: MensagemDoCliente): Promise<v
       ehRespostaDeBotao: m.ehRespostaDeBotao,
       roboConsumiu: false,
       automacaoFalou: false,
+      pausaTemporaria: minutos > 0,
     })
     if (decisao.quem !== 'agente') return
 
+    const agora = Date.now()
+    const esperaMs = decisao.sobrePausa
+      ? voltaDaPausaEm({ agora, aguardandoDesde: leitura.aguardandoDesde, pausadaEm: leitura.pausadaEm, minutos }) - agora
+      : undefined
     const turno = await enfileirarTurno(db, {
       accountId: m.accountId,
       conversationId: m.conversationId,
@@ -85,8 +98,13 @@ export async function aoChegarMensagemDoCliente(m: MensagemDoCliente): Promise<v
       dealId: decisao.dealId,
       stageId: decisao.stageId,
       mensagemId: m.mensagemId,
+      esperaMs,
     })
-    if (turno) agendarTurno(turno)
+    if (!turno) return
+    // A espera da equipe fica DITA na linha (a aba Turnos e a faixa a
+    // reconhecem): a fila devolve a linha limpa a cada mensagem.
+    if (decisao.sobrePausa) await marcarEsperaDaEquipe(db, turno.id)
+    agendarTurno(turno)
   } catch (err) {
     console.error('[ia-agentes] a entrada da mensagem falhou:', err)
   }

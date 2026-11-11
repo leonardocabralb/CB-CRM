@@ -24,8 +24,14 @@ vi.mock('@/lib/automations/admin-client', () => ({
         },
         eq: (coluna: string, valor: unknown) => {
           estado.filtros.push(['eq', coluna, valor])
-          return Promise.resolve({ data: estado.erro ? null : estado.linhas, error: estado.erro })
+          return consulta
         },
+        not: (coluna: string, op: string, valor: unknown) => {
+          estado.filtros.push(['not', coluna, op, valor])
+          return consulta
+        },
+        then: (ok: (r: unknown) => unknown, falha: (e: unknown) => unknown) =>
+          Promise.resolve({ data: estado.erro ? null : estado.linhas, error: estado.erro }).then(ok, falha),
       }
       return consulta
     },
@@ -60,9 +66,9 @@ const haMinutos = (min: number) => new Date(Date.now() - min * 60_000).toISOStri
 describe('GET /api/cb/ligacoes/computadores', () => {
   it('a situação de cada um: pronto, fora (sem sinal há 3 min) e sem WhatsApp', async () => {
     estado.linhas = [
-      { channel_id: 'canal-a', whatsapp: 'conectado', ultimo_sinal_em: agora() },
-      { channel_id: 'canal-b', whatsapp: 'conectado', ultimo_sinal_em: haMinutos(5) },
-      { channel_id: 'canal-c', whatsapp: 'qr', ultimo_sinal_em: agora() },
+      { channel_id: 'canal-a', whatsapp: 'conectado', ultimo_sinal_em: agora(), ligado_em: haMinutos(60) },
+      { channel_id: 'canal-b', whatsapp: 'conectado', ultimo_sinal_em: haMinutos(5), ligado_em: haMinutos(60) },
+      { channel_id: 'canal-c', whatsapp: 'qr', ultimo_sinal_em: agora(), ligado_em: haMinutos(60) },
     ]
     const r = await GET()
     expect(r.status).toBe(200)
@@ -73,8 +79,10 @@ describe('GET /api/cb/ligacoes/computadores', () => {
         { channel_id: 'canal-c', situacao: 'sem_whatsapp' },
       ],
     })
-    // Da conta, e nunca o endereço nem o nome do contêiner (infra interna).
+    // Da conta, só os LIGADOS (o interruptor, 1137), e nunca o endereço nem o
+    // nome do contêiner (infra interna).
     expect(estado.filtros).toContainEqual(['eq', 'account_id', 'conta-1'])
+    expect(estado.filtros).toContainEqual(['not', 'ligado_em', 'is', null])
     expect(estado.colunas).not.toMatch(/endereco|nome/)
   })
 

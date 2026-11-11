@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import { HANDOFF_SENTINEL } from '@/lib/ai/defaults'
-import { lerPassagem, montarPedidoDoAgente } from './pedido'
+import { ROTULO_DA_EQUIPE } from './contexto'
+import { lerPassagem, montarPedidoDoAgente, partesDoPedidoDoAgente, secaoDaRetomada } from './pedido'
 
 const AGORA = new Date('2026-09-25T17:05:00Z')
 
@@ -391,5 +392,22 @@ describe('MARCAR REUNIÃO (F5): os horários e as regras', () => {
   it('reunião desligada: nada sobre reunião', () => {
     const p = montarPedidoDoAgente({ conduzFechamento: false, instrucoes: 'x', regras: [], agora, acoes: {}, agenda: null })
     expect(p).not.toMatch(/Booking/)
+  })
+})
+
+describe('as falas da EQUIPE (1138)', () => {
+  it('o pedido explica o rótulo da equipe, no pedaço FIXO do agente (o cache não muda)', () => {
+    const partes = partesDoPedidoDoAgente({ conduzFechamento: false, instrucoes: 'x', regras: [], agora: AGORA })
+    const fixo = partes[0]
+    expect(fixo.cache).toBe(true)
+    expect(fixo.texto).toContain(`Business messages that start with ${ROTULO_DA_EQUIPE} were written by a person from the team`)
+    expect(fixo.texto).toContain('Never start your reply with that label.')
+  })
+
+  it('a retomada da fala da equipe diz de quem é a última; a de sempre, não', () => {
+    const daEquipe = secaoDaRetomada({ tentativa: 1, de: 3, semResposta: '1 hour', daEquipe: true })
+    expect(daEquipe).toContain('written by a person from the team')
+    expect(daEquipe).toContain(ROTULO_DA_EQUIPE)
+    expect(secaoDaRetomada({ tentativa: 1, de: 3, semResposta: '1 hour' })).not.toContain('person from the team')
   })
 })

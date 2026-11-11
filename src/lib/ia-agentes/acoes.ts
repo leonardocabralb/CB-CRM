@@ -39,6 +39,7 @@ import { ehPassoDoAtlas } from '@/lib/atlas/passos-do-atlas'
 import type { CustomField } from '@/types'
 
 import { TIPOS_DE_ACAO, type TipoDeAcao } from './agente'
+import { semRotuloDaEquipe } from './contexto'
 
 // ------------------------------------------------------------
 // O formato do valor de um campo (o pedido diz, a execução confere)
@@ -532,7 +533,9 @@ export function lerAcoes(texto: string): LeituraDasAcoes {
   const aberto = SIMPLES_ABERTO.exec(limpo)
   if (aberto && conhecido(aberto[1])) limpo = limpo.slice(0, aberto.index)
 
-  limpo = limpo
+  // O rótulo da fala da equipe (1138) que o modelo imitou no começo da linha:
+  // é para o modelo, nunca para o cliente.
+  limpo = semRotuloDaEquipe(limpo)
     // `[[` solto no meio: sai sozinho (com o espaço que vinha depois dele).
     .replace(/\[\[[ \t]*/g, '')
     // As crases (ou o bloco de código) que envolviam SÓ marcadores: "`[[MOVER:1]]`".

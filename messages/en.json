@@ -584,7 +584,19 @@
       "previa": "📞 Call",
       "ouvir": "Listen",
       "ouvirDica": "Listen to the call recording",
-      "fecharGravacao": "Close the recording"
+      "fecharGravacao": "Close the recording",
+      "transcrevendo": "Transcribing…",
+      "semTranscricao": "No transcript",
+      "gravacaoExpirada": "Recording expired (180 days)",
+      "resumo": "Summary",
+      "verTranscricao": "View transcript",
+      "tituloDaTranscricao": "Call transcript",
+      "cliente": "Customer",
+      "atendente": "Agent",
+      "carregandoTranscricao": "Loading the transcript…",
+      "falhaDaTranscricao": "Couldn't load the transcript",
+      "tentarDeNovo": "Try again",
+      "semFala": "No speech in the recording"
     },
     "audioPlayer": {
       "tocar": "Play audio",
@@ -1082,9 +1094,18 @@
       "pausadaComMotivo": "AI paused — {motivo}",
       "retomarDica": "The AI only answers in this conversation again through this button.",
       "pausou": "AI paused in this conversation.",
+      "pausarDica": "Pauses while you lead. The AI comes back on its own if the customer waits {minutos} min without a reply from the team.",
+      "desativar": "Turn off AI",
+      "desativarDica": "The AI no longer answers in this conversation until someone clicks \"Resume AI\".",
+      "desativou": "AI turned off in this conversation.",
+      "desativadaNaConversa": "AI turned off in this conversation",
+      "voltaAs": "The AI comes back from {hora} on if no one on the team replies.",
+      "voltaSeEsperar": "Comes back on its own if the customer waits {minutos} min without a reply from the team.",
+      "retomarAgoraDica": "Hands the conversation back to the AI now, without waiting.",
       "motivo": {
         "gente": "someone on the team replied",
         "botao": "paused by someone on the team",
+        "desativada": "turned off by someone on the team",
         "transferencia": "the AI handed the conversation to a person",
         "automacao": "turned off by an automation"
       },
@@ -3036,7 +3057,7 @@
         "aiLabel": "AI on this conversation",
         "aiOn": "Turn on",
         "aiOff": "Turn off",
-        "aiResetWarning": "Turning it on only undoes a pause made by an automation. If someone on the team replied, or the AI itself handed the conversation to a person, it stays paused until someone clicks \"Resume AI\" in the conversation.",
+        "aiResetWarning": "Turning it on only undoes a pause made by an automation. The pause from someone on the team replying comes back on its own if the customer waits without a reply (the time is set in AI agents → \"When the team replies\"); the AI handing the conversation to a person and \"Turn off AI\" last until someone clicks \"Resume AI\" in the conversation.",
         "inactiveSuffix": "(off)",
         "selfSuffix": "(this one)"
       },
@@ -5851,7 +5872,46 @@
       "groupsResyncWarning": "After saving, click Resync on this connection. Without it, messages arrive but join/leave notices don't.",
       "radarLabel": "Service Radar on this number",
       "radarHint": "AI analyzes this number's conversations (last 7 days): score, urgencies, dissatisfaction and unanswered requests. Off by default.",
-      "radarPrivacyWarning": "When enabled, this number's conversation content is sent to the account's configured AI provider (your own key). Use the provider's paid tier and confirm the firm's confidentiality policy."
+      "radarPrivacyWarning": "When enabled, this number's conversation content is sent to the account's configured AI provider (your own key). Use the provider's paid tier and confirm the firm's confidentiality policy.",
+      "ligacoes": {
+        "titulo": "CRM calls",
+        "interruptor": "CRM calls on {label}",
+        "carregando": "Checking CRM calls…",
+        "falhaDaLista": "Could not check CRM calls right now.",
+        "tentarDeNovo": "Try again",
+        "semComputador": "This number does not have a call computer yet. One is installed on the server.",
+        "desligadas": "Off: the Call button and the ringing of incoming calls don't show for the team.",
+        "situacao": {
+          "pronto": "Ready to make and answer calls.",
+          "emLigacao": "On a call now.",
+          "qr": "The call computer's WhatsApp is asking for the QR code.",
+          "carregando": "The call computer's WhatsApp is loading.",
+          "fora": "Offline: the call computer has sent no signal for {tempo}.",
+          "foraSemSinal": "Offline: the call computer has not sent a signal yet."
+        },
+        "conectado": "Connected. Calls will be back in a moment.",
+        "qrAlt": "QR code to connect the calls of {label}",
+        "qrInstrucao": "On this number's phone, open WhatsApp → Linked devices → Link a device, and point the camera at the code. It refreshes on its own.",
+        "qrEsperando": "Waiting for the code from the call computer…",
+        "qrFalhou": "Could not reach the call computer right now. Retrying…",
+        "reparear": "Re-pair",
+        "reparearDica": "Disconnects the call computer's WhatsApp to scan a new QR code",
+        "reparearTitulo": "Re-pair the calls of {label}?",
+        "reparearDescricao": "The call computer logs out of this number's WhatsApp and shows a new QR code. Until someone scans it with this number's phone, no one can call through the CRM and incoming calls don't ring in it (the phone still rings). Messages are not affected.",
+        "reparearConfirmar": "Log out and show the QR code",
+        "ligou": "CRM calls turned on for {label}",
+        "desligou": "CRM calls turned off for {label}",
+        "conectou": "Calls of {label} connected to WhatsApp",
+        "erro": {
+          "emLigacao": "There is a call in progress on this number: try again when it ends.",
+          "jaPedeQr": "The call computer is already asking for the QR code.",
+          "desligado": "Calls are turned off for this number.",
+          "semResposta": "The call computer did not respond.",
+          "naoDesconectou": "The call computer could not log out of WhatsApp; the session is still up.",
+          "semComputador": "This number does not have a call computer.",
+          "falhou": "That didn't work. Try again."
+        }
+      }
     },
     "profile": {
       "fullNamePlaceholder": "Ada Lovelace",
@@ -6593,6 +6653,19 @@
     "abaUso": "Usage and cost",
     "tentarDeNovo": "Try again",
     "cancelar": "Cancel",
+    "pausaDaConta": {
+      "titulo": "When the team replies",
+      "explicacao": "When someone on the team replies (through the CRM or the phone) or clicks \"Pause\", the AI pauses in that conversation. It comes back on its own if the customer writes and no one on the team replies within the time below, and it also follows up with a customer who didn't answer the team, with the agent's follow-ups. \"Turn off AI\" and handing the conversation to the team last until someone clicks \"Resume AI\". Applies to every agent.",
+      "campo": "The AI comes back after",
+      "minutos": "minutes without a reply from the team",
+      "salvar": "Save",
+      "salva": "Saved: the AI comes back after {minutos} min without a reply from the team.",
+      "salvaDesligada": "Saved: the AI only comes back with \"Resume AI\".",
+      "agora": "Now: the AI comes back after {minutos} min without a reply from the team, within each agent's hours.",
+      "agoraDesligada": "Now: off — the pause lasts until someone clicks \"Resume AI\", and the AI doesn't follow up on the team's messages.",
+      "dica": "Use 0 to turn it off. Outside the agent's hours, the AI replies when the hours open, if no one on the team has replied.",
+      "falhou": "Couldn't load this setting."
+    },
     "lista": {
       "explicacao": "Each agent answers the customers whose deal is in the pipeline stages marked on it. Create, test in the Playground and follow each one's usage and turns.",
       "novo": "New agent",
@@ -7178,6 +7251,7 @@
       "retomada": "Follow-up {k}/{n}",
       "prevista": "due {quando}",
       "esperaOHorario": "waiting for the agent's hours · opens {quando}",
+      "esperaAEquipe": "waiting for the team to reply · the AI comes back {quando}",
       "semConversa": "No conversation (deleted or in the Trash)",
       "conteudoRemovido": "Content removed on {quando} ({por, select, prazo {{dias}-day limit} exclusao {record deleted for good} other {—}}): the outcome and the actions remain, without the customer's text.",
       "erroDoBanco": {
@@ -7185,7 +7259,8 @@
         "conversaEncerrada": "the conversation was closed",
         "conexaoApagada": "the connection was deleted",
         "fichasUnidas": "the records were merged",
-        "clienteEscreveu": "the customer wrote before the follow-up"
+        "clienteEscreveu": "the customer wrote before the follow-up",
+        "equipeRespondeu": "the team replied before the AI came back"
       }
     },
     "dia": {
@@ -7226,6 +7301,7 @@
       "sem_mensagens": "Write a message to test.",
       "sem_configuracao": "Add a provider's key in Integrations first.",
       "cotacao_invalida": "Enter the exchange rate as a number, for example 5.60.",
+      "minutos_invalidos": "Enter the minutes as a whole number from 0 to 1440.",
       "documento_invalido": "One of the ticked documents no longer exists in the knowledge base. Reload the page and try again.",
       "contato_nao_encontrado": "This customer was not found in this account. Choose another.",
       "etapa_de_resultado": "A won or lost stage cannot be enabled: the AI does not close deals.",
@@ -7344,7 +7420,7 @@
       "janelaInvalida": "The start must be before the end.",
       "inicio": "Window start",
       "fim": "Window end",
-      "paradas": "Follow-ups stop on their own when the customer answers, when someone from the team writes or pauses the AI, when the conversation is closed, when the deal leaves the agent's stage and near the customer's meeting: never within 30 min of a meeting reminder, and never in the 90 min before it. On an official Meta connection, also when the 24-hour window closes. If nothing is pending, the agent ends the follow-ups without sending anything — and they never hand the conversation to the team. Each follow-up counts toward the agent's reply limit.",
+      "paradas": "Follow-ups stop on their own when the customer answers, when someone from the team writes (with \"When the team replies\" on, the series starts again from the team's message) or pauses the AI, when the conversation is closed, when the deal leaves the agent's stage and near the customer's meeting: never within 30 min of a meeting reminder, and never in the 90 min before it. On an official Meta connection, also when the 24-hour window closes. If nothing is pending, the agent ends the follow-ups without sending anything — and they never hand the conversation to the team. Each follow-up counts toward the agent's reply limit.",
       "salvo": "Follow-ups saved.",
       "tentativas": "{n, plural, one {# attempt} other {# attempts}} (up to {max})",
       "tentativasDica": "Counted from the agent's last reply that got no answer. If one is delayed (outside the window, near a meeting reminder), the next ones keep their spacing — and never go out less than 30 min after the previous one.",
@@ -7357,7 +7433,7 @@
       "paraQuando": "Stops on its own when",
       "para": {
         "cliente": "the customer replies",
-        "equipe": "the team writes or pauses the AI",
+        "equipe": "the team writes (restarts from it) or pauses the AI",
         "encerrada": "the conversation is closed",
         "etapa": "the card leaves the agent's stage",
         "reuniao": "the customer's meeting is close"
@@ -7605,6 +7681,14 @@
     "neverChecked": "not checked yet",
     "deliveryLag": "Delivering {tempo} behind",
     "lagMeasured": "measured {tempo} ago",
+    "ligacoes": {
+      "pronto": "CRM calls: ready",
+      "emLigacao": "CRM calls: on a call",
+      "qr": "CRM calls: asking for the QR code (Settings → Connections)",
+      "carregando": "CRM calls: loading",
+      "fora": "CRM calls: offline · last signal {tempo} ago",
+      "foraSemSinal": "CRM calls: offline"
+    },
     "alarme": {
       "foraDoAr": "{canal} offline",
       "semRecibo": "{canal} without delivery confirmation since {quando}",
@@ -7615,6 +7699,8 @@
       "naoGravadas": "{canal} with messages that did not reach the CRM since {quando}",
       "falhas": "{canal} with delivery failures since {quando}",
       "quedas": "{canal} dropping repeatedly since {quando}",
+      "ligacoesFora": "{canal}: CRM calls offline since {quando}",
+      "ligacoesQr": "{canal}: CRM calls asking for the QR code since {quando}",
       "naFicha": {
         "semRecibo": "No delivery confirmation since {quando}. Do not resend: the customer would get it twice.",
         "atrasada": "Receiving with a delay since {quando}: recent replies may not have arrived yet.",
@@ -7634,6 +7720,14 @@
       "titulo": "Connection receiving with a delay: {canal}",
       "corpo": "The last message measured took about {tempo} to reach the CRM ({quando}). Recent customer replies may not have arrived yet.",
       "semMedida": "Messages from this number have been reaching the CRM late since {desde}."
+    },
+    "computadorFora": {
+      "titulo": "CRM calls offline: {canal}",
+      "corpo": "The call computer for this number has sent no signal since {desde}. Meanwhile no one can call through the CRM, and incoming calls don't ring in the CRM (the phone still rings)."
+    },
+    "computadorQr": {
+      "titulo": "CRM calls disconnected from WhatsApp: {canal}",
+      "corpo": "The call computer for this number has been asking for the QR code since {desde}. To fix it: Settings → Connections → CRM calls, then scan the QR code with this number's phone."
     },
     "tempo": {
       "minutos": "{minutos} min",

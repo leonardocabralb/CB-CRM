@@ -40,7 +40,7 @@ UPDATE/INSERT/DELETE fora do app, saiba o que ele aciona:
   ORDEM DE INSERÇÃO) e `janela_meta` (993); `gravada_em` nasce `now()`. UPDATE
   de `deleted_at` recalcula a espera. A linha `nao_saiu` (a tentativa do
   robô ou da equipe, 1080/1118) não é fala: nem "alguém falou?" nem a pausa.
-  GENTE que saiu (`gravada_em`) pausa a IA (1049, `ia_pausada_por='gente'`).
+  GENTE que saiu (`gravada_em`) pausa a IA (1049) e PRÉ-ARMA follow-up (1138).
 - **`conversations`**: encerrar limpa a espera; atribuir (`assigned_agent_id`
   novo, não nulo, por outra pessoa ou por SQL) cria aviso no sino do
   responsável. Encerrar — inclusive o lote da 1018/1034 — limpa agente, pausa
@@ -396,11 +396,10 @@ um espelho com pino lendo o SQL. Mudou um lado, muda o outro.
   ao CASCADE, `flow_runs` (contato, conversa, última pergunta) se anula em
   três passos com a FK conferida entre eles — 23503. E só onde o ponteiro
   AINDA vale o fotografado (1099): a linha de fora não está travada.
-- **Excluir de vez** (prazo ou "Excluir agora") limpa o conteúdo dos turnos
-  da IA (1110) e põe os arquivos que a fotografia cita na fila
-  `cb_arquivos_a_apagar` (guarda
-  `cb_caminho_no_chat_media`; sai só o que ninguém mais cita,
-  `cb_arquivos_citados` — escritor novo de URL: `midia.md`).
+- **Excluir de vez** (prazo ou "Excluir agora"; vigente: a 1136) limpa os
+  turnos da IA (1110) e as gravações das ligações (1136) e põe na fila
+  `cb_arquivos_a_apagar` os arquivos da fotografia (guarda
+  `cb_caminho_no_chat_media`; sai o que ninguém cita, `cb_arquivos_citados`).
 - ⚠️ `cb_mensagens_sem_telefone` e `cb_ligacoes` (1044), sem `contact_id`,
   sobrevivem ao mover; só o "Excluir agora" com pedido as apaga (ligações
   pelo telefone, retidas pelos LIDs da fotografia).

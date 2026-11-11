@@ -7,12 +7,17 @@ import type { PerfilDeAcesso } from '@/lib/perfis/tipos';
 
 import {
   DURACAO_DO_ATRASO_NO_SINO_MS,
+  DURACAO_DO_QR_NO_SINO_MS,
   LEMBRETE_MS,
+  SEM_SINAL_NO_SINO_MS,
+  TIPOS_DO_ALARME,
   decidir,
   destinatarios,
   emHorarioUtil,
   episodioAberto,
   medirAtraso,
+  medirComputadorFora,
+  medirComputadorQr,
   medirSemRecibo,
   textosDoAviso,
   type EstadoDoAlarme,
@@ -374,7 +379,8 @@ const tradutores: [string, Tradutor][] = [
 ];
 const quando = (i: string) => `«${i.slice(11, 16)}»`;
 const MOTIVOS: Motivo[] = ['novo', 'lembrete', 'sem_prova', 'normalizou', 'passou'];
-const TIPOS: TipoDoAlarme[] = ['sem_recibo', 'atraso'];
+// Todos, inclusive os do computador de ligações (1137): nenhum sai com a chave crua.
+const TIPOS: readonly TipoDoAlarme[] = TIPOS_DO_ALARME;
 
 describe('textosDoAviso — no idioma da instalação', () => {
   const doEpisodio = estado({
@@ -429,5 +435,53 @@ describe('textosDoAviso — no idioma da instalação', () => {
     expect(textosDoAviso(t, quando, 'atraso', 'novo', semMedida, 'Comercial').corpo).toBe(
       'As mensagens deste número estão chegando ao CRM com atraso desde «12:10».',
     );
+  });
+});
+
+// ------------------------------------------------------------
+// O computador de ligações (4e, 1137)
+// ------------------------------------------------------------
+describe('os alarmes do computador de ligações (4e)', () => {
+  const LIGADO = iso(AGORA - 30 * 24 * H);
+  const sinal = (minutos: number | null, whatsapp: string | null = 'conectado') => ({
+    ultimoSinalIso: minutos === null ? null : iso(AGORA - minutos * MIN),
+    whatsapp,
+    ligadoEmIso: LIGADO,
+  });
+
+  it('sem sinal: acende depois de 10 min, desde o último sinal; fresco (3 min) prova o fim; entre os dois, não sei', () => {
+    expect(medirComputadorFora(sinal(20), AGORA)).toEqual({ tipo: 'aceso', desdeIso: iso(AGORA - 20 * MIN), detalhe: {} });
+    expect(medirComputadorFora(sinal(SEM_SINAL_NO_SINO_MS / MIN - 1), AGORA)).toEqual({ tipo: 'nao_sei' });
+    expect(medirComputadorFora(sinal(1), AGORA)).toEqual({ tipo: 'normal', fimIso: iso(AGORA - MIN) });
+    // Nunca deu sinal: desde que foi ligado.
+    expect(medirComputadorFora(sinal(null), AGORA)).toEqual({ tipo: 'aceso', desdeIso: LIGADO, detalhe: {} });
+  });
+
+  it('o QR só com sinal fresco; conectado prova o fim; carregando ou parado é não sei', () => {
+    expect(medirComputadorQr(sinal(1, 'qr'), AGORA)).toEqual({ tipo: 'aceso', desdeIso: iso(AGORA), detalhe: {} });
+    expect(medirComputadorQr(sinal(1, 'conectado'), AGORA)).toEqual({ tipo: 'normal', fimIso: iso(AGORA - MIN) });
+    expect(medirComputadorQr(sinal(1, 'carregando'), AGORA)).toEqual({ tipo: 'nao_sei' });
+    expect(medirComputadorQr(sinal(20, 'qr'), AGORA)).toEqual({ tipo: 'nao_sei' });
+  });
+
+  it('o QR conta a DURAÇÃO (10 min) antes do aviso e do botão; o sem sinal avisa aceso, em horário útil', () => {
+    const qr: Medicao = { tipo: 'aceso', desdeIso: iso(AGORA), detalhe: {} };
+    const primeiro = decidir('computador_qr', null, qr, AGORA, true);
+    expect(primeiro.motivo).toBeNull();
+    const guardado = primeiro.depois!;
+    expect(episodioAberto('computador_qr', guardado, qr, AGORA)).toBeNull();
+    const depois = AGORA + DURACAO_DO_QR_NO_SINO_MS;
+    // O "desde" é o do 1º ciclo que viu, não o da medição de agora.
+    expect(decidir('computador_qr', guardado, { ...qr, desdeIso: iso(depois) }, depois, true).motivo).toBe('novo');
+    expect(episodioAberto('computador_qr', guardado, qr, depois)).toEqual({ tipo: 'computador_qr', desdeIso: iso(AGORA) });
+
+    // ⚠️ Passados os 10 min, mas a máquina carregando ou parada ("não sei"):
+    // não é "pede o QR" — nada de aviso nem de botão (revisão da 4e).
+    expect(decidir('computador_qr', guardado, { tipo: 'nao_sei' }, depois, true).motivo).toBeNull();
+    expect(episodioAberto('computador_qr', guardado, { tipo: 'nao_sei' }, depois)).toBeNull();
+
+    const fora = medirComputadorFora(sinal(20), AGORA);
+    expect(decidir('computador_fora', null, fora, AGORA, true).motivo).toBe('novo');
+    expect(decidir('computador_fora', null, fora, AGORA, false).motivo).toBeNull();
   });
 });

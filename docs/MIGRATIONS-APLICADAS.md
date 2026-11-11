@@ -2042,3 +2042,53 @@ nome da época em que foram aplicadas.
   renumerado para 1135. Replay completo local (257 migrations) e reaplicação
   idempotente conferidos. Conferida na produção: as duas colunas, o default
   e nenhuma conta com o aviso desligado.
+
+- **1136_cb_ligacoes_transcricao** — a 4d do ligar pelo CRM: as colunas da
+  transcrição em `cb_ligacoes` (diálogo, estado, tentativas, cerca, resumo,
+  `gravacao_expirada_em`), `cb_ligacao_sincronizar_faixa` (a faixa reflete a
+  ligação, sob trava), o bucket `ligacoes` na fila de arquivos a apagar
+  (`cb_reivindicar_arquivos_a_apagar` com guarda por bucket) e a exclusão
+  definitiva da Lixeira (`cb_lixeira_purgar_um` = a da 1110 + a limpeza das
+  gravações, `cb_ligacoes_sem_gravacao`). PR #504.
+
+  ADITIVA, aplicada ANTES do deploy. Autorização do operador em 11/11/2026
+  ("Pode publicar", a publicação da 4d e da 4e juntas, D18); a primeira
+  tentativa, sem esse pedido, foi barrada pelo modo automático. Aplicada em
+  11/11/2026 às 18:39 BRT pela Management API (histórico `20261111213909`),
+  com o arquivo idêntico ao do commit `0483a37d` (sha256 `6bd50747…`), cujo
+  replay do CI passou. Antes: o replay local do zero e, com conta fictícia,
+  aplicada duas vezes (a conferência CHAMA a marca da faixa, a limpeza, a
+  reivindicação como `service_role` e a exclusão sem e com o pedido). Conferida
+  na produção: as 8 colunas, as duas funções (sem EXECUTE para anon e
+  authenticated), o CHECK do bucket, a exclusão levando as gravações; nenhuma
+  linha antiga mudou.
+
+- **1137_cb_ligacoes_interruptor** — a 4e: `cb_computadores_de_ligacao.ligado_em`
+  (o interruptor das ligações pelo CRM por conexão, D16; nasce desligado) e os
+  tipos `computador_fora`/`computador_qr` no CHECK de `cb_alarmes_de_conexao`.
+  PR #506.
+
+  ADITIVA, aplicada ANTES do deploy, com a mesma autorização, em 11/11/2026 às
+  18:39 BRT (histórico `20261111213931`), com o arquivo idêntico ao do commit
+  `479ea4d8` (sha256 `cd754471…`), cujo replay do CI passou. Antes: o replay
+  local do zero e, com dado fictício, aplicada duas vezes (o tipo inventado
+  recusado). Conferida na produção: a coluna anulável, o computador da
+  Previdenciário DESLIGADO (o operador liga na tela) e os quatro tipos.
+
+- **1138_cb_ia_pausa_temporaria** — a pausa TEMPORÁRIA da IA (revisa a D26;
+  P1–P7 do operador de 11/11/2026): `ai_configs.ia_volta_apos_min` (padrão
+  15; 0 = como antes), o motivo `desativada` no CHECK de
+  `conversations.ia_pausada_por`, o gatilho da pausa por gente recriado (a
+  temporária respondida vira `gente`, o retorno descartado, a pré-armação do
+  follow-up da equipe; régua da 1050 e WARNING) e `cb_ia_voltar_da_pausa`.
+  PR #507.
+
+  ADITIVA, aplicada ANTES do deploy com o "pode gravar" explícito do operador
+  ("aplicar a migration 1138 no banco de PRODUÇÃO"), em 11/11/2026 às 20:26
+  BRT (histórico `20261111232650`), com o arquivo idêntico ao do commit
+  `658e19f7` (sha256 `feec786f…`), cujo replay do CI passou e que o Codex
+  revisou sem achados. Antes: o replay local do zero e 7 cenários com dado
+  fictício. Conferida na produção: a coluna com 15 na conta, o CHECK com os
+  cinco motivos, a função fechada a anon/authenticated e aberta ao
+  service_role, o gatilho novo ligado, nenhuma pré-armação (agentes
+  desligados).
