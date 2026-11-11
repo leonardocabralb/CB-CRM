@@ -23,3 +23,6 @@ docs
 Dockerfile
 .dockerignore
 docker-stack.yml
+
+# O computador de ligações é outra imagem, montada na VPS a partir da pasta.
+maquina-de-ligacoes

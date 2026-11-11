@@ -1,0 +1,200 @@
+<!doctype html>
+<!--
+  A página do atendente da bancada da 4a (docs/PLANO-ligar-pelo-crm.md,
+  §8.13): o papel que a tela do CRM fará na 4c. Abre pelo túnel SSH em
+  http://localhost:8091 (localhost conta como seguro, e o navegador libera o
+  microfone). Com ?numero=<só dígitos, com DDI> o campo já vem preenchido.
+-->
+<html lang="pt-BR">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bancada da máquina de ligações</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 24px auto; max-width: 720px; padding: 0 16px; }
+    button, input { font: inherit; font-size: 17px; padding: 8px 14px; border-radius: 8px; }
+    button { cursor: pointer; }
+    .linha { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0; }
+    .caixa { border: 1px solid #8884; border-radius: 8px; padding: 8px 12px; margin: 12px 0; }
+    pre { background: #8881; padding: 8px; white-space: pre-wrap; font-size: 12px; max-height: 260px; overflow: auto; }
+    img { image-rendering: pixelated; width: 264px; }
+    audio { width: 100%; }
+  </style>
+  <h1>Bancada da máquina de ligações</h1>
+  <p>Use <b>fone de ouvido</b>. Permita o microfone quando o navegador pedir.</p>
+  <div class="linha">
+    <input id="numero" inputmode="numeric" placeholder="Número com DDI, só dígitos" />
+    <button id="ligar">Ligar</button>
+    <button id="atender">Atender</button>
+    <button id="desligar" disabled>Desligar</button>
+  </div>
+  <div class="caixa">
+    Máquina: <b id="maquina">—</b> · Áudio: <b id="audio">parado</b> · Rede: <b id="rede">—</b>
+  </div>
+  <div class="linha"><button id="qr">Ver o QR</button><span id="semqr"></span></div>
+  <img id="imagemqr" alt="" hidden />
+  <h2>Avisos da máquina</h2>
+  <pre id="avisos"></pre>
+  <h2>Gravações recebidas</h2>
+  <div id="gravacoes"></div>
+  <audio id="cliente" autoplay></audio>
+  <script>
+    const STUN = [{ urls: "stun:stun.l.google.com:19302" }];
+    const $ = (id) => document.getElementById(id);
+    let pc = null;
+    let fluxo = null;
+    let ligacao = null;
+    let relogio = null;
+    $("numero").value = new URLSearchParams(location.search).get("numero") || "";
+
+    function limpar(motivo) {
+      clearInterval(relogio);
+      relogio = null;
+      if (pc) pc.close();
+      pc = null;
+      if (fluxo) fluxo.getTracks().forEach((t) => t.stop());
+      fluxo = null;
+      $("cliente").srcObject = null;
+      $("audio").textContent = motivo || "parado";
+      $("rede").textContent = "—";
+      $("desligar").disabled = true;
+      $("ligar").disabled = false;
+      $("atender").disabled = false;
+      ligacao = null;
+    }
+
+    function esperarCandidatos(conexao) {
+      return new Promise((pronto) => {
+        if (conexao.iceGatheringState === "complete") return pronto();
+        const aoMudar = () => {
+          if (conexao.iceGatheringState === "complete") {
+            conexao.removeEventListener("icegatheringstatechange", aoMudar);
+            pronto();
+          }
+        };
+        conexao.addEventListener("icegatheringstatechange", aoMudar);
+        setTimeout(pronto, 4000);
+      });
+    }
+
+    async function medir() {
+      if (!pc) return;
+      const stats = await pc.getStats();
+      const candidatos = {};
+      stats.forEach((s) => {
+        if (s.type === "local-candidate" || s.type === "remote-candidate") candidatos[s.id] = s;
+      });
+      stats.forEach((s) => {
+        if (s.type === "candidate-pair" && s.nominated && s.state === "succeeded") {
+          const caminho = (candidatos[s.localCandidateId] || {}).candidateType + "↔" + (candidatos[s.remoteCandidateId] || {}).candidateType;
+          $("rede").textContent = `${caminho}, ida e volta ${Math.round((s.currentRoundTripTime || 0) * 1000)} ms`;
+        }
+      });
+    }
+
+    async function comecar(rota) {
+      const numero = $("numero").value.replace(/\D/g, "");
+      if (numero.length < 10) return alert("Digite o número com DDI (só dígitos).");
+      $("ligar").disabled = true;
+      $("atender").disabled = true;
+      try {
+        $("audio").textContent = "pedindo o microfone ao navegador…";
+        fluxo = await Promise.race([
+          navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          }),
+          new Promise((_, recusar) =>
+            setTimeout(
+              () => recusar(new Error("o navegador não liberou o microfone em 20 s (veja o ícone do microfone na barra de endereço)")),
+              20000
+            )
+          ),
+        ]);
+        $("audio").textContent = "montando a conexão…";
+        const conexao = new RTCPeerConnection({ iceServers: STUN });
+        pc = conexao;
+        fluxo.getTracks().forEach((t) => conexao.addTrack(t, fluxo));
+        conexao.ontrack = (evento) => {
+          $("cliente").srcObject = evento.streams[0];
+          $("cliente").play().catch(() => {});
+        };
+        conexao.oniceconnectionstatechange = () => {
+          if (pc === conexao) $("audio").textContent = conexao.iceConnectionState;
+        };
+        await conexao.setLocalDescription(await conexao.createOffer());
+        await esperarCandidatos(conexao);
+        ligacao = crypto.randomUUID();
+        $("audio").textContent = "pedindo à máquina…";
+        const pedido = await fetch("/maquina/" + rota, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ligacao, numero, oferta: conexao.localDescription.sdp, ice: STUN }),
+        });
+        const corpo = await pedido.json();
+        if (!pedido.ok) return limpar("a máquina recusou: " + (corpo.erro || pedido.status));
+        await conexao.setRemoteDescription({ type: "answer", sdp: corpo.resposta });
+        $("desligar").disabled = false;
+        relogio = setInterval(medir, 2000);
+      } catch (erro) {
+        limpar("erro: " + erro.message);
+      }
+    }
+
+    $("ligar").onclick = () => comecar("ligar");
+    $("atender").onclick = () => comecar("atender");
+    $("desligar").onclick = async () => {
+      const id = ligacao;
+      if (id) {
+        await fetch("/maquina/desligar", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ligacao: id }),
+        }).catch(() => {});
+      }
+      limpar("desligado pelo atendente");
+    };
+
+    $("qr").onclick = async () => {
+      const r = await fetch("/maquina/qr");
+      if (r.ok) {
+        $("imagemqr").src = (await r.json()).qr;
+        $("imagemqr").hidden = false;
+        $("semqr").textContent = "";
+      } else {
+        $("imagemqr").hidden = true;
+        $("semqr").textContent = "sem QR (o WhatsApp já está conectado?)";
+      }
+    };
+
+    async function atualizar() {
+      try {
+        const estado = await (await fetch("/maquina/estado")).json();
+        $("maquina").textContent = `WhatsApp ${estado.whatsapp}` + (estado.ligacao ? ` · ${estado.ligacao.direcao} · ${estado.ligacao.fase}` : " · livre");
+        const avisos = await (await fetch("/avisos")).json();
+        $("avisos").textContent = avisos
+          .slice(-20)
+          .reverse()
+          .map((a) => `${a.recebido.slice(11, 19)} ${a.tipo}${a.motivo ? " · " + a.motivo : ""}${a.duracao_seg != null ? " · " + a.duracao_seg + " s" : ""}`)
+          .join("\n");
+        const fim = avisos.find((a) => a.tipo === "encerrada" && a.ligacao === ligacao);
+        if (fim) limpar("encerrada: " + fim.motivo);
+        const lista = await (await fetch("/gravacoes")).json();
+        const atual = [...$("gravacoes").querySelectorAll("audio")].map((a) => a.dataset.arquivo).join();
+        if (atual !== lista.join()) {
+          $("gravacoes").innerHTML = "";
+          for (const arquivo of lista) {
+            const rotulo = document.createElement("div");
+            rotulo.textContent = arquivo;
+            const player = document.createElement("audio");
+            player.controls = true;
+            player.src = "/gravacoes/" + arquivo;
+            player.dataset.arquivo = arquivo;
+            $("gravacoes").append(rotulo, player);
+          }
+        }
+      } catch {}
+      setTimeout(atualizar, 1500);
+    }
+    atualizar();
+  </script>
+</html>
