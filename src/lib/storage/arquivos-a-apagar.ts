@@ -1,6 +1,7 @@
 // ============================================================
 // O servidor da Lixeira de contatos (1097): o VENCIMENTO dos 90 dias e a
-// DRENAGEM da fila de arquivos a apagar do `chat-media`.
+// DRENAGEM da fila de arquivos a apagar do `chat-media` — e, desde a 1136,
+// das gravações de ligação (bucket `ligacoes`, guarda `ehCaminhoDaGravacao`).
 //
 // Os dois rodam no ciclo das agendadas (`/api/cb/scheduled/cron`, laço de
 // 15 min), em `after()`, sob o prazo comum de `manutencao-do-ciclo.ts` — rota
@@ -35,6 +36,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { lerExclusaoDefinitiva } from '@/lib/contacts/lixeira';
+import {
+  BUCKET_DAS_GRAVACOES,
+  ehCaminhoDaGravacao,
+} from '@/lib/whatsapp/ligacoes/pelo-crm';
 
 import { CHAT_MEDIA_BUCKET } from './buckets';
 import { caminhoNoChatMedia } from './caminho-no-chat-media';
@@ -245,9 +250,12 @@ export async function drenarArquivosAApagar(
       const validas: Reivindicado[] = [];
       const fora: Reivindicado[] = [];
       for (const l of linhas) {
+        // 1136: as gravações de ligação (bucket próprio) têm a guarda delas.
         const ok =
-          l.bucket === CHAT_MEDIA_BUCKET &&
-          caminhoNoChatMedia(l.caminho, l.accountId) === l.caminho;
+          l.bucket === CHAT_MEDIA_BUCKET
+            ? caminhoNoChatMedia(l.caminho, l.accountId) === l.caminho
+            : l.bucket === BUCKET_DAS_GRAVACOES &&
+              ehCaminhoDaGravacao(l.caminho, l.accountId);
         (ok ? validas : fora).push(l);
       }
       if (fora.length > 0) {
@@ -263,25 +271,40 @@ export async function drenarArquivosAApagar(
       }
       if (validas.length === 0) continue;
 
+      // Uma chamada por bucket. O que saiu sai da fila mesmo que o bucket
+      // seguinte falhe; o que nem foi tentado volta depois dos 10 min.
+      const porBucket = new Map<string, Reivindicado[]>();
+      for (const l of validas)
+        porBucket.set(l.bucket, [...(porBucket.get(l.bucket) ?? []), l]);
+      const removidas: Reivindicado[] = [];
       let erroDoStorage: string | null = null;
-      try {
-        const { error: erroRemove } = await admin.storage
-          .from(CHAT_MEDIA_BUCKET)
-          .remove(validas.map((l) => l.caminho));
-        if (erroRemove)
-          erroDoStorage = erroRemove.message || 'o Storage recusou';
-      } catch (err) {
-        erroDoStorage = motivo(err);
+      let recusadas: Reivindicado[] = [];
+      for (const [bucket, doBucket] of porBucket) {
+        try {
+          const { error: erroRemove } = await admin.storage
+            .from(bucket)
+            .remove(doBucket.map((l) => l.caminho));
+          if (erroRemove)
+            erroDoStorage = erroRemove.message || 'o Storage recusou';
+        } catch (err) {
+          erroDoStorage = motivo(err);
+        }
+        if (erroDoStorage !== null) {
+          recusadas = doBucket;
+          break;
+        }
+        removidas.push(...doBucket);
       }
 
+      if (removidas.length > 0) {
+        r.apagados += removidas.length;
+        await tirarDaFila(admin, removidas);
+      }
       if (erroDoStorage !== null) {
-        r.falhas += validas.length;
-        await anotarErro(admin, validas, erroDoStorage);
+        r.falhas += recusadas.length;
+        await anotarErro(admin, recusadas, erroDoStorage);
         throw new Error(`o Storage recusou o lote: ${erroDoStorage}`);
       }
-
-      r.apagados += validas.length;
-      await tirarDaFila(admin, validas);
     }
     if (r.apagados > 0 || r.foraDaGuarda > 0) {
       console.log(

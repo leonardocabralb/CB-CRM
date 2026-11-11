@@ -577,7 +577,19 @@
       "previa": "📞 Ligação",
       "ouvir": "Ouvir",
       "ouvirDica": "Ouvir a gravação da ligação",
-      "fecharGravacao": "Fechar a gravação"
+      "fecharGravacao": "Fechar a gravação",
+      "transcrevendo": "Transcrevendo…",
+      "semTranscricao": "Sem transcrição",
+      "gravacaoExpirada": "Gravação expirada (180 dias)",
+      "resumo": "Resumo",
+      "verTranscricao": "Ver transcrição",
+      "tituloDaTranscricao": "Transcrição da ligação",
+      "cliente": "Cliente",
+      "atendente": "Atendente",
+      "carregandoTranscricao": "Carregando a transcrição…",
+      "falhaDaTranscricao": "Não foi possível carregar a transcrição",
+      "tentarDeNovo": "Tentar de novo",
+      "semFala": "Sem fala na gravação"
     },
     "audioPlayer": {
       "tocar": "Reproduzir áudio",
