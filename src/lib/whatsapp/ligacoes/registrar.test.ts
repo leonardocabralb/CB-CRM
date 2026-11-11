@@ -548,3 +548,97 @@ describe('falhas', () => {
     expect(bolhas()).toHaveLength(0);
   });
 });
+
+describe('ligar pelo CRM: o toque ao vivo e a marca do atendimento (1134)', () => {
+  function comComputador(extra: Record<string, unknown> = {}) {
+    banco.tabelas.cb_computadores_de_ligacao = [
+      {
+        id: 'comp-1',
+        account_id: CONTA,
+        channel_id: CANAL,
+        nome: 'teste',
+        endereco: 'http://ligacoes-teste:8080',
+        whatsapp: 'conectado',
+        ultimo_sinal_em: new Date(relogio - 30_000).toISOString(),
+        ...extra,
+      },
+    ];
+  }
+  const aoVivo = () => banco.tabelas.cb_ligacoes_ao_vivo ?? [];
+  /** Só o `offer`, sem deixar o fim chegar (a espera não anda o relógio). */
+  const tocar = () => registrar(evento('offer'), { esperar: async () => {} });
+
+  it('o offer num número com computador pronto abre a linha "tocando", com o telefone resolvido', async () => {
+    comComputador();
+    await tocar();
+    expect(aoVivo()).toEqual([
+      expect.objectContaining({
+        id: ligacao().id,
+        account_id: CONTA,
+        channel_id: CANAL,
+        direcao: 'recebida',
+        estado: 'tocando',
+        telefone: TELEFONE,
+      }),
+    ]);
+  });
+
+  it('sem computador, com o sinal velho, pedindo QR ou numa chamada de vídeo: não toca', async () => {
+    await tocar();
+    expect(aoVivo()).toEqual([]);
+
+    banco = criarBanco({ cb_channels: [{ id: CANAL, account_id: CONTA, display_phone: '5583988880000' }] });
+    comComputador({ ultimo_sinal_em: new Date(relogio - 4 * 60_000).toISOString() });
+    await tocar();
+    expect(aoVivo()).toEqual([]);
+
+    banco = criarBanco({ cb_channels: [{ id: CANAL, account_id: CONTA, display_phone: '5583988880000' }] });
+    comComputador({ whatsapp: 'qr' });
+    await tocar();
+    expect(aoVivo()).toEqual([]);
+
+    banco = criarBanco({ cb_channels: [{ id: CANAL, account_id: CONTA, display_phone: '5583988880000' }] });
+    comComputador();
+    await registrar(evento('offer', { video: true }), { esperar: async () => {} });
+    expect(aoVivo()).toEqual([]);
+  });
+
+  it('o número do próprio escritório não toca', async () => {
+    comComputador();
+    resolverTelefoneDoLid.mockResolvedValue({ telefoneJid: '5583988880000@s.whatsapp.net', conversationId: null });
+    await tocar();
+    expect(aoVivo()).toEqual([]);
+  });
+
+  it('o fim fecha o toque; a linha que o CRM já reivindicou fica (é dele)', async () => {
+    comComputador();
+    await tocar();
+    await registrar(evento('terminate'));
+    expect(aoVivo()).toEqual([]);
+
+    banco = criarBanco({ cb_channels: [{ id: CANAL, account_id: CONTA, display_phone: '5583988880000' }] });
+    comComputador();
+    await tocar();
+    Object.assign(aoVivo()[0], { estado: 'conectando', atendente_id: 'usuario-1' });
+    Object.assign(ligacao(), { pelo_crm: true, atendimento_pelo_crm_desde: new Date(relogio).toISOString() });
+    await registrar(evento('terminate'));
+    expect(aoVivo()).toHaveLength(1);
+  });
+
+  it('⚠️ com a marca do atendimento pelo CRM, o terminate que o próprio atendimento provoca NÃO vira perdida', async () => {
+    comComputador();
+    await tocar();
+    Object.assign(ligacao(), { pelo_crm: true, atendimento_pelo_crm_desde: new Date(relogio).toISOString() });
+    await registrar(evento('terminate'));
+    expect(ligacao().desfecho ?? null).toBeNull();
+    expect(bolhas()).toHaveLength(0);
+  });
+
+  it('o fim que chega ANTES do offer: o toque não abre (já não toca)', async () => {
+    comComputador();
+    await registrar(evento('terminate'), { esperar: async () => {} });
+    await tocar();
+    expect(aoVivo()).toEqual([]);
+  });
+});
+

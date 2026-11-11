@@ -1257,6 +1257,37 @@ lidas nem na IA); a recebida atendida pelo CRM sai "atendida" (não mais
 "perdida"); a gravação fica no bucket privado e toca pela URL assinada; o
 sinal de vida atualiza o computador; a bancada sai de cena.
 
+**Feito (10–11/11/2026), e o que mudou em relação ao desenho acima:**
+
+- Código: `src/lib/whatsapp/ligacoes/pelo-crm.ts` (ligar, atender, desligar,
+  os avisos, a faixa, a gravação) e `computador.ts` (o segredo, o pedido à
+  máquina, quem fala com o CRM); as seis rotas em `src/app/api/cb/ligacoes/`;
+  a régua com a marca em `desfecho.ts` e o toque ao vivo em `registrar.ts`.
+  Regras: `.claude/rules/ligacoes.md`, "O CRM, dono da ligação".
+- **O segredo é POR computador** (o item da revisão a frio): HMAC-SHA256 do
+  `LIGACOES_SEGREDO` do CRM com o nome do computador. Só o do CRM vai ao
+  `crm.env`; `criar-maquina.sh` deriva o da máquina na VPS.
+- **"Fora do domínio público" não pode ser por `x-forwarded-for`**: o Next
+  16 o preenche em TODO pedido (`base-server.js`), e a recusa barraria a
+  própria máquina. A rota da máquina recusa o `host` do site público.
+- **A rede de segurança é o sinal, não o laço lento:** a fila de avisos da
+  máquina é FIFO, então o sinal que chega depois do fim sabe o que ela ainda
+  tem; a ligação do CRM que ela não tem mais (60 s depois do pedido) fecha
+  como `sumiu`. O toque sem fim gravado por 3 min também sai no sinal.
+- A recebida atendida pelo CRM: a ficha e a conversa por
+  `resolverDestinatario` e o card por `routeContactToPipeline`, como em toda
+  ligação (a D6b fala da conversa, não do funil).
+- O recorte de conexões do perfil NÃO é conferido nas rotas — convenção do
+  projeto (`cb/conversas/abrir`): o botão da 4c aparece só onde o perfil vê.
+- Recusas que o desenho não previa: ligar com uma recebida TOCANDO no mesmo
+  número (`tocando_agora`); desligar a que ainda toca (`ainda_tocando`, D12);
+  chamada de vídeo não toca no CRM (a máquina só tem áudio).
+- A faixa ganhou texto próprio JÁ na 4b ("Ligação feita pelo CRM · por Ana ·
+  4 min 21 s"; "não atendida"): a de hoje diria "atendida no celular".
+- A prova da migration num Postgres com dado: `cenarios-1134` (a reserva
+  chamada, a faixa sem efeito na espera e na pausa, a trava de uma por
+  número, a RLS) e um mutante sem a cerca nova, que a conferência reprova.
+
 ## 9. Fase 5: atender pelo CRM
 
 Incorporada à Fase 4 (§8), a pedido do operador (10/11/2026).

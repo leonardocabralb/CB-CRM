@@ -55,8 +55,11 @@ describe('a ligação NÃO aciona motor nenhum', () => {
   it('o módulo tem os arquivos esperados', () => {
     expect(ARQUIVOS.sort()).toEqual(
       [
+        // Ligar e atender pelo CRM (1134): a máquina e a faixa de registro.
+        `${MODULO}/computador.ts`,
         `${MODULO}/desfecho.ts`,
         `${MODULO}/evento.ts`,
+        `${MODULO}/pelo-crm.ts`,
         `${MODULO}/previa.ts`,
         `${MODULO}/registrar.ts`,
         `${MODULO}/telefone.ts`,

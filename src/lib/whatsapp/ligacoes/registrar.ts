@@ -34,6 +34,12 @@
 // feita por um número do PRÓPRIO escritório também (a conexão ligando para
 // outra, ou o aparelho da conexão aparecendo como quem ligou).
 //
+// Ligar e atender pelo CRM (1134, `pelo-crm.ts`): a recebida que toca num
+// número com computador de ligações pronto abre a linha ao vivo "tocando" (é
+// ela que a tela faz tocar e que o "Atender" reivindica), e o fim ou o
+// atendimento no celular a fecham. Com a marca do atendimento pelo CRM, esta
+// régua NÃO decide (`desfecho.ts`): quem decide é o fim que a máquina manda.
+//
 // NUNCA lança: roda no `after()` do webhook, e a Evolution já recebeu 200.
 // ============================================================
 
@@ -42,10 +48,12 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { resolverDestinatario } from '@/lib/automations/destinatario';
 import { routeContactToPipeline } from '@/lib/cb-channels/pipeline-routing';
 import { followConversationChannel, gravarComCanal } from '@/lib/cb-channels/stamp';
-import { isUniqueViolation } from '@/lib/contacts/dedupe';
 import { telefoneCanonico } from '@/lib/contacts/telefone';
 import { reopenClosedConversation } from '@/lib/conversations/reopen';
+import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
 import { consultarTelefoneDoLid } from '@/lib/whatsapp/sem-telefone/resolver-lid';
+
+import { computadorPronto } from './computador';
 
 import {
   FOLGA_DO_DESFECHO_MS,
@@ -66,7 +74,7 @@ const ESPERA_DEPOIS_DO_ATENDIMENTO_MS = 2_000;
 const ESPERA_DEPOIS_DO_FIM_MS = FOLGA_DO_DESFECHO_MS + 1_000;
 
 const COLUNAS =
-  'id, channel_id, call_id, quem_ligou, telefone_informado, video, oferta_em, atendida_em, encerrada_em, encerramento, encerramento_gravado_em, desfecho';
+  'id, channel_id, call_id, quem_ligou, telefone_informado, video, oferta_em, atendida_em, encerrada_em, encerramento, encerramento_gravado_em, desfecho, atendimento_pelo_crm_desde, atendida_pelo_crm_em';
 
 interface LinhaDaLigacao {
   id: string;
@@ -81,6 +89,8 @@ interface LinhaDaLigacao {
   encerramento: string | null;
   encerramento_gravado_em: string | null;
   desfecho: string | null;
+  atendimento_pelo_crm_desde: string | null;
+  atendida_pelo_crm_em: string | null;
 }
 
 export interface RotaDaLigacao {
@@ -115,10 +125,15 @@ export async function registrarEventoDeLigacao(args: RegistroDeLigacao): Promise
   try {
     if (evento.grupo) return;
     if (!(await gravarAviso(db, rota, evento, agora))) return;
+    // A tela toca enquanto o WhatsApp toca: o `offer` abre a linha ao vivo; o
+    // fim ou o atendimento no celular a fecham (só a que ainda TOCA — a que o
+    // CRM reivindicou é dele).
+    if (evento.situacao === 'offer') await abrirToque(db, rota, evento, agora);
+    else await fecharToque(db, rota.accountId, evento.callId);
     await esperar(
       evento.situacao === 'accept' ? ESPERA_DEPOIS_DO_ATENDIMENTO_MS : ESPERA_DEPOIS_DO_FIM_MS,
     );
-    await decidir(db, rota, evento.callId, agora);
+    await decidirLigacao(db, rota, evento.callId, agora);
   } catch (err) {
     console.error('[ligacoes] aviso de ligação falhou:', evento.callId, mensagemDe(err));
   }
@@ -188,11 +203,16 @@ async function gravarAviso(
   return true;
 }
 
-async function decidir(
+/**
+ * Decide o desfecho pela régua de hoje (perdida/atendida no celular) e grava
+ * a bolha. Também chamada pelo `pelo-crm.ts` quando o atendimento pelo CRM
+ * falha (a marca sai e a régua de hoje vale de novo).
+ */
+export async function decidirLigacao(
   db: SupabaseClient,
   rota: RotaDaLigacao,
   callId: string,
-  agora: () => number,
+  agora: () => number = Date.now,
 ): Promise<void> {
   const { data, error } = await db
     .from('cb_ligacoes')
@@ -272,6 +292,107 @@ type FonteDoTelefone = 'jid' | 'acervo' | 'whatsapp';
  * o acervo não respondeu e o `callerPn` não serve: não dá para afirmar "sem
  * telefone".
  */
+/**
+ * A recebida que toca num número com computador de ligações PRONTO vira a
+ * linha ao vivo "tocando" (1134), com o telefone resolvido (o "Atender" o
+ * manda à máquina, que confere o número na tela) e a ficha e a conversa que
+ * já existirem (nada é criado aqui: quem cria é o desfecho). Vídeo, LID sem
+ * telefone e número do próprio escritório ficam de fora. Nunca lança.
+ */
+async function abrirToque(
+  db: SupabaseClient,
+  rota: RotaDaLigacao,
+  evento: EventoDeLigacao,
+  agora: () => number,
+): Promise<void> {
+  if (!rota.channelId || evento.video) return;
+  const { data: computador, error } = await db
+    .from('cb_computadores_de_ligacao')
+    .select('whatsapp, ultimo_sinal_em')
+    .eq('account_id', rota.accountId)
+    .eq('channel_id', rota.channelId)
+    .maybeSingle();
+  if (error) console.error('[ligacoes] ler o computador da conexão falhou:', error.message);
+  if (!computador || !computadorPronto(computador, agora())) return;
+
+  const quemLigou = lidSemAparelho(evento.de);
+  if (!quemLigou) return;
+  if (rota.ownLid && lidSemAparelho(rota.ownLid) === quemLigou) return;
+  const quem = await telefoneDeQuemLigou(db, rota.accountId, quemLigou, evento.telefoneInformado);
+  if (!quem || quem === 'falhou') return;
+  if (await ehNumeroDaConta(db, rota.accountId, quem.telefone)) return;
+
+  const linha = await linhaParaOToque(db, rota.accountId, evento.callId);
+  if (!linha) return;
+  let contactId: string | null = null;
+  let conversationId: string | null = null;
+  const busca = await findExistingContact(db, rota.accountId, quem.telefone);
+  if (!busca.falhou && busca.contato?.id) {
+    contactId = busca.contato.id as string;
+    const { data: conversa } = await db
+      .from('conversations')
+      .select('id')
+      .eq('account_id', rota.accountId)
+      .eq('contact_id', contactId)
+      .limit(1)
+      .maybeSingle();
+    conversationId = (conversa?.id as string | undefined) ?? null;
+  }
+  const { error: erroDoToque } = await db.from('cb_ligacoes_ao_vivo').insert({
+    id: linha.id,
+    account_id: rota.accountId,
+    channel_id: rota.channelId,
+    direcao: 'recebida',
+    estado: 'tocando',
+    telefone: quem.telefone,
+    contact_id: contactId,
+    conversation_id: conversationId,
+  });
+  if (erroDoToque) {
+    if (!isUniqueViolation(erroDoToque)) console.error('[ligacoes] abrir o toque falhou:', erroDoToque.message);
+    return;
+  }
+  // O fim pode ter chegado entre a pergunta e o INSERT (avisos em POSTs
+  // separados): a 2ª pergunta, DEPOIS de gravar, fecha o que não toca mais.
+  if (!(await linhaParaOToque(db, rota.accountId, evento.callId))) {
+    await fecharToque(db, rota.accountId, evento.callId);
+  }
+}
+
+/** A linha da ligação, se ela ainda toca (sem fim nem desfecho gravados). */
+async function linhaParaOToque(
+  db: SupabaseClient,
+  accountId: string,
+  callId: string,
+): Promise<{ id: string } | null> {
+  const { data, error } = await db
+    .from('cb_ligacoes')
+    .select('id, encerrada_em, atendida_em, desfecho')
+    .eq('account_id', accountId)
+    .eq('call_id', callId)
+    .maybeSingle();
+  if (error || !data || data.encerrada_em || data.atendida_em || data.desfecho) return null;
+  return { id: data.id as string };
+}
+
+/** Parou de tocar (fim ou atendida no celular): a linha ao vivo que TOCA sai. */
+async function fecharToque(db: SupabaseClient, accountId: string, callId: string): Promise<void> {
+  const { data: linha } = await db
+    .from('cb_ligacoes')
+    .select('id')
+    .eq('account_id', accountId)
+    .eq('call_id', callId)
+    .maybeSingle();
+  if (!linha) return;
+  const { error } = await db
+    .from('cb_ligacoes_ao_vivo')
+    .delete()
+    .eq('id', linha.id)
+    .eq('account_id', accountId)
+    .eq('estado', 'tocando');
+  if (error) console.error('[ligacoes] fechar o toque falhou:', error.message);
+}
+
 async function telefoneDeQuemLigou(
   db: SupabaseClient,
   accountId: string,

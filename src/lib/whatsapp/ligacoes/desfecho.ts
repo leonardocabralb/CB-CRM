@@ -26,17 +26,41 @@ export type DesfechoDaLigacao = 'atendida' | 'perdida';
 /** Quanto esperar, depois de gravado o fim, antes de concluir "perdida". */
 export const FOLGA_DO_DESFECHO_MS = 10_000;
 
+/**
+ * O atendimento pelo CRM (1134) segura a régua por no máximo isto, contado do
+ * clique em Atender: a máquina monta a ponte e atende em ~5 s; sem a
+ * confirmação dela nesse tempo, o atendimento falhou e a régua de hoje volta.
+ */
+export const TETO_DO_ATENDIMENTO_PELO_CRM_MS = 60_000;
+
 export interface EstadoDaLigacao {
   atendida_em: string | null;
   encerrada_em: string | null;
   /** Relógio do CRM: quando o aviso de fim foi gravado. */
   encerramento_gravado_em: string | null;
+  /** O clique em Atender pelo CRM (1134), apagado se a máquina não atendeu. */
+  atendimento_pelo_crm_desde?: string | null;
+  /** A máquina confirmou que atendeu (1134). */
+  atendida_pelo_crm_em?: string | null;
 }
 
+/**
+ * ⚠️ O atendimento pelo CRM (§8.4, passo 4 do plano): o próprio atendimento
+ * da máquina faz o WhatsApp parar de tocar nos outros aparelhos, e a
+ * Evolution manda um `terminate` SEM `accept` — pela régua de hoje, uma
+ * "perdida" ~11 s depois, antes ou depois da confirmação da máquina. Então,
+ * com a marca do atendimento pelo CRM de pé (dentro do teto) ou a
+ * confirmação dada, esta régua NÃO decide: quem decide é o fim que a máquina
+ * manda (a faixa de registro, `pelo-crm.ts`). Falhou o atendimento, a marca
+ * sai e a régua de hoje vale de novo.
+ */
 export function desfechoDaLigacao(
   estado: EstadoDaLigacao,
   agoraMs: number,
 ): DesfechoDaLigacao | null {
+  if (estado.atendida_pelo_crm_em) return null;
+  const pedido = Date.parse(estado.atendimento_pelo_crm_desde ?? '');
+  if (Number.isFinite(pedido) && agoraMs - pedido < TETO_DO_ATENDIMENTO_PELO_CRM_MS) return null;
   if (estado.atendida_em) return 'atendida';
   if (!estado.encerrada_em) return null;
   const gravado = Date.parse(estado.encerramento_gravado_em ?? '');

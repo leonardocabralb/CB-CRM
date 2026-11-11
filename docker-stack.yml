@@ -55,8 +55,15 @@ services:
       AI_CONTEXT_MESSAGE_LIMIT: ${AI_CONTEXT_MESSAGE_LIMIT:-}
       # Atlas Gestor: vazio = a API de produção do Atlas (só se troca para testar).
       ATLAS_API_URL: ${ATLAS_API_URL:-}
+      # Ligar pelo CRM (1134): o segredo de onde sai o de cada computador de
+      # ligações (HMAC pelo nome). Vazio = as rotas das ligações respondem 503.
+      LIGACOES_SEGREDO: ${LIGACOES_SEGREDO:-}
     networks:
       - CBAdvNet
+      # A rede SÓ do CRM com os computadores de ligações (contêineres avulsos
+      # `ligacoes-<nome>`): eles nunca ficam na CBAdvNet, onde estão o
+      # Postgres e o Redis da Evolution (docs/PLANO-ligar-pelo-crm.md, §8.7).
+      - LigacoesNet
     deploy:
       replicas: 1
       restart_policy:
@@ -175,3 +182,5 @@ services:
 networks:
   CBAdvNet:
     external: true # the overlay Traefik + Evolution already share
+  LigacoesNet:
+    external: true # overlay anexável criada à mão (docs/INFRA-VPS.md §3.1)

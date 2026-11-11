@@ -39,6 +39,9 @@ describe('abre negócio: os caminhos decididos por gente', () => {
     // Ligação de WhatsApp (1044): decisão do operador (25/09/2026) — número
     // que nunca escreveu e LIGOU também vira ficha, conversa e card.
     { arquivo: 'lib/whatsapp/ligacoes/registrar.ts', quem: 'ligação de WhatsApp (perdida ou atendida)' },
+    // A recebida atendida PELO CRM (1134): a mesma decisão — a faixa é só
+    // registro (D6b fala da conversa), mas o número novo que ligou vira card.
+    { arquivo: 'lib/whatsapp/ligacoes/pelo-crm.ts', quem: 'ligação recebida atendida pelo CRM' },
   ];
 
   for (const { arquivo, quem } of DEVEM_ROTEAR) {
@@ -182,6 +185,7 @@ describe('varredura default-deny: quem cita o roteador e o núcleo', () => {
       'lib/whatsapp/send-message.ts', // núcleo de envio
       'lib/instagram/persistir.ts', // ingestão (Instagram Direct)
       'lib/whatsapp/ligacoes/registrar.ts', // ligação de WhatsApp (1044)
+      'lib/whatsapp/ligacoes/pelo-crm.ts', // ligação recebida atendida pelo CRM (1134)
     ],
     sendMessageToConversation: [
       'lib/whatsapp/send-message.ts', // a definição

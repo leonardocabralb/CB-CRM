@@ -491,7 +491,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   ficha do cliente (1117).
 - `.claude/rules/ligacoes.md` — ligação de WhatsApp vira faixa no fio (1044):
   aviso CALL, desfecho com folga, quem ligou, o que não roda, quem lê
-  `content_type`.
+  `content_type`; ligar pelo CRM: a máquina, a faixa de registro e a marca
+  do atendimento (1134).
 - `.claude/rules/whatsapp-envio.md` — núcleo de envio, entrega incerta,
   modelos da Meta por WABA, `resolveTemplateRow`, escopo da conversa.
 - `.claude/rules/canais.md` — peças de UI de canal, escopo vazio = todos,

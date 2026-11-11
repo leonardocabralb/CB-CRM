@@ -710,16 +710,31 @@ export type ContentType =
    */
   | 'contact';
 
-/** Os detalhes de uma ligação (`messages.ligacao`, 1044). */
+/** Os detalhes de uma ligação (`messages.ligacao`, 1044; pelo CRM, 1134). */
 export interface DetalhesDaLigacao {
-  desfecho: 'perdida' | 'atendida';
+  /** `nao_atendida`: a ligação FEITA pelo CRM que o cliente não atendeu. */
+  desfecho: 'perdida' | 'atendida' | 'nao_atendida';
   video: boolean;
-  /** Quando começou a tocar (relógio do WhatsApp). */
+  /** Quando começou a tocar (relógio do WhatsApp; na feita pelo CRM, a discagem). */
   inicio: string | null;
-  /** Quando parou de tocar (perdida) ou foi atendida. */
+  /** Quando parou de tocar (perdida) ou foi atendida; pelo CRM, quando acabou. */
   fim: string | null;
   tocou_seg: number | null;
   encerramento: 'terminate' | 'timeout' | 'reject' | null;
+  /**
+   * Ligação pelo computador de ligações (1134): a faixa é só REGISTRO (D6/D6b)
+   * — não reabre, não mexe nas não lidas nem no "em atraso", não pausa a IA.
+   */
+  pelo_crm?: boolean;
+  direcao?: 'feita' | 'recebida';
+  /** Quem ligou ou atendeu pelo CRM, com o nome da hora da ligação. */
+  atendente?: { id: string; nome: string | null } | null;
+  atendida_em?: string | null;
+  duracao_seg?: number | null;
+  /** O motivo do fim que a máquina contou (`MOTIVOS_DO_FIM`). */
+  motivo?: string | null;
+  /** A gravação chegou ao CRM (bucket privado `ligacoes`). */
+  gravacao?: boolean;
 }
 export type MessageStatus =
   'sending' | 'sent' | 'delivered' | 'read' | 'failed';

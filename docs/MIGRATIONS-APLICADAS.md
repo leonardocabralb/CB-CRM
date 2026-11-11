@@ -2008,3 +2008,27 @@ nome da época em que foram aplicadas.
   Conferida: o CHECK novo, o UNIQUE intacto, o comentário da coluna; a única
   trava existente (`marco = 0`) segue válida.
 
+- **1134_cb_ligacoes_pelo_crm** — ligar e atender pelo CRM (a 4b de
+  `docs/PLANO-ligar-pelo-crm.md`): `cb_ligacoes` ganha a direção, `pelo_crm`,
+  o atendente (SET NULL), a marca do atendimento pelo CRM, o fim que a máquina
+  conta e a gravação, e o desfecho `nao_atendida`; `cb_computadores_de_ligacao`
+  (fechada); `cb_ligacoes_ao_vivo` (leitura 1032, tempo real, uma ligação por
+  número além das que tocam); o bucket privado `ligacoes`; e a reserva do envio
+  da IA (corpo vigente da 1130, md5 conferido contra a produção) sem contar a
+  faixa de registro como "a equipe respondeu". PR #497.
+
+  ADITIVA, aplicada ANTES do deploy (o código novo grava as colunas e as
+  tabelas). Autorização do operador em 10/11/2026 ("pode, tudo já autorizado",
+  sobre a migration em produção, o stack deploy e o merge da 4b), aplicada em
+  10/11/2026 às 22:59 BRT (histórico `20261111015917`) pela Management API, com
+  o arquivo idêntico ao do commit `c51aa5d1` (sha256 `f74b5076…`), cujo replay
+  do CI ("Apply to a clean database") passou. Antes: o replay LOCAL completo
+  (257 migrations + `verify-schema.sql`, aplicada duas vezes) e os cenários com
+  dado (`cenarios-1134`: a reserva chamada, a faixa sem efeito na espera e na
+  pausa da IA, a trava de uma por número, a RLS, os CHECKs, a conexão apagada
+  levando o computador), mais um mutante sem a cerca nova, reprovado pela
+  conferência. Conferida na produção: as 8 colunas, o CHECK, a RLS das duas
+  tabelas (o navegador lê a ao vivo e não o computador), a publicação, o bucket
+  privado (10 MB, `audio/ogg`) e a cerca na reserva; nenhuma linha antiga
+  mudou.
+

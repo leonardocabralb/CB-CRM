@@ -573,6 +573,12 @@
       "vozAtendida": "Voice call answered on the phone",
       "videoAtendida": "Video call answered on the phone",
       "tocou": "rang for {segundos}s",
+      "feitaPeloCrm": "Call made from the CRM",
+      "atendidaPeloCrm": "Call answered in the CRM",
+      "por": "by {nome}",
+      "naoAtendida": "not answered",
+      "duracaoSeg": "{segundos}s",
+      "duracaoMin": "{minutos} min {segundos}s",
       "dicaPerdida": "The customer called on WhatsApp and nobody answered. The CRM does not carry call audio: call back from the phone or reply by message.",
       "previa": "📞 Call"
     },
