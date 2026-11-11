@@ -148,6 +148,10 @@ desenho: §8.12 e §8.13 do plano.
   ⚠️ O Next guarda só 10 MB do corpo com o middleware e corta o resto SEM
   erro: a rota confere o tamanho lido contra o declarado. A faixa e o
   estéreo se cruzam (pedidos separados): escrever-e-reler dos dois lados.
+  ⚠️ Só ligação ATENDIDA (`atendida_pelo_crm_em`) guarda: o contêiner que cai
+  no toque reenvia, ao subir, o toque e o microfone do atendente. Com
+  desfecho e sem atendimento, 2xx sem guardar (a máquina apaga a cópia); sem
+  desfecho ainda, 409 (ela manda de novo em 5 min, e o sinal fecha a `sumiu`).
 - O número à máquina: o do JID de telefone da conversa (nunca um LID); na
   recebida, o resolvido no `offer` (`cb_ligacoes_ao_vivo.telefone`). O
   recorte de conexões do perfil NÃO é conferido nas rotas, como em todo o
