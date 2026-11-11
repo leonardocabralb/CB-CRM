@@ -18,6 +18,11 @@
   <script>
     let pc = null;
     let fluxo = null;
+    // Cada `encerrar` (e todo `conectar` começa por um) abre uma geração nova.
+    // A montagem que estourou o prazo do orquestrador segue rodando aqui: ao
+    // voltar de cada espera ela confere a geração e, vencida, larga o que pegou
+    // sem tocar na conexão da ligação seguinte.
+    let geracao = 0;
 
     function avisar(estado) {
       try {
@@ -29,6 +34,7 @@
     // faixas do getUserMedia), o áudio e a conexão. `pc = null` antes do
     // close(): a conexão velha não avisa mais nada.
     function encerrar() {
+      geracao += 1;
       if (fluxo) fluxo.getTracks().forEach((t) => t.stop());
       fluxo = null;
       const velha = pc;
@@ -68,7 +74,10 @@
 
     window.conectar = async (oferta, ice) => {
       encerrar();
+      const minha = geracao;
+      const vencida = () => minha !== geracao;
       const { cliente, entrada } = await dispositivos();
+      if (vencida()) throw new Error("montagem vencida: outra ligação já começou");
       if (!cliente || !entrada) throw new Error("sem a fonte VozDoCliente ou a saída EntradaMic");
       const captura = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -78,6 +87,10 @@
           autoGainControl: false,
         },
       });
+      if (vencida()) {
+        captura.getTracks().forEach((t) => t.stop());
+        throw new Error("montagem vencida: outra ligação já começou");
+      }
       const conexao = new RTCPeerConnection({ iceServers: ice });
       fluxo = captura;
       pc = conexao;

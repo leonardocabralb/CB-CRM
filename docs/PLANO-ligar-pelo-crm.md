@@ -1108,14 +1108,17 @@ depois do teste ao vivo, com teste para cada um (62 testes):
   troca fora de ligação); o campo do discador não é ancorado no próprio
   discador (falha com segurança; a máquina nunca abre conversa).
 
-**Codex no PR #496 (3 achados, corrigidos com teste):** desligar no meio do
+**Codex no PR #496 (4 achados, corrigidos):** desligar no meio do
 discar/aceitar soltava a linha com o Playwright ainda clicando — a ligação
 seguinte mexeria na mesma tela e o desligar do passo cancelado derrubaria a
 chamada dela; e o "Atender" cancelado durante a leitura da tela apagava a
 ligação que nascesse nesse meio-tempo. Agora a linha fica ocupada do começo
-ao fim de cada pedido (`pedidoEmCurso`). E a aba travada contava LEITURAS
-(85 × 5,7 s ≈ 8 min), não tempo (agora 60 s de relógio,
-`TELA_SEM_RESPOSTA_MS`).
+ao fim de cada pedido (`pedidoEmCurso`). A montagem da ponte que estoura o
+prazo (15 s) seguia rodando na página e podia atropelar a da ligação seguinte:
+agora a falha encerra a ponte antes de soltar a linha, e a `ponte.html`
+descarta a montagem vencida (um número de geração conferido a cada espera). E
+a aba travada contava LEITURAS (85 × 5,7 s ≈ 8 min), não tempo (agora 60 s de
+relógio, `TELA_SEM_RESPOSTA_MS`).
 
 **Pronto quando** (com o operador e o lead de teste, ~30 min de ligações):
 

@@ -289,6 +289,11 @@ describe('ligação feita', () => {
     await m.maquina.tique()
     expect(await m.maquina.ligar(PEDIDO)).toEqual({ ok: false, recusa: 'oferta_invalida' })
     expect(m.maquina.estado().ligacao).toBeNull()
+    // A montagem que falhou (ou estourou o prazo) é invalidada na página antes
+    // de a linha soltar: senão ela voltaria por cima da ponte da próxima.
+    expect(m.feito.encerrarPonte).toBe(1)
+    m.controle.ponteRecusa = false
+    expect(await m.maquina.ligar({ ...PEDIDO, ligacao: 'lig-2' })).toEqual({ ok: true, resposta: 'v=0 resposta' })
   })
 })
 

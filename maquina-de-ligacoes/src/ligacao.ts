@@ -349,12 +349,22 @@ export class Maquina {
     return atual
   }
 
-  /** A resposta WebRTC, ou nulo se a ponte recusou a oferta (a linha volta a ficar livre). */
+  /**
+   * A resposta WebRTC, ou nulo se a ponte recusou a oferta (a linha volta a
+   * ficar livre). Na falha a ponte é encerrada ANTES de a linha soltar: a
+   * montagem que estourou o prazo segue rodando na página, e o encerrar a
+   * invalida (a geração da `ponte.html`) para não atropelar a próxima.
+   */
   private async conectarPonte(atual: Atual, pedido: PedidoDeLigacao): Promise<string | null> {
     try {
       return await this.d.ponte.conectar(pedido.oferta, pedido.ice)
     } catch (erro) {
       this.d.registrar(`a ponte recusou a oferta: ${mensagem(erro)}`)
+      try {
+        await this.d.ponte.encerrar()
+      } catch (falha) {
+        this.d.registrar(`a ponte não fechou: ${mensagem(falha)}`)
+      }
       if (this.atual === atual) this.atual = null
       return null
     }
