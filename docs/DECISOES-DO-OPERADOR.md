@@ -245,3 +245,9 @@ qualquer uma é pergunta ao operador.
   "Recusar" (só "Silenciar"); toca para quem o perfil vê a conexão; ligar só
   de conversa existente, até 20 por hora por número, e a máquina encerra
   sozinha aos 30 min (`docs/PLANO-ligar-pelo-crm.md`, §8.10).
+- Ligações pelo CRM como interruptor (11/11/2026): ligadas ou desligadas por
+  conexão, na tela Conexões; ligado, o estado do computador, o QR e os
+  alarmes no sino e no botão das conexões; desligado, tudo some, inclusive o
+  botão Ligar e o toque. Só onde já há computador de ligações: criar um para
+  outro número é operação no servidor. A 4d e a 4e se publicam JUNTAS, com
+  o teste ao vivo logo depois (`ligacoes-operacao.md`; plano §8.17).

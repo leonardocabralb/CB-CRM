@@ -50,9 +50,16 @@ describe('pronto para ligar', () => {
   it('só com sinal de menos de 3 min E o WhatsApp conectado', () => {
     const recente = new Date(AGORA - 60_000).toISOString();
     const velho = new Date(AGORA - 3 * 60_000 - 1).toISOString();
-    expect(computadorPronto({ whatsapp: 'conectado', ultimo_sinal_em: recente }, AGORA)).toBe(true);
-    expect(computadorPronto({ whatsapp: 'qr', ultimo_sinal_em: recente }, AGORA)).toBe(false);
-    expect(computadorPronto({ whatsapp: 'conectado', ultimo_sinal_em: velho }, AGORA)).toBe(false);
+    const ligado_em = '2026-01-01T12:00:00.000Z';
+    expect(computadorPronto({ whatsapp: 'conectado', ultimo_sinal_em: recente, ligado_em }, AGORA)).toBe(true);
+    expect(computadorPronto({ whatsapp: 'qr', ultimo_sinal_em: recente, ligado_em }, AGORA)).toBe(false);
+    expect(computadorPronto({ whatsapp: 'conectado', ultimo_sinal_em: velho, ligado_em }, AGORA)).toBe(false);
+    // O interruptor (1137, D16): desligado não liga, não atende, não toca — e a
+    // consulta que esqueceu a coluna conta como desligado (falha FECHADA).
+    expect(computadorPronto({ whatsapp: 'conectado', ultimo_sinal_em: recente, ligado_em: null }, AGORA)).toBe(false);
+    expect(
+      computadorPronto({ whatsapp: 'conectado', ultimo_sinal_em: recente } as Parameters<typeof computadorPronto>[0], AGORA),
+    ).toBe(false);
     expect(computadorFora({ ultimo_sinal_em: null }, AGORA)).toBe(true);
   });
 });

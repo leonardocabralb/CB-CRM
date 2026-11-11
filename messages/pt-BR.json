@@ -5844,7 +5844,46 @@
       "groupsResyncWarning": "Depois de salvar, clique em Ressincronizar nesta conexão. Sem isso, as mensagens chegam mas os avisos de quem entrou ou saiu não.",
       "radarLabel": "Radar de Atendimento neste número",
       "radarHint": "A IA analisa as conversas deste número (últimos 7 dias): nota, urgências, insatisfação e pedidos sem resposta. Nasce desligado.",
-      "radarPrivacyWarning": "Ao ligar, o conteúdo das conversas deste número passa a ser enviado ao provedor de IA configurado na conta (chave própria). Use chave do plano pago do provedor e confirme a política de sigilo do escritório."
+      "radarPrivacyWarning": "Ao ligar, o conteúdo das conversas deste número passa a ser enviado ao provedor de IA configurado na conta (chave própria). Use chave do plano pago do provedor e confirme a política de sigilo do escritório.",
+      "ligacoes": {
+        "titulo": "Ligações pelo CRM",
+        "interruptor": "Ligações pelo CRM em {label}",
+        "carregando": "Conferindo as ligações pelo CRM…",
+        "falhaDaLista": "Não deu para conferir as ligações pelo CRM agora.",
+        "tentarDeNovo": "Tentar de novo",
+        "semComputador": "Este número ainda não tem computador de ligações. A instalação de um é feita no servidor.",
+        "desligadas": "Desligadas: o botão Ligar e o toque das ligações recebidas não aparecem para a equipe.",
+        "situacao": {
+          "pronto": "Prontas para ligar e atender.",
+          "emLigacao": "Em ligação agora.",
+          "qr": "O WhatsApp do computador de ligações pede o QR.",
+          "carregando": "O WhatsApp do computador de ligações está carregando.",
+          "fora": "Fora do ar: o computador de ligações não dá sinal há {tempo}.",
+          "foraSemSinal": "Fora do ar: o computador de ligações ainda não deu sinal."
+        },
+        "conectado": "Conectado. As ligações voltam em instantes.",
+        "qrAlt": "QR para conectar as ligações de {label}",
+        "qrInstrucao": "No celular deste número, abra o WhatsApp → Aparelhos conectados → Conectar um aparelho, e aponte a câmera para o código. Ele se renova sozinho.",
+        "qrEsperando": "Esperando o código do computador de ligações…",
+        "qrFalhou": "Não deu para falar com o computador de ligações agora. Tentando de novo…",
+        "reparear": "Reparear",
+        "reparearDica": "Desconecta o WhatsApp do computador de ligações para ler um QR novo",
+        "reparearTitulo": "Reparear as ligações de {label}?",
+        "reparearDescricao": "O computador de ligações sai do WhatsApp deste número e mostra um QR novo. Até alguém ler o QR com o celular do número, ninguém liga pelo CRM e a ligação recebida não toca nele (o celular segue tocando). As mensagens não mudam.",
+        "reparearConfirmar": "Desconectar e mostrar o QR",
+        "ligou": "Ligações pelo CRM ligadas em {label}",
+        "desligou": "Ligações pelo CRM desligadas em {label}",
+        "conectou": "Ligações de {label} conectadas ao WhatsApp",
+        "erro": {
+          "emLigacao": "Há uma ligação em curso neste número: tente quando ela acabar.",
+          "jaPedeQr": "O computador de ligações já está pedindo o QR.",
+          "desligado": "As ligações deste número estão desligadas.",
+          "semResposta": "O computador de ligações não respondeu.",
+          "naoDesconectou": "O computador de ligações não conseguiu sair do WhatsApp; a sessão continua de pé.",
+          "semComputador": "Este número não tem computador de ligações.",
+          "falhou": "Não deu certo. Tente de novo."
+        }
+      }
     },
     "profile": {
       "fullNamePlaceholder": "Maria Souza",
@@ -7598,6 +7637,14 @@
     "neverChecked": "ainda não verificada",
     "deliveryLag": "Entregando com {tempo} de atraso",
     "lagMeasured": "medido há {tempo}",
+    "ligacoes": {
+      "pronto": "Ligações pelo CRM: prontas",
+      "emLigacao": "Ligações pelo CRM: em ligação",
+      "qr": "Ligações pelo CRM: pedindo o QR (Configurações → Conexões)",
+      "carregando": "Ligações pelo CRM: carregando",
+      "fora": "Ligações pelo CRM: fora do ar · último sinal há {tempo}",
+      "foraSemSinal": "Ligações pelo CRM: fora do ar"
+    },
     "alarme": {
       "foraDoAr": "{canal} fora do ar",
       "semRecibo": "{canal} sem confirmação de entrega desde {quando}",
@@ -7608,6 +7655,8 @@
       "naoGravadas": "{canal} com mensagens que não chegaram ao CRM desde {quando}",
       "falhas": "{canal} com falhas de entrega desde {quando}",
       "quedas": "{canal} caindo seguido desde {quando}",
+      "ligacoesFora": "{canal}: ligações pelo CRM fora do ar desde {quando}",
+      "ligacoesQr": "{canal}: ligações pelo CRM pedindo o QR desde {quando}",
       "naFicha": {
         "semRecibo": "Sem confirmação de entrega desde {quando}. Não reenvie: o cliente receberia em dobro.",
         "atrasada": "Recebendo com atraso desde {quando}: respostas recentes podem não ter chegado.",
@@ -7627,6 +7676,14 @@
       "titulo": "Conexão recebendo com atraso: {canal}",
       "corpo": "A última mensagem medida levou cerca de {tempo} para chegar ao CRM ({quando}). Respostas recentes dos clientes podem ainda não ter chegado.",
       "semMedida": "As mensagens deste número estão chegando ao CRM com atraso desde {desde}."
+    },
+    "computadorFora": {
+      "titulo": "Ligações pelo CRM fora do ar: {canal}",
+      "corpo": "O computador de ligações deste número não dá sinal desde {desde}. Enquanto isso, ninguém liga pelo CRM e a ligação recebida não toca no CRM (o celular segue tocando)."
+    },
+    "computadorQr": {
+      "titulo": "Ligações pelo CRM desconectadas do WhatsApp: {canal}",
+      "corpo": "O computador de ligações deste número pede o QR desde {desde}. Para voltar: Configurações → Conexões → Ligações pelo CRM, e leia o QR com o celular do número."
     },
     "tempo": {
       "minutos": "{minutos} min",

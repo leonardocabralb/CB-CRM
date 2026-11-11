@@ -40,7 +40,12 @@ import {
 } from './atraso-de-entrega';
 import { envioConfirmado, semRecibo, type EnvioRecente } from './sem-recibo';
 
-export type TipoDoAlarme = 'sem_recibo' | 'atraso';
+/**
+ * Os tipos do CHECK de `cb_alarmes_de_conexao.tipo` (1122; os do computador
+ * de ligações, 1137), EXATAMENTE — pino `ligacoes-interruptor-1137.test.ts`.
+ */
+export const TIPOS_DO_ALARME = ['sem_recibo', 'atraso', 'computador_fora', 'computador_qr'] as const;
+export type TipoDoAlarme = (typeof TIPOS_DO_ALARME)[number];
 
 /**
  * O (b) vai ao sino quando o episódio de atraso DURA 30 min (D5). É a DURAÇÃO,
@@ -50,6 +55,32 @@ export type TipoDoAlarme = 'sem_recibo' | 'atraso';
  * acendeu às 02:52 e o sino receberia às ~03:30.
  */
 export const DURACAO_DO_ATRASO_NO_SINO_MS = 30 * 60_000;
+
+/**
+ * O computador de ligações (4e, §8.17 do plano das ligações) com o WhatsApp
+ * pedindo o QR vai ao sino quando DURA 10 min, a contar do 1º ciclo que o viu
+ * (como o (b)): o admin pareando na tela não vira alarme.
+ */
+export const DURACAO_DO_QR_NO_SINO_MS = 10 * 60_000;
+
+/**
+ * Os tipos que contam a DURAÇÃO do episódio antes do aviso (e antes do botão
+ * das conexões, `episodioAberto`); os outros avisam aceso.
+ */
+const DURACAO_NO_SINO: Partial<Record<TipoDoAlarme, number>> = {
+  atraso: DURACAO_DO_ATRASO_NO_SINO_MS,
+  computador_qr: DURACAO_DO_QR_NO_SINO_MS,
+};
+
+/**
+ * O computador de ligações sem sinal de vida há mais disto acende o
+ * `computador_fora` (a máquina manda um por minuto): cobre o contêiner parado
+ * e a reconstrução semanal da imagem que demorar; a troca normal leva bem
+ * menos (a tela já o mostra "fora" com 3 min, `SINAL_VELHO_MS`).
+ */
+export const SEM_SINAL_NO_SINO_MS = 10 * 60_000;
+/** O sinal que PROVA que o computador voltou (a régua da tela, `SINAL_VELHO_MS`). */
+const SINAL_FRESCO_MS = 3 * 60_000;
 
 /** "Continua" a cada 24 h enquanto o episódio durar (D6, como a sentinela). */
 export const LEMBRETE_MS = 24 * 60 * 60_000;
@@ -100,6 +131,47 @@ export function medirSemRecibo(
     );
     if (voltou) return { tipo: 'normal', fimIso: new Date(agoraMs).toISOString() };
   }
+  return { tipo: 'nao_sei' };
+}
+
+/** O computador de ligações LIGADO, como o sinal de vida o deixou (1134/1137). */
+export interface SinalDoComputador {
+  ultimoSinalIso: string | null;
+  /** `conectado`, `qr` ou `carregando`; nulo antes do 1º sinal. */
+  whatsapp: string | null;
+  /** Quando o admin ligou o interruptor: o "desde" de quem nunca deu sinal. */
+  ligadoEmIso: string;
+}
+
+/**
+ * `computador_fora`: sem sinal há mais de 10 min acende, com o "desde" no
+ * último sinal (nunca deu sinal: desde que foi ligado). Sinal fresco prova o
+ * fim. Entre os dois é "não sei" — o episódio aberto continua, nenhum começa.
+ */
+export function medirComputadorFora(c: SinalDoComputador, agoraMs: number): Medicao {
+  const sinal = Date.parse(c.ultimoSinalIso ?? '');
+  if (!Number.isFinite(sinal)) {
+    return agoraMs - Date.parse(c.ligadoEmIso) > SEM_SINAL_NO_SINO_MS
+      ? { tipo: 'aceso', desdeIso: c.ligadoEmIso, detalhe: {} }
+      : { tipo: 'nao_sei' };
+  }
+  const idade = agoraMs - sinal;
+  if (idade > SEM_SINAL_NO_SINO_MS) return { tipo: 'aceso', desdeIso: new Date(sinal).toISOString(), detalhe: {} };
+  if (idade <= SINAL_FRESCO_MS) return { tipo: 'normal', fimIso: new Date(sinal).toISOString() };
+  return { tipo: 'nao_sei' };
+}
+
+/**
+ * `computador_qr`: com sinal FRESCO, o WhatsApp da máquina pedindo o QR acende
+ * (o "desde" é o 1º ciclo que o viu: o sinal não conta há quanto tempo) e
+ * conectado prova o fim. Sem sinal fresco ou carregando, "não sei" — o
+ * `computador_fora` é quem fala da máquina parada.
+ */
+export function medirComputadorQr(c: SinalDoComputador, agoraMs: number): Medicao {
+  const sinal = Date.parse(c.ultimoSinalIso ?? '');
+  if (!Number.isFinite(sinal) || agoraMs - sinal > SINAL_FRESCO_MS) return { tipo: 'nao_sei' };
+  if (c.whatsapp === 'qr') return { tipo: 'aceso', desdeIso: new Date(agoraMs).toISOString(), detalhe: {} };
+  if (c.whatsapp === 'conectado') return { tipo: 'normal', fimIso: new Date(sinal).toISOString() };
   return { tipo: 'nao_sei' };
 }
 
@@ -167,8 +239,10 @@ export function decidir(
   horarioUtil: boolean,
 ): Passo {
   const agoraIso = new Date(agoraMs).toISOString();
-  // P3b: o (c) só vai ao sino em horário útil; o (b), a qualquer hora.
+  // P3b: o (c) só vai ao sino em horário útil; o (b), a qualquer hora. Os do
+  // computador de ligações, como o (c): ligação é coisa do horário de trabalho.
   const podeAvisar = tipo === 'atraso' || horarioUtil;
+  const duracao = DURACAO_NO_SINO[tipo];
 
   const ficar = (e: EstadoDoAlarme | null): Passo => ({ motivo: null, depois: e, seFalhar: null });
   const avisar = (motivo: 'novo' | 'lembrete' | 'sem_prova', e: EstadoDoAlarme): Passo => ({
@@ -194,12 +268,12 @@ export function decidir(
   const seguir = (e: EstadoDoAlarme, aceso: boolean): Passo => {
     if (!podeAvisar) return ficar(e);
     if (e.avisadoEmIso === null) {
-      const devido =
-        tipo === 'sem_recibo'
-          ? // P3b: o (c) só avisa ACESO ("se ainda estiver aceso").
-            aceso
-          : // D5: o (b) avisa o episódio que dura 30 min — expirar não normaliza.
-            agoraMs - Date.parse(e.desdeIso) >= DURACAO_DO_ATRASO_NO_SINO_MS;
+      const durou = duracao === undefined || agoraMs - Date.parse(e.desdeIso) >= duracao;
+      // P3b: o (c) só avisa ACESO ("se ainda estiver aceso"); o computador
+      // também (o QR com a máquina carregando ou parada não é "pede o QR" —
+      // revisão da 4e). D5: só o (b) avisa o episódio que DUROU 30 min mesmo
+      // sem medição — expirar não normaliza.
+      const devido = durou && (aceso || tipo === 'atraso');
       return devido ? avisar('novo', e) : ficar(e);
     }
     if (lembreteVenceu(e)) return avisar(aceso ? 'lembrete' : 'sem_prova', e);
@@ -208,15 +282,16 @@ export function decidir(
 
   if (medicao.tipo === 'aceso') {
     const vivo: EstadoDoAlarme = {
-      // O (b) conta a duração do 1º momento visto. O (c) ainda não avisado
-      // acompanha a sequência de AGORA: a linha de uma noite sem prova não
-      // empresta o "desde" dela a um episódio da manhã. Avisado, fica o dito.
+      // O (b) e o QR contam a duração do 1º momento visto. O (c) ainda não
+      // avisado acompanha a sequência de AGORA: a linha de uma noite sem prova
+      // não empresta o "desde" dela a um episódio da manhã. Avisado, fica o
+      // dito. O computador sem sinal fica com o "desde" do episódio.
       desdeIso:
         atual === null
           ? medicao.desdeIso
-          : tipo === 'atraso' || atual.avisadoEmIso !== null
-            ? atual.desdeIso
-            : medicao.desdeIso,
+          : tipo === 'sem_recibo' && atual.avisadoEmIso === null
+            ? medicao.desdeIso
+            : atual.desdeIso,
       avisadoEmIso: atual?.avisadoEmIso ?? null,
       // Voltou antes de o "Normalizou" entrar: a prova guardada deixa de valer.
       normalizouEmIso: null,
@@ -263,10 +338,11 @@ export function episodioAberto(
   if (estado === null || medicao.tipo === 'normal') return null;
   const aceso = medicao.tipo === 'aceso';
   if (estado.normalizouEmIso !== null && !aceso) return null;
-  if (tipo === 'atraso') {
-    return agoraMs - Date.parse(estado.desdeIso) >= DURACAO_DO_ATRASO_NO_SINO_MS
-      ? { tipo, desdeIso: estado.desdeIso }
-      : null;
+  const duracao = DURACAO_NO_SINO[tipo];
+  // O QR do computador ainda não avisado só aparece ACESO (como no sino).
+  if (tipo === 'computador_qr' && !aceso && estado.avisadoEmIso === null && estado.devidoEmIso === null) return null;
+  if (duracao !== undefined) {
+    return agoraMs - Date.parse(estado.desdeIso) >= duracao ? { tipo, desdeIso: estado.desdeIso } : null;
   }
   if (!aceso && estado.avisadoEmIso === null && estado.devidoEmIso === null) return null;
   const desdeIso = aceso && estado.avisadoEmIso === null ? medicao.desdeIso : estado.desdeIso;
@@ -320,6 +396,18 @@ function textoDoProblema(
     return {
       titulo: t('semRecibo.titulo', { canal }),
       corpo: t('semRecibo.corpo', { desde: quando(estado.desdeIso) }),
+    };
+  }
+  if (tipo === 'computador_fora') {
+    return {
+      titulo: t('computadorFora.titulo', { canal }),
+      corpo: t('computadorFora.corpo', { desde: quando(estado.desdeIso) }),
+    };
+  }
+  if (tipo === 'computador_qr') {
+    return {
+      titulo: t('computadorQr.titulo', { canal }),
+      corpo: t('computadorQr.corpo', { desde: quando(estado.desdeIso) }),
     };
   }
   const { atrasoSeg, medidoEmIso } = estado.detalhe;

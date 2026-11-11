@@ -20,7 +20,10 @@
 //    só fecha com prova. É isso que faz o alarme da madrugada ser visto às 8h;
 //  · os alarmes de conexão abertos da SENTINELA da VPS (`sentinela`, 1123,
 //    Fase 4): sem mensagem de cliente, mensagens não gravadas, falhas de
-//    entrega e quedas seguidas. Só na nossa VPS; em outra instalação, vazio.
+//    entrega e quedas seguidas. Só na nossa VPS; em outra instalação, vazio;
+//  · os episódios do COMPUTADOR DE LIGAÇÕES ligado (4e, 1137): sem sinal e
+//    pedindo o QR, pelos episódios (o QR conta a duração, 10 min) — os mais
+//    leves: a conexão segue mandando e recebendo mensagem.
 //
 // ⚠️ O atraso SÓ entra pelo episódio, que conta a duração (30 min, D5; e o
 // operador confirmou para o cabeçalho, 05/11/2026): o atraso ao vivo (mais de
@@ -66,7 +69,8 @@ export type AlarmeDoCabecalho =
       /** A última medição da 1002, fresca ou não: é o que se sabe. */
       atrasoSeg: number | null;
     }
-  | { canalId: string; tipo: ChaveDaSentinela; rotulo: string; desdeIso: string };
+  | { canalId: string; tipo: ChaveDaSentinela; rotulo: string; desdeIso: string }
+  | { canalId: string; tipo: 'ligacoes_fora' | 'ligacoes_qr'; rotulo: string; desdeIso: string };
 
 /**
  * O pior primeiro: o que não sai; o que chegou ao WhatsApp e se perdeu para o
@@ -82,6 +86,8 @@ const GRAVIDADE: Record<AlarmeDoCabecalho['tipo'], number> = {
   nao_recebe: 5,
   falhas: 6,
   atrasada: 7,
+  ligacoes_fora: 8,
+  ligacoes_qr: 9,
 };
 
 function maisAntigo(a: string, b: string | null): string {
@@ -130,6 +136,13 @@ function alarmesDaConexao(
   }
   for (const s of c.sentinela ?? []) {
     candidatos.push({ canalId: c.id, tipo: s.chave, rotulo: c.label, desdeIso: s.desdeIso });
+  }
+  for (const e of episodios) {
+    if (e.tipo === 'computador_fora') {
+      candidatos.push({ canalId: c.id, tipo: 'ligacoes_fora', rotulo: c.label, desdeIso: e.desdeIso });
+    } else if (e.tipo === 'computador_qr') {
+      candidatos.push({ canalId: c.id, tipo: 'ligacoes_qr', rotulo: c.label, desdeIso: e.desdeIso });
+    }
   }
 
   return candidatos.sort((a, b) => GRAVIDADE[a.tipo] - GRAVIDADE[b.tipo]);

@@ -84,6 +84,7 @@ beforeEach(() => {
         whatsapp: 'conectado',
         ligacao_em_curso: null,
         ultimo_sinal_em: new Date(AGORA - 30_000).toISOString(),
+        ligado_em: '2026-01-01T12:00:00.000Z',
       },
     ],
   });

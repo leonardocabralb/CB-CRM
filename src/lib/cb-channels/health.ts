@@ -36,10 +36,13 @@ import { lerEnviosRecentes, semRecibo, type EnvioRecente, type SemRecibo } from 
 import {
   episodioAberto,
   medirAtraso,
+  medirComputadorFora,
+  medirComputadorQr,
   medirSemRecibo,
   type EpisodioAberto,
   type EstadoDoAlarme,
 } from './alarmes-no-sino';
+import { situacaoDaMaquina, type SituacaoDaMaquina } from '@/lib/whatsapp/ligacoes/computador';
 import { lerEstadosDosAlarmes } from './estado-dos-alarmes';
 import { lerAlarmesDaSentinela, type AlarmeDaSentinela } from './alarmes-da-sentinela';
 import { identidadeDoCanal } from './display';
@@ -97,6 +100,46 @@ export interface ChannelHealth {
    * service role); vazio em toda instalação sem a sentinela.
    */
   sentinela: AlarmeDaSentinela[] | null;
+  /**
+   * 4e (1137): as ligações pelo CRM desta conexão — a situação do computador
+   * de ligações LIGADO pelo admin e o último sinal dele. `null` = sem
+   * computador, desligado, ou não lido (falha, sem a service role): sem linha
+   * na ficha, nunca "fora do ar" por ignorância.
+   */
+  ligacoes: LigacoesDaConexao | null;
+}
+
+export interface LigacoesDaConexao {
+  situacao: SituacaoDaMaquina;
+  sinalEm: string | null;
+}
+
+/** O computador de ligações da conexão, como a sonda o lê (1134/1137). */
+interface LinhaDoComputador {
+  channel_id: string;
+  whatsapp: string | null;
+  ultimo_sinal_em: string | null;
+  ligacao_em_curso: string | null;
+  ligado_em: string | null;
+}
+
+/** Os computadores LIGADOS da conta, por conexão. `null` = a leitura falhou. */
+async function computadoresLigados(
+  admin: SupabaseClient,
+  accountId: string,
+): Promise<Map<string, LinhaDoComputador> | null> {
+  try {
+    const { data, error } = await admin
+      .from('cb_computadores_de_ligacao')
+      .select('channel_id, whatsapp, ultimo_sinal_em, ligacao_em_curso, ligado_em')
+      .eq('account_id', accountId)
+      .not('ligado_em', 'is', null);
+    if (error) throw new Error(error.message);
+    return new Map(((data ?? []) as LinhaDoComputador[]).map((c) => [c.channel_id, c]));
+  } catch (err) {
+    console.warn('[health] não leu os computadores de ligações:', err instanceof Error ? err.message : err);
+    return null;
+  }
 }
 
 /** Acima disto, "conectado" deixa de ser confiável e vira amarelo. */
@@ -399,6 +442,7 @@ function episodiosDaConexao(
   estados: Map<string, EstadoDoAlarme> | null,
   envios: readonly EnvioRecente[] | null,
   agoraMs: number,
+  computador: LinhaDoComputador | null,
 ): EpisodioAberto[] | null {
   if (estados === null) return null;
   const abertos: EpisodioAberto[] = [];
@@ -418,6 +462,21 @@ function episodiosDaConexao(
     agoraMs,
   );
   if (atraso) abertos.push(atraso);
+  // 4e: os do computador de ligações, só do LIGADO (desligado, somem — D16).
+  if (computador && typeof computador.ligado_em === 'string') {
+    const sinal = {
+      ultimoSinalIso: computador.ultimo_sinal_em,
+      whatsapp: computador.whatsapp,
+      ligadoEmIso: computador.ligado_em,
+    };
+    for (const [tipo, medicao] of [
+      ['computador_fora', medirComputadorFora(sinal, agoraMs)],
+      ['computador_qr', medirComputadorQr(sinal, agoraMs)],
+    ] as const) {
+      const aberto = episodioAberto(tipo, estados.get(`${c.id}:${tipo}`) ?? null, medicao, agoraMs);
+      if (aberto) abertos.push(aberto);
+    }
+  }
   return abertos;
 }
 
@@ -497,6 +556,8 @@ export async function probeChannels(
   const sentinelaPedida = admin
     ? alarmesDaSentinelaDaConta(admin, accountId, agora)
     : Promise.resolve(null);
+  // 4e: o computador de ligações de cada conexão (fechado ao navegador).
+  const computadoresPedidos = admin ? computadoresLigados(admin, accountId) : Promise.resolve(null);
 
   // ---- Evolution: um fetchInstances por SERVIDOR, não por canal ----
   const servidores = new Set(
@@ -547,6 +608,7 @@ export async function probeChannels(
   );
   const estados = await estadosPedidos;
   const daSentinela = await sentinelaPedida;
+  const computadores = await computadoresPedidos;
 
   const saidas: ChannelHealth[] = [];
   const paraGravar: { id: string; status: CbChannelStatus }[] = [];
@@ -690,8 +752,14 @@ export async function probeChannels(
       // a fila represada (`lagging`) os recibos param junto, e o botão das
       // conexões (E1) não pode esperar o ciclo lento para alargar.
       semReciboDesde: recibo ? recibo.desdeIso : null,
-      episodios: episodiosDaConexao(c, estados, deEnvios?.envios ?? null, agora),
+      episodios: episodiosDaConexao(c, estados, deEnvios?.envios ?? null, agora, computadores?.get(c.id) ?? null),
       sentinela: daSentinela === null ? null : (daSentinela.get(c.id) ?? []),
+      ligacoes: (() => {
+        const computador = computadores?.get(c.id);
+        return computador
+          ? { situacao: situacaoDaMaquina(computador, agora), sinalEm: computador.ultimo_sinal_em }
+          : null;
+      })(),
     });
   }
 

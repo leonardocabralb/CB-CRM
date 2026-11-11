@@ -19,6 +19,8 @@ export interface Comandos {
   ligar(pedido: PedidoDeLigacao): Promise<Resultado>
   atender(pedido: PedidoDeLigacao): Promise<Resultado>
   desligar(ligacao: string): Promise<Resultado>
+  /** O Reparear do CRM (4e): o "Desconectar" do WhatsApp Web, para um QR novo. */
+  desconectar(): Promise<Resultado>
 }
 
 export const STATUS_DA_RECUSA: Record<Recusa, number> = {
@@ -115,9 +117,11 @@ export function criarServidor(segredo: string, comandos: Comandos, registrar: (l
         const qr = await comandos.qr()
         return qr ? responder(resposta, 200, { qr }) : responder(resposta, 404, { erro: 'sem_qr' })
       }
-      if (pedido.method !== 'POST' || !['/ligar', '/atender', '/desligar'].includes(caminho)) {
+      if (pedido.method !== 'POST' || !['/ligar', '/atender', '/desligar', '/desconectar'].includes(caminho)) {
         return responder(resposta, 404, { erro: 'rota_desconhecida' })
       }
+      // Sem corpo a conferir: o pedido inteiro é "desconecte".
+      if (caminho === '/desconectar') return responderResultado(resposta, await comandos.desconectar())
 
       let corpo: unknown
       try {

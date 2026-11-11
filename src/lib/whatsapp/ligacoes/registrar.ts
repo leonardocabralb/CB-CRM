@@ -308,7 +308,7 @@ async function abrirToque(
   if (!rota.channelId || evento.video) return;
   const { data: computador, error } = await db
     .from('cb_computadores_de_ligacao')
-    .select('whatsapp, ultimo_sinal_em')
+    .select('whatsapp, ultimo_sinal_em, ligado_em')
     .eq('account_id', rota.accountId)
     .eq('channel_id', rota.channelId)
     .maybeSingle();

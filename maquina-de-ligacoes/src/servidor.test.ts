@@ -14,6 +14,7 @@ function comandosFalsos(resultado: Resultado = { ok: true, resposta: 'v=0 respos
     ligar: async (pedido) => (pedidos.push({ rota: 'ligar', pedido }), resultado),
     atender: async (pedido) => (pedidos.push({ rota: 'atender', pedido }), resultado),
     desligar: async (ligacao) => (pedidos.push({ rota: 'desligar', pedido: ligacao }), { ok: true }),
+    desconectar: async () => (pedidos.push({ rota: 'desconectar', pedido: '' }), resultado),
   }
   return { comandos, pedidos }
 }
@@ -89,6 +90,23 @@ describe('a API interna', () => {
     const pedir = await subir(comandos)
     expect((await pedir('/desligar', { method: 'POST', body: JSON.stringify({ ligacao: 'lig-1' }) })).status).toBe(200)
     expect(pedidos).toEqual([{ rota: 'desligar', pedido: 'lig-1' }])
+  })
+})
+
+describe('o Reparear (4e)', () => {
+  it('POST /desconectar chama o comando; a recusa vira status; GET não serve', async () => {
+    const { comandos, pedidos } = comandosFalsos({ ok: true })
+    const pedir = await subir(comandos)
+    const r = await pedir('/desconectar', { method: 'POST', body: '{}' })
+    expect(r.status).toBe(200)
+    expect(pedidos).toEqual([{ rota: 'desconectar', pedido: '' }])
+    expect((await pedir('/desconectar')).status).toBe(404)
+
+    const ocupada = await subir(comandosFalsos({ ok: false, recusa: 'ocupada' }).comandos)
+    const recusa = await ocupada('/desconectar', { method: 'POST', body: '{}' })
+    expect(recusa.status).toBe(409)
+    expect(await recusa.json()).toEqual({ erro: 'ocupada' })
+    expect((await pedir('/desconectar', { method: 'POST', body: '{}', segredo: 'outro' })).status).toBe(401)
   })
 })
 

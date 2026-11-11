@@ -1426,6 +1426,91 @@ de 30 min) vira "não atendida" no `sumiu`, e a gravação dela é descartada.
 - 4d (transcrição, resumo, contexto da IA, poda aos 180 dias) e 4e (conexões,
   Parear/Reparear, sentinela, doc).
 
+### 8.17 A 4e: conexões e operação (11/11/2026)
+
+(A §8.16 é a 4d, no PR #504.) Os pedidos do operador de 10/11 (§8.1) e as
+decisões de 11/11:
+
+- **D16 — as ligações pelo CRM são um INTERRUPTOR por conexão**, na aba
+  Conexões (admin). Ligado: a ficha da conexão mostra o estado do computador
+  e o QR para ler com o celular do número; o estado e os alarmes aparecem no
+  sino e no botão das conexões. Desligado: tudo isso some, o botão "Ligar"
+  some e a recebida para de tocar no CRM (o celular segue tocando). Nas
+  palavras dele, "uma feature que pode ser ligada e desligada".
+- **D17 — só onde já há computador:** o interruptor aparece em toda conexão
+  por QR; a que não tem computador diz "este número ainda não tem computador
+  de ligações", e a criação fica com a operação, na VPS, conferindo a memória
+  antes (nenhum programa novo com poder sobre o servidor).
+- **D18 — publicar a 4d e a 4e JUNTAS e testar ao vivo logo em seguida** (a
+  máquina só conversa com o CRM da produção: antes da publicação, testes,
+  bancada e revisões).
+
+**As peças:**
+1. **Migration 1137** (a 1136 é da 4d): `cb_computadores_de_ligacao.ligado_em`
+   (nulo = desligado; nasce DESLIGADO, inclusive o da Previdenciário — o
+   operador liga na tela) e os tipos `computador_fora` e `computador_qr` em
+   `cb_alarmes_de_conexao`.
+2. **O CRM respeita o interruptor:** `computadorPronto` exige `ligado_em` —
+   é a régua do botão "Ligar", do toque (o `offer`), do ligar e do atender. A
+   lista do botão (`GET /api/cb/ligacoes/computadores`) só traz os ligados.
+   Desligar no meio de uma ligação não a derruba (o desligar e a gravação
+   não dependem do interruptor).
+3. **Rotas do admin** (`/api/cb/ligacoes/conexoes`): a lista com o estado de
+   cada computador da conta (sem endereço nem nome do contêiner); o PATCH do
+   interruptor; o QR AO VIVO (o CRM pede `/estado` e `/qr` à máquina); e o
+   Reparear (`POST /desconectar` na máquina).
+4. **A máquina:** `POST /desconectar` — o "Desconectar" do WhatsApp Web, só
+   com a linha livre, e só dá certo quando a tela passa a mostrar o QR (falha
+   = a sessão continua). O `GET /qr` clica em "recarregar" quando o QR vence.
+   ⚠️ Os seletores desses dois são medidos no teste ao vivo: o "Desconectar"
+   derruba a sessão até alguém ler o QR novo com o celular do número.
+5. **Alarmes** (a régua da 1122, `alarmes-no-sino.ts`, e o mesmo passo do
+   ciclo): `computador_fora` acende quando o último sinal tem mais de 10 min
+   (cobre o contêiner parado e a reconstrução semanal que demorar; o "desde" é
+   o último sinal) e `computador_qr` quando o sinal está fresco e o WhatsApp
+   da máquina pede o QR há 10 min (conta a duração, como o atraso: o admin
+   pareando não vira alarme). Horário útil e destinatários como o (c) (D2,
+   P3b); "Normalizou" com prova (sinal fresco; WhatsApp conectado). Desligado:
+   o ciclo apaga a linha calado, e a sonda só mostra os do ligado.
+6. **O botão das conexões:** a ficha de cada conexão com computador ligado
+   ganha a linha "Ligações pelo CRM: prontas / em ligação / pedindo o QR /
+   carregando / fora do ar", pela sonda da saúde (uma por aba); os dois
+   alarmes entram no "pior da conexão" (`GRAVIDADE`).
+7. **A sentinela da VPS:** o contêiner do computador LIGADO que não está
+   rodando vira aviso do servidor (como a réplica parada), aos owner/admin.
+   No botão, o CRM já diz "sem sinal".
+8. **A tela Conexões** (admin): a seção "Ligações pelo CRM" em cada conexão
+   por QR — sem computador, a frase da D17; com, o interruptor; ligado, o
+   estado, o QR que aparece sozinho quando a máquina o pede (laço ENCADEADO
+   de poucos segundos, só com a seção na tela), o "Reparear" com confirmação
+   e a ajuda de como ler o QR.
+9. **Doc:** `docs/INFRA-VPS.md` §4 (computador para um número novo e o
+   interruptor), a regra da área e a ajuda na tela.
+
+**Ordem da publicação (D18):** aplicar a 1136 e a 1137 → mesclar o #504 →
+trazer o `main` para a branch da 4e → CI → mesclar → sentinela na VPS → teste
+ao vivo com o interruptor ligado na Previdenciário.
+
+**Feito (11/11/2026, branch `feat/ligacoes-conexoes`):** as nove peças acima.
+A 1137 provada num Postgres local (replay do zero e, com dado, duas vezes). A
+tela conferida numa bancada com o CSS real (9 estados em 720 e 360 px, o laço
+do QR, o Reparear e o popover do botão). De quebra, a máquina manda o sinal de
+vida NA HORA em que o WhatsApp dela muda (conectou, pediu o QR): a tela fica em
+dia em segundos.
+
+**Revisão independente:** 4 P2 e 4 P3, nenhum P1; nada nos alarmes antigos,
+na migration, no i18n nem no recorte por conta do CRM. Consertados: a
+sentinela esquecia o episódio do contêiner (o "Normalizou" nunca saía, e a
+checagem que falhasse repetia o aviso), mandava o aviso aos admins de TODAS as
+contas do servidor e acendia "parado" com o Docker lento; a máquina dizia "a
+sessão continua de pé" quando o QR só demorava depois do clique final; o QR do
+computador avisava pela duração com a máquina carregando ou parada; na tela, o
+QR do Reparear sumia se a lista se renovasse no meio do pedido, e o laço
+reiniciava a cada sinal (dois avisos "conectou").
+
+**Falta:** os seletores do "Desconectar" e do QR vencido (medir ao vivo); a
+publicação junto com a 4d e o teste ao vivo (D18).
+
 ## 9. Fase 5: atender pelo CRM
 
 Incorporada à Fase 4 (§8), a pedido do operador (10/11/2026).

@@ -25,6 +25,9 @@ obrigações gerais de caminho de entrada estão em `.claude/rules/ingestao.md`.
 
 ## Ligar pelo CRM (4a, 4b e 4c — a tela; a 4d transcreve)
 
+O interruptor por conexão, o QR, o Reparear e os alarmes do computador (4e,
+1137): `ligacoes-operacao.md`.
+
 - ⚠️ **Solução NÃO oficial, por decisão do operador (10/11/2026):** nem a
   API de ligações da Meta nem a Wavoip. O caminho é uma máquina central com
   um Chrome (WhatsApp Web) por número, e o áudio do atendente pela aba do CRM.
@@ -98,8 +101,8 @@ desenho: §8.12 e §8.13 do plano.
 - ⚠️ **O segredo não entra no ambiente do Chrome** (`env -u` no
   `iniciar.sh`): ele abre o que qualquer pessoa manda ao número.
 - **O contrato com o CRM (a 4b implementa exatamente isto):** a máquina
-  responde `GET /estado`, `GET /qr`, `POST /ligar`, `/atender` e `/desligar`
-  na 8080, com `Authorization: Bearer <LIGACOES_SEGREDO>` — o segredo DELA,
+  responde `GET /estado`, `GET /qr`, `POST /ligar`, `/atender`, `/desligar` e
+  (4e) `/desconectar` na 8080, com `Authorization: Bearer <LIGACOES_SEGREDO>` — o segredo DELA,
   derivado do do CRM (ver "O CRM, dono da ligação"); o id da ligação é
   o `cb_ligacoes.id` (só `[A-Za-z0-9-]`: nunca o `call_id` `crm:…`), e o
   número é o do JID da conversa, NUNCA um LID (a máquina não os distingue).

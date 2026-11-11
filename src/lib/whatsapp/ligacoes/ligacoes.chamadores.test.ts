@@ -59,6 +59,8 @@ describe('a ligação NÃO aciona motor nenhum', () => {
         `${MODULO}/computador.ts`,
         `${MODULO}/desfecho.ts`,
         `${MODULO}/evento.ts`,
+        // A operação do computador pela tela Conexões (4e, 1137).
+        `${MODULO}/operacao.ts`,
         `${MODULO}/pelo-crm.ts`,
         `${MODULO}/previa.ts`,
         `${MODULO}/registrar.ts`,

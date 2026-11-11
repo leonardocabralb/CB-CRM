@@ -37,6 +37,7 @@ import { createClient } from '@/lib/supabase/client';
 import type { EpisodioAberto } from '@/lib/cb-channels/alarmes-no-sino';
 import type { AlarmeDaSentinela } from '@/lib/cb-channels/alarmes-da-sentinela';
 import type { CbChannelKind } from '@/lib/cb-channels/repo';
+import type { SituacaoDaMaquina } from '@/lib/whatsapp/ligacoes/computador';
 
 export type HealthTone = 'ok' | 'warn' | 'down' | 'unknown';
 
@@ -76,6 +77,12 @@ export interface ChannelHealth {
    * `null` = não lidos; ausente = a sonda de antes do deploy.
    */
   sentinela?: AlarmeDaSentinela[] | null;
+  /**
+   * 4e (1137): as ligações pelo CRM desta conexão (o computador LIGADO pelo
+   * admin). `null` ou ausente = sem computador, desligado, não lido, ou a
+   * sonda de antes do deploy: a ficha não ganha a linha.
+   */
+  ligacoes?: { situacao: SituacaoDaMaquina; sinalEm: string | null } | null;
 }
 
 const POLL_MS = 30_000;
