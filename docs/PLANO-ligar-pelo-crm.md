@@ -1479,6 +1479,15 @@ O desenho está no §8.5 e nas decisões D11 e D14; regras:
   das que falharam primeiro, o lado sem horário legível é falha, as notas
   fora da origem do nome da reunião, `break-words`, o `lock_timeout`); a faixa
   restaurada da Lixeira com a marca da fotografia ficou como limite escrito.
+- **Codex no PR #504 (1 achado, corrigido):** o laço lento lia um lote fixo
+  das 12 primeiras pendentes, e a que não anda (conta sem chave, lados ainda
+  chegando) não muda de estado — o mesmo lote voltaria todo ciclo, e a
+  pendente de outra conta sairia da janela sem transcrição. Agora ele lê
+  todas as da janela por página de chave e pula a conta sem chave no resto do
+  ciclo.
+- **A 1136 na produção:** o modo automático barrou a aplicação pela
+  Management API em 11/11/2026 (classificada como deploy em produção); ela
+  espera o "pode" do operador, como o merge.
 
 **Falta:**
 - Medir os horários do Gemini numa gravação de verdade: a intercalação

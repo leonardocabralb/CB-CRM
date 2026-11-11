@@ -71,6 +71,8 @@ const ESPERA_DOS_LADOS_MS = 60 * 60_000;
 export const JANELA_DA_TRANSCRICAO_DIAS = 7;
 /** O laço transcreve no máximo isto por ciclo, e só com o prazo de um lado sobrando. */
 const POR_CICLO = 3;
+/** A leitura das pendentes vai por página de chave (o PostgREST corta em 1000). */
+export const PAGINA_DAS_PENDENTES = 200;
 
 const ROTULOS_DO_RESUMO = { cliente: 'Cliente', atendente: 'Atendente' } as const;
 
@@ -461,8 +463,9 @@ export async function transcreverLigacao(db: SupabaseClient, ligacaoId: string):
 /**
  * Repete o que ficou para trás: a ligação atendida pelo CRM, dos últimos
  * `JANELA_DA_TRANSCRICAO_DIAS`, que ainda não tem desfecho de transcrição
- * (nunca tentada — o `after()` perdeu —, `falhou` ou travada). Até
- * `POR_CICLO`, e só com o prazo de um lado inteiro sobrando. Nunca lança.
+ * (nunca tentada — o `after()` perdeu —, `falhou` ou travada). Passa por
+ * TODAS as pendentes, transcreve até `POR_CICLO`, e só começa uma com o prazo
+ * de um lado inteiro sobrando. Nunca lança.
  */
 export async function retomarTranscricoes(db: SupabaseClient, prazo: number): Promise<void> {
   try {
@@ -505,31 +508,61 @@ async function retomar(db: SupabaseClient, prazo: number): Promise<void> {
     }
     if (encerrada) await sincronizarFaixa(db, v.id);
   }
-  const { data, error } = await db
-    .from('cb_ligacoes')
-    .select('id')
-    .eq('pelo_crm', true)
-    .not('atendida_pelo_crm_em', 'is', null)
-    .is('gravacao_expirada_em', null)
-    .gte('criada_em', desde)
-    // Sem o teto de tentativas aqui: a `transcrevendo` travada na ÚLTIMA
-    // tentativa só sai (como `recusada`) passando por `transcreverLigacao`.
-    // A `falhou` sempre tem tentativa sobrando (a 3ª falha já é `recusada`).
-    .or('transcricao_status.is.null,transcricao_status.in.(falhou,transcrevendo)')
-    // As que já FALHARAM (ou travaram) antes das nunca tentadas — estas o
-    // `after()` normalmente já pegou, e uma conta sem chave as acumula; dentro
-    // de cada grupo, as mais novas primeiro.
-    .order('transcricao_status', { ascending: true, nullsFirst: false })
-    .order('criada_em', { ascending: false })
-    .limit(POR_CICLO * 4);
-  if (error) {
-    console.error('[ligacoes] transcrições pendentes: leitura falhou:', error.message);
-    return;
-  }
+
+  // ⚠️ TODAS as pendentes, nunca um lote fixo das primeiras: a que não anda
+  // (conta sem chave, lados ainda chegando, outro processo nela) não muda de
+  // estado, e o mesmo lote tomaria todo ciclo — a pendente de outra conta
+  // nunca seria alcançada e sairia da janela sem transcrição (Codex, #504).
+  // A conta sem chave é descoberta na primeira e pulada no resto do ciclo,
+  // sem tocar no Storage.
+  const pendentes = await lerPendentes(db, desde);
+  if (!pendentes) return;
+  const semChave = new Set<string>();
   let feitas = 0;
-  for (const { id } of (data ?? []) as { id: string }[]) {
+  for (const p of pendentes) {
     if (feitas >= POR_CICLO || Date.now() + PRAZO_DO_LADO_MS + PRAZO_DO_RESUMO_MS > prazo) return;
-    const r = await transcreverLigacao(db, id);
-    if (r === 'pronta' || r === 'falhou' || r === 'recusada') feitas += 1;
+    if (semChave.has(p.account_id)) continue;
+    const r = await transcreverLigacao(db, p.id);
+    if (r === 'sem_chave') semChave.add(p.account_id);
+    else if (r === 'pronta' || r === 'falhou' || r === 'recusada') feitas += 1;
   }
+}
+
+type Pendente = { id: string; account_id: string; criada_em: string; transcricao_status: string | null };
+
+/**
+ * As pendentes da janela, por página de chave, na ordem de tentar: as que já
+ * FALHARAM (ou travaram) antes das nunca tentadas — estas o `after()`
+ * normalmente já pegou —; dentro de cada grupo, as mais novas primeiro.
+ * `null` = a leitura falhou.
+ */
+async function lerPendentes(db: SupabaseClient, desde: string): Promise<Pendente[] | null> {
+  const todas: Pendente[] = [];
+  let depoisDe: string | null = null;
+  for (;;) {
+    let consulta = db
+      .from('cb_ligacoes')
+      .select('id, account_id, criada_em, transcricao_status')
+      .eq('pelo_crm', true)
+      .not('atendida_pelo_crm_em', 'is', null)
+      .is('gravacao_expirada_em', null)
+      .gte('criada_em', desde)
+      // Sem o teto de tentativas aqui: a `transcrevendo` travada na ÚLTIMA
+      // tentativa só sai (como `recusada`) passando por `transcreverLigacao`.
+      // A `falhou` sempre tem tentativa sobrando (a 3ª falha já é `recusada`).
+      .or('transcricao_status.is.null,transcricao_status.in.(falhou,transcrevendo)');
+    if (depoisDe) consulta = consulta.gt('id', depoisDe);
+    const { data, error } = await consulta.order('id', { ascending: true }).limit(PAGINA_DAS_PENDENTES);
+    if (error) {
+      console.error('[ligacoes] transcrições pendentes: leitura falhou:', error.message);
+      return null;
+    }
+    const lote = (data ?? []) as Pendente[];
+    todas.push(...lote);
+    if (lote.length < PAGINA_DAS_PENDENTES) break;
+    depoisDe = lote[lote.length - 1].id;
+  }
+  const nuncaTentada = (p: Pendente) => (p.transcricao_status === null ? 1 : 0);
+  // Datas como NÚMERO: o PostgREST devolve `+00:00` e micros.
+  return todas.sort((a, b) => nuncaTentada(a) - nuncaTentada(b) || Date.parse(b.criada_em) - Date.parse(a.criada_em));
 }

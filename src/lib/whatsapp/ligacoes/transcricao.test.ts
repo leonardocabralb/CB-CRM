@@ -13,7 +13,7 @@ vi.mock('@/lib/transcricao/escolher-leitor', () => ({
   escolherLeitor: (...a: unknown[]) => escolherLeitor(...a),
 }));
 
-const { retomarTranscricoes, transcreverLigacao, TENTATIVAS_DA_TRANSCRICAO } = await import('./transcricao');
+const { PAGINA_DAS_PENDENTES, retomarTranscricoes, transcreverLigacao, TENTATIVAS_DA_TRANSCRICAO } = await import('./transcricao');
 
 const CONTA = '00000000-0000-4000-8000-000000000001';
 const LIGACAO = '11111111-2222-4333-8444-555555555555';
@@ -43,7 +43,7 @@ function duble(roteiro: {
       return r;
     };
     const q: Record<string, unknown> = {};
-    for (const nome of ['select', 'eq', 'is', 'lt', 'gte', 'not', 'or', 'order', 'limit', 'in']) {
+    for (const nome of ['select', 'eq', 'is', 'lt', 'gt', 'gte', 'not', 'or', 'order', 'limit', 'in']) {
       q[nome] = (...args: unknown[]) => {
         if (nome !== 'select') c.filtros.push([nome, args]);
         return q;
@@ -328,12 +328,87 @@ describe('retomarTranscricoes', () => {
     expect(encerra.patch).toMatchObject({ transcricao_status: 'recusada', transcricao_desde: null });
     expect(encerra.filtros).toContainEqual(['in', ['transcricao_status', ['falhou', 'transcrevendo']]]);
     expect(d.rpcs).toEqual([{ nome: 'cb_ligacao_sincronizar_faixa', args: { p_ligacao: LIGACAO } }]);
-    // A fila das pendentes: as que já falharam antes das nunca tentadas, as
-    // mais novas primeiro, sem o teto de tentativas no filtro.
-    expect(pendentes.filtros).toContainEqual(['order', ['transcricao_status', { ascending: true, nullsFirst: false }]]);
-    expect(pendentes.filtros).toContainEqual(['order', ['criada_em', { ascending: false }]]);
+    // As pendentes: TODAS, por página de chave, sem o teto de tentativas no filtro.
+    expect(pendentes.filtros).toContainEqual(['order', ['id', { ascending: true }]]);
+    expect(pendentes.filtros).toContainEqual(['limit', [PAGINA_DAS_PENDENTES]]);
     expect(pendentes.filtros.some(([n, a]) => n === 'lt' && a[0] === 'transcricao_tentativas')).toBe(false);
     expect(pedidos).toHaveLength(0);
     expect(d.restante()).toBe(0);
+  });
+
+  const idDe = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  const haMinutos = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
+  /** A ordem em que `transcreverLigacao` foi chamada: a leitura da linha pelo id. */
+  const ordemDasTentativas = (d: ReturnType<typeof duble>) =>
+    d.chamadas
+      .filter((c) => c.tabela === 'cb_ligacoes' && c.op === 'select')
+      .flatMap((c) => c.filtros.filter(([n, a]) => n === 'eq' && a[0] === 'id').map(([, a]) => a[1]));
+
+  it('a ordem: as que já falharam (ou travaram) antes das nunca tentadas, as mais novas primeiro', async () => {
+    const pendentes = [
+      { id: idDe(1), account_id: CONTA, criada_em: haMinutos(10), transcricao_status: null },
+      { id: idDe(2), account_id: CONTA, criada_em: haMinutos(300), transcricao_status: 'falhou' },
+      { id: idDe(3), account_id: CONTA, criada_em: haMinutos(5), transcricao_status: null },
+      { id: idDe(4), account_id: CONTA, criada_em: haMinutos(100), transcricao_status: 'transcrevendo' },
+    ];
+    // Nenhuma anda (os lados ainda não chegaram): a varredura passa por todas.
+    const linhas = [4, 2, 3, 1].map((n) => ok({ ...LINHA, id: idDe(n) }));
+    const d = duble({ ligacoes: [ok([]), ok(pendentes), ...linhas], lista: ok([{ name: 'estereo.ogg' }]) });
+    await retomarTranscricoes(d.db, Date.now() + 10 * 60_000);
+    expect(ordemDasTentativas(d)).toEqual([idDe(4), idDe(2), idDe(3), idDe(1)]);
+    expect(d.restante()).toBe(0);
+  });
+
+  it('a conta sem chave na frente não segura a pendente de outra conta (Codex, #504)', async () => {
+    const SEM_CHAVE = '00000000-0000-4000-8000-0000000000aa';
+    escolherLeitor.mockClear();
+    escolherLeitor.mockImplementation(async (conta: string) =>
+      conta === SEM_CHAVE ? { ok: false, motivo: 'sem_chave' } : { ok: true, provedor: 'gemini', chave: 'chave-ficticia' },
+    );
+    // 13 mais novas da conta sem chave, e a mais velha da outra conta (o `after()` perdeu).
+    const dela = Array.from({ length: 13 }, (_, i) => ({ id: idDe(i + 1), account_id: SEM_CHAVE, criada_em: haMinutos(i + 1), transcricao_status: null }));
+    const outra = { id: LIGACAO, account_id: CONTA, criada_em: haMinutos(3 * 24 * 60), transcricao_status: null };
+    const d = duble({
+      ligacoes: [
+        ok([]),
+        ok([...dela, outra]),
+        ok({ ...LINHA, id: idDe(1), account_id: SEM_CHAVE }),
+        ok(LINHA),
+        ok({ id: LIGACAO }),
+        ok({ id: LIGACAO }),
+      ],
+    });
+    await retomarTranscricoes(d.db, Date.now() + 10 * 60_000);
+    // A conta sem chave foi conferida UMA vez; as outras 12 dela, puladas sem ler nada.
+    expect(escolherLeitor.mock.calls.filter(([conta]) => conta === SEM_CHAVE)).toHaveLength(1);
+    expect(ordemDasTentativas(d)).toEqual([idDe(1), LIGACAO]);
+    const final = d.chamadas.filter((c) => c.op === 'update' && c.tabela === 'cb_ligacoes').at(-1);
+    expect(final?.patch).toMatchObject({ transcricao_status: 'pronta' });
+    expect(d.restante()).toBe(0);
+  });
+
+  it('lê as pendentes por página de chave até a página incompleta', async () => {
+    const SEM_CHAVE = '00000000-0000-4000-8000-0000000000aa';
+    escolherLeitor.mockResolvedValue({ ok: false, motivo: 'sem_chave' });
+    const pagina = Array.from({ length: PAGINA_DAS_PENDENTES }, (_, i) => ({
+      id: idDe(i + 1),
+      account_id: SEM_CHAVE,
+      criada_em: haMinutos(i + 1),
+      transcricao_status: null,
+    }));
+    const resto = [{ id: idDe(PAGINA_DAS_PENDENTES + 1), account_id: SEM_CHAVE, criada_em: haMinutos(5000), transcricao_status: null }];
+    const d = duble({ ligacoes: [ok([]), ok(pagina), ok(resto), ok({ ...LINHA, id: idDe(1), account_id: SEM_CHAVE })] });
+    await retomarTranscricoes(d.db, Date.now() + 10 * 60_000);
+    const [primeira, segunda] = d.chamadas.filter((c) => c.tabela === 'cb_ligacoes' && c.op === 'select').slice(1, 3);
+    expect(primeira.filtros.some(([n]) => n === 'gt')).toBe(false);
+    expect(segunda.filtros).toContainEqual(['gt', ['id', idDe(PAGINA_DAS_PENDENTES)]]);
+    expect(ordemDasTentativas(d)).toEqual([idDe(1)]);
+    expect(d.restante()).toBe(0);
+  });
+
+  it('a leitura das pendentes falha: nada é tentado, e não lança', async () => {
+    const d = duble({ ligacoes: [ok([]), { data: null, error: { message: 'fora do ar' } }] });
+    await expect(retomarTranscricoes(d.db, Date.now() + 10 * 60_000)).resolves.toBeUndefined();
+    expect(ordemDasTentativas(d)).toEqual([]);
   });
 });

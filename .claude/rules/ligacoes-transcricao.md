@@ -36,8 +36,12 @@ diálogo da faixa, na poda dos 180 dias ou na limpeza da Lixeira das gravações
 - **Quando**: no `after()` da rota da gravação, quando chega um LADO (a função
   confere no bucket se os dois estão lá; o cadeado segura a corrida). O laço
   lento (`retomarTranscricoes`, o ÚLTIMO passo de `rodarManutencaoDoCiclo`)
-  repete o que falhou: até 3 por ciclo, as mais novas primeiro, só com o prazo
-  de um lado inteiro sobrando. Lados que não chegaram em 1 h = `recusada`.
+  repete o que falhou: até 3 por ciclo, as que falharam antes das nunca
+  tentadas e as mais novas primeiro, só com o prazo de um lado inteiro
+  sobrando. ⚠️ Ele lê TODAS as pendentes da janela (página de chave), nunca um
+  lote fixo: a que não anda (conta sem chave, lados chegando) não muda de
+  estado e tomaria todo ciclo (Codex, #504); a conta sem chave é pulada no
+  resto do ciclo. Lados que não chegaram em 1 h = `recusada`.
   Passados os 7 dias, o que ficou em `falhou` (sem chave para repetir) ou
   travado vira `recusada`: senão a faixa diria "Transcrevendo…" até a poda.
 - **Os dois lados saem do Storage quando o diálogo fica pronto**; o estéreo
