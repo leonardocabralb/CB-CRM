@@ -88,10 +88,14 @@ decisões: `docs/PLANO-integracao-asaas.md` §13.
   cobrança absorve, `agruparLembretes`): as cobranças são calculadas primeiro.
   Limite conhecido: dois marcos adiados para o MESMO dia útil (marcos
   vizinhos, feriado longo) mostram o menor, e a varredura manda o maior — o
-  dia e a hora batem, só o nome da etapa difere.
+  dia e a hora batem, só o nome da etapa difere. Outro: a parcela vencida que
+  a última listagem completa não viu (a varredura a deixa "em verificação")
+  ainda entra na previsão.
 - Números que falham (`envios7d`, `ligacoesPendentes`) vêm `null` e SOMEM,
   nunca 0. A prévia por caso usa `montarVariaveis` com parcelas fictícias
-  (`previa-da-regua.ts`); a com cliente real é a do construtor.
+  (`previa-da-regua.ts`); a com cliente real é a do construtor. Ela assina
+  com a assinatura da PRÓPRIA etapa e, sem ela, com o nome automático da conta
+  (`assinaturaAutomatica` da rota do módulo), como o envio faz.
 - A aba fixa "Cobrança automática" de Automações (`ABA_DA_COBRANCA`) vence a
   área gravada, pelo GATILHO, e só aparece com alguma automação nela.
 - Chaves montadas (`texto.caso.*`, `texto.legenda.*`, `passos.*`,

@@ -13,6 +13,7 @@ export interface RespostaDoModulo {
     escritorioPadrao: string;
     avisoAtivo: boolean;
     assinaturaAtiva: boolean;
+    assinaturaAutomatica?: string | null;
   };
   automacoes?: AutomacaoDoModulo[];
   envios7d?: { lembretes: number; cobrancas: number; falhas: number } | null;

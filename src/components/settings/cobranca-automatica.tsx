@@ -338,7 +338,6 @@ export function CobrancaAutomatica({ etapaAberta, aoAbrirEtapa }: { etapaAberta:
         dados={dados}
         automacao={automacao ?? null}
         etapas={estado.etapas}
-        assinaturaComum={estado.assinatura.tipo === "uma" ? estado.assinatura.valor : null}
         nomeDaConexao={nomeDaConexao}
         falhou={falhou}
         aoTrocarEtapa={aoAbrirEtapa}

@@ -35,7 +35,6 @@ export function TextoDaEtapa({
   dados,
   automacao,
   etapas,
-  assinaturaComum,
   nomeDaConexao,
   falhou,
   aoTrocarEtapa,
@@ -44,7 +43,6 @@ export function TextoDaEtapa({
   dados: RespostaDoModulo | null;
   automacao: AutomacaoDoModulo | null;
   etapas: EtapaDoModulo[];
-  assinaturaComum: string | null;
   nomeDaConexao: (id: string) => string;
   falhou: boolean;
   aoTrocarEtapa: (id: string | null) => void;
@@ -65,7 +63,12 @@ export function TextoDaEtapa({
   const escritorio = nomeDoEscritorio(config?.escritorioNome, config?.escritorioPadrao, null);
   const texto = meu.texto ?? etapa?.texto ?? "";
   const assinaturaDaNoite = meu.assinatura ?? etapa?.assinatura ?? "";
-  const assinatura = etapa?.turno === "noite" ? assinaturaDaNoite : (assinaturaComum ?? "");
+  // A assinatura que a mensagem LEVA: a da própria etapa (a da noite, a do
+  // rascunho) e, sem ela, o nome automático da conta — como o envio
+  // (`nomeAutomaticoParaAssinar`, meta-send). A "comum" não serve: com
+  // assinaturas diferentes ela some (Codex, PR #499).
+  const propria = etapa?.turno === "noite" ? assinaturaDaNoite : (etapa?.assinatura ?? "");
+  const assinatura = propria.trim() || config?.assinaturaAutomatica || "";
   const vars = useMemo(() => (etapa ? variaveisDoCaso(etapa.tipo, caso, { escritorio, agora }) : {}), [etapa, caso, escritorio, agora]);
   const previa = interpolarVars(texto, vars);
   const prefixo = config?.assinaturaAtiva !== false ? prefixoDeAssinatura(assinatura).replace(/\*/g, "").trim() : "";
@@ -197,7 +200,7 @@ export function TextoDaEtapa({
               {etapa.turno === "noite" ? (
                 <Input id="cobranca-assina-etapa" value={assinaturaDaNoite} maxLength={60} placeholder={ASSINATURA_DA_NOITE} onChange={(e) => setRascunho({ ...meu, assinatura: e.target.value })} />
               ) : (
-                <p className="text-xs text-foreground">{assinaturaComum || t("texto.semAssinatura")}</p>
+                <p className="text-xs text-foreground">{etapa.assinatura || t("texto.semAssinatura")}</p>
               )}
               <p className="text-[11px] text-muted-foreground">{etapa.turno === "noite" ? t("texto.assinaNoite") : t("texto.assinaComum")}</p>
             </div>

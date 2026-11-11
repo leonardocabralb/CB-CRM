@@ -111,6 +111,8 @@ export async function GET() {
         escritorioPadrao,
         avisoAtivo: config.aviso_inadimplencia_ativo !== false,
         assinaturaAtiva: conta?.assinatura_ativa !== false,
+        // o nome que assina a etapa SEM assinatura própria (`nomeAutomaticoParaAssinar`)
+        assinaturaAutomatica: (conta?.assinatura_nome_automatica as string | null)?.trim() || null,
       },
       automacoes,
       envios7d,
