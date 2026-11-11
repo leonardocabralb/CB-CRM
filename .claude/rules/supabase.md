@@ -396,11 +396,10 @@ um espelho com pino lendo o SQL. Mudou um lado, muda o outro.
   ao CASCADE, `flow_runs` (contato, conversa, última pergunta) se anula em
   três passos com a FK conferida entre eles — 23503. E só onde o ponteiro
   AINDA vale o fotografado (1099): a linha de fora não está travada.
-- **Excluir de vez** (prazo ou "Excluir agora") limpa o conteúdo dos turnos
-  da IA (1110) e põe os arquivos que a fotografia cita na fila
-  `cb_arquivos_a_apagar` (guarda
-  `cb_caminho_no_chat_media`; sai só o que ninguém mais cita,
-  `cb_arquivos_citados` — escritor novo de URL: `midia.md`).
+- **Excluir de vez** (prazo ou "Excluir agora"; vigente: a 1136) limpa os
+  turnos da IA (1110) e as gravações das ligações (1136) e põe na fila
+  `cb_arquivos_a_apagar` os arquivos da fotografia (guarda
+  `cb_caminho_no_chat_media`; sai o que ninguém cita, `cb_arquivos_citados`).
 - ⚠️ `cb_mensagens_sem_telefone` e `cb_ligacoes` (1044), sem `contact_id`,
   sobrevivem ao mover; só o "Excluir agora" com pedido as apaga (ligações
   pelo telefone, retidas pelos LIDs da fotografia).

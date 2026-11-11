@@ -14,7 +14,7 @@ ligação de WhatsApp do que a telefônica. Vizinho deste plano:
 | 1    | Teste A: a máquina liga, com áudio de arquivo              | em curso (10/11/2026)  |
 | 2    | Teste B: o áudio no navegador do atendente                 | ✅ 10/11/2026 (falta P8) |
 | 3    | Decidir a máquina: upgrade para a KVM 4 × segunda VPS      | ✅ 10/11/2026: fica na VPS atual (D8) |
-| 4    | Ligar e atender pelo CRM: botão, toque, gravação, transcrição | desenho pronto (§8), decisões tomadas (§8.10); ✅ 4a pronta e testada em 10/11/2026 (§8.13); ✅ 4b no ar e testada ao vivo em 11/11/2026 (§8.14); ✅ 4c (a tela) no ar e testada ao vivo em 11/11/2026 (#500, §8.15) |
+| 4    | Ligar e atender pelo CRM: botão, toque, gravação, transcrição | desenho pronto (§8), decisões tomadas (§8.10); ✅ 4a pronta e testada em 10/11/2026 (§8.13); ✅ 4b no ar e testada ao vivo em 11/11/2026 (§8.14); ✅ 4c (a tela) no ar e testada ao vivo em 11/11/2026 (#500, §8.15); ✅ 4d (transcrição e resumo, §8.16) e 4e (o interruptor, o QR, o Reparear, os alarmes e a sentinela, §8.17) publicadas JUNTAS em 11/11/2026 (D18): falta o teste ao vivo |
 | 5    | Atender pelo CRM (ligação recebida)                        | incorporada à Fase 4   |
 
 ## 1. Por que uma máquina central (o que foi descartado)
@@ -1423,8 +1423,166 @@ de 30 min) vira "não atendida" no `sumiu`, e a gravação dela é descartada.
   (no teste, o atendente desligou pelo painel).
 - Decisão do operador: deixar a máquina LIGADA depois do teste (as ligações
   pelo CRM passam a valer para a equipe da Previdenciário) ou só em sessões.
-- 4d (transcrição, resumo, contexto da IA, poda aos 180 dias) e 4e (conexões,
-  Parear/Reparear, sentinela, doc).
+- 4d (transcrição, resumo, contexto da IA, poda aos 180 dias: §8.16) e 4e
+  (conexões, Parear/Reparear, sentinela, doc).
+
+### 8.16 A 4d: transcrição, resumo, contexto da IA e poda (11/11/2026)
+
+O desenho está no §8.5 e nas decisões D11 e D14; regras:
+`.claude/rules/ligacoes-transcricao.md`.
+
+**Feito:**
+
+- **Cada lado transcrito com o horário de cada trecho** e o diálogo pela
+  intercalação (`src/lib/whatsapp/ligacoes/dialogo.ts`, puro e testado): os
+  canais separados dizem quem falou. Gemini (`MODELO_TRANSCRICAO`) com saída
+  JSON (`responseSchema`, `inicio` "MM:SS"); OpenAI só pelo `whisper-1`
+  (`verbose_json` com os trechos) — os `gpt-*-transcribe` não dão horário.
+  Medido antes de escrever (documentação): a doc do Gemini mostra horário MM:SS
+  pedido no prompt; a referência da OpenAI só dá trechos com horário ao
+  `whisper-1`.
+- **A transcrição** (`transcricao.ts`): o contrato das notas de voz (cadeado
+  com teto de 3 tentativas, travada de 15 min, cerca, sem chave não grava,
+  custo no modo `transcricao`), com a 3ª falha virando `recusada` na hora e o
+  resumo (2–3 frases, o mesmo provedor e modelo) que falha sem derrubar o
+  diálogo. Roda no `after()` da rota da gravação quando chega um lado; o laço
+  lento repete o que falhou (até 3 por ciclo, por 7 dias). Os dois lados
+  saem do Storage quando o diálogo fica pronto.
+- **A faixa**: `messages.ligacao` ganha `transcricao` (estado), `resumo` e
+  `expirada`, mantidos por `cb_ligacao_sincronizar_faixa` (1136): a faixa
+  REFLETE a ligação, lida sob trava e fundida numa escrita — a marca da
+  gravação e a da transcrição chegam por pedidos separados, e a faixa pode ser
+  ligada no meio da transcrição (achado da revisão independente). A tela: o resumo embaixo da pílula, "Transcrevendo…", "Ver
+  transcrição" (o diálogo pela rota `GET /api/cb/ligacoes/[id]/transcricao`,
+  que confere a conversa) e "Gravação expirada".
+- **O contexto do agente de IA (D11)**: a ligação transcrita entra como NOTA
+  no papel de usuário ("not a message from the customer"), resumo primeiro e
+  o diálogo no teto de 4.000 caracteres; expirada, só o resumo. Sem abrir
+  turno. O Radar ganhou o rótulo certo para a faixa pelo CRM (antes, "atendida
+  pelo celular do escritório"), com o resumo.
+- **A poda dos 180 dias** (`poda.ts`, laço lento, antes da drenagem): saem os
+  três arquivos e o diálogo; fica o resumo.
+- **A Lixeira**: a exclusão definitiva (prazo ou "Excluir agora", com ou sem
+  o pedido do titular) leva a gravação, o diálogo e o resumo das ligações da
+  ficha — a fila de arquivos ganhou o bucket `ligacoes`, com guarda própria
+  (espelho TS `ehCaminhoDaGravacao`, o pino faz os dois lados responderem aos
+  mesmos exemplos), e `cb_lixeira_purgar_um` é a da 1110 mais só o acréscimo
+  (pino).
+- **Migration 1136** (ADITIVA): as colunas, a sincronização da faixa, a fila,
+  a reivindicação e a exclusão recriadas, com a conferência que CHAMA tudo com
+  dado fictício e desfaz (P1136). Provada num Postgres local (replay do zero e
+  com conta, duas vezes).
+- **Revisão independente** (antes do PR): 1 P2 (a faixa presa pela marca no
+  `message_id` velho → a sincronização) e 10 P3, os que afetam o uso
+  consertados (o reenvio do que já saiu volta `descartada`, a poda por toda
+  atendida, a espera contada do fim, o custo do lado que respondeu, a fila
+  das que falharam primeiro, o lado sem horário legível é falha, as notas
+  fora da origem do nome da reunião, `break-words`, o `lock_timeout`); a faixa
+  restaurada da Lixeira com a marca da fotografia ficou como limite escrito.
+- **Codex no PR #504 (1 achado, corrigido):** o laço lento lia um lote fixo
+  das 12 primeiras pendentes, e a que não anda (conta sem chave, lados ainda
+  chegando) não muda de estado — o mesmo lote voltaria todo ciclo, e a
+  pendente de outra conta sairia da janela sem transcrição. Agora ele lê
+  todas as da janela por página de chave e pula a conta sem chave no resto do
+  ciclo.
+- **A 1136 na produção:** o modo automático barrou a primeira tentativa
+  (classificada como deploy em produção); aplicada em 11/11/2026 às 18:39 BRT,
+  com o "pode publicar" do operador, junto com a 1137 da 4e (D18).
+
+**Falta:**
+- Medir os horários do Gemini numa gravação de verdade: a intercalação
+  depende deles. A medição pelo servidor local (com as credenciais da
+  produção) foi barrada pelo modo automático em 11/11/2026; ela fica para o
+  teste ao vivo, lendo o diálogo gravado. Se os horários não prestarem, o
+  plano B é a máquina medir os trechos de fala de cada lado (`silencedetect`
+  do ffmpeg) e o CRM só intercalar.
+- O teste ao vivo: uma ligação com fala dos dois lados vira, sozinha,
+  diálogo e resumo na faixa, e o agente de IA a lê.
+
+### 8.17 A 4e: conexões e operação (11/11/2026)
+
+(A §8.16 é a 4d, no PR #504.) Os pedidos do operador de 10/11 (§8.1) e as
+decisões de 11/11:
+
+- **D16 — as ligações pelo CRM são um INTERRUPTOR por conexão**, na aba
+  Conexões (admin). Ligado: a ficha da conexão mostra o estado do computador
+  e o QR para ler com o celular do número; o estado e os alarmes aparecem no
+  sino e no botão das conexões. Desligado: tudo isso some, o botão "Ligar"
+  some e a recebida para de tocar no CRM (o celular segue tocando). Nas
+  palavras dele, "uma feature que pode ser ligada e desligada".
+- **D17 — só onde já há computador:** o interruptor aparece em toda conexão
+  por QR; a que não tem computador diz "este número ainda não tem computador
+  de ligações", e a criação fica com a operação, na VPS, conferindo a memória
+  antes (nenhum programa novo com poder sobre o servidor).
+- **D18 — publicar a 4d e a 4e JUNTAS e testar ao vivo logo em seguida** (a
+  máquina só conversa com o CRM da produção: antes da publicação, testes,
+  bancada e revisões).
+
+**As peças:**
+1. **Migration 1137** (a 1136 é da 4d): `cb_computadores_de_ligacao.ligado_em`
+   (nulo = desligado; nasce DESLIGADO, inclusive o da Previdenciário — o
+   operador liga na tela) e os tipos `computador_fora` e `computador_qr` em
+   `cb_alarmes_de_conexao`.
+2. **O CRM respeita o interruptor:** `computadorPronto` exige `ligado_em` —
+   é a régua do botão "Ligar", do toque (o `offer`), do ligar e do atender. A
+   lista do botão (`GET /api/cb/ligacoes/computadores`) só traz os ligados.
+   Desligar no meio de uma ligação não a derruba (o desligar e a gravação
+   não dependem do interruptor).
+3. **Rotas do admin** (`/api/cb/ligacoes/conexoes`): a lista com o estado de
+   cada computador da conta (sem endereço nem nome do contêiner); o PATCH do
+   interruptor; o QR AO VIVO (o CRM pede `/estado` e `/qr` à máquina); e o
+   Reparear (`POST /desconectar` na máquina).
+4. **A máquina:** `POST /desconectar` — o "Desconectar" do WhatsApp Web, só
+   com a linha livre, e só dá certo quando a tela passa a mostrar o QR (falha
+   = a sessão continua). O `GET /qr` clica em "recarregar" quando o QR vence.
+   ⚠️ Os seletores desses dois são medidos no teste ao vivo: o "Desconectar"
+   derruba a sessão até alguém ler o QR novo com o celular do número.
+5. **Alarmes** (a régua da 1122, `alarmes-no-sino.ts`, e o mesmo passo do
+   ciclo): `computador_fora` acende quando o último sinal tem mais de 10 min
+   (cobre o contêiner parado e a reconstrução semanal que demorar; o "desde" é
+   o último sinal) e `computador_qr` quando o sinal está fresco e o WhatsApp
+   da máquina pede o QR há 10 min (conta a duração, como o atraso: o admin
+   pareando não vira alarme). Horário útil e destinatários como o (c) (D2,
+   P3b); "Normalizou" com prova (sinal fresco; WhatsApp conectado). Desligado:
+   o ciclo apaga a linha calado, e a sonda só mostra os do ligado.
+6. **O botão das conexões:** a ficha de cada conexão com computador ligado
+   ganha a linha "Ligações pelo CRM: prontas / em ligação / pedindo o QR /
+   carregando / fora do ar", pela sonda da saúde (uma por aba); os dois
+   alarmes entram no "pior da conexão" (`GRAVIDADE`).
+7. **A sentinela da VPS:** o contêiner do computador LIGADO que não está
+   rodando vira aviso do servidor (como a réplica parada), aos owner/admin.
+   No botão, o CRM já diz "sem sinal".
+8. **A tela Conexões** (admin): a seção "Ligações pelo CRM" em cada conexão
+   por QR — sem computador, a frase da D17; com, o interruptor; ligado, o
+   estado, o QR que aparece sozinho quando a máquina o pede (laço ENCADEADO
+   de poucos segundos, só com a seção na tela), o "Reparear" com confirmação
+   e a ajuda de como ler o QR.
+9. **Doc:** `docs/INFRA-VPS.md` §4 (computador para um número novo e o
+   interruptor), a regra da área e a ajuda na tela.
+
+**Ordem da publicação (D18):** aplicar a 1136 e a 1137 → mesclar o #504 →
+trazer o `main` para a branch da 4e → CI → mesclar → sentinela na VPS → teste
+ao vivo com o interruptor ligado na Previdenciário.
+
+**Feito (11/11/2026, branch `feat/ligacoes-conexoes`):** as nove peças acima.
+A 1137 provada num Postgres local (replay do zero e, com dado, duas vezes). A
+tela conferida numa bancada com o CSS real (9 estados em 720 e 360 px, o laço
+do QR, o Reparear e o popover do botão). De quebra, a máquina manda o sinal de
+vida NA HORA em que o WhatsApp dela muda (conectou, pediu o QR): a tela fica em
+dia em segundos.
+
+**Revisão independente:** 4 P2 e 4 P3, nenhum P1; nada nos alarmes antigos,
+na migration, no i18n nem no recorte por conta do CRM. Consertados: a
+sentinela esquecia o episódio do contêiner (o "Normalizou" nunca saía, e a
+checagem que falhasse repetia o aviso), mandava o aviso aos admins de TODAS as
+contas do servidor e acendia "parado" com o Docker lento; a máquina dizia "a
+sessão continua de pé" quando o QR só demorava depois do clique final; o QR do
+computador avisava pela duração com a máquina carregando ou parada; na tela, o
+QR do Reparear sumia se a lista se renovasse no meio do pedido, e o laço
+reiniciava a cada sinal (dois avisos "conectou").
+
+**Falta:** os seletores do "Desconectar" e do QR vencido (medir ao vivo); a
+publicação junto com a 4d e o teste ao vivo (D18).
 
 ## 9. Fase 5: atender pelo CRM
 

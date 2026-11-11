@@ -148,5 +148,6 @@ duplica a sessão: `.claude/rules/whatsapp-evolution.md`, "Pareamento".
 - ⚠️ **O estado é lido pela ROTA da saúde com a service role**, cercado pela conta da sessão: a tabela é fechada ao navegador. Cache de 1 min por conta (o estado só muda no ciclo lento), e a falha NÃO fica no cache: `episodios: null` = "não sei", e o botão fica só com o ao vivo. Sem a service role (a régua do Asaas chama a sonda), `null`.
 - **O BOTÃO recorta pelo acesso EFETIVO** (D2: owner/admin veem todas; o membro, as do perfil) e mostra o pior e "+N" (`alarmesDoCabecalho`); sonda carregando ou que falhou não alarga nada. A ficha mostra os da conexão a quem a vê, sem recorte, como as outras linhas dela (`alarmesPorConexao`); fora do ar e não recebe não ganham linha (o status já diz).
 - No celular o texto não cabe ao lado do título: o botão só ganha o fundo colorido. Do `lg` para cima o texto encolhe (o menu lateral come a largura) e volta no `xl`.
+- **O computador de ligações** (4e, 1137): `ligacoes-operacao.md`.
 - **Os alarmes de conexão da SENTINELA** (Fase 4, só na nossa VPS) vêm pelo campo `sentinela` da sonda: ela grava os abertos em `cb_alarmes_da_sentinela` (1123) a cada execução, e a leitura ignora linha não confirmada há 3 h (`alarmes-da-sentinela.ts`). Entram no "pior da conexão" com os outros (`GRAVIDADE`). Escrita e contrato: `deploy.md` e `docs/INFRA-VPS.md` §12.
 

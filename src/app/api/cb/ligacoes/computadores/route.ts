@@ -21,9 +21,11 @@ import type { SituacaoDoComputador } from '@/lib/ligacoes/ao-vivo'
  *
  * 200 { computadores: [{ channel_id, situacao }] }, `situacao` ∈ `pronto`
  * (sinal recente e WhatsApp conectado), `fora` (sem sinal há 3 min) e
- * `sem_whatsapp` (no ar, mas o WhatsApp dele não está conectado). Sem o
- * `LIGACOES_SEGREDO` a instalação não liga: lista vazia. Falha de leitura é
- * 500 — nunca a lista vazia, que a tela leria como "não há computador".
+ * `sem_whatsapp` (no ar, mas o WhatsApp dele não está conectado). Só os
+ * LIGADOS pelo admin (o interruptor da 1137, D16): desligado, a conexão some
+ * da lista e o botão some com ela. Sem o `LIGACOES_SEGREDO` a instalação não
+ * liga: lista vazia. Falha de leitura é 500 — nunca a lista vazia, que a tela
+ * leria como "não há computador".
  */
 export async function GET() {
   try {
@@ -32,15 +34,16 @@ export async function GET() {
 
     const { data, error } = await supabaseAdmin()
       .from('cb_computadores_de_ligacao')
-      .select('channel_id, whatsapp, ultimo_sinal_em')
+      .select('channel_id, whatsapp, ultimo_sinal_em, ligado_em')
       .eq('account_id', accountId)
+      .not('ligado_em', 'is', null)
     if (error) {
       console.error('[ligacoes/computadores] ler os computadores falhou:', error.message)
       return NextResponse.json({ error: 'falhou' }, { status: 500 })
     }
 
     const agora = Date.now()
-    const linhas = (data ?? []) as Pick<Computador, 'channel_id' | 'whatsapp' | 'ultimo_sinal_em'>[]
+    const linhas = (data ?? []) as Pick<Computador, 'channel_id' | 'whatsapp' | 'ultimo_sinal_em' | 'ligado_em'>[]
     const computadores = linhas.map((c) => {
       const situacao: SituacaoDoComputador = computadorPronto(c, agora)
         ? 'pronto'

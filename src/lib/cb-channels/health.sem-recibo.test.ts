@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { TipoDoAlarme } from './alarmes-no-sino';
 
 // ============================================================
 // A sonda inteira com os provedores simulados: o nível 4 (`sem-recibo.ts`)
@@ -141,7 +142,7 @@ const MIN = 60_000;
 
 interface LinhaDoEstadoFalsa {
   channel_id: string;
-  tipo: 'sem_recibo' | 'atraso';
+  tipo: TipoDoAlarme;
   desde: string;
   avisado_em?: string | null;
   normalizou_em?: string | null;
@@ -160,6 +161,7 @@ type Resposta<T> = { linhas: T[] } | { erro: string };
 function adminFalso(
   resposta: Resposta<LinhaDoEstadoFalsa>,
   sentinela: Resposta<LinhaDaSentinelaFalsa> = { linhas: [] },
+  computadores: Resposta<Record<string, unknown>> = { linhas: [] },
 ) {
   const contas: string[] = [];
   const cortes: string[] = [];
@@ -175,6 +177,17 @@ function adminFalso(
         return q;
       },
       order: () => q,
+      // 4e: os computadores de ligações LIGADOS da conta (uma leitura, sem página).
+      not: (coluna: string, op: string, valor: unknown) => {
+        if (tabela === 'cb_computadores_de_ligacao') cortes.push(`${coluna} ${op} ${String(valor)}`);
+        return q;
+      },
+      then: (ok: (r: unknown) => unknown, falha: (e: unknown) => unknown) =>
+        Promise.resolve(
+          'erro' in computadores
+            ? { data: null, error: { message: computadores.erro } }
+            : { data: computadores.linhas, error: null },
+        ).then(ok, falha),
       range: async () => {
         if (tabela === 'cb_alarmes_da_sentinela') {
           return 'erro' in sentinela
@@ -226,6 +239,7 @@ describe('probeChannels — os episódios abertos do sino (E1)', () => {
     expect(admin.contas.sort()).toEqual([
       'cb_alarmes_da_sentinela:conta-1',
       'cb_alarmes_de_conexao:conta-1',
+      'cb_computadores_de_ligacao:conta-1',
     ]);
     // O (c) aceso e ainda não avisado acompanha a sequência de agora (40 min).
     expect(porId.get('evo')?.episodios).toEqual([
@@ -237,6 +251,36 @@ describe('probeChannels — os episódios abertos do sino (E1)', () => {
       { tipo: 'atraso', desdeIso: new Date(agora - 40 * MIN).toISOString() },
     ]);
     expect(porId.get('ig')?.episodios).toEqual([]);
+  });
+
+  it('4e: o computador de ligações LIGADO dá a linha das ligações e os episódios dele; sem ele, nada', async () => {
+    const agora = Date.now();
+    const admin = adminFalso(
+      { linhas: [{ channel_id: 'evo', tipo: 'computador_fora', desde: new Date(agora - 30 * MIN).toISOString(), avisado_em: new Date(agora - 10 * MIN).toISOString() }] },
+      { linhas: [] },
+      {
+        linhas: [
+          {
+            channel_id: 'evo',
+            whatsapp: 'conectado',
+            ultimo_sinal_em: new Date(agora - 30 * MIN).toISOString(),
+            ligacao_em_curso: null,
+            ligado_em: new Date(agora - 99 * MIN).toISOString(),
+          },
+        ],
+      },
+    );
+    const saude = await probeChannels(bancoFalso(), 'conta-1', admin.db);
+    const evo = saude.find((c) => c.id === 'evo')!;
+    expect(evo.ligacoes).toEqual({ situacao: 'fora', sinalEm: new Date(agora - 30 * MIN).toISOString() });
+    expect(evo.episodios).toContainEqual({ tipo: 'computador_fora', desdeIso: new Date(agora - 30 * MIN).toISOString() });
+    expect(admin.cortes).toContain('ligado_em is null');
+    expect(saude.find((c) => c.id === 'meta')?.ligacoes).toBeNull();
+
+    // A leitura dos computadores que falha: sem a linha, nunca "fora do ar".
+    const quebrado = adminFalso({ linhas: [] }, { linhas: [] }, { erro: 'tempo esgotado' });
+    const depois = await probeChannels(bancoFalso(), 'conta-1', quebrado.db);
+    expect(depois.every((c) => c.ligacoes === null)).toBe(true);
   });
 
   it('⚠️ a leitura que falha é "não sei" (null), nunca "nenhum", e não fica no cache', async () => {

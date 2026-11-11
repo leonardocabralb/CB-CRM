@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  ehNotaDoSistema,
   montarConversa,
   MOTIVO_SEM_LEITOR,
   NOTA_DA_RESPOSTA_CRUZADA,
+  PREFIXO_DA_NOTA,
   ROTULO_DA_EQUIPE,
   semRotuloDaEquipe,
   terminarNoCliente,
@@ -242,5 +244,87 @@ describe('semRotuloDaEquipe — o rótulo que o modelo imitou nunca chega ao cli
     ['Oi, tudo bem? Sem rótulo nenhum.', 'Oi, tudo bem? Sem rótulo nenhum.'],
   ])('em qualquer forma: %j → %j', (de, para) => {
     expect(semRotuloDaEquipe(de)).toBe(para)
+  })
+})
+
+describe('montarConversa — a ligação pelo CRM transcrita (4d, D11)', () => {
+  const faixa = (ligacao: Record<string, unknown>) => ({
+    sender_type: 'agent',
+    content_type: 'call',
+    content_text: null,
+    ligacao: { pelo_crm: true, ligacao_id: 'lig-1', direcao: 'feita', duracao_seg: 125, transcricao: 'pronta', ...ligacao },
+  })
+  const dialogos = new Map([
+    [
+      'lig-1',
+      {
+        resumo: 'O cliente pediu o andamento do processo.',
+        trechos: [
+          { quem: 'atendente' as const, inicio: 1, texto: 'Bom dia.' },
+          { quem: 'cliente' as const, inicio: 3, texto: 'Quero saber do processo.' },
+        ],
+      },
+    ],
+  ])
+
+  it('entra como NOTA no papel de usuário (nunca fala do agente), com o resumo antes do diálogo', () => {
+    const [m] = montarConversa([faixa({})], undefined, dialogos)
+    expect(m.role).toBe('user')
+    expect(m.content).toBe(
+      '[System note, not a message from the customer: phone call to the customer, made by the business through the CRM, about 2 min.]\n' +
+        'Summary: O cliente pediu o andamento do processo.\n' +
+        'Transcript (automatic, may contain errors):\n' +
+        '[00:01] Business: Bom dia.\n' +
+        '[00:03] Customer: Quero saber do processo.',
+    )
+  })
+
+  it('a recebida diz que o cliente ligou; passados os 180 dias, só o resumo', () => {
+    const [m] = montarConversa(
+      [faixa({ direcao: 'recebida', transcricao: null, expirada: true })],
+      undefined,
+      new Map([['lig-1', { resumo: 'Retorno combinado para amanhã.', trechos: [] }]]),
+    )
+    expect(m.content).toBe(
+      '[System note, not a message from the customer: phone call from the customer, answered by the business through the CRM, about 2 min.]\n' +
+        'Summary: Retorno combinado para amanhã.',
+    )
+  })
+
+  it('sem diálogo (não transcrita, de fora do CRM, ou a leitura falhou): fica fora, como antes', () => {
+    expect(montarConversa([faixa({})], undefined, new Map())).toEqual([])
+    expect(montarConversa([faixa({})])).toEqual([])
+    expect(montarConversa([faixa({ pelo_crm: false })], undefined, dialogos)).toEqual([])
+    expect(montarConversa([{ ...faixa({}), ligacao: null }], undefined, dialogos)).toEqual([])
+  })
+
+  it('o diálogo longo é cortado no teto da leitura, com o corte declarado', () => {
+    const longo = new Map([
+      ['lig-1', { resumo: null, trechos: [{ quem: 'cliente' as const, inicio: 0, texto: 'x'.repeat(TETO_DA_LEITURA_NO_CONTEXTO + 500) }] }],
+    ])
+    const [m] = montarConversa([faixa({})], undefined, longo)
+    expect(m.content.endsWith(' […cut]')).toBe(true)
+    expect(m.content.split('\n').slice(1).join('\n').length).toBeLessThanOrEqual(TETO_DA_LEITURA_NO_CONTEXTO + ' […cut]'.length)
+  })
+})
+
+describe('ehNotaDoSistema — as notas no papel de usuário não são fala do cliente', () => {
+  it('reconhece a resposta cruzada e a ligação transcrita; não a fala do cliente', () => {
+    expect(ehNotaDoSistema(NOTA_DA_RESPOSTA_CRUZADA)).toBe(true)
+    const [ligacao] = montarConversa(
+      [
+        {
+          sender_type: 'agent',
+          content_type: 'call',
+          content_text: null,
+          ligacao: { pelo_crm: true, ligacao_id: 'lig-9', transcricao: 'pronta' },
+        },
+      ],
+      undefined,
+      new Map([['lig-9', { resumo: 'Fulano Ficticio confirmou o horário.', trechos: [] }]]),
+    )
+    expect(ehNotaDoSistema(ligacao.content)).toBe(true)
+    expect(ehNotaDoSistema('Meu nome é Fulano Ficticio')).toBe(false)
+    expect(PREFIXO_DA_NOTA.startsWith('[System note')).toBe(true)
   })
 })

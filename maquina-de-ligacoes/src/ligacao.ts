@@ -58,6 +58,11 @@ export interface WhatsApp {
   aceitar(quem: string): Promise<'aceitou' | 'nada_tocando' | 'outra_chamada'>
   desligar(): Promise<void>
   qr(): Promise<string | null>
+  /**
+   * O "Desconectar" do WhatsApp Web (o Reparear do CRM, 4e): só volta quando
+   * a tela mostra o QR. Lança se não deu (antes do clique final a sessão segue).
+   */
+  desconectar(): Promise<'qr'>
 }
 
 export interface Ponte {
@@ -86,6 +91,12 @@ export interface Dependencias {
   agora(): number
   esperar(ms: number): Promise<void>
   registrar(linha: string): void
+  /**
+   * O WhatsApp desta máquina mudou de estado (conectou, pediu o QR, caiu):
+   * o orquestrador manda o sinal de vida NA HORA (4e), e a tela Conexões fica
+   * em dia em segundos, não no minuto seguinte.
+   */
+  aoMudarOWhatsapp?(estado: EstadoDoWhatsapp): void
 }
 
 interface Atual {
@@ -179,6 +190,29 @@ export class Maquina {
 
   async qr(): Promise<string | null> {
     return this.estadoDoWhatsapp === 'qr' ? this.d.whatsapp.qr() : null
+  }
+
+  /**
+   * O "Reparear" do CRM (4e): desconecta o WhatsApp Web desta máquina, para
+   * alguém ler um QR novo com o celular do número. Só com a linha LIVRE e a
+   * sessão aberta; enquanto ele mexe na tela, a linha fica ocupada
+   * (`pedidoEmCurso`): ninguém liga nem atende no meio.
+   */
+  async desconectar(): Promise<Resultado> {
+    if (this.atual || this.pedidoEmCurso) return { ok: false, recusa: 'ocupada' }
+    if (this.estadoDoWhatsapp !== 'conectado') return { ok: false, recusa: 'whatsapp_desconectado' }
+    this.pedidoEmCurso = true
+    try {
+      await this.d.whatsapp.desconectar()
+      this.estadoDoWhatsapp = 'qr'
+      this.d.aoMudarOWhatsapp?.('qr')
+      return { ok: true }
+    } catch (erro) {
+      this.d.registrar(`desconectar: ${erro instanceof Error ? erro.message.split('\n')[0] : String(erro)}`)
+      return { ok: false, recusa: 'falhou' }
+    } finally {
+      this.pedidoEmCurso = false
+    }
   }
 
   async ligar(pedido: PedidoDeLigacao): Promise<Resultado> {
@@ -285,7 +319,10 @@ export class Maquina {
       }
       return
     }
-    this.estadoDoWhatsapp = retrato.estado
+    if (retrato.estado !== this.estadoDoWhatsapp) {
+      this.estadoDoWhatsapp = retrato.estado
+      this.d.aoMudarOWhatsapp?.(retrato.estado)
+    }
     const { chamada } = retrato
     const comChamadaNossa = chamada.fase === 'chamando' || chamada.fase === 'em_curso'
     const atual = this.atual

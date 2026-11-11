@@ -151,7 +151,7 @@ import {
 import { type IaAgente, PRAZO_DA_GERACAO_MS } from './agente'
 import { lerAgendaDoAgente } from './agenda'
 import { consultaDaUltimaMensagem, PRAZO_DO_EMBEDDING_MS } from './conhecimento'
-import { lerConversaDaConexao, terminarNoCliente } from './contexto'
+import { ehNotaDoSistema, lerConversaDaConexao, terminarNoCliente } from './contexto'
 import {
   agendarDisparo,
   enfileirarTurno,
@@ -1414,7 +1414,9 @@ async function conduzir(
   // O nome da reunião (`[[REUNIAO:n=Nome]]`) só passa com ORIGEM: o que o
   // cliente escreveu, ou o nome atual da ficha — lido só quando há nome.
   const { aceitas, recusadas } = resolverAcoes(lidas.pedidas, opcoesDeAcao, {
-    mensagensDoCliente: conversa.filter((m) => m.role === 'user').map((m) => m.content),
+    // Só a fala do CLIENTE: as notas do sistema (a ligação transcrita traz a
+    // fala da empresa e o resumo da IA) não são origem de nome.
+    mensagensDoCliente: conversa.filter((m) => m.role === 'user' && !ehNotaDoSistema(m.content)).map((m) => m.content),
     nomeDaFicha: lidas.pedidas.some((p) => p.tipo === 'marcar_reuniao' && p.valor)
       ? await lerNomeDaFicha(db, turno.account_id, primeira.contactId)
       : null,

@@ -29,11 +29,12 @@ function montar() {
   let agora = 1_000_000
   const esperas: { ate: number; pronto: () => void }[] = []
   const tela: { estado: EstadoDoWhatsapp; chamada: FaseDaChamada } = { estado: 'conectado', chamada: { fase: 'nenhuma' } }
-  const feito = { discar: [] as string[], cliquesEmAceitar: 0, desligar: 0, conectar: 0, encerrarPonte: 0, sair: [] as string[] }
+  const feito = { discar: [] as string[], cliquesEmAceitar: 0, desligar: 0, conectar: 0, encerrarPonte: 0, desconectar: 0, sair: [] as string[] }
   const gravacoes = { comecadas: [] as string[], paradas: [] as (number | null)[] }
   const avisos: Aviso[] = []
   const encerradas: string[] = []
   const registros: string[] = []
+  const mudancas: string[] = []
   const controle = {
     discarResulta: 'discou' as 'discou' | 'sem_whatsapp',
     /** Segura o discar até `soltarDiscar()` (para o desligar no meio). */
@@ -54,6 +55,8 @@ function montar() {
     soltarRetrato: () => {},
     /** O discar clica (a chamada sai) e DEPOIS lança (o quadro demorou). */
     discarLanca: false,
+    /** O "Desconectar" não acha o diálogo (a sessão segue de pé). */
+    desconectarFalha: false,
   }
 
   const d: Dependencias = {
@@ -91,6 +94,12 @@ function montar() {
         if (temDesligar && !controle.telaTeimosa) tela.chamada = { fase: 'nenhuma' }
       },
       qr: async () => 'data:image/png;base64,QR',
+      desconectar: async () => {
+        feito.desconectar += 1
+        if (controle.desconectarFalha) throw new Error('o diálogo de desconectar não apareceu')
+        tela.estado = 'qr'
+        return 'qr' as const
+      },
     },
     ponte: {
       conectar: async () => {
@@ -119,6 +128,7 @@ function montar() {
     agora: () => agora,
     esperar: (ms) => new Promise<void>((pronto) => esperas.push({ ate: agora + ms, pronto })),
     registrar: (linha) => registros.push(linha),
+    aoMudarOWhatsapp: (estado) => mudancas.push(estado),
   }
 
   /** Anda o relógio, soltando cada espera vencida na ordem. */
@@ -139,7 +149,7 @@ function montar() {
 
   const maquina = new Maquina(d)
   const fins = () => avisos.filter((a): a is Extract<Aviso, { tipo: 'encerrada' }> => a.tipo === 'encerrada')
-  return { maquina, tela, feito, gravacoes, avisos, encerradas, registros, controle, passar, fins }
+  return { maquina, tela, feito, gravacoes, avisos, encerradas, registros, mudancas, controle, passar, fins }
 }
 
 type Montada = ReturnType<typeof montar>
@@ -601,6 +611,57 @@ describe('o número na tela', () => {
     expect(mesmoNumero('+55 21 98765-4321', '5511987654321')).toBe(false)
     expect(mesmoNumero('+55 21 91234-5678', '5511987654321')).toBe(false)
     expect(mesmoNumero('Cliente Fictício', '5511987654321')).toBe(true)
+  })
+})
+
+describe('o sinal na hora em que o WhatsApp muda (4e)', () => {
+  it('avisa a mudança uma vez, nunca a cada leitura igual; o desconectar também avisa', async () => {
+    const m = montar()
+    await m.maquina.tique()
+    await m.maquina.tique()
+    expect(m.mudancas).toEqual(['conectado'])
+    m.tela.estado = 'qr'
+    await m.maquina.tique()
+    expect(m.mudancas).toEqual(['conectado', 'qr'])
+    m.tela.estado = 'conectado'
+    await m.maquina.tique()
+    expect(await m.maquina.desconectar()).toEqual({ ok: true })
+    expect(m.mudancas).toEqual(['conectado', 'qr', 'conectado', 'qr'])
+  })
+})
+
+describe('o Reparear do CRM: desconectar (4e)', () => {
+  it('com a linha livre: desconecta, e o QR passa a sair na hora', async () => {
+    const m = montar()
+    await m.maquina.tique()
+    expect(await m.maquina.desconectar()).toEqual({ ok: true })
+    expect(m.feito.desconectar).toBe(1)
+    expect(m.maquina.estado().whatsapp).toBe('qr')
+    expect(await m.maquina.qr()).toBe('data:image/png;base64,QR')
+  })
+
+  it('⚠️ nunca no meio de uma ligação, nem sem a sessão aberta', async () => {
+    const semSessao = montar()
+    semSessao.tela.estado = 'qr'
+    await semSessao.maquina.tique()
+    expect(await semSessao.maquina.desconectar()).toEqual({ ok: false, recusa: 'whatsapp_desconectado' })
+
+    const m = montar()
+    await ligarAteAtender(m)
+    expect(await m.maquina.desconectar()).toEqual({ ok: false, recusa: 'ocupada' })
+    expect(m.feito.desconectar).toBe(0)
+  })
+
+  it('a linha fica ocupada enquanto ele mexe na tela, e livre de novo na falha', async () => {
+    const m = montar()
+    await m.maquina.tique()
+    m.controle.desconectarFalha = true
+    const pedido = m.maquina.desconectar()
+    expect(await m.maquina.ligar(PEDIDO)).toEqual({ ok: false, recusa: 'ocupada' })
+    expect(await pedido).toEqual({ ok: false, recusa: 'falhou' })
+    expect(m.maquina.estado().whatsapp).toBe('conectado')
+    expect(m.registros.some((r) => r.startsWith('desconectar: '))).toBe(true)
+    expect((await m.maquina.ligar(PEDIDO)).ok).toBe(true)
   })
 })
 
