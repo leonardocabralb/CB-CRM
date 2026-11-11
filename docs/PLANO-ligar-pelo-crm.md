@@ -14,7 +14,7 @@ ligação de WhatsApp do que a telefônica. Vizinho deste plano:
 | 1    | Teste A: a máquina liga, com áudio de arquivo              | em curso (10/11/2026)  |
 | 2    | Teste B: o áudio no navegador do atendente                 | ✅ 10/11/2026 (falta P8) |
 | 3    | Decidir a máquina: upgrade para a KVM 4 × segunda VPS      | ✅ 10/11/2026: fica na VPS atual (D8) |
-| 4    | Ligar e atender pelo CRM: botão, toque, gravação, transcrição | desenho pronto (§8), decisões tomadas (§8.10); próxima: 4a |
+| 4    | Ligar e atender pelo CRM: botão, toque, gravação, transcrição | desenho pronto (§8), decisões tomadas (§8.10); 4a em curso: caixa de areia medida (§8.12), plano da 4a (§8.13) |
 | 5    | Atender pelo CRM (ligação recebida)                        | incorporada à Fase 4   |
 
 ## 1. Por que uma máquina central (o que foi descartado)
@@ -413,7 +413,21 @@ com o estado do computador de ligações (conectado ao WhatsApp, último sinal,
 em ligação agora) e o botão **"Parear"**, que mostra o QR do WhatsApp Web do
 computador (capturado da tela dele e renovado a cada poucos segundos, como o
 QR da Evolution). Ninguém mais precisa de túnel nem de tela remota para
-parear.
+parear. A captura do QR já funciona na máquina (4a, `GET /qr`).
+
+**Pedidos do operador (10/11/2026, depois do teste da 4a), para a 4e:**
+- **No botão das conexões do cabeçalho**, ao lado de cada conexão que tem
+  computador de ligações, o estado das LIGAÇÕES dela (pronto, em ligação,
+  pedindo QR, fora do ar), além do estado do WhatsApp que já aparece ali.
+- **Reconectar pelo CRM, do começo ao fim:** o QR aparece no CRM sozinho
+  quando a sessão da máquina cai, e um botão **"Reparear"** desconecta a
+  máquina do WhatsApp (a opção "Desconectar" do WhatsApp Web dela) para gerar
+  um QR novo — a medir na 4e. Sem túnel e sem tela remota.
+- **A sentinela vigia a máquina:** o sinal de vida (a cada minuto) parado,
+  o WhatsApp da máquina pedindo QR e o contêiner parado viram aviso no sino e
+  no botão das conexões, como os alarmes de conexão de hoje (1123). O
+  contêiner avulso não entra no `replica:` de hoje (só serviço do Swarm):
+  precisa de conferência própria.
 
 **Quem pode:** neste CRM o "poder" sai do PAPEL (`roles.ts`, `useCan`,
 `requireRole`) e o perfil recorta as telas e as CONEXÕES que a pessoa vê.
@@ -425,18 +439,18 @@ de perfis (`catalogo.ts`), decisão à parte.
 ### 8.2 As peças
 
 ```
- navegador do atendente ──(rotas do CRM, com login)──► CRM ──(rede interna do Swarm, segredo)──► computador de ligações
+ navegador do atendente ──(rotas do CRM, com login)──► CRM ──(rede LigacoesNet, segredo)────────► computador de ligações
         ▲  │ áudio WebRTC (direto, STUN)                ▲                                         (1 por número)
         │  └──────────────────────────────────────────────────────────────────────────────────► Chrome + WhatsApp Web
         └── tempo real (Supabase) ◄── eventos ◄─────────┴──────────────── eventos (chamando, atendida, encerrada…)
 ```
 
-- **Computador de ligações** (serviço novo, um por número; começa só na
-  Previdenciario - Comercial, D10). Subprojeto `maquina-de-ligacoes/` no
-  repositório, com `package.json` próprio (como o `mcp-server/`), imagem
-  montada por workflow e publicada no GHCR (como a da Evolution), e stack
-  versionada em `ops/vps/`. Dentro: Xvfb, PulseAudio, Chrome e um
-  **orquestrador em Node** que:
+- **Computador de ligações** (um CONTÊINER AVULSO por número, não serviço do
+  Swarm — medido no §8.12; começa só na Previdenciario - Comercial, D10).
+  Subprojeto `maquina-de-ligacoes/` no repositório, com `package.json`
+  próprio (como o `mcp-server/`), imagem montada na própria VPS a partir do
+  subprojeto (como a do teste), e os scripts em `ops/vps/ligacoes/` (§8.13).
+  Dentro: Xvfb, PulseAudio, Chrome e um **orquestrador em Node** que:
   - comanda o Chrome pelo protocolo de depuração (`playwright-core`,
     `connectOverCDP`): ligar para um número, atender, desligar, ler o estado
     da chamada na tela, capturar o QR;
@@ -444,12 +458,12 @@ de perfis (`catalogo.ts`), decisão à parte.
     sem o `sinal.py`): recebe a oferta WebRTC do CRM e devolve a resposta;
   - **grava** os dois lados (o monitor do alto-falante = cliente; o da
     entrada = atendente) do "atendeu" ao "desligou";
-  - manda **eventos** ao CRM e responde à **API interna** (`/ligar`,
-    `/atender`, `/desligar`, `/audio`, `/estado`, `/qr`), só numa rede
-    overlay PRÓPRIA entre o CRM e ele (nunca a `CBAdvNet`, §8.7), com segredo
-    no cabeçalho;
-  - manda um **sinal de vida** por minuto (WhatsApp conectado? botões
-    esperados na tela?). Sinal parado = "fora do ar" na tela e aviso.
+  - manda **eventos** ao CRM e responde à **API interna** (`/ligar` e
+    `/atender` já levam a oferta WebRTC e devolvem a resposta; `/desligar`,
+    `/estado`, `/qr`), só numa rede overlay PRÓPRIA entre o CRM e ele (nunca a
+    `CBAdvNet`, §8.7), com segredo no cabeçalho;
+  - manda um **sinal de vida** por minuto (o estado do WhatsApp e a ligação
+    em curso). Sinal parado = "fora do ar" na tela e aviso (4e).
 - **CRM — servidor:** as rotas de ligar, atender, desligar e de áudio (que
   repassam a oferta WebRTC à máquina e devolvem a resposta), a rota que
   recebe os eventos da máquina, a de ouvir a gravação (URL assinada curta) e
@@ -466,7 +480,7 @@ de perfis (`catalogo.ts`), decisão à parte.
    WebRTC com os candidatos de rede.
 2. `POST` ao CRM com a conversa e a oferta. O CRM confere tudo (§8.1, D13),
    cria a ligação (direção "feita", atendente, estado "iniciando") e a linha
-   ao vivo, e pede à máquina a ponte (`/audio`) e a discagem (`/ligar`).
+   ao vivo, e pede à máquina a ponte e a discagem num pedido só (`/ligar`).
    Devolve a resposta WebRTC: o atendente passa a ouvir o "chamando".
 3. A máquina disca pela aba **Ligações → Nova ligação → número**, SEM abrir a
    conversa (abrir marca as mensagens do cliente como lidas — achado do
@@ -533,9 +547,10 @@ de perfis (`catalogo.ts`), decisão à parte.
   baixa taxa), que saem do Storage assim que o texto fica pronto: no estéreo
   comprimido os canais podem vazar um no outro, e o lado limpo é o que diz
   quem falou. (Conferir o vazamento na 4a; se não houver, basta o estéreo.)
-- Envio direto ao Storage por **URL de envio assinada** que o CRM gera para
-  aquela ligação (a máquina nunca guarda a chave de serviço do Supabase).
-  **Bucket PRIVADO** novo (`ligacoes`): o `chat-media` é público e uma
+- A máquina manda cada arquivo ao CRM (rota interna, com o segredo), e o CRM
+  o guarda no Storage: a chave de serviço do Supabase nunca vai à máquina.
+  São no máximo ~13 MB por ligação (30 min). **Bucket PRIVADO** novo
+  (`ligacoes`): o `chat-media` é público e uma
   gravação de ligação nunca pode ter endereço aberto. Para ouvir, a rota
   confere o acesso à conversa e devolve uma URL assinada de vida curta.
 - **Quem transcreve (pergunta do operador, 10/11/2026):** o SERVIDOR DO CRM,
@@ -607,18 +622,23 @@ de perfis (`catalogo.ts`), decisão à parte.
   resto (o kernel da VPS é o 5.4, fora de suporte, `INFRA-VPS.md` §2). Uma
   lista de endereços permitidos NÃO protege disso: o conteúdo vem de dentro
   do próprio WhatsApp Web. As defesas, todas obrigatórias na 4a:
-  - **Chrome COM a caixa de areia** (sem `--no-sandbox`): um perfil seccomp
-    que libere o que ela precisa; medir se o serviço do Swarm aceita (§8.12).
-  - **Imagem remontada toda semana** (workflow agendado) com o Chrome do
-    dia, a versão registrada; nada de imagem velha no ar.
-  - **Contêiner sem privilégios:** `cap_drop: ALL`, `no-new-privileges`,
+  - **Chrome COM a caixa de areia** (sem `--no-sandbox`), por um perfil
+    seccomp próprio (o padrão da Docker + `clone`, `unshare` e `setns`
+    liberados). MEDIDO em 10/11 (§8.12): funciona, mas só em contêiner
+    avulso — serviço do Swarm não aceita perfil seccomp.
+  - **Imagem remontada toda semana**, na própria VPS (cron, a partir da 4c),
+    com o Chrome do dia: o Chrome de uma imagem não se atualiza sozinho, e o
+    Google corrige falhas de segurança toda semana.
+  - **Contêiner sem privilégios:** `--cap-drop ALL --cap-add SYS_CHROOT`
+    (o único que a caixa de areia precisa, medido) e `no-new-privileges`,
     usuário comum, o mínimo de escrita fora do perfil.
   - **Rede própria:** uma rede overlay SÓ entre o CRM e o computador de
     ligações — nunca a `CBAdvNet`, onde ficam o Postgres e o Redis com as
     chaves das conexões da Evolution.
   - **Sem tela remota em produção** (o QR vem pelo CRM) e sem porta
     publicada.
-  - Mesmo assim o risco não é zero: decisão do operador (D15).
+  - Mesmo assim o risco não é zero: decisão do operador (D15), que a medição
+    resolveu sem VPS nova (a caixa de areia funciona aqui, §8.12).
 - A sinalização passa pelo CRM, com login e o recorte do perfil; a máquina só
   aceita o CRM (segredo no cabeçalho). O áudio vai direto entre o navegador e
   a máquina, cifrado (WebRTC).
@@ -644,10 +664,10 @@ de perfis (`catalogo.ts`), decisão à parte.
 ### 8.9 Entregas, nesta ordem (cada uma com teste e conferência no preview
 antes do merge; merge = deploy, com o operador ciente)
 
-- **4a — Computador de ligações** (serviço): orquestrador, imagem, stack,
-  API interna, eventos, gravação, QR, sinal de vida. Pronto quando: por
-  comando, ele liga e atende com a ponte, grava os dois lados e mostra o QR;
-  e o contêiner do teste é desligado.
+- **4a — Computador de ligações** (contêiner avulso): orquestrador, imagem,
+  script de criação, API interna, eventos, gravação, QR, sinal de vida.
+  Pronto quando: por comando, ele liga e atende com a ponte, grava os dois
+  lados e mostra o QR; e o contêiner do teste é removido. Plano no §8.13.
 - **4b — Banco e servidor:** migration, rotas, eventos, linha ao vivo,
   bucket privado, o conserto do "perdida".
 - **4c — Tela:** botão, painel, cartão com toque, faixa estendida com ▶,
@@ -656,8 +676,10 @@ antes do merge; merge = deploy, com o operador ciente)
 - **4d — Transcrição e resumo:** a fila, o diálogo na faixa, a transcrição
   no contexto do agente de IA (D11) e a poda aos 180 dias (saem o áudio e a
   transcrição, fica o resumo).
-- **4e — Conexões e operação:** estado e QR do computador na tela Conexões;
-  a sentinela vigia o sinal de vida; doc e ajuda na tela.
+- **4e — Conexões e operação:** estado e QR do computador na tela Conexões
+  e o estado das ligações no botão das conexões do cabeçalho; "Parear" e
+  "Reparear" pelo CRM; a sentinela vigia o sinal de vida, o QR e o contêiner
+  (os pedidos do operador de 10/11, §8.1); doc e ajuda na tela.
 
 ### 8.10 Decisões do operador (tomadas em 10/11/2026)
 
@@ -695,7 +717,9 @@ antes do merge; merge = deploy, com o operador ciente)
   OpenAI), como as notas de voz.
 - **D15 — segurança:** seguir na VPS atual com TODAS as defesas do §8.7; se a
   caixa de areia não funcionar dentro do Swarm (§8.12), a máquina vai para uma
-  VPS só dela.
+  VPS só dela. Resolvida pela medição de 10/11: a caixa de areia funciona
+  NESTA VPS em contêiner avulso (não no Swarm), então a máquina fica aqui,
+  como contêiner avulso (§8.13).
 
 As duas suposições que estavam aqui foram respondidas pelo operador em
 10/11/2026 e viraram a D6b e o prazo do formato, acima.
@@ -749,26 +773,375 @@ As duas suposições que estavam aqui foram respondidas pelo operador em
   de saúde (`/api/cb/channels/health`), como os alarmes da sentinela (1123).
 - **Painel lateral:** uma aba "Ligações" (opcional) em `painel-do-contato.tsx`,
   antes do Histórico, que é sempre a última.
-- **Serviço:** stack própria em `ops/vps/` (como a da Evolution), numa rede
-  overlay PRÓPRIA que só o CRM e o computador de ligações compartilham — não
-  a `CBAdvNet` (§8.7); o CRM o chama pelo nome do serviço nessa rede. A rede
-  nova no serviço do CRM e a variável nova exigem `docker stack deploy` do
-  CRM com as três linhas (`CLAUDE.md`, seção 10), com o operador ciente.
+- **Onde roda:** contêiner AVULSO (o Swarm não aceita o perfil seccomp da
+  caixa de areia, §8.12) com `--restart unless-stopped`, numa rede overlay
+  ANEXÁVEL PRÓPRIA (`LigacoesNet`) que só o CRM e os computadores de
+  ligações compartilham — não a `CBAdvNet` (§8.7); o CRM o chama pelo nome do
+  contêiner nessa rede. A rede nova no serviço do CRM e a variável nova
+  exigem `docker stack deploy` do CRM com as três linhas (`CLAUDE.md`, seção
+  10), com o operador ciente (4b).
 
 ### 8.12 A medir no começo da 4a (riscos)
 
-- O Chrome com a **caixa de areia** dentro do serviço do Swarm (perfil
-  seccomp; o Swarm não aceita todas as opções de segurança do `docker run`).
-  Se não der, vale a D15.
+- ✅ **MEDIDO em 10/11/2026: a caixa de areia do Chrome.** O serviço do Swarm
+  (Docker 28.0.1) aceita `--cap-add`/`--cap-drop`, mas NÃO `--security-opt`
+  (sem perfil seccomp próprio nem `no-new-privileges`). Kernel 5.4 com
+  `kernel.unprivileged_userns_clone = 1`. Com um perfil de Chrome VAZIO
+  (nada da sessão do WhatsApp), o Chrome 157 abrindo uma página, e a prova
+  pelos namespaces (a página roda noutro namespace de usuário e de processos
+  que o navegador):
 
+  | Configuração | Caixa de areia |
+  | --- | --- |
+  | Padrão da Docker (o que o serviço do Swarm teria) | ❌ o Chrome nem abre ("setuid sandbox: failed to move to new namespaces") |
+  | + `CAP_SYS_ADMIN` (o que o Swarm aceita) | ✅ ativa — mas o privilégio é amplo demais (rejeitado) |
+  | Perfil seccomp do Chrome (só contêiner avulso) | ✅ ativa |
+  | Perfil + `--cap-drop ALL` | ❌ o Chrome não abre |
+  | **Perfil + `no-new-privileges` + `--cap-drop ALL --cap-add SYS_CHROOT`** | ✅ **ativa: é o alvo** |
+
+  O perfil é o padrão da Docker 28.0.1 (`moby/profiles/seccomp/default.json`)
+  mais UMA regra que libera `clone`, `unshare` e `setns`; está em
+  `/root/ligacoes-teste/seccomp/` e vai para o repositório na 4a.
 - A via **"Nova ligação"** do WhatsApp Web (sem abrir a conversa) existe e é
   comandável; senão, como abrir a conversa sem marcar como lida.
-- O WebRTC sai de um **serviço do Swarm** (NAT pela `docker_gwbridge`) como
-  saiu do contêiner avulso; e o Swarm não tem o peso de processador
-  (`--cpu-shares`) do teste — o teto fica só em `limits.cpus`.
+- O WebRTC sai de um contêiner na rede overlay anexável (NAT pela
+  `docker_gwbridge`) como saiu do contêiner na bridge padrão; e a rede
+  overlay volta depois de um reinício da VPS (o §5.1 do `INFRA-VPS.md`
+  mostra a overlay voltando pela metade).
 - Ler o estado da chamada na tela (chamando, atendida, encerrada, quem
   desligou) com seletores estáveis, e testá-los contra telas salvas.
 - P8 (a rede do escritório) — se barrar, o TURN entra antes da 4c.
+
+### 8.13 Plano de implementação da 4a (10/11/2026)
+
+**Objetivo:** o computador de ligações de PRODUÇÃO, ainda sem o CRM. Por
+comando, ele liga e atende com a ponte, grava os dois lados, mostra o QR e
+avisa o que acontece. Nada muda no CRM nem no banco (isso é a 4b).
+
+**Onde roda** (decidido pela medição do §8.12):
+
+- Contêiner avulso `ligacoes-<número>`; o primeiro é `ligacoes-previdenciario`.
+  - Segurança: `--security-opt seccomp=<perfil do Chrome>`,
+    `--security-opt no-new-privileges`, `--cap-drop ALL --cap-add SYS_CHROOT`.
+  - Recursos: os tetos do teste (`--memory 1536m --memory-swap 1536m
+    --cpus 2 --cpu-shares 256 --shm-size 256m`) e um teto de processos
+    medido na 4a.
+  - `--init`, `--restart unless-stopped`, log com teto e NENHUMA porta
+    publicada.
+- **Rede `LigacoesNet`:** overlay ANEXÁVEL, criada uma vez. Na 4a só entram
+  a máquina e a bancada (abaixo); o CRM entra na 4b.
+- **Pastas na VPS**, em `/root/ligacoes/<número>/` (com `/root/ligacoes` em
+  700):
+  - `perfil`: a sessão do WhatsApp, protegida como o `postgres_data`;
+  - `gravacoes`: os arquivos ficam só até o envio ser confirmado.
+- **O perfil já pareado do contêiner de teste é MOVIDO** para o primeiro: sem
+  QR novo e sem gastar outra vaga de aparelho. Nunca dois contêineres no
+  mesmo perfil.
+- ⚠️ **Entre a 4a e a 4c ele fica PARADO fora das sessões de teste.**
+  Ninguém o usa, e nada o vigia ainda: o sinal de vida só chega ao CRM na 4b.
+  O `--restart unless-stopped` respeita o `docker stop`, inclusive depois de
+  reiniciar a VPS.
+
+**O subprojeto `maquina-de-ligacoes/`** (Node 22, TypeScript, com
+`package.json` próprio, como o `mcp-server/`):
+
+- `config.ts` — lê o ambiente:
+  - `LIGACOES_SEGREDO` (obrigatório);
+  - `LIGACOES_URL_DO_CRM`: para onde vão os eventos (vazio = só no log);
+  - `LIGACOES_COMPUTADOR`: o nome dele nos eventos;
+  - o tamanho da tela.
+
+  Nenhum endereço nosso fica no código: o portão `produto-gate` passa a
+  cobrir a pasta.
+- `index.ts` — o processo principal (o `iniciar.sh` abre o Chrome, COM a
+  caixa de areia e SEM o segredo no ambiente, e entrega o processo a ele):
+  - liga-se ao Chrome pelo controle de depuração (`playwright-core`,
+    `connectOverCDP`), espera a aba do WhatsApp (nunca abre uma segunda no
+    mesmo perfil) e abre a da ponte.
+
+  Se o Chrome fecha, uma aba trava ou fecha, a API cai, ou a aba do WhatsApp
+  fica ~60 s sem responder, ele sai com erro e a Docker reinicia o
+  contêiner: um caminho só de recuperação. (O PulseAudio e a tela virtual não
+  são vigiados à parte: sem a tela, o Chrome cai junto.)
+- `servidor.ts` — a API interna, na porta 8080, só na `LigacoesNet`.
+  Segredo no cabeçalho, comparado em tempo constante, e teto no tamanho do
+  corpo. As rotas:
+  - `GET /estado` → o estado do WhatsApp (`carregando`|`qr`|`conectado`), a
+    ligação em curso e a versão do Chrome;
+  - `GET /qr` → o QR como imagem, recortado da tela e renovado sozinho;
+  - `POST /ligar` `{ligacao, numero, oferta, ice}` → `{resposta}`: monta a
+    ponte e devolve na hora a resposta WebRTC (o atendente já ouve o
+    "chamando"), depois disca;
+  - `POST /atender` `{ligacao, numero, oferta, ice}` → `{resposta}`: confere
+    que a chamada que toca é desse número e aceita;
+  - `POST /desligar` `{ligacao}`.
+
+  As recusas:
+  - 401 sem o segredo;
+  - 409 linha ocupada, ou nada tocando;
+  - 503 com o WhatsApp desconectado.
+
+  O limite de 20 por hora (D13) mora só no CRM (4b), onde está a regra.
+
+  O número chega como o WhatsApp o conhece (o JID da conversa, com ou sem o
+  nono dígito), nunca na grafia digitada: quem resolve isso é o CRM (4b).
+- `whatsapp.ts` — a tela do WhatsApp:
+  - TODOS os seletores em `SELETORES`: é o único conserto quando a tela do
+    WhatsApp mudar (medidos: `aria-label` em português e `data-testid`; a
+    tela não tem mais `data-icon`);
+  - uma consulta tira um RETRATO da tela (há QR? a barra da sessão? o quadro
+    da chamada, com o texto e os botões?), e a função PURA `decidir` diz o
+    estado a partir dele. Os testes usam retratos escritos à mão, fictícios:
+    nunca a tela real copiada (ela tem nomes e mensagens de clientes);
+  - as ações: discar pelo discador (sem abrir a conversa, §8.3), aceitar,
+    desligar e recortar o QR.
+- `ponte.ts` + `ponte.html` — a página-ponte do Teste B, agora comandada pelo
+  orquestrador: `conectar(oferta)` devolve a resposta, e a página avisa
+  quando a rede cai.
+  - Servida só no `127.0.0.1` do contêiner.
+  - Sai o `sinal.py`.
+- `ligacao.ts` — a máquina de estados: livre → discando ou tocando →
+  chamando → em ligação → encerrada.
+  - UMA ligação por vez.
+  - Desliga sozinha aos 30 min (D13) e quando a ponte fica caída por mais de
+    15 s.
+  - O motivo do fim vai no evento: `cliente_desligou`, `atendente_desligou`,
+    `nao_atendida`, `ocupado`, `sem_whatsapp`, `teto_30min`, `ponte_caiu`
+    ou `falhou`.
+- `gravacao.ts` — do "atendeu" ao "desligou", um `ffmpeg` lê as duas fontes
+  do PulseAudio (o cliente, pelo monitor do alto-falante; o atendente, pelo
+  monitor da entrada). Ele escreve três arquivos: o estéreo Opus de 24 kbps
+  e os dois monos (§8.5).
+  - O Ogg sai escrito aos pedaços: se o contêiner cair no meio, a gravação
+    até ali fica.
+- `avisos.ts` — os avisos ao CRM: um `POST` com o segredo; se falha, tenta
+  de novo com espera crescente (o CRM fica fora uns segundos a cada deploy).
+  Repetir um aviso não estraga nada: o CRM grava cada informação uma vez só
+  ("só se vazia"), como já faz com os avisos de ligação da Evolution. Os
+  avisos: `sinal` (a cada minuto), `chamando`, `atendida` e `encerrada`. O
+  toque da RECEBIDA o CRM já sabe pelo aviso `CALL` da Evolution (o `offer`):
+  a máquina não o repete.
+- **Envio da gravação:** a máquina manda cada arquivo ao CRM, que o guarda no
+  Storage (§8.5); com o "recebido", apaga a cópia dela. Ao subir, reenvia o
+  que tiver sobrado em `/gravacoes`.
+- **Logs:** nunca o número, o segredo nem o corpo dos pedidos; a API anota o
+  método, o caminho e o status de todo pedido que muda algo e de toda recusa.
+
+**A imagem:**
+
+- `maquina-de-ligacoes/Dockerfile`:
+  - base `node:22-bookworm-slim`: a major do `.nvmrc`, por
+    `ARG NODE_VERSION`, como o `Dockerfile` da raiz;
+  - Chrome estável, Xvfb, PulseAudio, ffmpeg e as fontes;
+  - SEM noVNC nem x11vnc;
+  - usuário comum.
+
+  A política do Chrome é a de hoje, mais `VideoCaptureAllowed: false` (sem
+  câmera) e `DownloadRestrictions: 3` (nenhum download).
+- `maquina-de-ligacoes/seccomp/chrome.json` — o perfil medido, versionado. A
+  origem dele e a regra acrescentada ficam no README do subprojeto.
+- **Montada na própria VPS** (como a do teste: 2 min 49 s), a partir de uma
+  cópia do subprojeto em `/root/ligacoes/imagem/`, com o commit anotado.
+  Sem workflow e sem registro de imagens: uma peça só (decisão do operador,
+  10/11/2026, pela versão enxuta).
+- **Na VPS, em `ops/vps/ligacoes/`:**
+  - `criar-maquina.sh <número>`: o `docker run` inteiro, com os volumes;
+  - **a partir da 4c** (quando a máquina passa a ficar ligada de vez), um
+    cron semanal em `/etc/cron.d/`, como o da sentinela do WhatsApp:
+    remonta a imagem com o Chrome do dia, troca o contêiner FORA de ligação
+    e, se o WhatsApp não voltar conectado, volta o anterior sozinho. Sem
+    ação de ninguém; se a montagem falhar, o contêiner antigo segue no ar.
+
+  O cron `docker image prune -af` da VPS não apaga imagem de contêiner que
+  existe.
+
+**A bancada** (`ops/vps/ligacoes/bancada/`) — para testar a máquina antes
+de mexer no CRM; sai quando o CRM assumir (4c):
+
+- um contêiner temporário na `LigacoesNet` que faz o papel do CRM: guarda o
+  segredo e recebe os eventos e as gravações;
+- serve a página do atendente do Teste B, crescida: Ligar, Atender,
+  Desligar, o estado e o QR;
+- publicada só no `127.0.0.1` da VPS, e usada pelo túnel SSH;
+- o segredo mora num arquivo da VPS (`/root/ligacoes/segredo.env`, em 600),
+  nunca na conversa nem no navegador.
+
+**Testes** (sem dado real: números fictícios e retratos de tela escritos à
+mão):
+
+- **Rodam na raiz**, para o `verificar` cobrir sem passo novo no CI:
+  - o `vitest` passa a incluir `maquina-de-ligacoes/src/**/*.test.ts`;
+  - o `playwright-core` entra nas dependências de desenvolvimento da raiz,
+    na mesma versão do subprojeto (é o que o `mcp-server/` já faz com o SDK
+    dele);
+  - a imagem do CRM não leva a pasta (`.dockerignore`).
+- **O que cobrem:**
+  - a máquina de estados: os 30 min com relógio falso, a ponte caída, uma
+    ligação por vez e os motivos do fim;
+  - as decisões da tela, pelos retratos;
+  - o servidor: segredo, teto do corpo, 409 e 503;
+  - a fila de avisos: tenta de novo e desiste com teto;
+  - o envio da gravação, contra um servidor local de teste.
+
+**Medir primeiro, na imagem nova, antes do código que depende disso:**
+
+1. **A caixa de areia COM o WhatsApp** (a medição do §8.12 foi com o perfil
+   vazio): a página do WhatsApp roda noutro namespace? Medir também a
+   memória, o processador e o número de processos numa ligação; o
+   `--pids-limit` sai daqui.
+2. **A via Nova ligação:**
+   - acha um número que conversa com a conexão mas não está na agenda do
+     celular?
+   - disca sem abrir a conversa?
+
+   Se não houver jeito sem abrir a conversa, a pergunta volta ao operador:
+   abrir manda ao cliente a confirmação de leitura.
+3. **Os seletores** de cada situação da chamada: saindo, tocando, em curso,
+   encerrada (e quem desligou), não atendida e ocupado. E o que a chamada
+   recebida mostra (o nome da agenda do celular, ou o número?), para o
+   `/atender` conferir o número.
+4. **A rede:** o WebRTC sai direto (`srflx`) com a máquina na
+   `LigacoesNet`, e a bancada funciona publicada no `127.0.0.1`.
+5. **A gravação:** os dois lados alinhados no tempo e, no estéreo, sem vazar
+   um no outro (§8.5).
+
+**Medido em 10/11/2026** (imagem nova, `maquina-de-ligacoes:20261110`, com o
+perfil movido do teste; o WhatsApp abriu conectado, sem QR):
+
+- ✅ **1. Caixa de areia com o WhatsApp:** as 4 páginas rodam noutro
+  namespace de usuário e de processos que o navegador (contados pelo
+  `/proc` da VPS). Parado: 835–870 MiB, 168–173 processos (o teto de 1.024
+  sobra), 3–10% de um núcleo. Chrome 157.0.8103.50.
+- ✅ **2. Discar sem abrir a conversa: pelo DISCADOR.** Aba "Ligações" →
+  "Ligar para um telefone" → o número no campo (com ou sem o `+`). Com
+  WhatsApp, aparece a pessoa com os botões "Ligação de voz" e "Ligação de
+  vídeo" (`[data-testid=dialer_contact_call_buttons]`); sem WhatsApp,
+  "Nenhum resultado encontrado" (`[data-testid=no-search-results]`). A
+  busca da aba Ligações ("Pesquisar nome, número ou @nomedeusuário") também
+  mostra os botões, mas na seção "Contatos". A tela não tem mais
+  `data-icon`: os seletores são `aria-label` e `data-testid`, e o
+  `aria-label` está em português (o Chrome abre com `--lang=pt-BR`).
+- ✅ **3. A tela da chamada** (5 ligações com o lead de teste, 20:53–20:58
+  BRT): a chamada, nos dois sentidos, é um QUADRO flutuante dentro da própria
+  página (`role=application`, "Picture-in-picture"), nunca outra janela.
+  - Feita: "Ligando…" → "Chamando…" → atendida (aparecem "Opções da
+    ligação" e, 1 s depois, o cronômetro `0:00`) → o cliente desliga:
+    "Ligação encerrada" por 3 s e o quadro some. Desligada pela máquina
+    (`Desligar` no quadro): o quadro some na hora.
+  - A recusa do cliente sai como "Não atendida" (3 s), igual a não atender.
+  - Recebida: o quadro mostra o NOME da agenda do celular do escritório (ou o
+    número, se não estiver nela), "Ligação de voz" e os botões "Ignorar",
+    "Recusar" e "Aceitar". Depois de "Aceitar": cronômetro e "Desligar".
+    ⚠️ "Recusar" recusa também nos celulares do escritório: a máquina nunca
+    o toca.
+  - Como a tela mostra o nome, o `/atender` só confere o número quando a
+    tela mostra dígitos.
+- ✅ **4. A rede:** a ponte ligou em ~4 s nas 5 ligações da bancada, com a
+  máquina na `LigacoesNet` e o STUN público; a bancada publicada no
+  `127.0.0.1` da VPS, pelo túnel SSH do Mac do operador.
+- ✅ **5. A gravação** (as 4 ligações atendidas): os três arquivos chegam ao
+  CRM (a bancada) e a máquina apaga a cópia dela. No estéreo, o canal
+  esquerdo tem o mesmo nível do arquivo do cliente e o direito, o do
+  atendente; o "esquerdo menos direito" soma as duas energias (−30 dB com
+  −32,6 e −32,3 de cada lado), ou seja, um lado não vaza no outro. ~142 KB por
+  minuto de estéreo e ~65 KB por minuto de cada lado. Na recebida, o ffmpeg
+  avisou "Thread message queue blocking" sem perder nada medível (os três
+  arquivos com a mesma duração): a fila de cada entrada subiu para 512 (ainda
+  sem ligação depois disso).
+- Falta: o número que conversa com a conexão mas NÃO está na agenda do
+  celular (o lead de teste está na agenda), e o processador numa ligação com
+  a ponte e a gravação.
+
+**Registro das ligações pela bancada (10/11/2026, 21:09–21:16 BRT, o
+operador nos dois papéis: atendente no navegador do Mac, cliente no celular):**
+
+| | Chamou | Atendeu | Fim | Duração |
+| --- | --- | --- | --- | --- |
+| A, feita, o cliente desliga | 21:09:29 | +9 s | `cliente_desligou` | 24 s |
+| B, feita, Desligar da bancada | 21:10:14 | +4 s | `atendente_desligou` | 10 s |
+| C, feita, a aba do atendente fecha | 21:10:42 | +7 s | `ponte_caiu` (18 s depois da queda) | 27 s |
+| D, recebida, Atender da bancada | — | 1 s depois da ponte | `cliente_desligou` | 14 s |
+| E, feita, não atende | 21:15:22 | — | `nao_atendida` (68 s tocando) | — |
+
+- A 1ª tentativa da E não chegou à máquina; o mais provável é ter sido
+  recusada como "ocupada" (clicada nos 18 s em que a C ainda encerrava). Daí
+  a API passou a anotar no log todo pedido e toda recusa. Para a 4c: o painel
+  mostra "encerrando a ligação anterior…" em vez de deixar o botão mudo.
+- Antes, a página da bancada ficou presa pedindo o microfone ao navegador
+  sem dizer nada: ela passou a mostrar cada etapa e a desistir em 20 s. O
+  painel da 4c precisa do mesmo cuidado.
+- A D (e a 4ª da sessão de medição) entrou no CRM como "perdida" no fio do
+  lead de teste, como previsto (conferido no banco): o `terminate` da
+  Evolution chega no instante em que a máquina atende (o toque para nos
+  outros aparelhos), e a decisão sai ~12 s depois. É o caso que o conserto da
+  4b cobre (§8.4, passo 4).
+
+**Revisão a frio da 4a (10/11/2026, um agente; 15 achados).** Corrigidos
+depois do teste ao vivo, com teste para cada um (62 testes):
+
+- **(alta) chamada sem dono na tela:** um "Desligar" que não pegava (o
+  botão ainda não desenhado logo depois do aceite, a tela travada) deixava a
+  chamada viva, muda e sem teto. Agora a chamada feita ou em curso sem
+  ligação aqui é desligada de novo a cada leitura da tela; o passo que falha
+  depois do clique desliga o que saiu; o `aceitar` só volta com o "Desligar"
+  na tela.
+- **o "Atender" relê a tela** antes do clique e só aceita o mesmo `quem`.
+- **o segredo saiu do ambiente do Chrome** (`env -u` no `iniciar.sh`).
+- **a linha só fica livre depois da limpeza** (gravação e ponte): antes, uma
+  ligação nova podia nascer com a ponte da anterior fechando e ter a
+  gravação apagada no envio.
+- o quadro da chamada ancorado no "Picture-in-picture"; o cronômetro só no
+  fim do texto (um "14:30" no nome não é atendimento); o número na tela
+  comparado por DDI, DDD e os 8 últimos; prazo nas leituras da tela e na
+  ponte (a aba que trava faz o contêiner reiniciar); um teto também desde o
+  pedido; a duração até a hora em que a tela largou a chamada; erros curtos
+  no log (o do Playwright pode trazer pedaços da tela); a ponte avisa pelo
+  estado da conexão inteira e põe no log a falha ao tocar a voz do atendente;
+  a bancada só aceita pedido pelo túnel e em JSON; versões do subprojeto
+  iguais às da raiz, com pino.
+- **Ficam para a 4b:** o segredo POR MÁQUINA e as rotas da máquina no CRM
+  fora do domínio público (pelo Traefik toda rota do Next é pública: recusar
+  o pedido que chega com `x-forwarded-for`, que só o Traefik põe); a fila de
+  avisos só na memória (o CRM confere pelo `/estado`).
+- **Limites aceitos:** sem tratamento de `SIGTERM` (parar o contêiner no
+  meio de uma ligação a derruba sem o aviso de fim; a troca semanal da 4c só
+  troca fora de ligação); o campo do discador não é ancorado no próprio
+  discador (falha com segurança; a máquina nunca abre conversa).
+
+**Pronto quando** (com o operador e o lead de teste, ~30 min de ligações):
+
+- [x] **Feita para o lead:**
+  - chama e a fala passa nos dois sentidos;
+  - termina pelo cliente e também pela bancada;
+  - não atendida;
+  - fechar a aba do atendente no meio desliga em ~15 s (18 s).
+- [x] **Recebida do lead:** toca na bancada, atende, a fala passa e termina.
+  ⚠️ Até a 4b, o CRM ainda grava essa ligação como "perdida" no fio do lead
+  de teste (já aceito no Teste A).
+- [ ] A gravação dos dois lados chega à bancada (✅ medido), e o operador a
+      ouve.
+- [x] O `/qr` mostra o QR num perfil vazio: num segundo contêiner,
+      descartável, sem ler o QR (6 s; o contêiner e o perfil foram apagados
+      em seguida).
+- [x] Depois de recriar o contêiner (mais forte que o `docker restart`; 4
+      vezes em 10/11), volta conectado e sem QR.
+- [x] A imagem nova está no ar, com a caixa de areia ativa, e nada fica
+      publicado além da bancada no loopback.
+- [x] O contêiner de teste, a imagem dele e `/root/ligacoes-teste` são
+      removidos (com o "pode" do operador, na hora), e o `INFRA-VPS.md` é
+      atualizado (10/11/2026).
+- [ ] As notas ficam no lugar: as regras da máquina no `ligacoes.md`; no
+      `CLAUDE.md`, o subprojeto (§3) e o número de Node a mais (§5).
+
+**Autorizado pelo operador em 10/11/2026** ("Enxuta e começa"):
+
+1. Criar na VPS a rede, o contêiner (parado fora dos testes até a 4c) e
+   `/root/ligacoes`.
+2. Mover a sessão do WhatsApp do contêiner de teste para o novo.
+3. A sessão de ligações de teste.
+
+Apagar o contêiner de teste pede o "pode" na hora. O cron semanal entra na
+4c.
 
 ## 9. Fase 5: atender pelo CRM
 

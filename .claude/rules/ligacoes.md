@@ -5,6 +5,8 @@ paths:
   - "supabase/migrations/*ligacoes*"
   - "docs/PLANO-ligacoes-do-whatsapp.md"
   - "docs/PLANO-ligar-pelo-crm.md"
+  - "maquina-de-ligacoes/**"
+  - "ops/vps/ligacoes/**"
 ---
 
 # Ligações de WhatsApp — regras
@@ -25,6 +27,64 @@ obrigações gerais de caminho de entrada estão em `.claude/rules/ingestao.md`.
   conectados. Fases, medições e decisões: `docs/PLANO-ligar-pelo-crm.md`.
 - Quando a ligação FEITA entrar no fio, esta regra inteira muda: hoje ela
   parte de que a feita pelo escritório não existe no CRM.
+
+## O computador de ligações (`maquina-de-ligacoes/`, 4a)
+
+Um contêiner por número na VPS: Xvfb, PulseAudio, o Chrome com o WhatsApp Web
+e o orquestrador em Node. Operação: `docs/INFRA-VPS.md` §4; medições e
+desenho: §8.12 e §8.13 do plano.
+
+- ⚠️⚠️ **Contêiner AVULSO, nunca serviço do Swarm, e o Chrome COM a caixa de
+  areia** (nada de `--no-sandbox`): ele abre o que qualquer pessoa manda ao
+  número. A caixa de areia exige o perfil `seccomp/chrome.json`,
+  `no-new-privileges` e só `SYS_CHROOT` (medido: o Swarm não aceita perfil
+  seccomp). Rede `LigacoesNet`, nunca a `CBAdvNet`; nenhuma porta publicada.
+  Tudo em `ops/vps/ligacoes/criar-maquina.sh`.
+- ⚠️⚠️ **Um perfil por contêiner, nunca dois no mesmo `/perfil`**: a trava do
+  Chrome é apagada no `iniciar.sh`, e dois Chromes na mesma sessão a
+  corrompem.
+- ⚠️⚠️ **Discar só pelo DISCADOR** (aba Ligações → "Ligar para um telefone"):
+  abrir a conversa manda ao cliente a confirmação de leitura. O número entra
+  INTEIRO de uma vez (`insertText`), depois de o resultado anterior sumir:
+  digitado tecla a tecla, um prefixo dele pode ser o número de outra pessoa,
+  e ligar para a pessoa errada é o pior caso.
+- ⚠️⚠️ **A máquina nunca toca em "Recusar" nem em "Ignorar"**: recusar num
+  aparelho derruba a chamada em todos (os celulares do escritório também).
+- **Todo seletor mora em `SELETORES` (`whatsapp.ts`)**, e a decisão do que a
+  tela mostra é a função pura `decidir`, testada com retratos fictícios
+  (nunca a tela real copiada: ela tem nomes e mensagens de clientes). Os
+  `aria-label` estão em português (`--lang=pt-BR`): trocar o idioma nas
+  configurações do WhatsApp quebra a máquina.
+- A máquina de estados (`ligacao.ts`): uma ligação por vez, e a linha só
+  fica livre DEPOIS de fechar a gravação e a ponte da anterior (`encerrando`);
+  nunca disca nem atende antes de a ponte do atendente ligar; desliga aos 30
+  min do atendimento (D13), com um teto também desde o pedido, e com a ponte
+  caída por 15 s. Fechar a aba no meio deixa a linha ocupada por ~18 s.
+- ⚠️⚠️ **Chamada nenhuma fica na tela sem dono:** chamada FEITA ou EM CURSO na
+  tela sem ligação em curso aqui (o clique de desligar que não pegou, o fim
+  forçado, o passo que falhou depois do clique) é desligada de novo a cada
+  leitura da tela. Só a máquina põe chamada nesses dois estados; a recebida
+  TOCANDO nunca é tocada. O "Atender" relê a tela logo antes do clique e só
+  aceita o mesmo `quem` da conferência (o cliente pode ter desistido e outra
+  pessoa estar tocando).
+- ⚠️ **O segredo não entra no ambiente do Chrome** (`env -u` no
+  `iniciar.sh`): ele abre o que qualquer pessoa manda ao número.
+- **O contrato com o CRM (a 4b implementa exatamente isto):** a máquina
+  responde `GET /estado`, `GET /qr`, `POST /ligar`, `/atender` e `/desligar`
+  na 8080, com `Authorization: Bearer <LIGACOES_SEGREDO>`; o id da ligação é
+  o `cb_ligacoes.id` (só `[A-Za-z0-9-]`: nunca o `call_id` `crm:…`), e o
+  número é o do JID da conversa, NUNCA um LID (a máquina não os distingue).
+  Ela manda ao CRM `POST <url>/api/cb/ligacoes/eventos` (`sinal`,
+  `chamando`, `atendida`, `encerrada` com o motivo) e `PUT
+  <url>/api/cb/ligacoes/gravacao/<ligação>/{estereo,cliente,atendente}.ogg`,
+  apagando a cópia só depois do 2xx. O aviso é repetido com espera crescente
+  por até 30 min, SÓ na memória (parar o contêiner com o CRM fora perde o que
+  estava na fila): o CRM grava cada informação uma vez só e confere pelo
+  `/estado`.
+- O `playwright-core`, o `typescript` e o `@types/node` estão no
+  `package.json` do subprojeto E nas dependências de desenvolvimento da raiz
+  (o `typecheck` da raiz confere o subprojeto, a imagem compila com o dele):
+  mesma versão nos dois, com pino (`versoes.test.ts`).
 
 ## O aviso CALL
 

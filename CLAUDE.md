@@ -101,6 +101,9 @@ Supabase (Postgres + Auth + Storage + RLS) · Meta Cloud API · Evolution API.
   dicionário pela metade, escolhido por `NEXT_PUBLIC_APP_LOCALE`, entrega
   chave crua na tela.
 - `mcp-server/` — subprojeto com `package.json` próprio: `npm` dentro dele.
+- `maquina-de-ligacoes/` — o computador de ligações (Chrome + WhatsApp Web na
+  VPS), subprojeto com `package.json` próprio; os testes rodam no `vitest` da
+  raiz. Regras: `.claude/rules/ligacoes.md`.
 - `docs/` — ENTREGUES a quem instala: `README`, `INSTALACAO`, `ATUALIZAR`,
   `docker`, `public-api`, `mcp`, `webhooks`, `multi-waba`, `conexao-meta`,
   `skill-ler-cliente/`. INTERNOS (nossa operação, não viajam): `PLANO-*`, `HANDOFF-*`, `INFRA-VPS`,
@@ -139,8 +142,9 @@ Supabase (Postgres + Auth + Storage + RLS) · Meta Cloud API · Evolution API.
 ## 5. Toolchain e CI
 
 - **Uma major de Node, no `.nvmrc` (22).** O CI lê `node-version-file`; o
-  `ARG NODE_VERSION` do `Dockerfile` é o único número duplicado (mudou um,
-  muda o outro); `engines` `>=22.12.0` na raiz e no `mcp-server/`;
+  `ARG NODE_VERSION` do `Dockerfile` e o do `maquina-de-ligacoes/Dockerfile`
+  são os únicos números duplicados (mudou um, mudam todos); `engines`
+  `>=22.12.0` na raiz, no `mcp-server/` e no `maquina-de-ligacoes/`;
   `packageManager: npm@10.9.9` acompanha a major. Teste de Intl, fuso ou
   colação só vale na major do CI: `nvm use` antes de tudo.
 - **Um workflow só:** `.github/workflows/pipeline.yml` — verificar →
