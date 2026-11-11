@@ -64,6 +64,14 @@ diálogo da faixa, na poda dos 180 dias ou na limpeza da Lixeira das gravações
 - **O diálogo mora em `cb_ligacoes.transcricao`** (fechada ao navegador); a
   tela o pede por `GET /api/cb/ligacoes/[id]/transcricao`, que confere a
   conversa (a régua do ▶).
+- **Na tela, a ligação pelo CRM com o que ouvir ou ler** (gravação,
+  transcrição, resumo ou a situação dela) é um CARTÃO no fio, com "Ouvir" e
+  "Ver transcrição" como botões (pedido do operador, 11/11/2026); o resto
+  (celular, não atendida, as da 4b) segue pílula.
+- ⚠️⚠️ **O Gemini INVENTA fala sobre áudio sem voz** (medido em 11/11/2026: um
+  lado só com bipe virou um monólogo inteiro, e o resumo o repetiu), apesar do
+  "sem fala, lista vazia" no pedido. Não confie no pedido para isso; a
+  proteção (a máquina mede o som de cada lado) está proposta no plano, §8.17.
 - ⚠️⚠️ **No contexto do agente de IA (D11), a ligação transcrita é NOTA no
   papel de USUÁRIO** ("not a message from the customer"): o diálogo tem as
   duas vozes, e no papel do assistente o modelo o tomaria por fala própria.

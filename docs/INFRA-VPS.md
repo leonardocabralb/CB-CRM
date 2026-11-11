@@ -187,10 +187,12 @@ de ligar e atender desde a 4c, 11/11/2026; parado, o "Ligar" fica desligado
 e a recebida não toca no CRM). Desde a 4e, o CRM só o usa com o INTERRUPTOR
 "Ligações pelo CRM" ligado na tela Conexões (1137), e a sentinela (§12) vigia
 o contêiner do computador ligado.
-Desde 11/11/2026 (18:07 UTC): imagem `maquina-de-ligacoes:20261111-9` (a
-gravação que abre no começo do pedido e o `iniciar.sh` que limpa a pasta do
-PulseAudio, `.claude/rules/ligacoes.md`; montada à mão, abaixo), URL do CRM
-`http://crm_crm:3000`, segredo próprio em `previdenciario/segredo.env`.
+Desde 11/11/2026 (21:50 UTC): imagem `maquina-de-ligacoes:20261111-10` (a 4e:
+o `POST /desconectar` do Reparear, o QR vencido que se recarrega e o sinal de
+vida na hora em que o WhatsApp muda; montada à mão, abaixo, em 2 min 18 s; a
+cópia anterior do subprojeto ficou em `/root/ligacoes/imagem.anterior`), URL
+do CRM `http://crm_crm:3000`, segredo próprio em `previdenciario/segredo.env`.
+Rollback = recriar com a `20261111-9` (mesmo CRM; perde só o Reparear).
 
 - **Pastas** (`/root/ligacoes`, 700): `imagem/` (cópia do subprojeto, de onde
   a imagem é montada), `criar-maquina.sh` (= `ops/vps/ligacoes/`),
@@ -1036,9 +1038,11 @@ sai em silêncio.
 mais recente; nunca somada a um dono anterior), do primeiro aviso ao
 "Normalizou": aos owner/admin e aos membros ATIVOS cujo perfil vê a conexão
 (D2: sem perfil, ou com a lista de conexões vazia, vê todas), a mesma régua do
-sino do CRM. Conexão que saiu do CRM: só os owner/admin. Os do servidor
-(réplica, memória, disco, `sessao99`, `descartadas`, `sentinela_cega`) vão aos
-owner/admin de toda conta com conexão de produção.
+sino do CRM. Conexão que saiu do CRM: só os owner/admin. O do computador de
+ligações (`maquina:`) vai só aos owner/admin da conta DONA dele
+(`PREFIXOS_DA_CONTA`). Os do servidor (réplica, memória, disco, `sessao99`,
+`descartadas`, `sentinela_cega`) vão aos owner/admin de toda conta com conexão
+de produção.
 
 **O botão das conexões do CRM (1123).** Os avisos de conexão ABERTOS (vistos,
 avisados ou não, e sem a prova do fim) de `sem_entrada:`, `nao_gravadas:`,
@@ -1091,6 +1095,9 @@ install -m 644 /tmp/saude-whatsapp.cron /etc/cron.d/saude-whatsapp
 ```
 
 Conferir sem gravar nada (nem estado): `python3 /root/saude-whatsapp/sentinela.py --simular`.
+Atualizada em 11/11/2026 (21:52 UTC) com a checagem do computador de ligações
+(4e); a anterior ficou em `/root/saude-whatsapp/sentinela.py.anterior`, e o
+`--simular` depois da troca saiu sem problema e sem "não medido".
 Mandar um aviso de teste aos administradores: `--teste-aviso`. Atualizar =
 copiar o `sentinela.py` novo por cima. Desligar = apagar
 `/etc/cron.d/saude-whatsapp` (a pasta fica; o histórico da coleta está nela).

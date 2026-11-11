@@ -888,6 +888,7 @@ que não era de ninguém (§3.1, o `-X ours`).
 | `src/components/inbox/message-thread.tsx` | o mesmo motivo, mais o fio intercalado, a janela de 24h por número, a rolagem, o salto da busca e o canal na conversa (linhas da §4) |
 | `src/components/inbox/conversation-list.tsx` | praticamente reescrito na 924: o recorte mora em `src/lib/inbox/filtros.ts` e a barra é o `<InboxFilters>` |
 | `src/components/pipelines/deal-card.tsx` | reestruturado inteiro no PR #71: o corpo abre a CONVERSA, o lápis irmão edita |
+| `src/components/ui/switch.tsx` (11/11/2026) | o desligado em `bg-muted-foreground/45` com o polegar `bg-white` (o `bg-muted` sumia sobre o cartão) e o inativo por `data-[disabled]:` (a raiz do base-ui é um `<span>`: o `disabled:` do upstream nunca casava). Um merge que traga o arquivo cru volta o interruptor desligado a quase invisível em todo o app |
 | `src/components/ui/select.tsx` | deriva `items` dos próprios `<SelectItem>`. Sem isso o `<Select.Value />` do base-ui mostra o valor CRU (`openai`, `__queue__`) em ~20 telas. O wrapper repassa os genéricos `<Value, Multiple>`: tipado sem eles, todo `onValueChange` vira `any` implícito |
 
 **Este arquivo veio do upstream?**
