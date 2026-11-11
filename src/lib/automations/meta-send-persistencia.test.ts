@@ -218,6 +218,28 @@ describe('regressão de merge: a automação grava o texto ASSINADO', () => {
   })
 })
 
+// 09/11/2026: o texto da automação que o AGENTE DE IA executou no turno dele
+// fala EM NOME dele (o link da assinatura do Trabalhista): sem a marca, a
+// retomada do agente parava como "robô falou". Só o motor a passa (pino
+// `src/lib/ia-agentes/envio.chamadores.test.ts`).
+describe('o texto da automação que o agente de IA executou leva a marca dele', () => {
+  it('com `iaAgenteId`: a mensagem gravada leva `ia_agente_id`, ainda como bot', async () => {
+    await engineSendText({ ...ARGS, iaAgenteId: 'ag-1' })
+    expect(h.mensagens[0]).toMatchObject({ sender_type: 'bot', ia_agente_id: 'ag-1' })
+  })
+
+  it('sem ele (a automação comum): nenhuma marca', async () => {
+    await engineSendText(ARGS)
+    expect(h.mensagens[0]).not.toHaveProperty('ia_agente_id')
+  })
+
+  it('o provedor RECUSA: a bolha "não enviada" também leva a marca', async () => {
+    sendTextMessage.mockRejectedValueOnce(new MetaApiError('(#131047) Re-engagement message', { httpStatus: 400, code: 131047 }))
+    await expect(engineSendText({ ...ARGS, iaAgenteId: 'ag-1' })).rejects.toBeInstanceOf(MetaApiError)
+    expect(h.mensagens).toEqual([expect.objectContaining({ nao_saiu: true, ia_agente_id: 'ag-1' })])
+  })
+})
+
 describe('a conversa sem número ganha o número por onde a automação falou', () => {
   it('preenche com o canal do envio, na conta e na conversa do envio', async () => {
     await engineSendText(ARGS)

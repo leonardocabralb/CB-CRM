@@ -604,6 +604,13 @@ describe('régua do Asaas — o gatilho', () => {
     expect(validateTriggerForActivation('asaas_cobranca_vence_hoje', {})).toEqual([])
   })
 
+  it('o LEMBRETE aceita também a noite (18:00–20:30, 1133); a cobrança de atraso continua até as 17:00', () => {
+    expect(validateTriggerForActivation('asaas_cobranca_vence_hoje', { hora_envio: '20:00' })).toEqual([])
+    expect(validateTriggerForActivation('asaas_cobranca_vence_hoje', { hora_envio: '20:45' }).map((i) => i.codigo)).toEqual(['gatilho_hora_do_lembrete_invalida'])
+    expect(validateTriggerForActivation('asaas_cobranca_vence_hoje', { hora_envio: '17:30' }).map((i) => i.codigo)).toEqual(['gatilho_hora_do_lembrete_invalida'])
+    expect(validateTriggerForActivation('asaas_cobranca_vencida', { dias_de_atraso: 1, hora_envio: '20:00' }).map((i) => i.codigo)).toEqual(['gatilho_hora_de_envio_invalida'])
+  })
+
   it('a hora fica entre 08:00 e 17:00, e "só dia útil" é booleano', () => {
     expect(validateTriggerForActivation('asaas_cobranca_vence_hoje', { hora_envio: '07:30' })).toHaveLength(1)
     expect(validateTriggerForActivation('asaas_cobranca_vence_hoje', { hora_envio: '17:00' })).toEqual([])
@@ -615,6 +622,25 @@ describe('régua do Asaas — o gatilho', () => {
 
 describe('régua do Asaas — os passos', () => {
   const msg = (channel_id?: string) => ({ step_type: 'send_message', step_config: channel_id ? { text: 'x', channel_id } : { text: 'x' } })
+
+  it('a "Situação da cobrança" (10/11/2026): na régua, com pelo menos um limite inteiro na faixa; fora dela, recusada em qualquer escopo', () => {
+    const situacao = (cfg: Record<string, unknown>) => ({ step_type: 'condition', step_config: { subject: 'asaas_situacao', ...cfg }, branches: { yes: [], no: [] } })
+    // o desenho do operador: mensagem, situação, e no Sim a anotação
+    const regua = [msg('c1'), { ...situacao({ cobranca_parcelas: 2, cobranca_dias: 15 }), branches: { yes: [{ step_type: 'add_note', step_config: { texto: 'Ligar', mencionados: ['00000000-0000-4000-8000-000000000001'] } }], no: [] } }]
+    expect(validateAsaasReguaForActivation('asaas_cobranca_vencida', regua)).toEqual([])
+    expect(validateStepsForActivation(regua)).toEqual([])
+    // sem operando: não cai no "condition operand is required"
+    expect(validateStepsForActivation([situacao({ cobranca_dias: 15 })])).toEqual([])
+    expect(validateStepsForActivation([situacao({})]).map((i) => i.codigo)).toEqual(['condicao_cobranca_sem_limite'])
+    expect(validateStepsForActivation([situacao({ cobranca_parcelas: 0 })]).map((i) => i.codigo)).toEqual(['condicao_cobranca_limite_invalido'])
+    expect(validateStepsForActivation([situacao({ cobranca_dias: 366 })]).map((i) => [i.path, i.codigo])).toEqual([['steps[0].cobranca_dias', 'condicao_cobranca_limite_invalido']])
+    // no LEMBRETE a varredura não passa vencida nenhuma: sempre "não" → recusada (revisão do PR #494)
+    expect(validateAsaasReguaForActivation('asaas_cobranca_vence_hoje', [msg('c1'), situacao({ cobranca_parcelas: 2 })]).map((i) => [i.path, i.codigo])).toEqual([['steps[1].subject', 'condicao_cobranca_no_lembrete']])
+    // noutro gatilho não há `vars` da cobrança: ramo morto, recusado (inclusive dentro de um ramo)
+    expect(validateAsaasReguaForActivation('keyword_match', [msg(), situacao({ cobranca_parcelas: 2 })]).map((i) => [i.path, i.codigo])).toEqual([['steps[1].subject', 'condicao_cobranca_fora_da_regua']])
+    const aninhada = [{ step_type: 'condition', step_config: { subject: 'tag_presence', operand: 't' }, branches: { yes: [], no: [situacao({ cobranca_parcelas: 2 })] } }]
+    expect(validateAsaasReguaForActivation('calendly_booking', aninhada).map((i) => i.path)).toEqual(['steps[0].no.steps[0].subject'])
+  })
 
   it('toda mensagem precisa da conexão escolhida, em qualquer escopo', () => {
     expect(validateAsaasReguaForActivation('asaas_cobranca_vencida', [msg('c1')])).toEqual([])

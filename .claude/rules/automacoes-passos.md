@@ -16,6 +16,8 @@ paths:
   - "src/lib/notes/anotacao-da-automacao*"
   - "src/components/automations/automation-builder.tsx"
   - "src/components/automations/condicao-por-campo-fields*"
+  - "src/lib/automations/situacao-da-cobranca*"
+  - "src/components/automations/situacao-da-cobranca-fields*"
 ---
 
 # Automações — passos com regra própria
@@ -212,6 +214,28 @@ ausente = `equals`), `value`.
   `nomes.campos` (a página do funil e `GET /api/cb/execucoes` carregam), senão
   sai "(apagado)".
 
+### Condição "Situação da cobrança" (`asaas_situacao`, 10/11/2026)
+
+Só na régua do Asaas: "2 parcelas vencidas ou mais, OU a mais antiga com 15
+dias ou mais" → a anotação marcando quem liga para negociar.
+`situacao-da-cobranca.ts` (puro).
+
+- ⚠️ **Lê as `vars` que a VARREDURA passa** (`vencidas_quantidade`,
+  `dias_de_atraso_maior`, de `montarVariaveis`), nunca o banco: é a foto que
+  acabou de ser RECONFERIDA no Asaas, a mesma da mensagem.
+  `cobranca_quantidade` não serve (no lembrete conta as que vencem hoje).
+- **"A partir de"**: 15 dias inclui o próprio dia 15 (é o marco de 15 que pega
+  quem atrasou UMA parcela). Limite em branco não é olhado; os dois em branco
+  a ativação recusa (`condicao_cobranca_sem_limite`). Sem vencida não há atraso.
+- ⚠️ **Só nas COBRANÇAS de atraso** (`asaas_cobranca_vencida`). Fora da
+  régua responde "não" com a nota (`só a régua do Asaas a entrega`); no
+  LEMBRETE a varredura passa `vencidas: []` e ela responderia sempre "não".
+  `validateAsaasReguaForActivation` a recusa nos dois, em qualquer escopo
+  (`condicao_cobranca_fora_da_regua`, `condicao_cobranca_no_lembrete`), e o
+  construtor só a oferece com `cobrancaDeAtraso` (ou já gravada).
+- Desviada em `executeStepsFrom` (a nota do registro diz quantas vencidas e o
+  maior atraso) e cópia no `evaluateCondition`: mudou um, muda o outro.
+
 ### "Fixar a conversa no número" (`pin_conversation_channel`)
 
 A troca de número Comercial → Jurídico (29/09/2026): o cliente do Bancário
@@ -272,8 +296,9 @@ quem cuida, marcando a pessoa. `src/lib/notes/anotacao-da-automacao.ts`
 ### "Enviar arquivo" do ACERVO (`send_media` com `acervo_id`, 09/11/2026)
 
 O vídeo das gestantes que a automação executada pelo agente de IA manda
-depois do link do ZapSign. `midia-do-passo.ts` (puro + a cópia), o mesmo
-campo do nó "Enviar mídia" do robô (`whatsapp-envio.md`).
+ANTES do link do ZapSign (o link por último: ela não pode ver o vídeo e perder
+o link). `midia-do-passo.ts` (puro + a cópia), o mesmo campo do nó "Enviar
+mídia" do robô (`whatsapp-envio.md`).
 
 - ⚠️⚠️ **O motor manda a CÓPIA CONGELADA do item** (`prepararMidiaDoPasso` →
   `copiaCongeladaDoAcervo`): UMA por item, criada no 1º envio e
@@ -305,6 +330,21 @@ campo do nó "Enviar mídia" do robô (`whatsapp-envio.md`).
   ignoraria o upload); escolher troca o tipo pelo do item, com aviso; o
   título vem da lista lida na RAIZ (só quando algum passo aponta item) ou do
   escolhido agora; "apagado" só com a lista carregada.
+
+### A automação executada pelo AGENTE DE IA fala em nome dele (09/11/2026)
+
+- ⚠️⚠️ **`runAutomationById({ iaAgenteId })` é a ÚNICA porta da marca**
+  (`AutomationContext.ia_agente_id`, por `comMarcaDoAgente`: o contexto
+  recebido perde a que trouxer): o texto (`automations/meta-send.ts`) e a
+  mídia (`flows/meta-send.ts`) saem com `messages.ia_agente_id`. Passam o
+  turno (`executar-acoes.ts`) e o "Acionar automação" da automação dele; a
+  retentativa a leva no contexto da fila. ⚠️ O disparo por EVENTO a descarta
+  (`dispararAutomacoes`): a cascata da etiqueta copia o contexto da mãe, e a
+  972 conta `bot` COM a marca como "respondido" — a automação de evento
+  marcada calaria o alerta de quem espera gente. Pino
+  `src/lib/ia-agentes/envio.chamadores.test.ts`; o porquê (a retomada do
+  agente parava): `ia-retomada.md`. Botões, lista, modelo e o aviso a outro
+  número saem SEM a marca.
 
 ### "Não repetir para o mesmo contato por N horas" (`trigger_config.nao_repetir_horas`)
 

@@ -42,7 +42,7 @@
 | **1a-espelho** | Espelho das cobranças (vencidas + as que vencem hoje), vínculo automático **com criação da ficha** (D2) e sugestão por nome aproximado (D5), tela de revisão e lista de inadimplentes | ✅ **construída em 12/09 à noite** e MEDIDA no primeiro ciclo real (§6): 439 clientes, 405 vencidas, 86 ligados pela regra (84 telefone, 2 CPF), 32 fichas criadas no primeiro ciclo de 60 s e o resto nos seguintes, 7 para confirmar (6 "nome diferente", 1 "contato já ligado"), 85 sem telefone com 9 sugestões por nome | `994_cb_asaas_espelho` ✅ aplicada em 12/09 (histórico `20260912225955`) | [#201](https://github.com/leonardocabralb/CB-CRM/pull/201) |
 | **1b** | O aviso: ícone na linha da caixa, faixa colada ao compositor, aba Cobranças no painel e na ficha, filtro "Inadimplentes" | ✅ **construída em 12–13/09** e medida no preview contra a conta real (§6): 89 contatos devendo, 15 deles na aba aberta com o ícone, filtro "15 de 677", faixa e aba com os MESMOS números do cartão; com o espelho parado há 11 h a tela diz "dados do Asaas de 12/09, 21:19" em vez de calar | `996_cb_asaas_vinculo_completo` (o marcador do vínculo inteiro, pedido na 7ª rodada do Codex; aditiva, com acervo) | [#203](https://github.com/leonardocabralb/CB-CRM/pull/203) |
 | **2** | Webhook do Asaas (o pagamento some do aviso em segundos), o ciclo de vida dele e o aviso de chave desativada | ✅ **construída e EM PRODUÇÃO desde 13/09** (PR #204): o cron criou o webhook no primeiro ciclo depois do merge, e o `webhook_state` está `ativo`, conferido a cada ciclo; o 1º evento chegou em 14/09 06:23Z (`PAYMENT_RECEIVED`, resultado `ignorada` — cobrança fora do espelho). ⚠️ C7 ainda NÃO medido: nenhum `PAYMENT_OVERDUE` até 14/09. Rota pública autenticada pelo cabeçalho, criação AUTOMÁTICA pelo cron (só na VPS), conferência a cada ciclo, religa uma vez, apaga ao desconectar, bloco "Aviso na hora" no cartão. ⚠️ O que ficou DIFERENTE da §3.4: a listagem das vencidas continua a cada 15 min (10–30 pedidos por ciclo não pesam na cota; o webhook só antecipa), e a criação a partir do preview é RECUSADA (`podeCriarDaqui`) — o `.env.local` carrega a URL da produção | `997_cb_asaas_webhook` ✅ aplicada em 13/09 (histórico `20260913161622`) | [#204](https://github.com/leonardocabralb/CB-CRM/pull/204) |
-| **3** | Régua de cobrança: **o lembrete no dia do vencimento** (D17) e a cobrança do atrasado por marcos, **uma mensagem por cliente com TODAS as parcelas vencidas** (D11), pelo caminho do robô — sem reabrir conversa, sem zerar o contador de espera, sem mexer em não lidas (D16). Trava por marco com prova de envio e reconfirmação no Asaas | ✅ **construída em 13/09 e MESCLADA no mesmo dia** (PR #206, merge `d1eb0eb`, 13/09 22:11:13Z): os dois gatilhos no motor, a varredura no cron, o bloco "Cobrança automática" no cartão, a lista de exceção (D21) na aba e nas listas, "Assinar como". Revisada por QUATRO rodadas do Codex (6 + 6 + 5 + 4 achados), uma revisão de coerência e uma adversarial. ⚠️ As três primeiras rodadas foram corrigidas no PR; a 4ª (sobre `3e666f0`, 2 P1 e 2 P2) foi publicada em 13/09 22:10:20Z, 53 s ANTES do merge, e este Estado registrou "0" por engano — os 4 achados entram no #212, junto com o 403 de cota (§11 #22). Em produção (medido em 14/09) a régua padrão existe DESLIGADA (4 automações), o interruptor está DESLIGADO e há 0 envios; a lista de exceção do operador (38 clientes) já está marcada. ⚠️ O que ficou DIFERENTE da §3.6 está no bloco "O que ficou diferente na construção" no início dela. O teste real (a cobrança de R$ 5 no contato autorizado, ligar uma automação e o interruptor) fica para o primeiro dia útil | `998_cb_asaas_regua` ✅ aplicada em 13/09 (histórico `20260913211455`), antes do merge | [#206](https://github.com/leonardocabralb/CB-CRM/pull/206) |
+| **3** | Régua de cobrança: **o lembrete no dia do vencimento** (D17) e a cobrança do atrasado por marcos, **uma mensagem por cliente com TODAS as parcelas vencidas** (D11), pelo caminho do robô — sem reabrir conversa, sem zerar o contador de espera, sem mexer em não lidas (D16). Trava por marco com prova de envio e reconfirmação no Asaas | ✅ **construída em 13/09 e MESCLADA no mesmo dia** (PR #206, merge `d1eb0eb`, 13/09 22:11:13Z): os dois gatilhos no motor, a varredura no cron, o bloco "Cobrança automática" no cartão, a lista de exceção (D21) na aba e nas listas, "Assinar como". Revisada por QUATRO rodadas do Codex (6 + 6 + 5 + 4 achados), uma revisão de coerência e uma adversarial. ⚠️ As três primeiras rodadas foram corrigidas no PR; a 4ª (sobre `3e666f0`, 2 P1 e 2 P2) foi publicada em 13/09 22:10:20Z, 53 s ANTES do merge, e este Estado registrou "0" por engano — os 4 achados entraram no #212, junto com o 403 de cota (§11 #22; merge `9c8cff2c`, 14/09 20:56 BRT). A retomada de 10/11/2026 (para LIGAR) está na §12. Em produção (medido em 14/09) a régua padrão existe DESLIGADA (4 automações), o interruptor está DESLIGADO e há 0 envios; a lista de exceção do operador (38 clientes) já está marcada. ⚠️ O que ficou DIFERENTE da §3.6 está no bloco "O que ficou diferente na construção" no início dela. O teste real (a cobrança de R$ 5 no contato autorizado, ligar uma automação e o interruptor) fica para o primeiro dia útil | `998_cb_asaas_regua` ✅ aplicada em 13/09 (histórico `20260913211455`), antes do merge | [#206](https://github.com/leonardocabralb/CB-CRM/pull/206) |
 | **4** (ideias, não pedidas) | régua para conexão da Meta com modelo aprovado; botão "cobrar agora" na aba; condição "cliente inadimplente?" em outras automações; parcela a vencer na aba; relatório histórico de recebimento; inserir o link de pagamento direto no compositor | 💤 | — | — |
 
 - **Número das migrations:** a última hoje é a **998** (a régua, Fase 3);
@@ -1374,7 +1374,12 @@ cartão avisa quando duas automações ligadas têm o mesmo marco.
 | `marco_detalhe` | só as parcelas que cruzaram o marco HOJE, para quem quiser um texto que separe "esta venceu agora" de "e ainda constam estas" |
 
 Não há `cobranca_link` solto: com várias parcelas, um link pagaria só uma, e o
-link de cada parcela já está em `cobranca_detalhe`. Datas por aritmética de
+link de cada parcela já está em `cobranca_detalhe`. ⚠️ **Mudou em 10/11/2026
+(§12):** as linhas não levam mais a descrição nem "(valor original)", o link
+vai na linha de baixo e as datas são faladas; entraram `saudacao`,
+`cobranca_situacao`, `cobranca_links` (o link sozinho com UMA cobrança; a lista com várias — um texto só para os dois casos) e
+`vencidas_quantidade`, e `escritorio_nome` passou a ser o nome automático da
+assinatura. Datas por aritmética de
 texto (DATE não tem fuso); dinheiro por `formatCurrency`. A caixa de
 variáveis aparece no editor do gatilho (`asaas-trigger-config.tsx`, molde de
 `calendly-trigger-config.tsx`).
@@ -2408,3 +2413,57 @@ mudou por causa deles e das regras que ele fixou no mesmo dia:
   interruptor do WhatsApp (fica ligado) foram respondidos em 12/09 à tarde
   (§9). ~~Ficam as perguntas 1, 3–11 da §9~~ — TODAS respondidas em 13/09
   pelo perguntador (linha 21; o preâmbulo da §9 tem as respostas).
+
+## 12. A retomada de 10/11/2026 — para LIGAR
+
+O operador pediu para ligar a régua (nunca ligada desde 13/09). Levantamento
+só de leitura: sync, vínculo e webhook sãos; C7 medido (o Asaas marca vencida
+entre 3h e 7h, antes das 9h); régua e as 4 automações desligadas, 0 travas.
+
+**Decisões do operador (10/11/2026):**
+
+- As quatro automações saem pelo número **Bancário - Jurídico** (as três
+  cobranças estavam no Comercial e o lembrete no Jurídico; 43 devedores
+  conversam no Jurídico, 25 no Comercial).
+- A cobrança **não abre conversa encerrada nem marca lida**. Achado: a régua
+  criava ABERTA a conversa da ficha que não tinha uma — corrigido (nasce
+  encerrada, como a do motor).
+- "Assinar como" com o nome de quem atende o financeiro; escritório "CB
+  Advogados" — `escritorio_nome` lia `accounts.name`, o nome do DONO;
+  passou a ser `assinatura_nome_automatica`.
+- Saudação "Olá!", com o nome quando é pessoa: `{{vars.saudacao}}`. 49 dos
+  73 devedores com ficha têm o nome em CAIXA ALTA no Asaas; 14 são CNPJ.
+- Textos mais humanos: a frase da situação com concordância, datas faladas
+  ("venceu ontem"), o link na linha de baixo, sem "(valor original)" (0
+  parcelas em aberto tinham juros).
+- ⚠️ **A descrição da cobrança NUNCA vai ao cliente**: medido, as avulsas
+  guardam anotação interna da equipe ali.
+- **Marco de 15 dias** (1, 5, 15, 30): sem ele, quem atrasa uma parcela só
+  ficava do dia 5 ao 30 sem contato.
+- **Cliente com 2 parcelas vencidas ou mais, ou 15 dias de atraso ou mais →
+  anotação interna marcando quem liga do financeiro** para ligar e negociar, **UMA vez
+  até ela resolver**: a condição nova "Situação da cobrança"
+  (`asaas_situacao`) e uma etiqueta que trava a repetição — ela tira a
+  etiqueta depois da ligação. Desenho de cada cobrança: `[mensagem]` →
+  `[Situação da cobrança: 2 parcelas / 15 dias]` → Sim: `[tem a etiqueta?]`
+  → Não: `[anotação marcando quem liga]` `[pôr a etiqueta]`. A anotação
+  vem depois da mensagem e antes da etiqueta: se o aviso falhar, a etiqueta
+  não entra e a próxima cobrança anota de novo (repetir é melhor que calar).
+- O n8n do Asaas está desligado.
+- **D12 revista — lembrete da NOITE** (o n8n mandava três no dia: 9h, 18h e
+  20h; o operador ficou com dois): o do dia e o da noite, este de propósito
+  com cara de mensagem automática ("Assinar como" = "Mensagem automática")
+  para lembrar no fim do dia sem parecer uma pessoa cobrando. O turno sai da
+  hora: antes das 18:00 é o do dia (janela até 18:00); de 18:00 a 20:30 é o
+  da noite (janela até 21:00). Cada turno tem a sua trava (`marco` 0/1 no
+  `vence_hoje`, migration 1133). Só o do dia é absorvido pela cobrança do
+  marco; o da noite lembra quem ainda não pagou o que vence hoje, relido no
+  Asaas antes. A cobrança de atraso continua só até as 18:00.
+
+**Para ligar (com o "pode gravar"):** aplicar a 1133 (antes do deploy);
+trocar conexão, textos e "Assinar como" das quatro; criar a de 15 dias e o
+lembrete da noite (20:00, "Mensagem automática"); montar a condição, a anotação e a
+etiqueta nas quatro cobranças; conferir que o perfil de quem liga enxerga o
+Jurídico; ligar as automações e o interruptor depois das 18h (os primeiros
+envios saem no dia útil seguinte, 08h e 09h); acompanhar os primeiros.
+

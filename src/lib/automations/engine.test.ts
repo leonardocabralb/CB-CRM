@@ -6137,6 +6137,52 @@ describe("condição 'hora do dia' — no fuso do escritório", () => {
   });
 });
 
+describe("condição 'Situação da cobrança' — régua do Asaas (10/11/2026)", () => {
+  // O motor lê as `vars` que a varredura passa; o gatilho aqui é outro só
+  // para o disparo andar (a régua casa pelo `automation_id`).
+  const condicao = {
+    id: 'cond-cobranca',
+    automation_id: 'a1',
+    step_type: 'condition',
+    position: 0,
+    parent_step_id: null,
+    step_config: { subject: 'asaas_situacao', cobranca_parcelas: 2, cobranca_dias: 15 },
+  };
+  const ramo = (branch: 'yes' | 'no', text: string) => ({
+    ...sendStep({ text }),
+    id: `ramo-${branch}`,
+    parent_step_id: 'cond-cobranca',
+    branch,
+    position: 0,
+  });
+
+  async function avaliar(vars: Record<string, unknown> | undefined) {
+    vi.mocked(engineSendText).mockClear();
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [condicao, ramo('yes', 'ligar'), ramo('no', 'só a mensagem')];
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { conversation_id: 'conv1', ...(vars ? { vars } : {}) },
+    });
+    return vi.mocked(engineSendText).mock.calls[0]?.[0]?.text;
+  }
+
+  it('duas vencidas ou 15 dias: Sim; uma com 3 dias: Não — e o registro diz o que leu', async () => {
+    expect(await avaliar({ vencidas_quantidade: '2', dias_de_atraso_maior: '3' })).toBe('ligar');
+    expect(await avaliar({ vencidas_quantidade: '1', dias_de_atraso_maior: '15' })).toBe('ligar');
+    expect(await avaliar({ vencidas_quantidade: '1', dias_de_atraso_maior: '3' })).toBe('só a mensagem');
+    expect(JSON.stringify(h.state.logUpdates)).toContain('1 parcela vencida, a mais antiga com 3 dias de atraso');
+  });
+
+  it('sem as vars da cobrança (fora da régua): Não, e o registro diz por quê', async () => {
+    expect(await avaliar(undefined)).toBe('só a mensagem');
+    expect(JSON.stringify(h.state.logUpdates)).toContain('só a régua do Asaas');
+  });
+});
+
 describe('Aguardar até estar dentro do horário (B6a, 26/09/2026)', () => {
   // Instantes UTC explícitos (Brasília = UTC-3). Relógio falso SÓ do Date:
   // timers de verdade, senão os awaits do motor não andam. 25/09/2026 é
@@ -7102,5 +7148,70 @@ describe('"Enviar arquivo": o arquivo subido no passo ou um item do ACERVO (09/1
     expect(midiaMock.copiaCongeladaDoAcervo).not.toHaveBeenCalled();
     expect(midiaMock.engineSendMedia).not.toHaveBeenCalled();
     expect(JSON.stringify(h.state.logUpdates)).toContain('send_media precisa de um arquivo');
+  });
+});
+
+// ------------------------------------------------------------
+// A automação que o AGENTE DE IA executa fala EM NOME dele (09/11/2026): o
+// vídeo e o link da assinatura do Trabalhista saem com a marca do agente
+// (`iaAgenteId` → `messages.ia_agente_id`), e a retomada dele não para como
+// "robô falou". A marca entra SÓ pelo argumento de `runAutomationById`; o
+// disparo por evento a descarta — a cascata da etiqueta copia o contexto da
+// mãe, e a 972 conta `bot` com a marca como "respondido".
+// ------------------------------------------------------------
+
+describe('a automação executada pelo agente de IA fala em nome dele (09/11/2026)', () => {
+  beforeEach(() => {
+    vi.mocked(engineSendText).mockClear();
+    midiaMock.engineSendMedia.mockClear();
+  });
+
+  async function executar(
+    passo: Record<string, unknown>,
+    extra: { iaAgenteId?: string; context?: Record<string, unknown> } = {}
+  ) {
+    h.state.owned = { id: 'c1', name: 'Maria' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [passo];
+    return runAutomationById({
+      automationId: 'a1',
+      accountId: ACCOUNT,
+      contactId: 'c1',
+      context: { conversation_id: 'conv-1', ...(extra.context ?? {}) },
+      triggerType: 'manual',
+      ...(extra.iaAgenteId ? { iaAgenteId: extra.iaAgenteId } : {}),
+    });
+  }
+
+  const passoDeMidia = {
+    ...sendStep({ kind: 'video', url: 'https://storage/account-acct-1/v.mp4', caption: 'Veja' }),
+    step_type: 'send_media',
+  };
+
+  it('executada pelo agente: o TEXTO sai com a marca dele', async () => {
+    await executar(sendStep({ text: 'E este é o formulário' }), { iaAgenteId: 'ag-1' });
+    expect(vi.mocked(engineSendText).mock.calls[0]?.[0]).toMatchObject({ iaAgenteId: 'ag-1' });
+  });
+
+  it('executada pelo agente: a MÍDIA sai com a marca dele', async () => {
+    await executar(passoDeMidia, { iaAgenteId: 'ag-1' });
+    expect(midiaMock.engineSendMedia.mock.calls[0]?.[0]).toMatchObject({ iaAgenteId: 'ag-1' });
+  });
+
+  it('executada por gente ("Executar automação") ou acionada sem o agente: sem marca', async () => {
+    await executar(sendStep({ text: 'oi' }));
+    await executar(passoDeMidia);
+    expect(vi.mocked(engineSendText).mock.calls[0]?.[0]).toMatchObject({ iaAgenteId: null });
+    expect(midiaMock.engineSendMedia.mock.calls[0]?.[0]).toMatchObject({ iaAgenteId: null });
+  });
+
+  it('⚠️ a marca que chega no CONTEXTO não vale — só a do argumento', async () => {
+    await executar(sendStep({ text: 'oi' }), { context: { ia_agente_id: 'ag-forjado' } });
+    expect(vi.mocked(engineSendText).mock.calls[0]?.[0]).toMatchObject({ iaAgenteId: null });
+  });
+
+  it('⚠️ o disparo por EVENTO descarta a marca (a cascata da etiqueta copia o contexto da mãe)', async () => {
+    const args = await dispararEnvio({ text: 'oi' }, { ia_agente_id: 'ag-1' });
+    expect(args).toMatchObject({ iaAgenteId: null });
   });
 });

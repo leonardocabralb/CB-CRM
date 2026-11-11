@@ -445,3 +445,27 @@ describe('mídia: o link produzido pelo remetente (o acervo das automações)', 
     ])
   })
 })
+
+// 09/11/2026: o "Enviar arquivo" da automação que o AGENTE DE IA executou no
+// turno dele fala EM NOME dele — o vídeo antes do link da assinatura não pode
+// parar a retomada do agente como "robô falou". Só o motor de automações
+// passa a marca (pino `src/lib/ia-agentes/envio.chamadores.test.ts`).
+describe('mídia: a marca do agente de IA (a automação que ele executou)', () => {
+  const VIDEO = 'https://x.test/account-acc-1/gestante.mp4'
+
+  it('com `iaAgenteId`: a mensagem gravada leva `ia_agente_id`', async () => {
+    await engineSendMedia({ ...BASE, kind: 'video', link: VIDEO, iaAgenteId: 'ag-1' })
+    expect(h.mensagens[0]).toMatchObject({ sender_type: 'bot', ia_agente_id: 'ag-1' })
+  })
+
+  it('sem ele (o robô, a automação de gente): nenhuma marca', async () => {
+    await engineSendMedia({ ...BASE, kind: 'video', link: VIDEO })
+    expect(h.mensagens[0]).not.toHaveProperty('ia_agente_id')
+  })
+
+  it('o provedor RECUSA: a bolha "não enviada" também leva a marca', async () => {
+    meta.sendMediaMessage.mockRejectedValue(new Error(RECUSA_131030))
+    await expect(engineSendMedia({ ...BASE, kind: 'video', link: VIDEO, iaAgenteId: 'ag-1' })).rejects.toThrow(/131030/)
+    expect(h.mensagens).toEqual([expect.objectContaining({ nao_saiu: true, ia_agente_id: 'ag-1' })])
+  })
+})

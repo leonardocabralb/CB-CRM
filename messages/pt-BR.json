@@ -913,6 +913,7 @@
         "erroTrocar": "Não foi possível mudar a cobrança automática deste cliente.",
         "desligadaNaConta": "Cobrança automática DESLIGADA na conta (Configurações → Integrações → Asaas): há automação ligada, mas nada sai até ligar o interruptor.",
         "lembrete": "lembrete do vencimento",
+        "lembreteNoite": "lembrete da noite",
         "marco": "{dias} dia(s) de atraso",
         "resultado": {
           "reservado": "em andamento ({quando})",
@@ -2844,7 +2845,8 @@
           "channel": "Canal de entrada",
           "deal_stage": "Negócio está na etapa",
           "deal_status": "Negócio está",
-          "meta_window_open": "Janela de 24h da Meta aberta"
+          "meta_window_open": "Janela de 24h da Meta aberta",
+          "asaas_situacao": "Situação da cobrança (Asaas)"
         },
         "operandLabel": "Operando",
         "horaDoDiaInicio": "Início",
@@ -2857,6 +2859,16 @@
         "horaDoDiaIncompleta": "Escolha o início e o fim — sem os dois, a condição responde sempre Não.",
         "horaDoDiaSegASex": "Só de segunda a sexta",
         "horaDoDiaSegASexHelp": "Sábado e domingo respondem Não (feriados não são conferidos). Numa janela que atravessa a meia-noite, a madrugada conta para o dia em que a janela começou: a de sábado é a noite de sexta.",
+        "cobrancaParcelasLabel": "Parcelas vencidas: a partir de",
+        "cobrancaParcelasAjuda": "Quantas parcelas vencidas o cliente tem, somando todas as cobranças dele (2 = duas ou mais). Em branco, não olha.",
+        "cobrancaDiasLabel": "Dias de atraso da mais antiga: a partir de",
+        "cobrancaDiasAjuda": "Dias de calendário desde o vencimento da parcela mais antiga (15 = o próprio dia 15 já conta). Em branco, não olha.",
+        "cobrancaAjuda": "Responde Sim quando QUALQUER um dos dois é alcançado. A situação é a que a régua acabou de conferir no Asaas para esta mensagem. Só funciona nas cobranças de atraso da régua — no lembrete do vencimento não há parcela vencida.",
+        "cobrancaSemLimite": "Preencha pelo menos um dos dois — sem nenhum, a condição responde sempre Não.",
+        "cobrancaLimiteInvalido": "Use números inteiros: de 1 a 99 parcelas e de 1 a 365 dias. Fora disso, o limite não vale.",
+        "cobrancaResumoParcelas": "{n, plural, one {# parcela ou mais} other {# parcelas ou mais}}",
+        "cobrancaResumoDias": "{n, plural, one {# dia de atraso ou mais} other {# dias de atraso ou mais}}",
+        "cobrancaResumoOu": " ou ",
         "mensagemContemLabel": "Texto que a mensagem contém",
         "negocioAberto": "Aberto",
         "escolhaStatus": "Escolha o status",
@@ -3161,6 +3173,8 @@
         "diasAjuda": "Dias corridos depois do vencimento. Cada marco é uma automação: 1, 5, 30… A mensagem lista todas as parcelas vencidas do cliente, não só a que cruzou este marco.",
         "horaLabel": "Enviar a partir de",
         "horaAjuda": "Entre 08:00 e 17:00. A mensagem sai entre esta hora e as 18:00 do dia do marco; agendador parado até as 18:00 = marco perdido naquele dia.",
+        "horaAjudaLembrete": "Antes das 18:00 é o lembrete do DIA: sai entre esta hora e as 18:00. A partir das 18:00 vira o lembrete da NOITE, até as 21:00 (ex.: 20:00, assinado como \"Mensagem automática\").",
+        "horaAjudaNoite": "Lembrete da NOITE: sai entre esta hora e as 21:00, só para quem ainda não pagou o que vence hoje (o CRM confere no Asaas antes). Use \"Assinar como\" = \"Mensagem automática\".",
         "diasUteisLabel": "Só em dia útil",
         "diasUteisAjuda": "Sábado, domingo e feriado nacional de data fixa empurram a mensagem para o dia útil seguinte.",
         "conexaoAviso": "A mensagem desta automação precisa da conexão escolhida no passo (falha fechada: nunca sai pelo número padrão). Sem 'Aguardar': cada marco é uma automação própria.",
@@ -3240,6 +3254,10 @@
           "condicao_sem_conexao": "Escolha a conexão que a condição confere.",
           "condicao_horario_invalido": "Escolha o horário de início e o de fim da condição (diferentes entre si).",
           "condicao_dias_uteis_invalido": "Marque ou desmarque de novo a opção “Só de segunda a sexta” da condição.",
+          "condicao_cobranca_sem_limite": "Preencha pelo menos um limite da situação da cobrança (parcelas ou dias de atraso).",
+          "condicao_cobranca_limite_invalido": "Os limites da situação da cobrança são números inteiros: de 1 a 99 parcelas e de 1 a 365 dias.",
+          "condicao_cobranca_fora_da_regua": "A condição “Situação da cobrança” só funciona na régua de cobrança do Asaas: troque o critério.",
+          "condicao_cobranca_no_lembrete": "No lembrete do vencimento não há parcela vencida: a “Situação da cobrança” responderia sempre Não. Use-a nas cobranças de atraso.",
           "webhook_sem_endereco": "Escreva o endereço (URL) do webhook.",
           "webhook_endereco_invalido": "Corrija o endereço do webhook: ele tem de começar com http:// ou https://.",
           "numero_sem_telefone": "Escreva o telefone que recebe a mensagem.",
@@ -3275,6 +3293,7 @@
           "gatilho_webhook_invalido": "Escolha de novo o webhook que dispara a automação.",
           "gatilho_dias_de_atraso_invalido": "Escolha com quantos dias de atraso a cobrança sai (de 1 a 365).",
           "gatilho_hora_de_envio_invalida": "Escolha a hora de envio entre 08:00 e 17:00.",
+          "gatilho_hora_do_lembrete_invalida": "Escolha a hora do lembrete entre 08:00 e 17:00 (lembrete do dia) ou entre 18:00 e 20:30 (lembrete da noite).",
           "gatilho_dias_uteis_invalido": "Marque ou desmarque de novo a opção “Só em dia útil”.",
           "gatilho_status_invalidos": "Escolha de novo os status do gatilho: ganho, perdido ou aberto.",
           "gatilho_atlas_sem_situacao": "Marque ao menos uma situação do Atlas Gestor no gatilho.",
@@ -3392,25 +3411,37 @@
         }
       },
       "evento": {
+        "saudacao": {
+          "rotulo": "Saudação",
+          "legenda": "“Olá, Maria!” com o primeiro nome; para empresa (CNPJ) ou cliente sem nome, só “Olá!”."
+        },
         "cliente_nome": {
           "rotulo": "Nome do cliente no Asaas",
           "legenda": "O nome completo, como está no Asaas."
         },
         "cliente_primeiro_nome": {
           "rotulo": "Primeiro nome do cliente",
-          "legenda": "Só o primeiro nome, com a inicial maiúscula."
+          "legenda": "Só o primeiro nome, com a inicial maiúscula (mesmo vindo em caixa alta do Asaas); empresa (CNPJ) fica como está."
         },
         "escritorio_nome": {
           "rotulo": "Nome do escritório",
-          "legenda": "O nome da conta."
+          "legenda": "O nome automático da assinatura (Configurações → Assinatura); sem ele, o nome da conta."
+        },
+        "cobranca_situacao": {
+          "rotulo": "Situação em uma frase",
+          "legenda": "Para seguir “Vi aqui que…”: “a parcela 3 de 12, de R$ 450,00, venceu ontem” ou “duas parcelas estão em aberto, somando R$ 900,00, e a mais antiga venceu em 11/10”."
+        },
+        "cobranca_links": {
+          "rotulo": "Link(s) de pagamento",
+          "legenda": "Com UMA cobrança a pagar, só o link dela; com mais de uma (inclusive a que vence hoje junto), a lista com um link por linha — o mesmo texto serve aos dois casos."
         },
         "cobranca_detalhe": {
           "rotulo": "Parcelas em aberto",
-          "legenda": "Todas as parcelas vencidas, uma por linha, com valor, vencimento e link de pagamento. No lembrete, só a que vence hoje."
+          "legenda": "Todas as parcelas vencidas, uma por linha, com valor, vencimento e o link na linha de baixo. No lembrete, só a que vence hoje. Nunca a descrição da cobrança."
         },
         "cobranca_parcelas": {
           "rotulo": "Números das parcelas",
-          "legenda": "Quais parcelas estão em aberto (2/12, 3/12…)."
+          "legenda": "Quais parcelas estão em aberto (2/12, 3/12…); a cobrança avulsa aparece como “cobrança”."
         },
         "cobranca_valor": {
           "rotulo": "Valor em aberto",
@@ -3422,7 +3453,11 @@
         },
         "cobranca_quantidade": {
           "rotulo": "Quantidade de parcelas",
-          "legenda": "Quantas parcelas estão em aberto."
+          "legenda": "Quantas parcelas a mensagem lista (as vencidas; no lembrete, as que vencem hoje)."
+        },
+        "vencidas_quantidade": {
+          "rotulo": "Quantidade de vencidas",
+          "legenda": "Quantas parcelas vencidas o cliente tem; 0 no lembrete do vencimento."
         },
         "dias_de_atraso": {
           "rotulo": "Dias de atraso (o marco)",
@@ -5010,7 +5045,7 @@
         },
         "regua": {
           "titulo": "Cobrança automática",
-          "desc": "Com o interruptor ligado, o CRM manda pelo WhatsApp o lembrete no dia do vencimento e a cobrança nos marcos de atraso — pelas automações dos gatilhos do Asaas, uma mensagem por cliente com todas as parcelas vencidas. Ligar não é retroativo: só o que vencer daqui em diante entra.",
+          "desc": "Com o interruptor ligado, o CRM manda pelo WhatsApp os lembretes no dia do vencimento (o do dia e, se houver, o da noite, até as 21:00) e a cobrança nos marcos de atraso — pelas automações dos gatilhos do Asaas, uma mensagem por cliente com todas as parcelas vencidas. Ligar não é retroativo: só o que vencer daqui em diante entra.",
           "estadoLigada": "Ligada",
           "estadoDesligada": "Desligada",
           "automacoes": "{ligadas} de {total} automações da régua ligadas",
@@ -5018,7 +5053,7 @@
           "ligadasMasDesligada": "há automação ligada, mas nada sai até ligar o interruptor",
           "ligadaSemAutomacao": "sem automação ligada, nada sai — ligue uma em Automações",
           "marcoRepetido": "Duas ou mais automações ligadas têm o mesmo marco ({marcos} dias): só uma delas envia, a outra fica travada.",
-          "lembreteRepetido": "Há mais de um lembrete do vencimento ligado: só um deles envia.",
+          "lembreteRepetido": "Há mais de um lembrete do vencimento ligado no mesmo turno (dia ou noite): só um deles envia.",
           "excecoes": "{n} cliente(s) marcado(s) para não receber a cobrança automática (lista \"Sem cobrança automática\").",
           "intervaloLabel": "Intervalo mínimo entre cobranças (dias)",
           "intervaloGravar": "Gravar",
@@ -6280,13 +6315,28 @@
       "partida": "Ponto de partida",
       "emBranco": "Em branco",
       "emBrancoDica": "Sem instruções nem regras.",
-      "criar": "Criar agente"
+      "criar": "Criar agente",
+      "passos": "Passos",
+      "passo1": "Para que serve",
+      "passo2": "Nome e modelo",
+      "trazNada": "Você escreve as instruções e as regras.",
+      "traz": "Já vem com instruções e {n, plural, one {# regra} other {# regras}}",
+      "regrasQueVem": "Regras que vêm junto",
+      "tudoMuda": "Tudo isso pode ser mudado depois, na Configuração.",
+      "nomeDica": "Aparece na lista, na faixa da conversa (\"IA · nome\") e para os agentes que passam a conversa a ele.",
+      "outroModelo": "Outro modelo…",
+      "depois": "Depois de criar",
+      "depois1": "Escreva as instruções e as regras (Configuração).",
+      "depois2": "Escolha o que ele vê do cliente (Acesso) e o que pode fazer no CRM (Ferramentas).",
+      "depois3": "Teste no Playground.",
+      "depois4": "Marque as conexões e as etapas em que ele atua e ligue.",
+      "continuar": "Continuar",
+      "voltar": "Voltar"
     },
     "campo": {
       "nome": "Nome",
       "nomeExemplo": "ex.: Triagem",
       "ativo": "Ligado",
-      "ativoDica": "Ligado, responde os clientes cujo card está nas etapas marcadas em \"Onde atua\".",
       "descricao": "Descrição",
       "descricaoDica": "Uma frase sobre o que este agente faz. É o que outro agente lê para decidir se passa a conversa para ele.",
       "instrucoes": "Instruções",
@@ -6320,8 +6370,8 @@
       "podePassarParaDica": "Os outros agentes para quem este pode passar a conversa. Ao passar, ele ainda grava o campo, a etiqueta e a tarefa da mesma resposta; o card vai para a etapa do agente escolhido, e ele responde em seguida a mesma mensagem do cliente — ou só a próxima, se uma automação escutar a etapa de destino (ela fala primeiro).",
       "passarSemEtapa": "(sem etapa: a passagem vai para a equipe)",
       "semOutrosAgentes": "Não há outros agentes na conta.",
-      "ativoLigando": "Ao salvar ligado, o agente só atende os cards que ENTRAREM nas etapas a partir de agora. Os que já estão lá ficam com a equipe.",
-      "ativoDesligando": "Ao salvar, o agente para de responder. Se for religado depois, ele só atende os cards que ENTRAREM nas etapas a partir de então: os que já estiverem lá ficam com a equipe.",
+      "ativoLigando": "Ligado, o agente só atende os cards que ENTRAREM nas etapas a partir de agora. Os que já estão lá ficam com a equipe.",
+      "ativoDesligando": "Desligado, o agente para de responder. Se for religado depois, ele só atende os cards que ENTRAREM nas etapas a partir de então: os que já estiverem lá ficam com a equipe.",
       "conduzFechamento": "Conduz o fechamento",
       "conduzFechamentoDica": "Desligado (o padrão), o agente não fala de honorários nem convida a contratar. Ligado, ele apresenta os honorários e as condições escritos nas instruções, nas regras ou na base, responde objeções e manda o link do contrato escrito ali; a contratação só vale com a assinatura.",
       "conduzFechamentoLigando": "Ao salvar ligado, este agente passa a apresentar os honorários e as condições exatamente como estão escritos nas instruções, nas regras ou na base, e a convidar o cliente a assinar pelo link do contrato. Escreva ali os valores, as condições e o link. Continua proibido: prometer resultado, valor ou prazo; negociar ou dar desconto que não esteja escrito; fechar ou confirmar acordo e dizer que o contrato está assinado ou fechado (quem diz que assinou ouve que a assinatura será confirmada); dizer que é advogado ou pessoa da equipe.",
@@ -6329,13 +6379,43 @@
       "horarioDica": "Fora deste horário o agente não responde na hora: a mensagem fica na fila e ele responde quando o horário abrir, se ninguém da equipe tiver respondido antes. Na conexão oficial da Meta, só se a janela de 24 h ainda estiver aberta na abertura; senão, a mensagem fica com a equipe."
     },
     "config": {
-      "modelo": "Provedor e modelo",
-      "transferencia": "Limite e transferência",
-      "salvar": "Salvar",
       "salvo": "Agente salvo.",
       "arquivar": "Arquivar agente",
       "arquivarConfirma": "Arquivar este agente? Ele sai da lista e é desligado; o uso antigo mantém o nome.",
-      "arquivado": "Agente arquivado."
+      "arquivado": "Agente arquivado.",
+      "faltaNomeOuModelo": "Dê um nome ao agente e escolha o modelo antes de salvar.",
+      "indice": "Seções da configuração",
+      "secao": {
+        "identidade": {
+          "titulo": "Identidade",
+          "porque": "Como o agente aparece para a equipe, na faixa da conversa e para os outros agentes que passam a conversa a ele."
+        },
+        "comoFala": {
+          "titulo": "Como fala",
+          "porque": "O que mais muda as respostas: quem ele é, o objetivo, o tom e o que nunca faz. Depois de mexer, teste no Playground.",
+          "semInstrucoes": "Sem instruções, o agente responde só com as regras do sistema."
+        },
+        "modelo": {
+          "titulo": "Modelo",
+          "porque": "Quem escreve as respostas. Áudio, imagem e documentos do cliente são lidos pela chave da conta, não por este modelo."
+        },
+        "ondeAtua": {
+          "titulo": "Onde atua",
+          "porque": "As conexões e as etapas do funil em que ele responde. Sem as duas, ele não responde ninguém.",
+          "semConexao": "Nenhuma conexão marcada: o agente não responde ninguém."
+        },
+        "quando": {
+          "titulo": "Quando responde"
+        },
+        "limites": {
+          "titulo": "Limites e passagem",
+          "porque": "Até quantas respostas ele dá, para quem a conversa vai quando ele transfere e para quais agentes ele pode passar o cliente."
+        },
+        "arquivar": {
+          "titulo": "Arquivar o agente",
+          "porque": "Ele some da lista e deixa de atender. O histórico de uso fica."
+        }
+      }
     },
     "ondeAtua": {
       "titulo": "Onde atua",
@@ -6360,7 +6440,43 @@
       "playground": "Playground",
       "uso": "Uso",
       "turnos": "Turnos",
-      "retomada": "Retomada"
+      "retomada": "Retomada",
+      "prontidao": {
+        "pronto": "Pronto para atender",
+        "falta": "{n, plural, one {Falta # item para atender} other {Faltam # itens para atender}}",
+        "instrucoes": "Instruções escritas",
+        "semInstrucoes": "Sem instruções",
+        "semChave": "Sem chave do {provedor}",
+        "conexoes": "{n, plural, one {# conexão} other {# conexões}}",
+        "semConexao": "Nenhuma conexão marcada",
+        "etapas": "{n, plural, one {# etapa} other {# etapas}}",
+        "semEtapa": "Nenhuma etapa marcada"
+      },
+      "ligar": {
+        "rotulo": "Atende clientes",
+        "estadoLigado": "Ligado",
+        "estadoDesligado": "Desligado",
+        "tituloLigar": "Ligar o agente?",
+        "tituloDesligar": "Desligar o agente?",
+        "aindaFalta": "Ainda falta: {itens}. Ligado assim, ele não responde ninguém.",
+        "configuracaoNaoSalva": "A Configuração tem alterações não salvas: ligar não as salva.",
+        "confirmarLigar": "Ligar",
+        "confirmarDesligar": "Desligar",
+        "ligado": "Agente ligado.",
+        "desligado": "Agente desligado."
+      },
+      "salvar": {
+        "naoSalvo": "Alterações não salvas: {abas}",
+        "naoSalvoNaAba": "Alteração não salva",
+        "descartar": "Descartar",
+        "salvar": "Salvar alterações"
+      },
+      "sair": {
+        "titulo": "Sair sem salvar?",
+        "texto": "Há alterações não salvas em {abas}. Se sair agora, elas se perdem.",
+        "ficar": "Continuar editando",
+        "sair": "Sair sem salvar"
+      }
     },
     "acesso": {
       "explicacao": "O que este agente pode ver do cliente, além da conversa. É dado do cliente enviado ao provedor de IA a cada resposta: marque só o que o trabalho dele pede. Nada marcado, ele vê só a conversa.",
@@ -6388,9 +6504,10 @@
         "nenhum": "Esta conta não tem campos personalizados.",
         "nenhumNaBusca": "Nenhum campo com esse nome.",
         "marcados": "{n, plural, =0 {Nenhum marcado} one {# marcado} other {# marcados}}",
-        "limite": "No máximo {max} campos por agente. Desmarque um para marcar outro."
+        "limite": "No máximo {max} campos por agente. Desmarque um para marcar outro.",
+        "escolher": "Escolher campos ({n} de {total})",
+        "recolher": "Recolher a lista"
       },
-      "salvar": "Salvar acesso",
       "salvo": "Acesso salvo."
     },
     "base": {
@@ -6401,7 +6518,6 @@
       "vazia": "A conta ainda não tem documentos na base de conhecimento. Crie-os em Gerenciar documentos.",
       "atualizado": "Atualizado em {data}",
       "marcados": "{n, plural, =0 {Nenhum documento marcado: o agente responde sem base.} one {# documento marcado} other {# documentos marcados}}",
-      "salvar": "Salvar base",
       "salvo": "Base de conhecimento salva.",
       "teto": "É o máximo por agente ({n} documentos): para marcar outro, desmarque um."
     },
@@ -6415,7 +6531,6 @@
       "limite": "No máximo {max} por agente. Desmarque um para marcar outro.",
       "nenhumNaBusca": "Nada com esse nome.",
       "recusado": "Recusado ao salvar.",
-      "salvar": "Salvar ferramentas",
       "salvo": "Ferramentas salvas.",
       "tipoDesconhecido": "Outra ({tipo})",
       "transferir": "Passar para a equipe",
@@ -6508,14 +6623,15 @@
         "emailLiberado": "Campo do e-mail marcado em “Preencher campo”. Salve para valer."
       },
       "instrucoesPedem": "As instruções pedem “{ferramenta}”, mas a ferramenta está desligada: o agente não consegue fazer isso.",
-      "instrucoesTrecho": "Trecho: “{trecho}”"
+      "instrucoesTrecho": "Trecho: “{trecho}”",
+      "escolher": "Escolher ({n} de {total})",
+      "recolher": "Recolher a lista"
     },
     "playground": {
       "explicacao": "Converse como se fosse o cliente. O teste usa o que está na tela — as alterações ainda não salvas em Configuração, Acesso, Ferramentas e Retomada — ou o que está salvo, à sua escolha; a Base de conhecimento é sempre a salva. Mesmo modelo da produção; o gasto conta como teste. Aqui as ações são só simuladas.",
       "naoSalvo": "Há alterações não salvas em {abas}; este teste usa o que está SALVO.",
       "recomecar": "Recomeçar",
       "vazio": "Envie uma mensagem para ver como este agente responderia.",
-      "transferiria": "Aqui o agente transferiria para uma pessoa",
       "passaria": "Aqui o agente passaria a conversa para {agente}. Na produção, o card vai para a etapa dele e ele responde esta mesma mensagem — se uma automação escutar a etapa de destino, ela fala primeiro, e ele responde só a próxima mensagem do cliente.",
       "tokens": "{n} tokens",
       "pensando": "Pensando…",
@@ -6530,12 +6646,8 @@
       "contatoFalhou": "A busca falhou. Digite de novo para tentar.",
       "contatoMais": "Mostrando os {count} primeiros. Continue digitando para afinar.",
       "limparContato": "Tirar o cliente",
-      "viu": "O agente viu: {itens} · {trechos}",
       "conversa": "a conversa",
       "trechos": "{n, plural, =0 {nenhum trecho da base} one {# trecho da base} other {# trechos da base}}",
-      "acoesSimuladas": "Ações (simuladas): {itens}",
-      "acoesRecusadas": "Recusadas: {itens}",
-      "recusada": "{tipo} ({motivo})",
       "linkInventado": "O agente inventou um link: em produção esta resposta seria retida e a conversa iria para uma pessoa.",
       "reuniaoPrometida": "O agente disse que marcou a reunião sem marcar: em produção esta resposta seria retida e a conversa iria para uma pessoa.",
       "pedidoVazado": "O agente revelou parte das instruções internas: em produção esta resposta seria retida e a conversa iria para uma pessoa.",
@@ -6575,7 +6687,6 @@
       },
       "retomadaParadaDesconhecida": "As retomadas parariam sem mandar nada.",
       "acaoPrometida": "O agente disse que fez algo no sistema (tarefa, campo, etiqueta, etapa…) sem fazer: em produção esta resposta seria retida e a conversa iria para uma pessoa.",
-      "acoesAntesDaPassagem": "Antes de passar a conversa (simuladas): {itens}",
       "testar": "Testar:",
       "testarSalvo": "Salvo",
       "testarRascunho": "Rascunho (o que está na tela)",
@@ -6605,7 +6716,69 @@
       "verPedidoDica": "Cada resposta nova traz o texto que foi ao modelo (regras, instruções, dados do cliente, base e ações), para conferir por que ele respondeu assim.",
       "pedidoEnviado": "Pedido enviado ao modelo",
       "retomadaDesligada": "A retomada está desligada nesta versão do agente: na produção, nada sairia.",
-      "limiteDeTestes": "Limite de testes por minuto atingido. Tente de novo em {s} s."
+      "limiteDeTestes": "Limite de testes por minuto atingido. Tente de novo em {s} s.",
+      "efeitoTitulo": "O que teria acontecido no CRM (simulado)",
+      "efeitoAntesDaPassagem": "Antes de passar a conversa (simulado)",
+      "efeitoNenhum": "Nenhuma ação no CRM nesta resposta.",
+      "efeito": {
+        "mover_etapa": "Card movido para",
+        "etiquetar": "Etiqueta aplicada",
+        "tirar_etiqueta": "Etiqueta retirada",
+        "preencher_campo": "Campo preenchido",
+        "criar_tarefa": "Tarefa criada para",
+        "executar_automacao": "Automação executada",
+        "marcar_reuniao": "Reunião marcada para"
+      },
+      "efeitoTransferir": "Passaria a conversa para a equipe",
+      "efeitoDesconhecido": "Ação \"{tipo}\"",
+      "efeitoReuniaoNome": "em nome de {valor}",
+      "efeitoRetida": "Resposta retida: a conversa iria para a equipe",
+      "efeitoEquipeDetalhe": "A conversa fica Pendente e a IA pausada até alguém clicar em \"Retomar IA\".",
+      "efeitoPassagem": "Passaria a conversa para o agente",
+      "efeitoPassagemDetalhe": "O card vai para a etapa dele, e ele responde esta mesma mensagem — se uma automação escutar a etapa de destino, ela fala primeiro.",
+      "efeitoNaoFaria": "Não faria: {tipo}",
+      "destinoFila": "Fila sem responsável (qualquer pessoa pode assumir)",
+      "destinoMembro": "Responsável: {nome}",
+      "destinoCarregando": "Responsável configurado no agente",
+      "destinoDesconhecido": "Responsável configurado no agente (fora da equipe ou não carregado)",
+      "bastidores": {
+        "titulo": "Bastidores",
+        "raciocinio": "Como o modelo pensou (resumo do provedor, em geral em inglês: o idioma das regras internas)",
+        "raciocinioVazio": "O modelo não devolveu raciocínio nesta resposta (às vezes ele responde direto, sem pensar antes).",
+        "raciocinioIndisponivel": "Este modelo não devolve o raciocínio. Devolvem os Claude da família 5 (Sonnet, Haiku, Opus) e os Gemini 2.5 em diante.",
+        "raciocinioDesconhecido": "Sem o raciocínio nesta resposta.",
+        "respostaCrua": "O que o modelo escreveu (com os marcadores de ação)",
+        "viu": "O que o agente viu",
+        "pedidoAbrir": "Mostrar o texto exato ({n} caracteres)",
+        "pedidoDica": "Marque \"Mostrar o pedido enviado ao modelo\", acima, para ver o texto exato nas próximas respostas."
+      },
+      "lead": {
+        "titulo": "O lead depois desta conversa",
+        "subtitulo": "A soma do que o agente teria feito no CRM. É simulação: nada foi gravado.",
+        "vazio": "Converse com o agente para ver aqui o que ele faria com o lead: etapa, etiquetas, campos, tarefas e para quem passaria a conversa.",
+        "semMudanca": "Até aqui o agente só conversou: nenhuma mudança no CRM.",
+        "nada": "Nenhuma",
+        "resposta": "resposta {n}",
+        "etapa": "Etapa do card",
+        "etapaIgual": "Não mudou",
+        "etapaDoAgente": "Iria para a etapa do agente {agente}",
+        "etiquetas": "Etiquetas",
+        "aplicada": "Aplicada",
+        "retirada": "Retirada",
+        "campos": "Campos preenchidos ({n})",
+        "tarefas": "Tarefas",
+        "tarefaPara": "para {nome}",
+        "automacoes": "Automações executadas",
+        "reuniao": "Reunião",
+        "atendimento": "Atendimento",
+        "continuaComOAgente": "Continua com este agente",
+        "passouParaAEquipe": "Passou para a equipe · {destino}",
+        "passouParaAEquipeDetalhe": "Na produção a IA ficaria pausada a partir daqui, até alguém clicar em \"Retomar IA\".",
+        "retidaDetalhe": "Na produção a resposta não sairia: ela seria retida e a conversa iria para a equipe.",
+        "passouParaOAgente": "Passou para o agente {agente}",
+        "passouParaOAgenteDetalhe": "Na produção, daqui em diante quem responde é ele."
+      },
+      "efeitoEquipeDetalhePessoa": "Vai para essa pessoa só se a conversa ainda não tiver responsável. A conversa fica Pendente e a IA pausada até alguém clicar em \"Retomar IA\"."
     },
     "uso": {
       "explicacao": "Últimos {dias} dias. Os valores em R$ são uma ESTIMATIVA pelo preço de lista de cada modelo e pela cotação de hoje.",
@@ -6846,9 +7019,8 @@
     "retomada": {
       "explicacao": "Quando o agente pergunta algo e o cliente não responde, ele volta a falar com o cliente numa cadência. A mensagem é escrita pelo modelo, a partir da conversa, e sai pela mesma conexão.",
       "ligar": "Retomar quando o cliente não responde",
-      "ligarDica": "Vale só para a última resposta do agente que ficou sem resposta — nunca depois de mensagem de automação, do robô ou da equipe.",
+      "ligarDica": "Vale só para a última resposta do agente que ficou sem resposta — nunca depois de mensagem do robô, da equipe ou de automação (menos a que o próprio agente executou na resposta, que fala em nome dele).",
       "cadencia": "Cadência",
-      "cadenciaDica": "Cada tentativa sai este tempo depois da última resposta do agente sem resposta. Se uma atrasa (fora da janela, perto de um lembrete da reunião), as seguintes mantêm o intervalo entre elas — e nunca saem a menos de 30 min da anterior. De 1 a {max} tentativas, de 10 min a 7 dias cada.",
       "tentativa": "Tentativa {n}",
       "remover": "Tirar {tempo}",
       "novoIntervalo": "Tempo",
@@ -6875,8 +7047,24 @@
       "inicio": "Início da janela",
       "fim": "Fim da janela",
       "paradas": "As retomadas param sozinhas quando o cliente responde, quando alguém da equipe escreve ou pausa a IA, quando a conversa é encerrada, quando o card sai da etapa do agente e perto da reunião do cliente: nunca a menos de 30 min de um lembrete da reunião, e nunca nos 90 min antes dela. Numa conexão oficial da Meta, também quando a janela de 24 h fecha. Se não houver nada pendente, o agente encerra as retomadas sem mandar nada — e elas nunca passam a conversa para a equipe. Cada retomada conta no teto de respostas do agente.",
-      "salvar": "Salvar retomada",
-      "salvo": "Retomada salva."
+      "salvo": "Retomada salva.",
+      "tentativas": "{n, plural, one {# tentativa} other {# tentativas}} (até {max})",
+      "tentativasDica": "Contadas a partir da última resposta do agente que ficou sem resposta. Se uma atrasa (fora da janela, perto de um lembrete da reunião), as seguintes mantêm o intervalo entre elas — e nunca saem a menos de 30 min da anterior.",
+      "linhaInicio": "Resposta do agente",
+      "depoisDaResposta": "{tempo} depois da resposta do agente",
+      "novaTentativa": "Nova tentativa:",
+      "depoisDaRespostaCurto": "depois da resposta",
+      "limitesDaCadencia": "Cada tentativa: de 10 min a 7 dias depois da resposta.",
+      "ultimaEm": "A última sai {tempo} depois da resposta.",
+      "paraQuando": "Para sozinha quando",
+      "para": {
+        "cliente": "o cliente responde",
+        "equipe": "a equipe escreve ou pausa a IA",
+        "encerrada": "a conversa é encerrada",
+        "etapa": "o card sai da etapa do agente",
+        "reuniao": "falta pouco para a reunião do cliente"
+      },
+      "paradasDetalhe": "Ver todas as regras"
     },
     "modeloDaChave": {
       "carregando": "Carregando os modelos desta chave…",

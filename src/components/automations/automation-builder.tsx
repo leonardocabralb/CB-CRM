@@ -119,6 +119,8 @@ import { ehGatilhoDaRegua, HORA_PADRAO_COBRANCA, HORA_PADRAO_LEMBRETE } from "@/
 import { WebhookTriggerConfig } from "@/components/automations/webhook-trigger-config"
 import { ZapSignTriggerConfig } from "@/components/automations/zapsign-trigger-config"
 import { CondicaoPorCampoFields } from "@/components/automations/condicao-por-campo-fields"
+import { SituacaoDaCobrancaFields } from "@/components/automations/situacao-da-cobranca-fields"
+import { lerLimitesDaCobranca } from "@/lib/automations/situacao-da-cobranca"
 // Seletor de variáveis (29/09/2026, CB): todo campo que aceita `{{…}}` vira
 // `CampoComVariaveis` — ver docs/PLANO-seletor-de-variaveis.md.
 import { CampoComVariaveis } from "@/components/automations/variaveis/campo-com-variaveis"
@@ -548,6 +550,12 @@ interface AutomationResources {
    */
   reguaDoAsaas: boolean
   /**
+   * NOSSO: o gatilho é a COBRANÇA de atraso da régua (não o lembrete)? Só nela
+   * a condição "Situação da cobrança" tem vencidas para ler — no lembrete a
+   * varredura não passa nenhuma, e a ativação a recusa (revisão do PR #494).
+   */
+  cobrancaDeAtraso: boolean
+  /**
    * O gatilho em edição é o "Situação mudou no Atlas"? O nó Atlas esconde as
    * ações que a ativação recusa nele (`PASSOS_FORA_DO_GATILHO_DO_ATLAS`), e
    * o menu de adicionar faz o nó nascer "Criar tarefa".
@@ -680,6 +688,7 @@ interface PipelineStageOption {
 
 const ResourcesContext = createContext<AutomationResources>({
   reguaDoAsaas: false,
+  cobrancaDeAtraso: false,
   gatilhoDoAtlas: false,
   tags: [],
   members: [],
@@ -838,7 +847,7 @@ function issuesDaResposta(body: unknown): ValidationIssue[] {
  */
 function useRecursosDaAutomacao(
   automacaoAtualId: string | undefined,
-): Omit<AutomationResources, "reguaDoAsaas" | "gatilhoDoAtlas" | "acervo"> {
+): Omit<AutomationResources, "reguaDoAsaas" | "cobrancaDeAtraso" | "gatilhoDoAtlas" | "acervo"> {
   const [tags, setTags] = useState<TagRecord[]>([])
   const [members, setMembers] = useState<AccountMember[]>([])
   const [templates, setTemplates] = useState<MessageTemplate[]>([])
@@ -2136,6 +2145,7 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
             value={{
               ...recursosCarregados,
               reguaDoAsaas: ehGatilhoDaRegua(state.trigger_type),
+              cobrancaDeAtraso: state.trigger_type === "asaas_cobranca_vencida",
               gatilhoDoAtlas: state.trigger_type === GATILHO_DO_ATLAS,
               acervo: acervoDaTela,
             }}
@@ -4732,7 +4742,7 @@ function StepEditor({
   onChange: (s: BuilderStep) => void
 }) {
   const t = useTranslations("Automations.builder")
-  const { channels, pipelines, stages, templates, carga } = useResources()
+  const { channels, pipelines, stages, templates, carga, cobrancaDeAtraso } = useResources()
   // Mesmo agrupamento do seletor do gatilho: "Contato Acordo" existe em mais
   // de um quadro, e o nome sozinho não distingue.
   const stagesPorFunil = useMemo(
@@ -5300,8 +5310,12 @@ function StepEditor({
                 // Entrar ou sair da janela de 24h, da hora do dia ou do campo
                 // personalizado (2.10) limpa também o resto: o "só de segunda
                 // a sexta" é da hora, e o valor e o operador são do campo.
+                //
+                // NOSSO: a situação da cobrança (régua do Asaas) nasce com os
+                // limites do operador (2 parcelas ou 15 dias, 10/11/2026) — o
+                // que se vê é o que se salva — e os perde ao sair dela.
                 const proprio = (s: unknown) =>
-                  s === "meta_window_open" || s === "time_of_day" || s === "custom_field"
+                  s === "meta_window_open" || s === "time_of_day" || s === "custom_field" || s === "asaas_situacao"
                 set({
                   subject: novo,
                   operand: novo === "deal_status" ? "won" : "",
@@ -5310,6 +5324,8 @@ function StepEditor({
                         somente_seg_a_sex: undefined,
                         value: "",
                         operator: novo === "custom_field" ? "equals" : undefined,
+                        cobranca_parcelas: novo === "asaas_situacao" ? 2 : undefined,
+                        cobranca_dias: novo === "asaas_situacao" ? 15 : undefined,
                       }
                     : {}),
                 })
@@ -5338,9 +5354,17 @@ function StepEditor({
               )}
               <option value="deal_status">{t("config.subjects.deal_status")}</option>
               <option value="meta_window_open">{t("config.subjects.meta_window_open")}</option>
+              {/* NOSSO: só a COBRANÇA de atraso da régua entrega a situação
+                  (no lembrete e noutro gatilho a ativação recusa); gravada
+                  fora dela, continua na lista para poder ser trocada. */}
+              {(cobrancaDeAtraso || cfg.subject === "asaas_situacao") && (
+                <option value="asaas_situacao">{t("config.subjects.asaas_situacao")}</option>
+              )}
             </select>
           </FieldBlock>
-          {criterio === "custom_field" ? (
+          {criterio === "asaas_situacao" ? (
+            <SituacaoDaCobrancaFields cfg={cfg} set={set} />
+          ) : criterio === "custom_field" ? (
             <CondicaoPorCampoFields cfg={cfg} set={set} />
           ) : criterio === "meta_window_open" ? (
             <JanelaDaMetaFields
@@ -5608,6 +5632,7 @@ const CRITERIOS_DA_CONDICAO = new Set([
   "deal_stage",
   "deal_status",
   "meta_window_open",
+  "asaas_situacao",
 ])
 
 /** Corta o texto do resumo: o cartão fechado tem uma linha só. */
@@ -5689,6 +5714,16 @@ function resumoDaCondicao(
         : r.carga.customFields === "pronto"
           ? t("fields.unknown")
           : null
+      break
+    }
+    case "asaas_situacao": {
+      // "2 parcelas ou mais ou 15 dias ou mais" — só o que está preenchido.
+      const l = lerLimitesDaCobranca(cfg)
+      const partes = [
+        l.parcelas !== null ? t("config.cobrancaResumoParcelas", { n: l.parcelas }) : null,
+        l.dias !== null ? t("config.cobrancaResumoDias", { n: l.dias }) : null,
+      ].filter((x): x is string => x !== null)
+      alvo = partes.length > 0 ? partes.join(t("config.cobrancaResumoOu")) : null
       break
     }
   }

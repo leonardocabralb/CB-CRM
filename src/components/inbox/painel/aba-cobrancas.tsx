@@ -347,7 +347,7 @@ export function AbaCobrancas({ dados, carregando, falhou, recarregar }: AbaCobra
                 <li key={e.id} className="text-muted-foreground">
                   <span className="text-foreground">{e.automationNome}</span>
                   {" · "}
-                  {e.tipo === "vence_hoje" ? t("regua.lembrete") : t("regua.marco", { dias: e.marco })}
+                  {e.tipo === "vence_hoje" ? (e.marco === 1 ? t("regua.lembreteNoite") : t("regua.lembrete")) : t("regua.marco", { dias: e.marco })}
                   {" · "}
                   {/* chave montada: `regua.resultado.<resultado>` — os nove valores do CHECK da 998 (`RESULTADOS_DA_TRAVA`), cobrados por teste */}
                   {t(`regua.resultado.${e.resultado}` as Parameters<typeof t>[0], { quando: quandoFoi(e.finalizadoEm ?? e.criadoEm) ?? "" })}

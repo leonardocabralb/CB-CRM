@@ -254,6 +254,11 @@ export const CODIGOS_DE_PENDENCIA = [
   'condicao_sem_conexao',
   'condicao_horario_invalido',
   'condicao_dias_uteis_invalido',
+  // A "Situação da cobrança" da régua do Asaas (10/11/2026)
+  'condicao_cobranca_sem_limite',
+  'condicao_cobranca_limite_invalido',
+  'condicao_cobranca_fora_da_regua',
+  'condicao_cobranca_no_lembrete',
   'webhook_sem_endereco',
   'webhook_endereco_invalido',
   'numero_sem_telefone',
@@ -303,6 +308,8 @@ export const CODIGOS_DE_PENDENCIA = [
   'gatilho_webhook_invalido',
   'gatilho_dias_de_atraso_invalido',
   'gatilho_hora_de_envio_invalida',
+  // O lembrete da noite da régua (1133, 10/11/2026)
+  'gatilho_hora_do_lembrete_invalida',
   'gatilho_dias_uteis_invalido',
   'gatilho_status_invalidos',
   // Situação mudou no Atlas (1073)

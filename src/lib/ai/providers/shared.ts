@@ -22,6 +22,13 @@ export interface ProviderArgs {
   systemPartes?: readonly ParteDoSistema[]
   messages: ChatMessage[]
   timeoutMs: number
+  /**
+   * NOSSO (10/11/2026, só o Playground): pede de volta o RESUMO do raciocínio
+   * do modelo, onde ele já raciocina por padrão (`raciocinioPorPadrao` de cada
+   * adaptador). Não muda o que o modelo pensa nem o custo; ausente = o pedido
+   * de sempre, byte a byte (o turno e a retomada nunca o passam).
+   */
+  raciocinio?: boolean
 }
 
 /**

@@ -244,6 +244,19 @@ export function fraseDaAcao(
 }
 
 /**
+ * O título do CARTÃO de uma ação aceita no Playground (10/11/2026): o efeito
+ * no CRM, no passado — "Campo preenchido", "Card movido para", "Etiqueta
+ * aplicada". `IaAgentes.playground.efeito.<tipo>`, chave MONTADA cobrada em
+ * `textos.test.ts`; o "responda e passe" e o tipo desconhecido têm a dele.
+ */
+export function efeitoDaAcao(t: ReturnType<typeof useTranslations>, tipo: string): string {
+  if (tipo === ACAO_TRANSFERIR) return t('playground.efeitoTransferir');
+  return (TIPOS_DE_ACAO as readonly string[]).includes(tipo)
+    ? t(`playground.efeito.${tipo}`)
+    : t('playground.efeitoDesconhecido', { tipo });
+}
+
+/**
  * Os tipos de campo personalizado (`custom_fields.field_type`, o CHECK da 948,
  * mais `email` — o campo que espelha o e-mail da ficha) que a sub-aba
  * Ferramentas mostra ao lado do nome (`IaAgentes.ferramentas.campo.<tipo>`).
@@ -432,3 +445,17 @@ export function textoDaParadaDaRetomada(t: ReturnType<typeof useTranslations>, p
     ? t(`playground.retomadaParada.${parada}`)
     : t('playground.retomadaParadaDesconhecida');
 }
+
+/**
+ * Quando a retomada para sozinha, em chips na aba Retomada (10/11/2026): o
+ * resumo à vista — o texto inteiro (`retomada.paradas`) fica ao abrir.
+ * `IaAgentes.retomada.para.<p>`, chave MONTADA cobrada em `textos.test.ts`.
+ */
+export const PARADAS_A_VISTA = ['cliente', 'equipe', 'encerrada', 'etapa', 'reuniao'] as const;
+
+/**
+ * As seções da Configuração, na ordem da página (10/11/2026): o índice ao
+ * lado leva a cada uma. `IaAgentes.config.secao.<s>.titulo`, chave MONTADA
+ * cobrada em `textos.test.ts`.
+ */
+export const SECOES_DA_CONFIGURACAO = ['identidade', 'comoFala', 'modelo', 'ondeAtua', 'quando', 'limites', 'arquivar'] as const;

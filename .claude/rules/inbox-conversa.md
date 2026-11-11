@@ -67,8 +67,7 @@ ficha em `.claude/rules/campos-e-nome.md`.
 - ⚠️ **O visualizador de mídia do upstream foi descartado**: o nosso
   `media-viewer.tsx` tem giro e zoom (Esc em captura no `document`: no Sheet, o
   base-ui o pegava). `media-lightbox.tsx` e `message-media.tsx`
-  NÃO estão ligados; religá-los dá dois visualizadores. O que é nosso dentro de
-  arquivo do upstream está em `docs/MERGE-UPSTREAM.md`.
+  NÃO estão ligados; religá-los dá dois visualizadores.
 - ⚠️ **Conversa fora das conexões do perfil: `ConversaForaDaArea` SUBSTITUI o
   `<MessageThread>`, nunca o embrulha.** Montado, o fio buscaria as mensagens e
   zeraria as não lidas em nome de quem nem pode responder. A página também
@@ -207,6 +206,9 @@ destaque e ↑/↓ em `message-thread.tsx`.
   upload repete a normalização.
 - ⚠️⚠️ **Colagem COM texto não vira upload** (`colagemEhAnexo`): Word e Google
   Docs mandam texto e imagem juntos, e o texto se perderia.
+- ⚠️ **O colar mora na caixa E na raiz da prévia** (`onColar`): a prévia
+  SUBSTITUI o compositor, e o 2º print não entrava. A legenda pega o foco só
+  se ele caiu no `body` (na troca de conversa, fica na lista).
 - ⚠️ **`dragenter`/`dragleave` contam PROFUNDIDADE** (senão o destaque pisca) e
   só interceptam com `Files` em `dataTransfer.types`. O alvo de soltura é
   `pointer-events-none`, senão engole o `drop`.
@@ -247,8 +249,7 @@ destaque e ↑/↓ em `message-thread.tsx`.
   (`rascunho-da-conversa.md`).
 - ⚠️ **O item exibido é resolvido no RENDER** (`find(...) ?? drafts[0]`), nunca
   por efeito. Cada descarte tem aviso (`recusados`, `excedentes`). A tira de
-  miniaturas só aparece com MAIS DE UM anexo (a regra do seletor de canal: com
-  um item ela não decide nada).
+  miniaturas só aparece com MAIS DE UM anexo.
 
 ### Player de áudio
 
@@ -326,8 +327,8 @@ Pedido do operador: sem miniatura, passavam por texto comum no meio do fio.
   azul. Os tons passam de 4,5 com o branco; os `-600` de verde, laranja e
   âmbar, não.
 - **"Conversar" é o único botão preenchido do cartão**; o copiar é discreto.
-- **O desenho do fundo está a 15%** (`public/inbox-doodle.svg`, era 22%):
-  meio-termo escolhido pelo operador entre o de antes e um de 8%.
+- **O desenho do fundo está a 15%** (`public/inbox-doodle.svg`), escolha do
+  operador entre 22% e 8%.
 
 ### Links clicáveis na bolha e na anotação (29/09/2026)
 

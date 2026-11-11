@@ -48,6 +48,23 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const CABECALHO_DO_RASCUNHO_RECUSADO = 'x-rascunho-recusado'
 
 /**
+ * A geração do Playground pede também o RESUMO do raciocínio (10/11/2026;
+ * `providers/raciocinio.ts`: só aos modelos que já raciocinam por padrão — o
+ * mesmo raciocínio e o mesmo custo). Se o provedor ainda assim recusar o
+ * pedido (o 400 dele, que chega como `provider_error` com `upstreamStatus`
+ * 400 — recusa não é cobrada), o teste segue SEM ele: o raciocínio explica a
+ * resposta, nunca é motivo para o teste falhar.
+ */
+async function gerarComRaciocinio(args: Parameters<typeof generateReply>[0]) {
+  try {
+    return await generateReply({ ...args, mostrarRaciocinio: true })
+  } catch (err) {
+    if (err instanceof AiError && err.code === 'provider_error' && err.upstreamStatus === 400) return generateReply(args)
+    throw err
+  }
+}
+
+/**
  * POST /api/cb/ia/agentes/[id]/playground
  * `{ messages, contactId?, rascunho?, verPedido?, retomada?, tentativa? }`  (admin, D14)
  *
@@ -121,6 +138,11 @@ const CABECALHO_DO_RASCUNHO_RECUSADO = 'x-rascunho-recusado'
  *
  * `verPedido: true` (sob demanda, só administrador — D14): a resposta traz
  * `pedido`, o texto montado que foi ao modelo NAQUELA resposta.
+ *
+ * Os BASTIDORES (10/11/2026): toda resposta traz `raciocinio` (o resumo que o
+ * provedor devolve do raciocínio do modelo, ou `null`; `gerarComRaciocinio`)
+ * e, fora a retomada, `respostaCrua` — o que o modelo escreveu, com os
+ * marcadores de ação que o `reply` nunca leva.
  *
  * ⚠️ Nada aqui escreve, fora a linha de custo em `ai_usage_log`
  * (`agente_teste`): pino `src/lib/ia-agentes/sandbox-sem-efeito.test.ts`
@@ -267,7 +289,7 @@ export async function POST(request: Request, { params }: Contexto) {
         retomada: { tentativa, de: cadencia.length, semResposta },
       })
       const pedido = juntarPartes(partes)
-      const gerada = await generateReply({
+      const gerada = await gerarComRaciocinio({
         config: {
           provider: agente.provedor,
           model: agente.modelo,
@@ -317,6 +339,10 @@ export async function POST(request: Request, { params }: Contexto) {
           blocos: visto.blocos.filter((b) => !blocoIndisponivel(b)).map((b) => b.bloco),
           trechos: visto.trechos.length,
         },
+        // Os bastidores (10/11/2026): o resumo do raciocínio (nulo = o modelo
+        // não o devolveu) e o que o modelo escreveu, cru.
+        raciocinio: gerada.raciocinio ?? null,
+        respostaCrua: gerada.text,
         ...(verPedido ? { pedido } : {}),
       })
     }
@@ -361,7 +387,7 @@ export async function POST(request: Request, { params }: Contexto) {
       agenda: agenda ? { lida: agenda.lida, temEmail: agenda.temEmail, reuniaoMarcada: agenda.reuniaoMarcada } : null,
     })
     const pedido = juntarPartes(partes)
-    const resultado = await generateReply({
+    const resultado = await gerarComRaciocinio({
       config: {
         provider: agente.provedor,
         model: agente.modelo,
@@ -503,6 +529,11 @@ export async function POST(request: Request, { params }: Contexto) {
         blocos: visto.blocos.filter((b) => !blocoIndisponivel(b)).map((b) => b.bloco),
         trechos: visto.trechos.length,
       },
+      // Os bastidores (10/11/2026): o resumo do raciocínio (nulo = o modelo
+      // não o devolveu) e o que o modelo escreveu, com os marcadores — o
+      // `reply` acima nunca os traz. O `[[HANDOFF]]` já saiu (é o `handoff`).
+      raciocinio: resultado.raciocinio ?? null,
+      respostaCrua: resultado.text,
       ...(verPedido ? { pedido } : {}),
     })
   } catch (err) {

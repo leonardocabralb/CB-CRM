@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { GATILHOS_DA_REGUA, HORA_PADRAO_COBRANCA, HORA_PADRAO_LEMBRETE } from "@/lib/asaas/regua";
+import { GATILHOS_DA_REGUA, HORA_PADRAO_COBRANCA, HORA_PADRAO_LEMBRETE, lerAutomacaoDaRegua } from "@/lib/asaas/regua";
 import { supabaseAdmin } from "@/lib/automations/admin-client";
 import { insertSteps } from "@/lib/automations/steps-tree";
 import { requireRole, toErrorResponse } from "@/lib/auth/account";
@@ -9,7 +9,9 @@ import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit
 /**
  * POST /api/cb/asaas/regua  (admin+) — "Criar régua padrão" (§3.6): cria,
  * DESLIGADAS, as automações que ainda faltam — "Cobrança · 1 dia", "· 5
- * dias", "· 30 dias" (gatilho `asaas_cobranca_vencida`) e "Lembrete · vence
+ * dias", "· 15 dias", "· 30 dias" (gatilho `asaas_cobranca_vencida`; o de 15
+ * entrou em 10/11/2026, pedido do operador: entre 5 e 30 o cliente de uma
+ * parcela só ficava 25 dias sem contato) e "Lembrete · vence
  * hoje" (`asaas_cobranca_vence_hoje`) —, cada uma com um passo de mensagem
  * editável, pulando o marco que já existe. O operador troca o texto no
  * editor de sempre e liga uma a uma; mais marcos são automações novas do
@@ -26,20 +28,36 @@ import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit
  * desconsidere" porque o boleto pago no caixa fica PENDING até compensar.
  */
 
-const MARCOS_PADRAO = [1, 5, 30] as const;
+const MARCOS_PADRAO = [1, 5, 15, 30] as const;
 
+// `saudacao` em vez de "Olá, {{vars.cliente_primeiro_nome}}!": empresa (CNPJ)
+// recebe só "Olá!", e o nome de pessoa sai com a inicial maiúscula. A frase
+// da situação e os links servem a uma cobrança e a várias, e os links já
+// trazem a que vence hoje junto (10/11/2026) — um "Total em aberto" depois
+// dela somaria só as vencidas (revisão do PR #494).
 const TEXTO_DA_COBRANCA = [
-  "Olá, {{vars.cliente_primeiro_nome}}! Aqui é do {{vars.escritorio_nome}}.",
-  "Constam em aberto no seu cadastro {{vars.cobranca_quantidade}} parcela(s), num total de {{vars.cobranca_valor}}:",
-  "{{vars.cobranca_detalhe}}",
-  "{{vars.vence_hoje_detalhe}}",
+  "{{vars.saudacao}} Aqui é do {{vars.escritorio_nome}}.",
+  "Vi aqui que {{vars.cobranca_situacao}}. Ainda não identificamos o pagamento. Para pagar:",
+  "{{vars.cobranca_links}}",
   "Se já pagou, pode desconsiderar esta mensagem. Qualquer dúvida, é só responder por aqui.",
 ].join("\n");
 
+// O lembrete da NOITE (D12 revista, 10/11/2026): de propósito com cara de
+// mensagem automática — lembra no fim do dia sem parecer uma pessoa cobrando.
+// A assinatura "Mensagem automática" vem pelo "Assinar como" da automação.
+const HORA_PADRAO_LEMBRETE_DA_NOITE = "20:00";
+const ASSINATURA_DA_NOITE = "Mensagem automática";
+const TEXTO_DO_LEMBRETE_DA_NOITE = [
+  "Lembrete de pagamento: {{vars.cobranca_situacao}}.",
+  "Para pagar:",
+  "{{vars.cobranca_links}}",
+  "Se já pagou, desconsidere esta mensagem.",
+].join("\n");
+
 const TEXTO_DO_LEMBRETE = [
-  "Olá, {{vars.cliente_primeiro_nome}}! Aqui é do {{vars.escritorio_nome}}.",
-  "Passando para lembrar que {{vars.vencimento_texto}}:",
-  "{{vars.cobranca_detalhe}}",
+  "{{vars.saudacao}} Aqui é do {{vars.escritorio_nome}}.",
+  "Passando para lembrar que {{vars.cobranca_situacao}}. Para pagar:",
+  "{{vars.cobranca_links}}",
   "Se já pagou, pode desconsiderar. Qualquer dúvida, é só responder por aqui.",
 ].join("\n");
 
@@ -57,9 +75,10 @@ export async function POST() {
       .in("trigger_type", [...GATILHOS_DA_REGUA]);
     if (error) return NextResponse.json({ error: "db_error" }, { status: 500 });
     const marcosExistentes = new Set<number>();
-    let temLembrete = false;
+    // os turnos de lembrete que já existem (0 = dia, 1 = noite — 1133)
+    const turnosExistentes = new Set<number>();
     for (const a of (existentes ?? []) as { trigger_type: string; trigger_config: Record<string, unknown> | null }[]) {
-      if (a.trigger_type === "asaas_cobranca_vence_hoje") temLembrete = true;
+      if (a.trigger_type === "asaas_cobranca_vence_hoje") turnosExistentes.add(lerAutomacaoDaRegua({ id: "", name: "", trigger_type: a.trigger_type, trigger_config: a.trigger_config })?.marco ?? 0);
       else marcosExistentes.add(Number(a.trigger_config?.dias_de_atraso));
     }
 
@@ -79,7 +98,7 @@ export async function POST() {
     const passo = (texto: string) => ({ step_type: "send_message", step_config: canalId ? { text: texto, channel_id: canalId } : { text: texto } });
 
     const criadas: string[] = [];
-    const criar = async (nome: string, tipo: string, config: Record<string, unknown>, texto: string) => {
+    const criar = async (nome: string, tipo: string, config: Record<string, unknown>, texto: string, assinatura: string | null = null) => {
       const { data: automacao, error: erroInsert } = await admin
         .from("automations")
         .insert({
@@ -92,6 +111,7 @@ export async function POST() {
           channel_ids: null,
           stage_ids: null,
           is_active: false,
+          assinatura_personalizada: assinatura,
         })
         .select("id")
         .single();
@@ -111,8 +131,11 @@ export async function POST() {
       if (marcosExistentes.has(marco)) continue;
       await criar(`Cobrança · ${marco} dia${marco > 1 ? "s" : ""}`, "asaas_cobranca_vencida", { dias_de_atraso: marco, hora_envio: HORA_PADRAO_COBRANCA, somente_dias_uteis: true }, TEXTO_DA_COBRANCA);
     }
-    if (!temLembrete) {
+    if (!turnosExistentes.has(0)) {
       await criar("Lembrete · vence hoje", "asaas_cobranca_vence_hoje", { hora_envio: HORA_PADRAO_LEMBRETE, somente_dias_uteis: true }, TEXTO_DO_LEMBRETE);
+    }
+    if (!turnosExistentes.has(1)) {
+      await criar("Lembrete · noite", "asaas_cobranca_vence_hoje", { hora_envio: HORA_PADRAO_LEMBRETE_DA_NOITE, somente_dias_uteis: true }, TEXTO_DO_LEMBRETE_DA_NOITE, ASSINATURA_DA_NOITE);
     }
     return NextResponse.json({ ok: true, criadas, semConexao: canalId === null });
   } catch (err) {

@@ -1,6 +1,7 @@
 import { AiError, type ChatMessage, type ProviderResult } from '../types'
 import { MAX_OUTPUT_TOKENS } from '../defaults'
 import { comecarNoCliente } from './comeca-no-cliente'
+import { geminiRaciocinaPorPadrao } from './raciocinio'
 import {
   normalizeUsage,
   providerHttpError,
@@ -15,7 +16,8 @@ const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models
 
 export interface GeminiResponse {
   candidates?: {
-    content?: { parts?: { text?: string }[] }
+    /** `thought: true` = o resumo do raciocínio (só com `includeThoughts`), nunca a resposta. */
+    content?: { parts?: { text?: string; thought?: boolean }[] }
     finishReason?: string
   }[]
   usageMetadata?: {
@@ -48,13 +50,27 @@ export function toGeminiContents(
   }))
 }
 
-/** Junta o texto de todas as parts do primeiro candidato (pode vir fatiado). */
+/**
+ * Junta o texto de todas as parts do primeiro candidato (pode vir fatiado).
+ * A part de raciocínio (`thought: true`, 10/11/2026) nunca é resposta.
+ */
 export function geminiText(data: GeminiResponse | null): string {
   return (
     data?.candidates?.[0]?.content?.parts
-      ?.map((p) => (typeof p.text === 'string' ? p.text : ''))
+      ?.map((p) => (p.thought !== true && typeof p.text === 'string' ? p.text : ''))
       .join('')
       .trim() ?? ''
+  )
+}
+
+/** O resumo do raciocínio: as parts `thought: true` (só vêm com `includeThoughts`). */
+export function geminiRaciocinio(data: GeminiResponse | null): string {
+  return (
+    data?.candidates?.[0]?.content?.parts
+      ?.filter((p) => p.thought === true && typeof p.text === 'string')
+      .map((p) => (p.text as string).trim())
+      .filter((t) => t.length > 0)
+      .join('\n\n') ?? ''
   )
 }
 
@@ -80,6 +96,8 @@ export function geminiUsage(data: GeminiResponse | null) {
  */
 export async function generateGemini(args: ProviderArgs): Promise<ProviderResult> {
   const { apiKey, model, systemPrompt, messages, timeoutMs } = args
+  // Só o Playground pede (10/11/2026); sem o pedido, o corpo é o de sempre.
+  const pedeRaciocinio = args.raciocinio === true && geminiRaciocinaPorPadrao(model)
 
   let res: Response
   try {
@@ -92,7 +110,10 @@ export async function generateGemini(args: ProviderArgs): Promise<ProviderResult
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: systemPrompt }] },
         contents: toGeminiContents(messages),
-        generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS },
+        generationConfig: {
+          maxOutputTokens: MAX_OUTPUT_TOKENS,
+          ...(pedeRaciocinio ? { thinkingConfig: { includeThoughts: true } } : {}),
+        },
       }),
       signal: AbortSignal.timeout(timeoutMs),
     })
@@ -116,5 +137,6 @@ export async function generateGemini(args: ProviderArgs): Promise<ProviderResult
       code: 'empty_response',
     })
   }
-  return { text, usage: geminiUsage(data) }
+  const raciocinio = pedeRaciocinio ? geminiRaciocinio(data) : ''
+  return { text, usage: geminiUsage(data), ...(raciocinio ? { raciocinio } : {}) }
 }

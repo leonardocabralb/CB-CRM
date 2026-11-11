@@ -154,6 +154,7 @@ import {
 import { janelaDaMetaAberta } from './janela-da-meta';
 import { campoAtendeACondicao, ehIdDeCampo, operadorDaCondicao } from './condicao-por-campo';
 import { avaliarHoraDoDia, esperaPeloHorario } from './hora-do-dia';
+import { avaliarSituacaoDaCobranca } from './situacao-da-cobranca';
 import {
   decidirSemConversa,
   ehRecontagemDaEspera,
@@ -277,6 +278,35 @@ export interface AutomationContext {
    * agendador.
    */
   webhook_id?: string | null;
+  /**
+   * NOSSO (09/11/2026): o agente de IA que EXECUTOU esta automação no turno
+   * dele (`executar_automacao`). Texto e mídia saem com a marca dele
+   * (`messages.ia_agente_id`): falam EM NOME do agente, que já respondeu ao
+   * cliente no mesmo turno — e assim não param a retomada dele como "robô
+   * falou" (o vídeo e o link da assinatura do Trabalhista).
+   *
+   * ⚠️ A ÚNICA porta é o argumento `iaAgenteId` de `runAutomationById`: o
+   * contexto recebido perde a marca que trouxer (`comMarcaDoAgente`). Ela
+   * atravessa o "Acionar automação" (a D5 confere as filhas) e a retentativa
+   * (o contexto vai inteiro para a fila); o DISPARO por evento a descarta
+   * (`dispararAutomacoes`) — a automação da etiqueta aplicada e a da etapa
+   * movida rodam como quando gente etiqueta ou move. Pino:
+   * `src/lib/ia-agentes/envio.chamadores.test.ts`.
+   */
+  ia_agente_id?: string | null;
+}
+
+/**
+ * NOSSO: o contexto com a marca do agente de IA trocada pela do argumento
+ * (ausente = sem marca). Ver `AutomationContext.ia_agente_id`.
+ */
+function comMarcaDoAgente(
+  context: AutomationContext,
+  iaAgenteId: string | null | undefined
+): AutomationContext {
+  const semMarca: AutomationContext = { ...context };
+  delete semMarca.ia_agente_id;
+  return iaAgenteId ? { ...semMarca, ia_agente_id: iaAgenteId } : semMarca;
 }
 
 export interface DispatchInput {
@@ -370,8 +400,14 @@ export async function runAutomationsForTrigger(
 
 /** `runAutomationsForTrigger` com o RESULTADO (977). Nunca lança. */
 export async function dispararAutomacoes(
-  input: DispatchInput
+  entrada: DispatchInput
 ): Promise<ResultadoDoDisparo> {
+  // NOSSO: o disparo por EVENTO nunca fala em nome do agente de IA — nem a
+  // cascata da etiqueta que a automação executada por ele aplicou, cujo
+  // contexto vem copiado da mãe (ver `AutomationContext.ia_agente_id`).
+  const input: DispatchInput = entrada.context
+    ? { ...entrada, context: comMarcaDoAgente(entrada.context, null) }
+    : entrada;
   const r: ResultadoDoDisparo = { ...DISPARO_VAZIO };
   try {
     const db = supabaseAdmin();
@@ -949,6 +985,12 @@ export async function runAutomationById(args: {
    * diferença é tudo ao investigar quem disparou o quê.
    */
   rotuloDoDisparo?: string;
+  /**
+   * NOSSO: o agente de IA em nome de quem a automação fala (ver
+   * `AutomationContext.ia_agente_id`). Só o turno (`executar-acoes.ts`) e o
+   * passo "Acionar automação" da automação que ele executou o passam.
+   */
+  iaAgenteId?: string | null;
 }): Promise<{ ok: boolean; detail: string }> {
   const db = supabaseAdmin();
   const { data, error } = await db
@@ -987,7 +1029,8 @@ export async function runAutomationById(args: {
   // manual; sem `evento_em`, o card que saía e voltava enquanto ela esperava a
   // acordava ao lado da execução nova da reentrada. Ver `estadiaSemEvento`.
   // Só o que o contexto não trouxe é preenchido.
-  let context = args.context;
+  // NOSSO: a marca do agente de IA entra SÓ pelo argumento.
+  let context = comMarcaDoAgente(args.context, args.iaAgenteId);
   if (!context?.deal_id || !context?.evento_em) {
     // ⚠️ Card e âncora saem da MESMA resolução: o card que o contexto já traz
     // (a filha herda o da mãe) vai como alvo, e a âncora é o último movimento
@@ -1541,14 +1584,23 @@ async function executeStepsFrom(
         // coisa que não pode ficar num log (a senha do gov.br do previdenciário).
         const campo =
           cfg.subject === 'custom_field' ? await avaliarCampoPersonalizado(cfg, args) : null;
+        // A situação da cobrança (régua do Asaas, 10/11/2026) diz no registro
+        // o que LEU — quantas vencidas e o maior atraso —, ou que não havia
+        // situação (fora da régua).
+        const cobranca =
+          cfg.subject === 'asaas_situacao'
+            ? avaliarSituacaoDaCobranca(cfg, args.context.vars)
+            : null;
         const taken = janela
           ? janela.aberta
           : hora
             ? hora.sim
             : campo
               ? campo.sim
-              : await evaluateCondition(cfg, args);
-        const nota = janela?.nota ?? hora?.nota ?? campo?.nota;
+              : cobranca
+                ? cobranca.sim
+                : await evaluateCondition(cfg, args);
+        const nota = janela?.nota ?? hora?.nota ?? campo?.nota ?? cobranca?.nota;
         results.push({
           step_id: step.id,
           step_type: 'condition',
@@ -1846,6 +1898,9 @@ async function runStep(
         // "Assinar como" (998, D18): o prefixo desta automação, sob o
         // interruptor da conta; NULL = o nome automático do escritório.
         assinarComo: args.automation.assinatura_personalizada ?? null,
+        // NOSSO: fala em nome do agente de IA que a executou, se foi ele
+        // (ver `AutomationContext.ia_agente_id`).
+        iaAgenteId: args.context.ia_agente_id ?? null,
       });
       // Sem "via Meta": engineSendText resolve o canal da conversa e pode ter
       // saído pela Evolution. O canal efetivo entra no detalhe na Fase E1.
@@ -2355,6 +2410,9 @@ async function runStep(
           vars: { ...(args.context.vars ?? {}), _cadeia: passo.cadeia },
         },
         triggerType: args.automation.trigger_type,
+        // NOSSO: a filha da automação que o agente de IA executou também é
+        // dele (a D5 a confere); `runAutomationById` só aceita a marca por aqui.
+        iaAgenteId: args.context.ia_agente_id ?? null,
       });
       if (!r.ok) throw new Error(r.detail);
       return r.detail;
@@ -2546,9 +2604,9 @@ async function runStep(
       const cfg = step.step_config as SendMediaStepConfig;
       if (!args.contactId) throw new Error('send_media precisa de um contato');
 
-      // NOSSO (09/11/2026): o arquivo pode vir do ACERVO (`acervo_id`),
-      // COPIADO a cada envio — `midia-do-passo.ts`; o passo antigo (`url`)
-      // segue igual. O item é CONFERIDO aqui, ANTES da conversa (item apagado
+      // NOSSO (09/11/2026): o arquivo pode vir do ACERVO (`acervo_id`), pela
+      // CÓPIA CONGELADA do item, uma por item — `midia-do-passo.ts`; o passo
+      // antigo (`url`) segue igual. O item é CONFERIDO aqui, ANTES da conversa (item apagado
       // falha sem criar conversa para a ficha que não tinha); a CÓPIA, o
       // remetente faz depois das recusas dele (`midia.link` é função).
       const midia = await prepararMidiaDoPasso(db, args.automation.account_id, cfg);
@@ -2581,6 +2639,8 @@ async function runStep(
         // Só documento; o WhatsApp ignora nos demais.
         filename: midia.filename,
         preferredChannelId: stepChannel(cfg, args),
+        // NOSSO: como no `send_message` (ver `AutomationContext.ia_agente_id`).
+        iaAgenteId: args.context.ia_agente_id ?? null,
       });
       return `${midia.kind} enviado (${whatsapp_message_id})`;
     }
@@ -3845,6 +3905,12 @@ async function evaluateCondition(
      */
     case 'custom_field':
       return (await avaliarCampoPersonalizado(cfg, args)).sim;
+    /**
+     * A situação da cobrança (régua do Asaas) — `situacao-da-cobranca.ts`.
+     * ⚠️ `executeStepsFrom` também desvia este critério ANTES (pela nota).
+     */
+    case 'asaas_situacao':
+      return avaliarSituacaoDaCobranca(cfg, args.context.vars).sim;
     default:
       return false;
   }
