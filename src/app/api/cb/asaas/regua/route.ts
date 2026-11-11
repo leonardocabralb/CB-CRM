@@ -39,11 +39,12 @@ import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit
  * assinatura da conta pode estar desligada; e dizem "se já pagou,
  * desconsidere" porque o boleto pago no caixa fica PENDING até compensar.
  *
- * Com corpo `{ dias, canal_id?, assinatura? }` (a etapa nova da tela
- * "Cobrança automática", 1135) cria SÓ a cobrança daquele marco, desligada,
- * com o texto padrão, a conexão e a assinatura de "Quem manda" — 409 se o
- * marco já existe. A conexão tem de ser da conta (senão 400); o resto da
- * conferência (conectada, por QR Code) é a da ativação, como no construtor.
+ * Com corpo `{ dias, canal_id?, assinatura?, somente_dias_uteis? }` (a etapa
+ * nova da tela "Cobrança automática", 1135) cria SÓ a cobrança daquele marco,
+ * desligada, com o texto padrão, a conexão e a assinatura de "Quem manda" e a
+ * regra de dias úteis salva — 409 se o marco já existe. A conexão tem de ser
+ * da conta (senão 400); o resto da conferência (conectada, por QR Code) é a
+ * da ativação, como no construtor. Sem `somente_dias_uteis`, só dia útil.
  */
 
 export async function POST(request: Request) {
@@ -52,7 +53,7 @@ export async function POST(request: Request) {
     const limit = checkRateLimit(`cb:asaas:regua:${ctx.userId}`, RATE_LIMITS.adminAction);
     if (!limit.success) return rateLimitResponse(limit);
 
-    const pedido = (await request.json().catch(() => null)) as { dias?: unknown; canal_id?: unknown; assinatura?: unknown } | null;
+    const pedido = (await request.json().catch(() => null)) as { dias?: unknown; canal_id?: unknown; assinatura?: unknown; somente_dias_uteis?: unknown } | null;
     const umaEtapa = pedido !== null && pedido.dias !== undefined;
     const diasPedidos = Number(pedido?.dias);
     if (umaEtapa && (!Number.isInteger(diasPedidos) || diasPedidos < 1 || diasPedidos > 365)) return NextResponse.json({ error: "bad_request" }, { status: 400 });
@@ -89,6 +90,10 @@ export async function POST(request: Request) {
     // manda" também na régua padrão (1135): sem isso as etapas novas nasciam
     // no número padrão, sem assinatura.
     const assinaturaPedida = pedido && "assinatura" in pedido ? normalizarAssinatura(pedido.assinatura) : null;
+    // A regra "Só em dia útil" que a tela tem salva vale também para a etapa
+    // que nasce — senão a nova adiava fim de semana com a régua em dias
+    // corridos (Codex, PR #499).
+    const somenteDiasUteis = pedido?.somente_dias_uteis === false ? false : true;
     if (typeof pedido?.canal_id === "string") {
       const { data: daConta, error: erroDoCanal } = await admin.from("cb_channels").select("id").eq("id", pedido.canal_id).eq("account_id", ctx.accountId).maybeSingle();
       if (erroDoCanal) return NextResponse.json({ error: "db_error" }, { status: 500 });
@@ -131,19 +136,19 @@ export async function POST(request: Request) {
 
     if (umaEtapa) {
       if (marcosExistentes.has(diasPedidos)) return NextResponse.json({ error: "ja_existe" }, { status: 409 });
-      const id = await criar(nomeDaCobranca(diasPedidos), "asaas_cobranca_vencida", { dias_de_atraso: diasPedidos, hora_envio: HORA_PADRAO_COBRANCA, somente_dias_uteis: true }, TEXTO_DA_COBRANCA, assinaturaPedida);
+      const id = await criar(nomeDaCobranca(diasPedidos), "asaas_cobranca_vencida", { dias_de_atraso: diasPedidos, hora_envio: HORA_PADRAO_COBRANCA, somente_dias_uteis: somenteDiasUteis }, TEXTO_DA_COBRANCA, assinaturaPedida);
       return NextResponse.json({ ok: true, criadas, id, ids: [id] });
     }
 
     for (const marco of MARCOS_PADRAO) {
       if (marcosExistentes.has(marco)) continue;
-      ids.push(await criar(nomeDaCobranca(marco), "asaas_cobranca_vencida", { dias_de_atraso: marco, hora_envio: HORA_PADRAO_COBRANCA, somente_dias_uteis: true }, TEXTO_DA_COBRANCA, assinaturaPedida));
+      ids.push(await criar(nomeDaCobranca(marco), "asaas_cobranca_vencida", { dias_de_atraso: marco, hora_envio: HORA_PADRAO_COBRANCA, somente_dias_uteis: somenteDiasUteis }, TEXTO_DA_COBRANCA, assinaturaPedida));
     }
     if (!turnosExistentes.has(0)) {
-      ids.push(await criar(NOME_DO_LEMBRETE_DO_DIA, "asaas_cobranca_vence_hoje", { hora_envio: HORA_PADRAO_LEMBRETE, somente_dias_uteis: true }, TEXTO_DO_LEMBRETE, assinaturaPedida));
+      ids.push(await criar(NOME_DO_LEMBRETE_DO_DIA, "asaas_cobranca_vence_hoje", { hora_envio: HORA_PADRAO_LEMBRETE, somente_dias_uteis: somenteDiasUteis }, TEXTO_DO_LEMBRETE, assinaturaPedida));
     }
     if (!turnosExistentes.has(1)) {
-      ids.push(await criar(NOME_DO_LEMBRETE_DA_NOITE, "asaas_cobranca_vence_hoje", { hora_envio: HORA_PADRAO_LEMBRETE_DA_NOITE, somente_dias_uteis: true }, TEXTO_DO_LEMBRETE_DA_NOITE, ASSINATURA_DA_NOITE));
+      ids.push(await criar(NOME_DO_LEMBRETE_DA_NOITE, "asaas_cobranca_vence_hoje", { hora_envio: HORA_PADRAO_LEMBRETE_DA_NOITE, somente_dias_uteis: somenteDiasUteis }, TEXTO_DO_LEMBRETE_DA_NOITE, ASSINATURA_DA_NOITE));
     }
     return NextResponse.json({ ok: true, criadas, ids, semConexao: canalId === null });
   } catch (err) {

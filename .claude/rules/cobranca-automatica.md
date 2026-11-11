@@ -40,6 +40,10 @@ decisões: `docs/PLANO-integracao-asaas.md` §13.
 - A conexão troca em TODO `send_message`/`send_media`, inclusive dentro dos
   ramos — a régua exige o MESMO número em todos (`validate.ts`).
 - O texto editado é o do PRIMEIRO "Enviar mensagem" do escopo de fora.
+- Etapa que a tela CRIA ("Adicionar cobrança", "Criar as etapas padrão")
+  nasce com "Quem manda", a regra de dias úteis salva e o "Pedir ligação" das
+  cobranças: o POST da régua recebe os três; sem eles, a tela voltava em
+  "vários"/"misto" e a etapa ligada fugia da regra.
 
 ### "Pedir ligação à equipe"
 

@@ -237,13 +237,13 @@ export function CobrancaAutomatica({ etapaAberta, aoAbrirEtapa }: { etapaAberta:
     setMexendo("padrao");
     try {
       // As etapas padrão nascem com "Quem manda" desta tela (número e
-      // assinatura) e com o "Pedir ligação" das cobranças — senão a tela
+      // assinatura), a regra de dias úteis e o "Pedir ligação" das cobranças — senão a tela
       // voltava dizendo "vários números" e a etapa nova, ligada, sairia por
       // outro número (revisão do PR).
       const res = await fetch("/api/cb/asaas/regua", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...(canalAtual ? { canal_id: canalAtual } : {}), assinatura: assinaturaAtual.trim() || null }),
+        body: JSON.stringify({ ...(canalAtual ? { canal_id: canalAtual } : {}), assinatura: assinaturaAtual.trim() || null, ...(uteisAtual !== null ? { somente_dias_uteis: uteisAtual } : {}) }),
       }).catch(() => null);
       if (!res || !res.ok) {
         toast.error(t("erroCriar"));
@@ -275,7 +275,7 @@ export function CobrancaAutomatica({ etapaAberta, aoAbrirEtapa }: { etapaAberta:
       const res = await fetch("/api/cb/asaas/regua", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dias, ...(canalAtual ? { canal_id: canalAtual } : {}), assinatura: assinaturaAtual.trim() || null }),
+        body: JSON.stringify({ dias, ...(canalAtual ? { canal_id: canalAtual } : {}), assinatura: assinaturaAtual.trim() || null, ...(uteisAtual !== null ? { somente_dias_uteis: uteisAtual } : {}) }),
       }).catch(() => null);
       if (!res || !res.ok) {
         toast.error(res?.status === 409 ? t("etapaJaExiste", { dias }) : t("erroCriar"));
