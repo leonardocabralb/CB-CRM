@@ -69,7 +69,11 @@ diálogo aberto.
   `overflow`: o painel CRESCE em vez de rolar, o conteúdo é cortado por um
   ancestral e nenhuma barra aparece (o base-ui esconde a nativa). O operador
   vê a informação sumir. Já mordeu na lista de conversas e nas duas barras
-  laterais (contato e grupo).
+  laterais (contato e grupo). ⚠️ Num pai que só tem TETO (o `DialogContent`
+  com `max-h` e sem `h`), o `min-h-0 flex-1` não basta: o Viewport tem
+  `height: 100%`, que não se resolve contra altura indefinida, e a lista vaza
+  sem rolar (medido no Chrome, 4d) — a raiz do `ScrollArea` também é
+  `flex flex-col` (`aviso-de-ligacao.tsx`).
 - ⚠️ **Filho direto do `DialogContent` com `truncate` precisa de `min-w-0`.**
   O `DialogContent` é `grid`, e item de grid nasce com `min-width: auto`;
   `truncate` é `nowrap`, então o filho fica com a largura do texto inteiro

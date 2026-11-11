@@ -584,7 +584,19 @@
       "previa": "📞 Call",
       "ouvir": "Listen",
       "ouvirDica": "Listen to the call recording",
-      "fecharGravacao": "Close the recording"
+      "fecharGravacao": "Close the recording",
+      "transcrevendo": "Transcribing…",
+      "semTranscricao": "No transcript",
+      "gravacaoExpirada": "Recording expired (180 days)",
+      "resumo": "Summary",
+      "verTranscricao": "View transcript",
+      "tituloDaTranscricao": "Call transcript",
+      "cliente": "Customer",
+      "atendente": "Agent",
+      "carregandoTranscricao": "Loading the transcript…",
+      "falhaDaTranscricao": "Couldn't load the transcript",
+      "tentarDeNovo": "Try again",
+      "semFala": "No speech in the recording"
     },
     "audioPlayer": {
       "tocar": "Play audio",

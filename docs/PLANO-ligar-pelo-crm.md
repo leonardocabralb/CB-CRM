@@ -14,7 +14,7 @@ ligação de WhatsApp do que a telefônica. Vizinho deste plano:
 | 1    | Teste A: a máquina liga, com áudio de arquivo              | em curso (10/11/2026)  |
 | 2    | Teste B: o áudio no navegador do atendente                 | ✅ 10/11/2026 (falta P8) |
 | 3    | Decidir a máquina: upgrade para a KVM 4 × segunda VPS      | ✅ 10/11/2026: fica na VPS atual (D8) |
-| 4    | Ligar e atender pelo CRM: botão, toque, gravação, transcrição | desenho pronto (§8), decisões tomadas (§8.10); ✅ 4a pronta e testada em 10/11/2026 (§8.13); ✅ 4b no ar e testada ao vivo em 11/11/2026 (§8.14); ✅ 4c (a tela) no ar e testada ao vivo em 11/11/2026 (#500, §8.15) |
+| 4    | Ligar e atender pelo CRM: botão, toque, gravação, transcrição | desenho pronto (§8), decisões tomadas (§8.10); ✅ 4a pronta e testada em 10/11/2026 (§8.13); ✅ 4b no ar e testada ao vivo em 11/11/2026 (§8.14); ✅ 4c (a tela) no ar e testada ao vivo em 11/11/2026 (#500, §8.15); 4d (transcrição e resumo) escrita em 11/11/2026, falta medir, aplicar e publicar (§8.16) |
 | 5    | Atender pelo CRM (ligação recebida)                        | incorporada à Fase 4   |
 
 ## 1. Por que uma máquina central (o que foi descartado)
@@ -1423,8 +1423,72 @@ de 30 min) vira "não atendida" no `sumiu`, e a gravação dela é descartada.
   (no teste, o atendente desligou pelo painel).
 - Decisão do operador: deixar a máquina LIGADA depois do teste (as ligações
   pelo CRM passam a valer para a equipe da Previdenciário) ou só em sessões.
-- 4d (transcrição, resumo, contexto da IA, poda aos 180 dias) e 4e (conexões,
-  Parear/Reparear, sentinela, doc).
+- 4d (transcrição, resumo, contexto da IA, poda aos 180 dias: §8.16) e 4e
+  (conexões, Parear/Reparear, sentinela, doc).
+
+### 8.16 A 4d: transcrição, resumo, contexto da IA e poda (11/11/2026)
+
+O desenho está no §8.5 e nas decisões D11 e D14; regras:
+`.claude/rules/ligacoes-transcricao.md`.
+
+**Feito:**
+
+- **Cada lado transcrito com o horário de cada trecho** e o diálogo pela
+  intercalação (`src/lib/whatsapp/ligacoes/dialogo.ts`, puro e testado): os
+  canais separados dizem quem falou. Gemini (`MODELO_TRANSCRICAO`) com saída
+  JSON (`responseSchema`, `inicio` "MM:SS"); OpenAI só pelo `whisper-1`
+  (`verbose_json` com os trechos) — os `gpt-*-transcribe` não dão horário.
+  Medido antes de escrever (documentação): a doc do Gemini mostra horário MM:SS
+  pedido no prompt; a referência da OpenAI só dá trechos com horário ao
+  `whisper-1`.
+- **A transcrição** (`transcricao.ts`): o contrato das notas de voz (cadeado
+  com teto de 3 tentativas, travada de 15 min, cerca, sem chave não grava,
+  custo no modo `transcricao`), com a 3ª falha virando `recusada` na hora e o
+  resumo (2–3 frases, o mesmo provedor e modelo) que falha sem derrubar o
+  diálogo. Roda no `after()` da rota da gravação quando chega um lado; o laço
+  lento repete o que falhou (até 3 por ciclo, por 7 dias). Os dois lados
+  saem do Storage quando o diálogo fica pronto.
+- **A faixa**: `messages.ligacao` ganha `transcricao` (estado), `resumo` e
+  `expirada`, mantidos por `cb_ligacao_sincronizar_faixa` (1136): a faixa
+  REFLETE a ligação, lida sob trava e fundida numa escrita — a marca da
+  gravação e a da transcrição chegam por pedidos separados, e a faixa pode ser
+  ligada no meio da transcrição (achado da revisão independente). A tela: o resumo embaixo da pílula, "Transcrevendo…", "Ver
+  transcrição" (o diálogo pela rota `GET /api/cb/ligacoes/[id]/transcricao`,
+  que confere a conversa) e "Gravação expirada".
+- **O contexto do agente de IA (D11)**: a ligação transcrita entra como NOTA
+  no papel de usuário ("not a message from the customer"), resumo primeiro e
+  o diálogo no teto de 4.000 caracteres; expirada, só o resumo. Sem abrir
+  turno. O Radar ganhou o rótulo certo para a faixa pelo CRM (antes, "atendida
+  pelo celular do escritório"), com o resumo.
+- **A poda dos 180 dias** (`poda.ts`, laço lento, antes da drenagem): saem os
+  três arquivos e o diálogo; fica o resumo.
+- **A Lixeira**: a exclusão definitiva (prazo ou "Excluir agora", com ou sem
+  o pedido do titular) leva a gravação, o diálogo e o resumo das ligações da
+  ficha — a fila de arquivos ganhou o bucket `ligacoes`, com guarda própria
+  (espelho TS `ehCaminhoDaGravacao`, o pino faz os dois lados responderem aos
+  mesmos exemplos), e `cb_lixeira_purgar_um` é a da 1110 mais só o acréscimo
+  (pino).
+- **Migration 1136** (ADITIVA): as colunas, a sincronização da faixa, a fila,
+  a reivindicação e a exclusão recriadas, com a conferência que CHAMA tudo com
+  dado fictício e desfaz (P1136). Provada num Postgres local (replay do zero e
+  com conta, duas vezes).
+- **Revisão independente** (antes do PR): 1 P2 (a faixa presa pela marca no
+  `message_id` velho → a sincronização) e 10 P3, os que afetam o uso
+  consertados (o reenvio do que já saiu volta `descartada`, a poda por toda
+  atendida, a espera contada do fim, o custo do lado que respondeu, a fila
+  das que falharam primeiro, o lado sem horário legível é falha, as notas
+  fora da origem do nome da reunião, `break-words`, o `lock_timeout`); a faixa
+  restaurada da Lixeira com a marca da fotografia ficou como limite escrito.
+
+**Falta:**
+- Medir os horários do Gemini numa gravação de verdade: a intercalação
+  depende deles. A medição pelo servidor local (com as credenciais da
+  produção) foi barrada pelo modo automático em 11/11/2026; ela fica para o
+  teste ao vivo, lendo o diálogo gravado. Se os horários não prestarem, o
+  plano B é a máquina medir os trechos de fala de cada lado (`silencedetect`
+  do ffmpeg) e o CRM só intercalar.
+- Aplicar a 1136, publicar e o teste ao vivo: uma ligação com fala dos dois
+  lados vira, sozinha, diálogo e resumo na faixa, e o agente de IA a lê.
 
 ## 9. Fase 5: atender pelo CRM
 

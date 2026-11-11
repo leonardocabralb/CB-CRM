@@ -331,6 +331,7 @@ testados; `prepararMidias` em `turno.ts`; `contexto.ts` e `pedido.ts`.
   uma; o Playground corta pelo MESMO `aiContextMessageLimit()` (a env vale
   nos dois).
 - **Playground**: continua só texto — não recebe arquivo.
+- Ligação pelo CRM transcrita: NOTA no contexto (`ligacoes-transcricao.md`).
 - ⚠️ **Áudio pela OpenAI (a queda da transcrição, `transcrever.ts`)**: texto
   VAZIO é o áudio sem fala e vira `MARCA_INAUDIVEL` (`[inaudível]`), o mesmo
   desfecho do Gemini; só o campo AUSENTE é falha. Tratado como falha, o

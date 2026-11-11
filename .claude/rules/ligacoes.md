@@ -333,12 +333,14 @@ desenho: §8.12 e §8.13 do plano.
 - A prévia no banco é o marcador `[call]` (`PREVIA_DA_LIGACAO`), o formato de
   todo tipo sem texto; a lista, o card do funil e o tempo real
   (`comMensagemNova`) o trocam por "📞 Ligação" (`ehPreviaDeLigacao`).
-- Radar (`textoDe` do worker): a ligação é linha do transcrito.
+- Radar (`textoDe` do worker): a ligação é linha do transcrito (a pelo CRM com
+  rótulo e resumo próprios, 4d).
 - "Comparar" da possível duplicata (`comparar-fichas-dialog.tsx`, 1088): a
   ligação sai como "📞 Ligação" (`Inbox.ligacao.previa`), nunca "Anexo".
 - Agente de IA (1049): a ligação não abre turno (`abreTurno` só aceita
   `TIPOS_QUE_ABREM_TURNO`) e, sem texto, fica fora do contexto que ele lê
-  (`ia-agentes/contexto.ts`). A ATENDIDA pausa o agente da conversa
+  (`ia-agentes/contexto.ts`) — menos a pelo CRM TRANSCRITA, que entra como
+  nota (`ligacoes-transcricao.md`). A ATENDIDA pausa o agente da conversa
   (`cb_pausar_ia_por_gente`): é resposta de gente.
 - Painel: `.neq('content_type', 'call')` nas contagens de mensagem — a
   atendida é `agent`, e contaria como mensagem enviada. A série "Conversas ao

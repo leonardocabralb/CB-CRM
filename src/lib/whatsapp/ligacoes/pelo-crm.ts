@@ -871,12 +871,10 @@ async function gravarFaixa(
     return 'falhou';
   }
 
-  // A gravação pode ter chegado entre a leitura e o INSERT (são pedidos
-  // separados da máquina): escrever-e-reler dos dois lados — um vê o outro.
-  if (linha.gravacao_recebida_em === null) {
-    const { data: agora } = await db.from('cb_ligacoes').select('gravacao_recebida_em').eq('id', linha.id).maybeSingle();
-    if (agora?.gravacao_recebida_em) await marcarGravacaoNaFaixa(db, mensagem.id);
-  }
+  // A gravação e a transcrição (4d) podem ter chegado entre a leitura e o
+  // INSERT (são pedidos separados): agora que a faixa está ligada, ela passa
+  // a refletir o estado da ligação (a sincronização lê sob trava).
+  await sincronizarFaixa(db, linha.id);
   return 'ok';
 }
 
@@ -895,15 +893,32 @@ export function caminhoDaGravacao(accountId: string, ligacaoId: string, arquivo:
   return `account-${accountId}/ligacoes/${ligacaoId}/${arquivo}`;
 }
 
-async function marcarGravacaoNaFaixa(db: SupabaseClient, messageId: string): Promise<void> {
-  const { data } = await db.from('messages').select('ligacao').eq('id', messageId).maybeSingle();
-  const ligacao = (data?.ligacao ?? null) as Record<string, unknown> | null;
-  if (!ligacao || ligacao.gravacao === true) return;
-  const { error } = await db
-    .from('messages')
-    .update({ ligacao: { ...ligacao, gravacao: true } })
-    .eq('id', messageId);
-  if (error) console.error('[ligacoes] marcar a gravação na faixa falhou:', error.message);
+const CAMINHO_DA_GRAVACAO =
+  /^account-([0-9a-f-]{36})\/ligacoes\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/(estereo|cliente|atendente)\.ogg$/;
+
+/**
+ * O espelho TS da guarda da fila de arquivos para o bucket das gravações
+ * (`cb_reivindicar_arquivos_a_apagar`, 1136): o caminho de UM arquivo de
+ * gravação DESTA conta. Os dois lados respondem aos mesmos exemplos (o pino
+ * lê o SQL).
+ */
+export function ehCaminhoDaGravacao(caminho: string, accountId: string): boolean {
+  const m = CAMINHO_DA_GRAVACAO.exec(caminho);
+  return m !== null && m[1] === accountId;
+}
+
+/**
+ * A faixa (`messages.ligacao`) passa a refletir o estado da ligação — a
+ * gravação, a transcrição, o resumo, a poda — numa escrita só
+ * (`cb_ligacao_sincronizar_faixa`, 1136). A função lê a ligação sob trava: a
+ * marca da gravação e a da transcrição chegam por pedidos separados, e a
+ * faixa pode ser ligada no meio da transcrição; quem sincroniza por último
+ * deixa a faixa no estado mais novo. Chamar DEPOIS de gravar o estado. Nunca
+ * lança.
+ */
+export async function sincronizarFaixa(db: SupabaseClient, ligacaoId: string): Promise<void> {
+  const { error } = await db.rpc('cb_ligacao_sincronizar_faixa', { p_ligacao: ligacaoId });
+  if (error) console.error('[ligacoes] sincronizar a faixa falhou:', ligacaoId, error.message);
 }
 
 export async function receberGravacao(args: {
@@ -916,7 +931,7 @@ export async function receberGravacao(args: {
   const { db, computador, ligacaoId, arquivo, corpo } = args;
   const { data: linha, error } = await db
     .from('cb_ligacoes')
-    .select('id, account_id, desfecho, atendida_pelo_crm_em')
+    .select('id, account_id, desfecho, atendida_pelo_crm_em, gravacao_expirada_em, transcricao_status')
     .eq('id', ligacaoId)
     .eq('account_id', computador.account_id)
     .eq('channel_id', computador.channel_id)
@@ -930,6 +945,12 @@ export async function receberGravacao(args: {
   // sem atendimento, a gravação é DESCARTADA (2xx: a máquina apaga a cópia);
   // sem desfecho ainda, é cedo (o aviso de atendimento pode estar na fila).
   if (!linha.atendida_pelo_crm_em) return linha.desfecho ? 'descartada' : 'cedo';
+  // ⚠️ O reenvio da máquina (o 2xx se perdeu) não devolve ao bucket o que já
+  // saiu (revisão da 4d): a ligação podada ou excluída de vez (a poda e a fila
+  // pulam a linha expirada — o arquivo ficaria para sempre) e o lado que só
+  // servia a uma transcrição que já está pronta.
+  if (linha.gravacao_expirada_em) return 'descartada';
+  if (arquivo !== 'estereo.ogg' && linha.transcricao_status === 'pronta') return 'descartada';
   const { error: erroDoEnvio } = await db.storage
     .from(BUCKET_DAS_GRAVACOES)
     .upload(caminhoDaGravacao(computador.account_id, ligacaoId, arquivo), corpo, {
@@ -947,8 +968,7 @@ export async function receberGravacao(args: {
     .eq('id', ligacaoId)
     .is('gravacao_recebida_em', null);
   if (erroDaMarca) return 'falhou';
-  const { data: depois } = await db.from('cb_ligacoes').select('message_id').eq('id', ligacaoId).maybeSingle();
-  if (depois?.message_id) await marcarGravacaoNaFaixa(db, depois.message_id as string);
+  await sincronizarFaixa(db, ligacaoId);
   return 'ok';
 }
 
@@ -963,12 +983,14 @@ export async function enderecoDaGravacao(
 ): Promise<{ url: string; conversationId: string | null } | null | 'falhou'> {
   const { data: linha, error } = await db
     .from('cb_ligacoes')
-    .select('id, conversation_id, gravacao_recebida_em')
+    .select('id, conversation_id, gravacao_recebida_em, gravacao_expirada_em')
     .eq('id', ligacaoId)
     .eq('account_id', accountId)
     .maybeSingle();
   if (error) return 'falhou';
-  if (!linha?.gravacao_recebida_em) return null;
+  // Podada (180 dias) ou excluída: o arquivo saiu, mesmo que a faixa
+  // restaurada da Lixeira ainda mostre o ▶.
+  if (!linha?.gravacao_recebida_em || linha.gravacao_expirada_em) return null;
   const { data, error: erroDaUrl } = await db.storage
     .from(BUCKET_DAS_GRAVACOES)
     .createSignedUrl(caminhoDaGravacao(accountId, ligacaoId, 'estereo.ogg'), VIDA_DA_URL_ASSINADA_S);
