@@ -22,6 +22,7 @@
 // ============================================================
 
 import { useState } from "react";
+import Link from "next/link";
 import { BellOff, BellRing, Check, CircleDollarSign, Copy, ExternalLink, Loader2, RefreshCw, Unlink } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
@@ -337,10 +338,28 @@ export function AbaCobrancas({ dados, carregando, falhou, recarregar }: AbaCobra
       {/* A régua (998): o histórico deste contato e o estado do interruptor
           (D20) — "Cobrança automática desligada" só quando há automação
           ligada e o interruptor não; sem automação nenhuma, nada a dizer. */}
-      {(dados.envios.length > 0 || (dados.reguaComAutomacoes && !dados.reguaAtiva)) && (
+      {(dados.envios.length > 0 || (dados.reguaComAutomacoes && !dados.reguaAtiva) || dados.proxima || dados.ligacao) && (
         <div>
           <TituloDeSecao className="mb-1.5">{t("regua.titulo")}</TituloDeSecao>
           {dados.reguaComAutomacoes && !dados.reguaAtiva && <p className="mb-1.5 px-1 text-xs text-amber-700 dark:text-amber-300">{t("regua.desligadaNaConta")}</p>}
+          {/* NOSSO (1135): a próxima etapa PREVISTA e a ligação pedida. */}
+          {dados.proxima && (
+            <div className="mb-1.5 rounded-md border border-primary/30 bg-primary/5 px-2 py-1.5 text-xs">
+              <p className="text-[11px] font-medium text-primary">{t("regua.proxima")}</p>
+              <p className="text-foreground">
+                {t("regua.proximaQuando", { dia: diaPorExtenso(dados.proxima.dia), hora: dados.proxima.hora })}
+                {" · "}
+                {dados.proxima.tipo === "vence_hoje" ? (dados.proxima.marco === 1 ? t("regua.lembreteNoite") : t("regua.lembrete")) : t("regua.marco", { dias: dados.proxima.marco })}
+              </p>
+              <p className="text-[11px] text-muted-foreground">{t("regua.proximaDica")}</p>
+            </div>
+          )}
+          {dados.ligacao && (
+            <div className="mb-1.5 rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-xs">
+              <p className="text-[11px] font-medium text-red-700">{t("regua.ligacaoPedida")}</p>
+              <p className="text-foreground">{t("regua.ligacaoPedidaDesde", { etiqueta: dados.ligacao.etiqueta, quando: quandoFoi(dados.ligacao.desde) ?? "" })}</p>
+            </div>
+          )}
           {dados.envios.length > 0 && (
             <ul className="space-y-1 px-1 text-xs">
               {dados.envios.slice(0, 8).map((e) => (
@@ -354,6 +373,11 @@ export function AbaCobrancas({ dados, carregando, falhou, recarregar }: AbaCobra
                 </li>
               ))}
             </ul>
+          )}
+          {podeDesligar && (
+            <Link href="/settings?tab=integracoes&aba=cobranca" className="mt-1.5 block px-1 text-xs font-medium text-primary underline-offset-2 hover:underline">
+              {t("regua.configurar")}
+            </Link>
           )}
         </div>
       )}

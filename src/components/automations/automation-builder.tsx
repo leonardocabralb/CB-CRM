@@ -1,5 +1,6 @@
 "use client"
 
+import { AvisoDaRegua } from "@/components/automations/selo-da-regua"
 import {
   createContext,
   useContext,
@@ -2136,6 +2137,8 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
           {isEditing ? t("save") : t("saveDraft")}
         </Button>
       </header>
+      {/* NOSSO (1135): automação da régua do Asaas = etapa da "Cobrança automática"; só avisa. */}
+      <AvisoDaRegua gatilho={state.trigger_type} />
 
       {/* Canvas */}
       <div className="relative flex-1 overflow-y-auto">

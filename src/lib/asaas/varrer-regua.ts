@@ -41,6 +41,7 @@ import {
   type GrupoDeLembrete,
   type TipoDePessoa,
 } from "./regua";
+import { nomeDoEscritorio } from "./modulo-da-cobranca";
 
 /**
  * A VARREDURA da régua de cobrança (§3.6 do plano) — I/O, em service role,
@@ -178,6 +179,8 @@ interface ConfigDaRegua {
   regua_ativada_em: string | null;
   regua_intervalo_dias: number;
   vencidas_listadas_em: string | null;
+  /** o nome do escritório da tela "Cobrança automática" (1135); `null` = o de antes */
+  regua_escritorio_nome: string | null;
 }
 
 interface ClienteLigado {
@@ -214,7 +217,7 @@ async function lerTudo<T>(consulta: (de: number, ate: number) => PromiseLike<{ d
 async function lerConfigDaRegua(admin: SupabaseClient, accountId: string): Promise<ConfigDaRegua | null> {
   const { data, error } = await admin
     .from("cb_asaas_config")
-    .select("regua_ativa, regua_ativada_em, regua_intervalo_dias, vencidas_listadas_em")
+    .select("regua_ativa, regua_ativada_em, regua_intervalo_dias, vencidas_listadas_em, regua_escritorio_nome")
     .eq("account_id", accountId)
     .maybeSingle();
   if (error) throw new Error(`config: ${error.message}`);
@@ -224,6 +227,7 @@ async function lerConfigDaRegua(admin: SupabaseClient, accountId: string): Promi
     regua_ativada_em: (data.regua_ativada_em as string | null) ?? null,
     regua_intervalo_dias: typeof data.regua_intervalo_dias === "number" ? data.regua_intervalo_dias : 3,
     vencidas_listadas_em: (data.vencidas_listadas_em as string | null) ?? null,
+    regua_escritorio_nome: typeof data.regua_escritorio_nome === "string" ? data.regua_escritorio_nome : null,
   };
 }
 
@@ -753,16 +757,20 @@ export async function varrerRegua(admin: SupabaseClient, accountId: string, deps
       if (e.tipo === "atraso" && RESULTADOS_QUE_CONTAM_COMO_ENVIO.has(e.resultado) && !ultimaCobranca.has(e.asaas_customer_id)) ultimaCobranca.set(e.asaas_customer_id, e.criado_em);
     }
 
-    // `{{vars.escritorio_nome}}` é o nome AUTOMÁTICO da assinatura (o do
-    // escritório, `nomeParaAssinar`), não `accounts.name` — que nesta conta é
-    // o nome do dono, e a mensagem diria "Aqui é do <dono>" (medido em
-    // 10/11/2026). Sem ele, o nome da conta, como antes.
+    // `{{vars.escritorio_nome}}`: o da tela "Cobrança automática" (1135);
+    // sem ele, o nome AUTOMÁTICO da assinatura (o do escritório,
+    // `nomeParaAssinar`), não `accounts.name` — que nesta conta é o nome do
+    // dono, e a mensagem diria "Aqui é do <dono>" (medido em 10/11/2026). Sem
+    // nenhum dos dois, o nome da conta, como antes (`nomeDoEscritorio`).
     const { data: conta, error: erroDaConta } = await admin.from("accounts").select("name, assinatura_nome_automatica").eq("id", accountId).maybeSingle();
     // Leitura que falha não vira "Aqui é do ." em todas as mensagens do ciclo:
     // para ANTES de travar qualquer grupo (revisão do PR #494).
     if (erroDaConta) throw new Error(`nome do escritório: ${erroDaConta.message}`);
-    const nomeAutomatico = typeof conta?.assinatura_nome_automatica === "string" ? conta.assinatura_nome_automatica.trim() : "";
-    const escritorio = nomeAutomatico || (typeof conta?.name === "string" ? conta.name : "");
+    const escritorio = nomeDoEscritorio(
+      config.regua_escritorio_nome,
+      typeof conta?.assinatura_nome_automatica === "string" ? conta.assinatura_nome_automatica : null,
+      typeof conta?.name === "string" ? conta.name : null,
+    );
     const cliente = deps.cliente ?? (await (async () => { const c = await clienteDaConta(admin, accountId); if (!c.ok) throw new ParadaDaVarredura(c.codigo); return c.cliente; })());
 
     const porCliente = new Map<string, ParcelaDoEspelho[]>();

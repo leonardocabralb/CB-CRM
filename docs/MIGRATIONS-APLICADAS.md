@@ -2032,3 +2032,13 @@ nome da época em que foram aplicadas.
   privado (10 MB, `audio/ogg`) e a cerca na reserva; nenhuma linha antiga
   mudou.
 
+- **1135_cb_asaas_modulo_da_cobranca** — o módulo "Cobrança automática" do
+  Asaas: `regua_escritorio_nome` (nulo; CHECK de 1 a 120 caracteres) e
+  `aviso_inadimplencia_ativo` (NOT NULL DEFAULT true) em `cb_asaas_config`.
+  Aplicada em 11/11/2026 pela Management API, com a autorização do operador,
+  ANTES do deploy (aditiva: o app novo lê as duas por nome). ⚠️ Registrada no
+  histórico como `1134_cb_asaas_modulo_da_cobranca` (20261111120022): a
+  `1134_cb_ligacoes_pelo_crm` entrou no `main` minutos antes e o arquivo foi
+  renumerado para 1135. Replay completo local (257 migrations) e reaplicação
+  idempotente conferidos. Conferida na produção: as duas colunas, o default
+  e nenhuma conta com o aviso desligado.

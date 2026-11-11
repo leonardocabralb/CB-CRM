@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
 
 import {
+  ABA_DA_COBRANCA,
   ABA_GERAL,
   TETO_DO_NOME_DA_AREA,
   abaDaAutomacao,
@@ -65,7 +66,16 @@ describe("abaDaAutomacao e contarPorAba", () => {
 
   it("conta todas as abas, inclusive as vazias", () => {
     const c = contarPorAba([{ area_id: "a1" }, { area_id: "a1" }, { area_id: null }, { area_id: "sumiu" }], AREAS)
-    expect(Object.fromEntries(c)).toEqual({ [ABA_GERAL]: 2, a1: 2, a2: 0, a3: 0 })
+    expect(Object.fromEntries(c)).toEqual({ [ABA_GERAL]: 2, [ABA_DA_COBRANCA]: 0, a1: 2, a2: 0, a3: 0 })
+  })
+
+  it("as automações da régua do Asaas vão para a aba fixa da Cobrança automática (1135), seja qual for a área", () => {
+    expect(abaDaAutomacao("a1", ids, "asaas_cobranca_vencida")).toBe(ABA_DA_COBRANCA)
+    expect(abaDaAutomacao(null, ids, "asaas_cobranca_vence_hoje")).toBe(ABA_DA_COBRANCA)
+    expect(abaDaAutomacao("a1", ids, "keyword_match")).toBe("a1")
+    const c = contarPorAba([{ area_id: "a1", trigger_type: "asaas_cobranca_vencida" }, { area_id: null, trigger_type: "asaas_cobranca_vence_hoje" }, { area_id: "a1" }], AREAS)
+    expect(c.get(ABA_DA_COBRANCA)).toBe(2)
+    expect(c.get("a1")).toBe(1)
   })
 })
 

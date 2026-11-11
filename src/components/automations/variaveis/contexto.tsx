@@ -155,12 +155,18 @@ function familiaDoNome(nome: string): FamiliaComExemplo | null {
 export function VariaveisProvider({
   gatilho,
   webhookId,
+  escritorio,
   children,
 }: {
   /** `trigger_type` da automação em edição. */
   gatilho: string
   /** `trigger_config.webhook_id` do gatilho de webhook; nulo nos outros. */
   webhookId: string | null
+  /**
+   * O nome do escritório que a régua do Asaas usa em `{{vars.escritorio_nome}}`
+   * (tela "Cobrança automática", 1135). Ausente = o nome da conta, como antes.
+   */
+  escritorio?: string | null
   children: ReactNode
 }) {
   const t = useTranslations("Automations.variaveis")
@@ -268,8 +274,8 @@ export function VariaveisProvider({
 
   // --- Os exemplos (o nome do cliente escolhido entra no lugar do fictício) ---
   const exemplos = useMemo(
-    () => exemplosDoGatilho(gatilho, { agora, nome: nomeDaPrevia, escritorio: account?.name ?? null }),
-    [gatilho, agora, nomeDaPrevia, account?.name],
+    () => exemplosDoGatilho(gatilho, { agora, nome: nomeDaPrevia, escritorio: escritorio ?? account?.name ?? null }),
+    [gatilho, agora, nomeDaPrevia, escritorio, account?.name],
   )
 
   const escolherContato = useCallback((id: string) => {

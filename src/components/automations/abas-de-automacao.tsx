@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight, FolderCog, Loader2, Plus, Trash2 } from "luc
 
 import { createClient } from "@/lib/supabase/client"
 import {
+  ABA_DA_COBRANCA,
   ABA_GERAL,
   TETO_DO_NOME_DA_AREA,
   lerNomeDaArea,
@@ -100,6 +101,15 @@ export function BarraDeAbas({
           onClick={() => onAba(a.id)}
         />
       ))}
+      {/* A aba fixa da régua do Asaas (1135): só com automação nela. */}
+      {((contagem.get(ABA_DA_COBRANCA) ?? 0) > 0 || aba === ABA_DA_COBRANCA) && (
+        <Aba
+          ativa={aba === ABA_DA_COBRANCA}
+          rotulo={t("cobranca")}
+          contagem={contagem.get(ABA_DA_COBRANCA) ?? 0}
+          onClick={() => onAba(ABA_DA_COBRANCA)}
+        />
+      )}
       {podeGerenciar && (
         <button
           type="button"

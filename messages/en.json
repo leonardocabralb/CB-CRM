@@ -310,7 +310,8 @@
       "searchInsideMessages": "Also search inside messages",
       "previaNaoSuportada": "Unsupported message",
       "rascunho": "Draft:",
-      "rascunhoAnexos": "{n, plural, =1 {1 attachment} other {# attachments}}"
+      "rascunhoAnexos": "{n, plural, =1 {1 attachment} other {# attachments}}",
+      "delinquentAlertOff": "The delinquency notice is off under Integrations › Asaas: the filter has no effect."
     },
     "messageThread": {
       "unknownAuthor": "Unknown",
@@ -938,7 +939,13 @@
           "sem_automacao": "the automation was disabled before it went out ({quando})",
           "incerto": "no recorded outcome ({quando}) — may have gone out; never resent",
           "na_fila": "queued by the engine ({quando}) — the connection refused the send; it will be retried within minutes"
-        }
+        },
+        "proxima": "Next (estimated)",
+        "proximaQuando": "{dia}, from {hora}",
+        "proximaDica": "Estimate: Asaas is read again at send time — paid before, nothing goes out.",
+        "ligacaoPedida": "Call requested",
+        "ligacaoPedidaDesde": "Tag \"{etiqueta}\" on the contact since {quando}: the schedule won't ask again until someone removes it.",
+        "configurar": "Set up automatic billing"
       }
     },
     "execucoes": {
@@ -2572,7 +2579,8 @@
           "semPermissao": "Your profile can't change the tabs.",
           "falhou": "Couldn't save. Try again.",
           "mover": "Couldn't move the automation. Try again."
-        }
+        },
+        "cobranca": "Automatic billing"
       }
     },
     "edit": {
@@ -3643,6 +3651,12 @@
     "anotacaoGravada": {
       "autor": "Automation \"{nome}\"",
       "semNome": "unnamed member"
+    },
+    "regua": {
+      "selo": "Billing schedule",
+      "editarNaRegua": "Edit in the schedule",
+      "aviso": "This automation is a step of Asaas automatic billing. Days, time, text, number and signature are changed there, so the schedule stays consistent — you can here too, but the billing screen is the place.",
+      "abrir": "Open Automatic billing"
     }
   },
   "Flows": {
@@ -4806,7 +4820,94 @@
         "radar": "Service Radar",
         "transcricao": "Voice transcription",
         "leitura": "Reading images and documents (AI agents)",
-        "rag": "Knowledge base (RAG)"
+        "rag": "Knowledge base (RAG)",
+        "erroGravar": "Could not save.",
+        "ligado": "On",
+        "desligado": "Off",
+        "ligar": "Turn on",
+        "desligar": "Turn off",
+        "onde": "Where: {onde}",
+        "passos": {
+          "titulo": "Getting started",
+          "feitos": "{feitos} of {total} done",
+          "situacao": {
+            "feito": "Done",
+            "falta": "To do",
+            "nao_sei": "Checking"
+          },
+          "conectar": {
+            "titulo": "Connect the key",
+            "desc": "The Asaas API key, read and webhooks only."
+          },
+          "webhook": {
+            "titulo": "Instant notice",
+            "desc": "The webhook the CRM creates by itself."
+          },
+          "primeira_leitura": {
+            "titulo": "First read",
+            "desc": "{n, plural, =0 {No client read yet.} one {One client read.} other {# clients read.}}"
+          },
+          "vinculos": {
+            "titulo": "Review the links",
+            "desc": "{n, plural, =0 {Nothing to confirm.} one {One client to confirm.} other {# clients to confirm.}}"
+          },
+          "cobranca": {
+            "titulo": "Turn billing on",
+            "desc": "Cadence, texts and who sends."
+          }
+        },
+        "funcoes": {
+          "titulo": "What the integration does",
+          "fonte": "Asaas is the source; the CRM only reads.",
+          "vinculo": {
+            "titulo": "Link to contacts",
+            "desc": "Links each Asaas client to a contact by phone, CPF or e-mail. When unsure, it goes to review.",
+            "onde": "here, under \"See the lists\"",
+            "status": "{ligados} linked · {confirmar} to confirm",
+            "acao": "Review"
+          },
+          "aviso": {
+            "titulo": "Delinquency notice",
+            "desc": "Icon in the conversation list, banner above the message box and the \"Delinquent\" filter. The conversation's Billing tab always stays.",
+            "onde": "Inbox",
+            "statusLigado": "On · {n, plural, =0 {nobody owing} one {# owing} other {# owing}}",
+            "confirmarDesligar": "Turn off the delinquency notice? The icon, the banner and the \"Delinquent\" filter disappear for the whole team. The Billing tab stays.",
+            "ligado": "Delinquency notice turned on.",
+            "desligado": "Delinquency notice turned off."
+          },
+          "filtro": {
+            "titulo": "\"Delinquent\" filter",
+            "desc": "Separates in the inbox the conversations of clients with an overdue installment.",
+            "onde": "Inbox › filter settings",
+            "status": "Available",
+            "semAviso": "Gone while the notice is off",
+            "acao": "Open the inbox"
+          },
+          "excecao": {
+            "titulo": "Clients who don't get billed",
+            "desc": "Anyone here never gets a reminder or an automatic collection.",
+            "onde": "the bell on the Billing tab and the Automatic billing screen",
+            "status": "{n, plural, =0 {Nobody} one {# client} other {# clients}}",
+            "acao": "See the list"
+          },
+          "cobranca": {
+            "titulo": "Automatic billing",
+            "desc": "Due-date reminder and overdue collection over WhatsApp, with the cadence, texts and signature.",
+            "onde": "its own screen, Automatic billing",
+            "statusLigada": "On · {ligadas} of {total} steps",
+            "statusDesligada": "Off",
+            "acao": "Set up"
+          }
+        },
+        "resumo": {
+          "titulo": "Automatic billing",
+          "etapas": "{ligadas} of {total} steps on",
+          "excecoes": "{n, plural, =0 {nobody left out} one {# client left out} other {# clients left out}}",
+          "repetido": "There are repeated steps: check the billing screen.",
+          "configurar": "Set up automatic billing",
+          "ligada": "On",
+          "desligada": "Off"
+        }
       },
       "origem": {
         "agente": "inherited from the agent",
@@ -5287,6 +5388,185 @@
         "banco": "Could not save right now — try again.",
         "modelo_em_uso_recusado": "The new key cannot reach the model {modelo}, which is in use — and the current key can. Nothing was changed: change the model first, or use a key with access to it.",
         "transcricao_recusada": "The new key cannot reach the audio transcription model ({modelo}), which is fixed in the system. Nothing was saved: use a Google key with access to it."
+      },
+      "cobranca": {
+        "conexaoApagada": "(deleted connection)",
+        "erroDesconhecido": "Could not save.",
+        "erroDeRede": "No answer from the server.",
+        "configuracaoGeral": "Office name and interval",
+        "erroGravar": "Could not save. Try again.",
+        "salvo": "Automatic billing saved.",
+        "salvoComRecusas": "{n, plural, one {One step was not saved} other {# steps were not saved}} — see why below.",
+        "confirmarLigar": "Turn on automatic billing? It is NOT retroactive: only what falls due (or reaches a milestone) from now on counts. Messages go out through the steps that are on.",
+        "ligada": "Automatic billing turned on.",
+        "desligada": "Automatic billing turned off.",
+        "erroCriar": "Could not create the step.",
+        "padraoCriada": "{n, plural, =0 {No step was missing} one {One step created (off)} other {# steps created (off)}}.",
+        "padraoSemConexao": "No QR Code WhatsApp connected: pick the number under \"Who sends\" before turning it on.",
+        "diasInvalidos": "Days overdue: a number from 1 to 365.",
+        "etapaJaExiste": "The {dias, plural, one {# day} other {# days}} collection already exists.",
+        "etapaCriada": "{dias, plural, one {# day} other {# days}} collection created, off.",
+        "etiquetaPadrao": "Call to collect",
+        "voltar": "Integrations › Asaas",
+        "carregarFalhou": "Could not read automatic billing.",
+        "tentarDeNovo": "Try again",
+        "carregando": "Loading…",
+        "naoConectado": "Connect Asaas under Integrations to set up automatic billing.",
+        "titulo": "Automatic billing",
+        "estadoLigada": "On",
+        "estadoDesligada": "Off",
+        "interruptor": "Turn on",
+        "desc": "Due-date reminder and overdue collection, over WhatsApp. Asaas stays the source: before each send the CRM checks again whether the installment was paid. One message per client, with every open installment, without reopening the conversation or touching unread counts.",
+        "ativadaEm": "Turned on at {quando}: only what fell due after that counts.",
+        "ligadaSemEtapa": "On, but no step is on: nothing goes out.",
+        "etapasLigadasMasDesligada": "Some steps are on, but automatic billing is off: nothing goes out.",
+        "semNome": "(no name)",
+        "recusas": "Not saved:",
+        "naoSalvo": "There are unsaved changes.",
+        "tudoSalvo": "All saved. The steps are automations the module looks after — the automation builder opens them too.",
+        "descartar": "Discard",
+        "salvar": "Save",
+        "quemManda": {
+          "titulo": "Who sends",
+          "desc": "Applies to every step.",
+          "numero": "Sending number",
+          "varios": "Several numbers",
+          "escolher": "Pick a number",
+          "desconectada": "disconnected",
+          "conexoesFalharam": "Could not read the connections.",
+          "semConexao": "No QR Code WhatsApp in this account.",
+          "numeroAjuda": "Every message goes out through it. QR Code WhatsApp only; disconnected, nothing goes out.",
+          "variosAviso": "Steps use different numbers today ({nomes}). Pick one for all.",
+          "envioSemConexao": "Some step has no number: it won't turn on until you pick one.",
+          "assina": "Signed by",
+          "variasAssinaturas": "Different signatures — type one for all",
+          "assinaPlaceholder": "No name (uses the account signature)",
+          "assinaAjuda": "Goes at the top of each message. The evening reminder signs \"Automatic message\" (in its own text).",
+          "assinaturaDesligada": "Signatures are off for the account (Settings › Signature): messages go out without a name.",
+          "escritorio": "Office name",
+          "escritorioPlaceholder": "The account name",
+          "escritorioAjuda": "Fills the \"Office name\" field of the texts. Blank means \"{padrao}\" (the automatic signature name)."
+        },
+        "cadencia": {
+          "titulo": "Cadence",
+          "desc": "Each step is an automation the module creates and looks after. The time is when sending starts; collections run until 18:00 and the evening reminder until 21:00.",
+          "vazia": "No steps yet. Create the default steps to start; the number, who signs, business days and the call request are chosen after that.",
+          "linhaDoTempo": "Steps timeline",
+          "lembrete": "reminder",
+          "cobranca": "collection",
+          "etapa": "Step",
+          "quando": "When",
+          "horario": "From",
+          "texto": "Text",
+          "ligada": "On",
+          "mensagemAutomatica": "Automatic message",
+          "horaDaCobranca": "Between 08:00 and 17:00.",
+          "horaDaNoite": "Between 18:00 and 20:30.",
+          "horaDoDia": "Between 08:00 and 17:00.",
+          "semTexto": "(no message)",
+          "editarTexto": "Edit text",
+          "ligarEtapa": "Turn on step {etapa}",
+          "marcoRepetido": "More than one collection with the same days ({marcos}): only one collects.",
+          "lembreteRepetido": "More than one reminder in the same shift: only one goes out.",
+          "diasPlaceholder": "Days",
+          "adicionar": "Add collection",
+          "criarPadrao": "Create the missing default steps",
+          "salveAntes": "Save your changes before creating a step.",
+          "adicionarAjuda": "Starts off, with the default text, and the number and signature from here.",
+          "quandoNoite": "On the due date, if still open",
+          "quandoDia": "On the due date",
+          "quandoCobranca": "{dias, plural, one {# day} other {# days}} overdue"
+        },
+        "regras": {
+          "titulo": "Rules",
+          "diasUteis": "Business days only",
+          "diasUteisMisto": "Each step is set differently today. Check or uncheck for all.",
+          "diasUteisAjuda": "Saturday, Sunday and national holidays push the message to the next business day.",
+          "intervalo": "Minimum interval between collections",
+          "dias": "days",
+          "intervaloAjuda": "A collection sent less than this ago holds the next one. The due-date reminder doesn't count.",
+          "umaPorDia": "One message a day",
+          "umaPorDiaAjuda": "If a collection goes out to the client that day, the morning reminder doesn't: the collection already mentions today's installment. The evening one only goes if it is still open.",
+          "naoRetroativa": "Nothing goes out late",
+          "naoRetroativaAjuda": "Turning it on doesn't fire what already passed: only what falls due or reaches a milestone from then on.",
+          "diasUteisVaiIgualar": "On save, it applies to every step.",
+          "manterComoEsta": "Keep each as it is"
+        },
+        "ligacao": {
+          "titulo": "Ask the team to call",
+          "desc": "An internal note on the conversation tagging who calls to arrange payment, plus a tag. Once per client, until someone removes the tag. Nothing is sent to the client.",
+          "diferente": "Today only some collections ask for the call, or ask in different ways (edited in the builder). Nothing changes in them until you turn it on here (makes all the same) or turn it on and off (removes it from all).",
+          "aMao": "There is a hand-built \"Billing status\" condition in {etapas}: it stays. Remove it in the builder if this one is enough.",
+          "quando": "When the client has",
+          "parcelas": "Overdue installments",
+          "parcelasOu": "overdue installments or more, or",
+          "dias": "Days overdue",
+          "diasOuMais": "days overdue or more (leave blank what doesn't apply).",
+          "marcar": "Tag in the note",
+          "etiqueta": "Tag",
+          "etiquetaApagada": "(deleted tag)",
+          "escolherEtiqueta": "Pick the tag",
+          "etiquetasFalharam": "Could not read the tags.",
+          "etiquetaAjuda": "Added with the note. While it is on the contact, the schedule won't ask again. Create tags under Fields and tags.",
+          "texto": "Note text",
+          "textoAjuda": "The billing fields are those of the message just sent.",
+          "incompleta": "To ask for the call: a threshold, someone tagged, the tag and the text.",
+          "pendentes": "{n, plural, =0 {No client waiting for a call right now.} one {One client waiting for a call right now (with the tag).} other {# clients waiting for a call right now (with the tag).}}",
+          "desligada": "Off: the schedule asks nobody to call.",
+          "vaiDesligar": "On save, the call request is removed from every collection.",
+          "semCobranca": "Only collection steps request a call: create one to set this up."
+        },
+        "excecoes": {
+          "titulo": "Who doesn't receive it",
+          "desc": "Clients on the \"No automatic billing\" list never get a reminder or a collection. To add someone, use the bell on the \"Linked\" tab (or on the conversation's Billing tab)."
+        },
+        "semana": {
+          "titulo": "Last 7 days",
+          "numeros": "{lembretes, plural, one {# reminder} other {# reminders}} · {cobrancas, plural, one {# collection} other {# collections}} · {falhas, plural, =0 {no failures} one {# not sent} other {# not sent}}",
+          "falhou": "Could not count the sends.",
+          "verAutomacoes": "See the automations"
+        },
+        "etapa": {
+          "lembreteNoite": "Reminder · evening",
+          "lembreteDia": "Reminder · day",
+          "cobranca": "Collection · {dias, plural, one {# day} other {# days}}",
+          "venceNoite": "Due · evening",
+          "venceDia": "Due · morning",
+          "dias": "{dias, plural, one {# day} other {# days}}"
+        },
+        "texto": {
+          "voltar": "Automatic billing",
+          "naoAchada": "This step no longer exists.",
+          "salvo": "Text saved.",
+          "titulo": "Step text",
+          "restaurar": "Restore the default text",
+          "desc": "The same editor as the builder (fields in purple). The preview shows the cases that matter without finding a client in each situation.",
+          "etapas": "Steps",
+          "salveAntes": "Save or discard before switching steps.",
+          "mensagem": "Message text",
+          "assina": "Signed by",
+          "semAssinatura": "No name (the account signature)",
+          "assinaNoite": "This step only. Default is \"Automatic message\".",
+          "assinaComum": "Comes from \"Who sends\".",
+          "enviarPor": "Send through",
+          "semConexao": "No number",
+          "enviarPorAjuda": "Comes from \"Who sends\".",
+          "previa": "Preview with",
+          "caso": {
+            "uma": "One installment",
+            "varias": "Several installments",
+            "empresa": "Company (CNPJ)"
+          },
+          "legenda": {
+            "uma": "A person (CPF) with one installment overdue since yesterday.",
+            "varias": "A person with two overdue installments, the oldest 18 days ago.",
+            "empresa": "A company (CNPJ) with a one-off charge: the greeting has no name, and the charge's internal description never reaches the client."
+          },
+          "previaReal": "To see it with a real client, use the editor's \"Preview\" on the left.",
+          "semMensagemDeFora": "This step has no message outside its conditions (it was built in the builder): edit the text there.",
+          "abrirNoConstrutor": "Open in the builder"
+        },
+        "recarregarFalhou": "Could not reload automatic billing: the screen may not show what is saved. Reload the page."
       }
     },
     "groups": {
