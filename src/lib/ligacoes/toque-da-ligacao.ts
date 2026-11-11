@@ -55,11 +55,35 @@ function tocarUmCiclo(ctx: AudioContext): void {
 /**
  * Começa o toque em laço e devolve quem o para. Chamar o "parar" mais de uma
  * vez é inofensivo; parar antes de a vez chegar tira a aba da fila.
+ *
+ * ⚠️ Aba ainda sem clique (aberta agora, ou recarregada — a porta de entrada
+ * pode passar sem gesto): o toque ESPERA o primeiro gesto nela e começa ali
+ * (Codex, #500). Sem isso, a ligação seguia muda depois do clique: quem pede
+ * o toque continua pedindo, e ninguém o pediria de novo.
  */
 export function comecarToque(): () => void {
   if (typeof window === "undefined" || typeof window.AudioContext === "undefined") return () => {};
-  if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return () => {};
+  if (!navigator.userActivation || navigator.userActivation.hasBeenActive) return tocarNaVez();
 
+  let parar: (() => void) | null = null;
+  const remover = () => {
+    window.removeEventListener("pointerdown", aoGesto, true);
+    window.removeEventListener("keydown", aoGesto, true);
+  };
+  function aoGesto() {
+    remover();
+    parar = tocarNaVez();
+  }
+  window.addEventListener("pointerdown", aoGesto, true);
+  window.addEventListener("keydown", aoGesto, true);
+  return () => {
+    remover();
+    parar?.();
+  };
+}
+
+/** A vez de tocar (uma aba por vez) e o laço, até o "parar". */
+function tocarNaVez(): () => void {
   const controle = new AbortController();
   const tocarAteParar = async (): Promise<void> => {
     if (controle.signal.aborted) return;
