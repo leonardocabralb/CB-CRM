@@ -14,7 +14,7 @@ ligação de WhatsApp do que a telefônica. Vizinho deste plano:
 | 1    | Teste A: a máquina liga, com áudio de arquivo              | em curso (10/11/2026)  |
 | 2    | Teste B: o áudio no navegador do atendente                 | ✅ 10/11/2026 (falta P8) |
 | 3    | Decidir a máquina: upgrade para a KVM 4 × segunda VPS      | ✅ 10/11/2026: fica na VPS atual (D8) |
-| 4    | Ligar e atender pelo CRM: botão, toque, gravação, transcrição | desenho pronto (§8), decisões tomadas (§8.10); ✅ 4a pronta e testada em 10/11/2026 (§8.13); ✅ 4b no ar e testada ao vivo em 11/11/2026 (§8.14); 4c (a tela) no ar em 11/11/2026 (#500), teste ao vivo em duas partes, a 1ª feita (§8.15) |
+| 4    | Ligar e atender pelo CRM: botão, toque, gravação, transcrição | desenho pronto (§8), decisões tomadas (§8.10); ✅ 4a pronta e testada em 10/11/2026 (§8.13); ✅ 4b no ar e testada ao vivo em 11/11/2026 (§8.14); ✅ 4c (a tela) no ar e testada ao vivo em 11/11/2026 (#500, §8.15) |
 | 5    | Atender pelo CRM (ligação recebida)                        | incorporada à Fase 4   |
 
 ## 1. Por que uma máquina central (o que foi descartado)
@@ -1384,19 +1384,31 @@ desmonta. A desmontagem invalida a posse (o pedido pendente para e solta o
 microfone) e DESLIGA a ligação que já existe — começar o "Ver como" no meio
 de uma ligação a encerra.
 
-**No ar em 11/11/2026** (#500, deploy às 17:42 UTC). **Teste ao vivo, parte 1**
+**No ar em 11/11/2026** (#500, deploy às 17:42 UTC). **Teste ao vivo**
 (11/11/2026, operador com o lead de teste, a conversa dele fixada na
-Previdenciário):
+Previdenciário; partes 1 e 2):
 
 | # | O quê | Resultado |
 | - | ----- | --------- |
 | 1 | Feita pelo botão; o operador atende e desliga ~3 s depois | ✅ chamando → atendida 12,6 s depois do clique → "cliente desligou"; faixa com ▶ Ouvir; gravação de 6,8 s (1,5 s antes do "Alô" + a conversa + 2,5 s de cauda), guardada 3 s depois do fim |
 | 2 | Feita; o operador não atende | ✅ fim sem atendimento 15 s depois do clique; faixa "não atendida", sem ▶; nenhuma gravação (a pasta apagada na máquina) |
+| 3 | Feita longa; desligar pelo painel | ✅ atendida 12 s depois do clique; áudio nos dois sentidos (pela aba: pacotes sem perda e a energia da voz do cliente subindo; o microfone simulado saindo); "Desligando…" → "Encerrada · 41 s" (a máquina fecha ~3,3 s depois do pedido); faixa "feita por <atendente> · 39 s" com ▶; gravação de 44,2 s = 1,5 + 40,7 + 2,5 − 0,3 |
+| 4 | Recebida: o cartão toca, Atender | ✅ o cartão apareceu 1 s depois da oferta ("Tocando também no celular do escritório", Atender e Silenciar); atendida 5 s depois do clique (a máquina aceita e liga a ponte); 29 s de conversa, encerrada pelo painel; faixa "recebida · atendida pelo CRM" com ▶; gravação de 34,6 s (bate como na 3) |
+| D6/D6b | A conversa depois das 4 | ✅ não lidas 0, "aguardando" e IA intactos, a conversa não subiu; só as faixas (`agent`, sem autor) entraram |
 
-Processador (`docker stats`, amostras de 4–5 s): parada, ~5% de um núcleo e
-0,85–1 GiB de memória (teto do contêiner: 1,5 GiB); do pedido ao atendimento,
-picos de 1,05–1,48 núcleo por 10–15 s. A conversa longa ainda não foi medida.
-A máquina foi PARADA de novo às 17:45 UTC (o operador não podia atender).
+Processador (`docker stats`, amostras de 4–5 s; a VPS tem 2 núcleos e 7,8 GiB):
+parada, ~6% de um núcleo e 0,76–1 GiB de memória (teto do contêiner: 1,5 GiB);
+do pedido ao atendimento, picos de 1,5–2,2 núcleos por ~5 s; NA CONVERSA (a
+ponte e a gravação juntas), média de 94% de um núcleo (66–107%). Com o peso
+256, o CRM e a Evolution passam na frente quando disputam.
+
+**A máquina que não voltava depois de parada** (achado do teste, 11/11/2026):
+o `docker stop` deixa o `pid` e o soquete do PulseAudio na camada do
+contêiner, e o `docker start` seguinte entrava em laço de reinício ("Daemon
+startup failed", 10 reinícios em 1 min) — o mesmo aconteceria num reinício
+da VPS. Até ali a máquina só tinha subido de contêiner novo. O `iniciar.sh`
+passou a apagar a pasta do PulseAudio; imagem `20261111-9`, com o ciclo
+parar → ligar conferido na VPS.
 
 **Codex depois do merge (#500, 4º achado):** a máquina grava desde o pedido,
 e o contêiner que cai no meio do toque reenviaria, ao subir, o toque e o
@@ -1407,12 +1419,8 @@ desfecho ainda, 409 (ela manda de novo em 5 min; o sinal fecha a ligação como
 de 30 min) vira "não atendida" no `sumiu`, e a gravação dela é descartada.
 
 **Falta:**
-- **Teste ao vivo, parte 2:** a conversa longa (~20 s: o áudio nos dois
-  sentidos, desligar pelo painel, o processador com a ponte e a gravação
-  juntas; D6/D6b — não lidas, "aguardando" e IA intactas) e a recebida (o
-  cartão toca, Atender, falar, o cliente desliga). Depois, a conversa do lead
-  volta à conexão de antes.
-- P8 (a rede do escritório).
+- P8 (a rede do escritório) e o desligar pelo CELULAR do cliente na recebida
+  (no teste, o atendente desligou pelo painel).
 - Decisão do operador: deixar a máquina LIGADA depois do teste (as ligações
   pelo CRM passam a valer para a equipe da Previdenciário) ou só em sessões.
 - 4d (transcrição, resumo, contexto da IA, poda aos 180 dias) e 4e (conexões,
