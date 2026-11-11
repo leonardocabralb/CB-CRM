@@ -56,10 +56,14 @@ desenho: §8.12 e §8.13 do plano.
   `aria-label` estão em português (`--lang=pt-BR`): trocar o idioma nas
   configurações do WhatsApp quebra a máquina.
 - A máquina de estados (`ligacao.ts`): uma ligação por vez, e a linha só
-  fica livre DEPOIS de fechar a gravação e a ponte da anterior (`encerrando`);
-  nunca disca nem atende antes de a ponte do atendente ligar; desliga aos 30
-  min do atendimento (D13), com um teto também desde o pedido, e com a ponte
-  caída por 15 s. Fechar a aba no meio deixa a linha ocupada por ~18 s.
+  fica livre DEPOIS de fechar a gravação e a ponte da anterior (`encerrando`)
+  e de acabar o passo dela que ainda mexe na tela (`passoNaTela`: desligar
+  no meio do discar não para o Playwright); nunca disca nem atende antes de
+  a ponte do atendente ligar; desliga aos 30 min do atendimento (D13), com um
+  teto também desde o pedido, e com a ponte caída por 15 s. Fechar a aba no
+  meio deixa a linha ocupada por ~18 s. A aba que não responde por 60 s de
+  RELÓGIO (nunca contar leituras: cada uma leva o prazo de 5 s) faz o
+  processo sair.
 - ⚠️⚠️ **Chamada nenhuma fica na tela sem dono:** chamada FEITA ou EM CURSO na
   tela sem ligação em curso aqui (o clique de desligar que não pegou, o fim
   forçado, o passo que falhou depois do clique) é desligada de novo a cada

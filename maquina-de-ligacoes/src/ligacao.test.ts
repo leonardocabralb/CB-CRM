@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   ESPERA_DA_PONTE_MS,
   ESPERA_DO_DESLIGAR_MS,
-  FALHAS_DA_TELA_PARA_SAIR,
   FOLGA_DO_FIM_MS,
   Maquina,
   QUEDA_DA_PONTE_MS,
+  TELA_SEM_RESPOSTA_MS,
   TETO_DA_LIGACAO_MS,
   TETO_DESDE_O_PEDIDO_MS,
   chaveDoNumero,
@@ -325,6 +325,46 @@ describe('desligar', () => {
     expect(m.avisos.map((a) => a.tipo)).toEqual(['encerrada'])
   })
 
+  it('desligada no meio da discagem, a linha só fica livre quando a discagem acaba (ela segue mexendo na tela)', async () => {
+    const m = montar()
+    m.controle.segurarDiscar = true
+    await m.maquina.tique()
+    await m.maquina.ligar(PEDIDO)
+    m.maquina.aoMudarARede('connected')
+    await m.passar(200)
+    await m.maquina.desligar('lig-1')
+    expect(m.fins()[0].motivo).toBe('atendente_desligou')
+    expect(m.maquina.estado().ligacao).toBeNull()
+    const outra = { ...PEDIDO, ligacao: 'lig-2' }
+    expect(await m.maquina.ligar(outra)).toEqual({ ok: false, recusa: 'ocupada' })
+    expect(await m.maquina.atender(outra)).toEqual({ ok: false, recusa: 'ocupada' })
+    m.controle.soltarDiscar()
+    await m.passar(0)
+    // A chamada que a discagem pôs na tela caiu ANTES de a linha ficar livre.
+    expect(m.feito.desligar).toBe(1)
+    expect(m.tela.chamada).toEqual({ fase: 'nenhuma' })
+    expect(await m.maquina.ligar(outra)).toEqual({ ok: true, resposta: 'v=0 resposta' })
+  })
+
+  it('a ligação cancelada na espera da rede não solta a linha do passo de outra', async () => {
+    const m = montar()
+    await m.maquina.tique()
+    await m.maquina.ligar(PEDIDO)
+    await m.maquina.desligar('lig-1')
+    // A 2ª nasce e começa a discar antes de o `seguir` da 1ª acordar.
+    m.controle.segurarDiscar = true
+    await m.maquina.ligar({ ...PEDIDO, ligacao: 'lig-2' })
+    m.maquina.aoMudarARede('connected')
+    await m.passar(200)
+    expect(m.feito.discar).toEqual([PEDIDO.numero])
+    await m.maquina.desligar('lig-2')
+    await m.passar(1_000)
+    expect(await m.maquina.ligar({ ...PEDIDO, ligacao: 'lig-3' })).toEqual({ ok: false, recusa: 'ocupada' })
+    m.controle.soltarDiscar()
+    await m.passar(0)
+    expect(await m.maquina.ligar({ ...PEDIDO, ligacao: 'lig-3' })).toEqual({ ok: true, resposta: 'v=0 resposta' })
+  })
+
   it('aos 30 minutos do atendimento', async () => {
     const m = montar()
     await ligarAteAtender(m)
@@ -473,13 +513,29 @@ describe('ligação recebida', () => {
 })
 
 describe('a aba travada', () => {
-  it('sem resposta da tela por ~60 s, o processo sai (o contêiner reinicia)', async () => {
+  it('a tela sem resposta por 60 s de RELÓGIO, o processo sai (contar leituras dava ~8 min)', async () => {
     const m = montar()
     m.controle.telaTravada = true
-    for (let i = 0; i < FALHAS_DA_TELA_PARA_SAIR - 1; i++) await m.maquina.tique()
+    for (let i = 0; i < 100; i++) await m.maquina.tique()
+    await m.passar(TELA_SEM_RESPOSTA_MS - 1)
+    await m.maquina.tique()
     expect(m.feito.sair).toEqual([])
+    await m.passar(1)
     await m.maquina.tique()
     expect(m.feito.sair).toHaveLength(1)
+  })
+
+  it('uma leitura boa no meio zera a conta', async () => {
+    const m = montar()
+    m.controle.telaTravada = true
+    await m.maquina.tique()
+    await m.passar(TELA_SEM_RESPOSTA_MS - 1)
+    m.controle.telaTravada = false
+    await m.maquina.tique()
+    m.controle.telaTravada = true
+    await m.passar(1)
+    await m.maquina.tique()
+    expect(m.feito.sair).toEqual([])
   })
 })
 
