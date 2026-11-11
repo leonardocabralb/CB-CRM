@@ -2,7 +2,8 @@
 
 Branch `feat/ia-pausa-temporaria`. Vale para TODOS os agentes de IA
 (Trabalhista, Previdenciário, Bancário), como configuração da CONTA.
-Estado: **plano, esperando as decisões do operador** (seção 3).
+Estado: **plano com P1–P7 decididas em 11/11/2026** (seção 3); implementação
+nesta branch.
 
 ## 1. Como é hoje
 
@@ -31,16 +32,21 @@ Estado: **plano, esperando as decisões do operador** (seção 3).
   conta, padrão 15), a IA retoma e responde. A retomada (follow-ups) volta a
   se armar a partir dessa resposta.
 
-## 3. Decisões a confirmar com o operador
+## 3. Decisões do operador
 
-| # | Pergunta | Recomendação |
+Tudo é configuração da CONTA e vale para todo agente (Trabalhista,
+Previdenciário, Bancário): nada por agente, por funil ou por conexão
+(operador, 11/11/2026).
+
+| # | Pergunta | Decisão |
 | --- | --- | --- |
-| P1 | Valor padrão de N; 0 desliga? | **15 min; 0 = desligado** (tudo volta a ser como hoje: pausa até "Retomar IA"). Faixa aceita: 0 a 1440. |
-| P2 | `transferencia` (a IA pediu ajuda) continua permanente? | **Sim.** A IA pediu gente porque não sabia ou não podia; voltar sozinha 15 min depois repetiria o motivo. Idem `automacao` (só o `set_ai` "ligar" ou o Retomar a desfazem). |
-| P3 | Mover o card para uma etapa com agente limpa a pausa temporária? | **Não** (mantém a D26 nessa parte). A pausa temporária já volta sozinha; quem quer a IA na hora clica "Retomar IA". Mover o card tem muitos motivos (proposta, reunião) que não são "devolva para a IA". |
-| P4 | A IA faz follow-up quando a última fala foi da EQUIPE e a cliente sumiu? | **Não, nesta versão.** A retomada continua ancorada na resposta da IA. A IA cobrar a cliente por cima de uma pergunta do advogado é o pior caso. Quando a IA volta (P1) e responde, a série se arma de novo, como sempre. |
-| P5 | Como fica com o horário do agente? | **Os N min correm no relógio**; se vencem fora do horário, o turno espera a abertura (a regra de 25/10) e, na abertura, só responde se ninguém da equipe respondeu nesse meio-tempo. |
-| P6 | Rotular as falas da equipe no contexto do modelo? | **Sim**, `[Team member]` sem o nome da pessoa (seção 4.7). |
+| P1 | Valor padrão de N; 0 desliga? | **15 min; 0 = desligado** (tudo como hoje: pausa até "Retomar IA", sem follow-up depois da equipe). Aceita 0 a 1440. — DECIDIDO 11/11 |
+| P2 | `transferencia` (a IA pediu ajuda) continua permanente? | **Sim**, e `automacao` também (só o `set_ai` "ligar" ou o Retomar a desfazem). — DECIDIDO 11/11 |
+| P3 | Mover o card para uma etapa com agente limpa a pausa temporária? | **Não** (mantém a D26 nessa parte); quem quer a IA na hora clica "Retomar IA". — DECIDIDO 11/11 |
+| P4 | A IA faz follow-up quando a última fala foi da EQUIPE e a cliente sumiu? | **Sim** (contra a recomendação inicial), com a cadência do agente da etapa, ancorada na fala da equipe (4.11). — DECIDIDO 11/11 |
+| P5 | Como fica com o horário do agente? | **Os N min correm no relógio**; vencidos fora do horário, o turno espera a abertura (a regra de 25/10) e só responde se ninguém da equipe respondeu no meio-tempo. O follow-up já respeita o horário. — DECIDIDO 11/11 |
+| P6 | Rotular as falas da equipe no contexto do modelo? | **Sim**, `[Team member]` SEM o nome da pessoa (4.7). — DECIDIDO 11/11 |
+| P7 | Depois do follow-up da IA, a cliente responde: quem fala? | **A IA responde na hora**: o follow-up que sai LEVANTA a pausa (contra a recomendação de dar os N min à equipe). — DECIDIDO 11/11 |
 
 ## 4. Desenho
 
@@ -143,8 +149,8 @@ ligações) e 1131 (frases autorizadas). Conferir `ls supabase/migrations` E
 2. CHECK `conversations_ia_pausada_por_check` com `desativada` (DROP pelo
    nome, ADD com nome).
 3. `cb_pausar_ia_por_gente()` recriada: o corpo de hoje + o descarte do
-   pendente de resposta na conversa já pausada. O gatilho (WHEN da 1118) não
-   muda.
+   pendente de resposta na conversa já pausada + a PRÉ-ARMAÇÃO do follow-up
+   depois da equipe (4.11). O gatilho (WHEN da 1118) não muda.
 4. `cb_ia_voltar_da_pausa(p_turno_id, p_rodando_desde, p_minutos,
    p_levantar)` → `(resultado text, volta_em timestamptz)`: `nao_pausada` |
    `permanente` | `equipe_respondeu` | `cedo` | `voltou` | `descartado`
@@ -203,6 +209,52 @@ a coluna; convive. Nenhuma tabela nova: Lixeira e união não mudam.
   motivo `desativada` entra na chave MONTADA `Inbox.aiBanner.motivo.<m>` (o
   teste lê os dois dicionários pela lista `MOTIVOS_DA_PAUSA`).
 
+### 4.11 O follow-up depois da fala da EQUIPE (P4)
+
+A equipe responde ("me manda o holerite") e a cliente some: a IA cobra com a
+cadência do agente da etapa, contada da fala da equipe — a mesma série da
+1056 (`tipo = 'retomada'`), só que ancorada na mensagem da equipe.
+
+- **Quem arma é o GATILHO da pausa por gente**, a única porta por onde passa
+  toda fala de gente (CRM, celular, agendada): espalhar o "armar" pelos
+  caminhos de envio deixaria um de fora sem erro nenhum. O SQL não escolhe
+  card nem agente (essa régua é `lerCardEAgente`, no TS): ele grava uma
+  linha de PRÉ-ARMAÇÃO na fila — `tipo = 'retomada'`, âncora = a mensagem da
+  equipe, conexão = a dela, agente/card/etapa nulos, a marca
+  `ERRO_DA_ARMACAO_PELA_EQUIPE`, `executar_apos` = agora + 30 s — sobre o
+  pendente da conversa e conexão (`ON CONFLICT … DO UPDATE`: a fala seguinte
+  da equipe só move a âncora; a retomada da IA que estava lá vira esta).
+- Só pré-arma quando vale a pena: N > 0 na conta, conversa 1:1 aberta, pausa
+  `gente` (a deste gatilho), mensagem que a cliente lê (não a ligação
+  atendida no celular) e um card ABERTO numa etapa cujo agente está ligado,
+  com a conexão da mensagem e a retomada ligada (filtro barato; a escolha
+  certa fica no TS).
+- **No TS** (`conduzirRetomada`, ao ver a marca): `lerQuemAtende` +
+  `quemResponde` com a conexão da linha, a retomada do agente ligada, a
+  primeira tentativa por `proximaRetomada` com a âncora = o `gravada_em` da
+  fala da equipe (janela ∩ horário do agente, lembretes e reunião, como
+  hoje) → a linha ganha agente, card, etapa, `tentativa = 1`, `tentativas` =
+  a cadência, e o `executar_apos` certo. Nada aplicável = `descartado`.
+- **Ao rodar**, é a retomada de sempre: para se a cliente escrever (o
+  enfileirar já a descarta), se a equipe escrever de novo (o gatilho troca a
+  âncora), se o robô ou outra automação falar, perto da reunião, janela da
+  Meta fechada, cadência no fim. A seção da retomada no pedido (pedaço
+  VARIÁVEL) ganha a variante "a cliente não respondeu à última mensagem da
+  EQUIPE" — a conversa ao modelo termina na fala da equipe, rotulada
+  `[Team member]` (4.7), e a nota de usuário de sempre (`comNotaDaRetomada`)
+  fecha.
+- **O follow-up LEVANTA a pausa** (P7): a cliente que responde a ele é
+  respondida pela IA na hora. É a MESMA função do retorno
+  (`cb_ia_voltar_da_pausa`), logo antes da reserva, com a régua da
+  retomada: só a pausa `gente`, N > 0 na conta, ninguém escreveu depois da
+  âncora. A reserva NÃO muda (a pausa já saiu quando ela roda). O Pausar
+  (`botao`), o Desativar, a transferência e a automação continuam parando a
+  série (`pausada`). `conferirRetomada` deixa a pausa `gente` passar, como o
+  `conferir` do retorno.
+- Limite aceito: pausa levantada e envio recusado = a conversa fica sem pausa
+  sem o follow-up ter saído; a próxima mensagem da cliente é respondida pela
+  IA na hora (a equipe já estava em silêncio desde a âncora).
+
 ### 4.9 Testes
 
 - `quem-responde`: temporária segue as regras e marca a espera; permanente e
@@ -212,6 +264,10 @@ a coluna; convive. Nenhuma tabela nova: Lixeira e união não mudam.
 - `turno`: cedo reagenda com a marca; equipe depois do gatilho descarta;
   vencido levanta antes da reserva; levantar sem posse abandona.
 - `contexto`: rótulo só na fala de gente; IA, automação e robô sem rótulo.
+- follow-up da equipe: a pré-armação vira a 1ª tentativa com a âncora da
+  equipe; nada aplicável descarta; passa pela pausa `gente`, não pela
+  `botao`; a cliente que escreve descarta; a fala seguinte da equipe move a
+  âncora.
 - `pedido.partes`: o pedaço fixo não muda com a conversa.
 - Rota da faixa, rota do Pausar/Desativar, rota da configuração; faixa
   renderizada nos três estados.
@@ -232,8 +288,11 @@ Linha proposta para as decisões (a confirmar):
 >   TEMPORÁRIAS — a IA volta sozinha quando a cliente escreve e ninguém da
 >   equipe responde em N min (da conta, padrão 15; 0 = como antes);
 >   "Desativar IA", a transferência pedida pela IA e a automação seguem até
->   "Retomar IA"; mover o card não retoma; a IA só faz follow-up da própria
->   resposta (`ia.md`).
+>   "Retomar IA"; mover o card não retoma; a IA também faz follow-up da fala
+>   da EQUIPE, com a cadência do agente, e o follow-up que sai devolve a
+>   conversa à IA; os N min contam no relógio (fora do horário, espera a
+>   abertura); as falas da equipe chegam ao modelo rotuladas, sem o nome;
+>   vale para a conta inteira, todo agente (`ia.md`, `ia-retomada.md`).
 
 ## 5. Consequência na transição
 
