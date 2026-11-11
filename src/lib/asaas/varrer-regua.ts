@@ -24,6 +24,7 @@ import {
   diaAlvoDoMarco,
   diasDoLembrete,
   entrouNaRegua,
+  fimDaJanela,
   janelaAberta,
   lerAutomacaoDaRegua,
   montarVariaveis,
@@ -32,11 +33,13 @@ import {
   RECOLHER_TRAVA_MS,
   RESULTADOS_QUE_CONTAM_COMO_ENVIO,
   resultadoDoLog,
+  tipoDePessoa,
   vencidasDoCliente,
   type AutomacaoDaRegua,
   type ContextoDaRegua,
   type GrupoDeCobranca,
   type GrupoDeLembrete,
+  type TipoDePessoa,
 } from "./regua";
 
 /**
@@ -69,7 +72,7 @@ import {
  *  6. TRAVA o grupo num INSERT só (23505 em qualquer parcela = outro
  *     processo pegou → o grupo inteiro sai), reconferindo o interruptor
  *     antes; a conversa da ficha nasce aqui se não existir (a ficha da D2
- *     não tem conversa), com o canal do passo e sem pino. Desde 27/09/2026 o
+ *     não tem conversa), ENCERRADA, com o canal do passo e sem pino. Desde 27/09/2026 o
  *     passo `send_message` também a criaria, mas ENCERRADA e sem canal — a
  *     da régua nasce antes, e o motor a encontra.
  *  7. Dispara SÓ a automação carimbada (`automation_id` no contexto) e mede
@@ -181,6 +184,8 @@ interface ClienteLigado {
   asaas_customer_id: string;
   contact_id: string;
   nome: string;
+  /** pelo CPF/CNPJ (`tipoDePessoa`): a saudação e o primeiro nome dependem dele; o documento não sai daqui */
+  pessoa: TipoDePessoa;
 }
 
 interface AutomacaoPronta extends AutomacaoDaRegua {
@@ -317,11 +322,11 @@ async function conexoesDaConta(admin: SupabaseClient, accountId: string): Promis
  * (Codex, 4ª rodada do PR #206).
  */
 async function lerClientesLigados(admin: SupabaseClient, accountId: string, saida: ResultadoDaRegua): Promise<Map<string, ClienteLigado>> {
-  const linhas = await lerTudo<{ asaas_customer_id: string; contact_id: string; nome: string | null }>(
+  const linhas = await lerTudo<{ asaas_customer_id: string; contact_id: string; nome: string | null; cpf_cnpj: string | null }>(
     (de, ate) =>
       admin
         .from("cb_asaas_clientes")
-        .select("asaas_customer_id, contact_id, nome")
+        .select("asaas_customer_id, contact_id, nome, cpf_cnpj")
         .eq("account_id", accountId)
         .eq("deleted", false)
         .eq("regua_desligada", false)
@@ -344,7 +349,7 @@ async function lerClientesLigados(admin: SupabaseClient, accountId: string, said
       saida.semTelefone += 1;
       continue;
     }
-    mapa.set(l.asaas_customer_id, { asaas_customer_id: l.asaas_customer_id, contact_id: l.contact_id, nome: l.nome ?? "" });
+    mapa.set(l.asaas_customer_id, { asaas_customer_id: l.asaas_customer_id, contact_id: l.contact_id, nome: l.nome ?? "", pessoa: tipoDePessoa(l.cpf_cnpj) });
   }
   return mapa;
 }
@@ -517,6 +522,12 @@ async function reconciliarNaFila(admin: SupabaseClient, accountId: string, agora
 /**
  * A conversa 1:1 do contato — a mais antiga; senão nasce aqui, com o canal
  * do passo e sem pino, e `user_id` = o DONO da conta (`dono-duravel`).
+ *
+ * ⚠️ Nasce ENCERRADA (decisão do operador, 10/11/2026: a cobrança não abre
+ * conversa), como a do motor (`conversaNovaEncerrada`, 27/09/2026): sem o
+ * `status`, o padrão da coluna (`open`) punha na caixa "Abertas" uma conversa
+ * que só tem a mensagem do robô. A resposta do cliente a reabre pela
+ * ingestão (`reopen.ts`).
  */
 async function conversaDoContato(
   admin: SupabaseClient,
@@ -541,7 +552,7 @@ async function conversaDoContato(
   const { data: nova, error: erroNova } = await marcarOrigem(
     admin
       .from("conversations")
-      .insert({ account_id: accountId, user_id: dono, contact_id: contactId, channel_id: channelId, channel_pinned: false }),
+      .insert({ account_id: accountId, user_id: dono, contact_id: contactId, channel_id: channelId, channel_pinned: false, status: "closed" }),
     { via: "regua", ref: automacaoId },
   )
     .select("id")
@@ -611,13 +622,15 @@ async function reconfirmar(
  * lia "outro processo pegou" o dia todo (Codex, PR #212). Quem já foi
  * lembrado sai da mensagem e da trava, como no caso dos dias corridos.
  */
-async function semLembreteTravado(admin: SupabaseClient, accountId: string, parcelas: readonly ParcelaDoEspelho[]): Promise<ParcelaDoEspelho[]> {
+async function semLembreteTravado(admin: SupabaseClient, accountId: string, parcelas: readonly ParcelaDoEspelho[], turno: number): Promise<ParcelaDoEspelho[]> {
   if (parcelas.length === 0) return [];
+  // POR TURNO (1133): o lembrete do dia já enviado não segura o da noite
   const { data, error } = await admin
     .from("cb_asaas_regua_envios")
     .select("cobranca_id, vencimento")
     .eq("account_id", accountId)
     .eq("tipo", "vence_hoje")
+    .eq("marco", turno)
     .in("cobranca_id", parcelas.map((p) => p.id));
   if (error) throw new Error(`travas de lembrete: ${error.message}`);
   const travadas = new Set(((data ?? []) as { cobranca_id: string; vencimento: string }[]).map((t) => `${t.cobranca_id}|${t.vencimento}`));
@@ -740,8 +753,16 @@ export async function varrerRegua(admin: SupabaseClient, accountId: string, deps
       if (e.tipo === "atraso" && RESULTADOS_QUE_CONTAM_COMO_ENVIO.has(e.resultado) && !ultimaCobranca.has(e.asaas_customer_id)) ultimaCobranca.set(e.asaas_customer_id, e.criado_em);
     }
 
-    const { data: conta } = await admin.from("accounts").select("name").eq("id", accountId).maybeSingle();
-    const escritorio = typeof conta?.name === "string" ? conta.name : "";
+    // `{{vars.escritorio_nome}}` é o nome AUTOMÁTICO da assinatura (o do
+    // escritório, `nomeParaAssinar`), não `accounts.name` — que nesta conta é
+    // o nome do dono, e a mensagem diria "Aqui é do <dono>" (medido em
+    // 10/11/2026). Sem ele, o nome da conta, como antes.
+    const { data: conta, error: erroDaConta } = await admin.from("accounts").select("name, assinatura_nome_automatica").eq("id", accountId).maybeSingle();
+    // Leitura que falha não vira "Aqui é do ." em todas as mensagens do ciclo:
+    // para ANTES de travar qualquer grupo (revisão do PR #494).
+    if (erroDaConta) throw new Error(`nome do escritório: ${erroDaConta.message}`);
+    const nomeAutomatico = typeof conta?.assinatura_nome_automatica === "string" ? conta.assinatura_nome_automatica.trim() : "";
+    const escritorio = nomeAutomatico || (typeof conta?.name === "string" ? conta.name : "");
     const cliente = deps.cliente ?? (await (async () => { const c = await clienteDaConta(admin, accountId); if (!c.ok) throw new ParadaDaVarredura(c.codigo); return c.cliente; })());
 
     const porCliente = new Map<string, ParcelaDoEspelho[]>();
@@ -759,7 +780,9 @@ export async function varrerRegua(admin: SupabaseClient, accountId: string, deps
     // da cobrança de segunda repetia a trava `vence_hoje` — 23505 no grupo
     // inteiro, e a cobrança do marco não saía (revisão da 4ª rodada do PR
     // #206; pino em varrer-regua.test.ts, "dias CORRIDOS").
-    const lembreteDaConta = validas.find((a) => a.tipo === "vence_hoje");
+    // O do DIA (é ele que a cobrança absorve, com a trava `marco = 0`); só
+    // com o da noite ligado, o dele.
+    const lembreteDaConta = validas.find((a) => a.tipo === "vence_hoje" && a.marco === 0) ?? validas.find((a) => a.tipo === "vence_hoje");
     const diasDoLembreteHoje: ReadonlySet<string> = new Set(lembreteDaConta ? diasDoLembrete(ctx.hoje, lembreteDaConta.somenteDiasUteis) : []);
 
     // ---- as cobranças por marco (passos 3 a 7)
@@ -828,7 +851,7 @@ export async function varrerRegua(admin: SupabaseClient, accountId: string, deps
         saida.semConexao += 1;
         continue;
       }
-      const venceHoje = await semLembreteTravado(admin, accountId, frescas.filter(venceNoDia));
+      const venceHoje = await semLembreteTravado(admin, accountId, frescas.filter(venceNoDia), 0);
       // 5) o intervalo mínimo (D11, 13/09)
       const absorvida = dentroDoIntervalo(ultimaCobranca.get(grupo.asaasCustomerId) ?? null, dia, config.regua_intervalo_dias, fuso);
       if (!(await reguaAindaLigada(admin, accountId))) {
@@ -883,7 +906,7 @@ export async function varrerRegua(admin: SupabaseClient, accountId: string, deps
       // 4ª rodada do PR #206).
       const daQueManda = (p: ParcelaDoEspelho) => Number(marcoDe.get(p.id)?.id === automacao.id);
       const cruzaramNaMensagem = [...cruzaram].sort((a, b) => daQueManda(b) - daQueManda(a) || (a.vencimento < b.vencimento ? -1 : a.vencimento > b.vencimento ? 1 : 0));
-      const vars = montarVariaveis({ clienteNome: ligado.nome, escritorioNome: escritorio, vencidas, cruzaram: cruzaramNaMensagem, venceHoje, hoje: dia, agora, fuso });
+      const vars = montarVariaveis({ clienteNome: ligado.nome, pessoa: ligado.pessoa, escritorioNome: escritorio, vencidas, cruzaram: cruzaramNaMensagem, venceHoje, hoje: dia, agora, fuso });
       const carimbo = new Date().toISOString();
       const disparo = await disparar({
         accountId,
@@ -927,25 +950,30 @@ export async function varrerRegua(admin: SupabaseClient, accountId: string, deps
       // A trava de lembrete que JÁ existe é conferida ANTES da releitura: a
       // parcela lembrada não entra no grupo (senão o 23505 levava a outra
       // junto) e não gasta GET no Asaas a cada ciclo do dia (Codex, PR #212).
-      const aLembrar = await semLembreteTravado(admin, accountId, grupo.venceHoje);
+      const aLembrar = await semLembreteTravado(admin, accountId, grupo.venceHoje, automacao.marco);
       if (aLembrar.length === 0) continue;
-      const venceHoje = await reconfirmar(admin, accountId, cliente, aLembrar, (p) => cabeNoLembrete(p, diasDoLembreteHoje, dia), vistoEm);
+      // ⚠️ Os dias do lembrete DESTE grupo (o do turno dele), a MESMA cerca
+      // de `agruparLembretes`: com o do dia em dias úteis e o da noite em dias
+      // corridos, a releitura pela regra do dia recusava as parcelas de
+      // sábado que a noite selecionou (Codex, PR #494).
+      const diasDoGrupo: ReadonlySet<string> = new Set(diasDoLembrete(dia, automacao.somenteDiasUteis));
+      const venceHoje = await reconfirmar(admin, accountId, cliente, aLembrar, (p) => cabeNoLembrete(p, diasDoGrupo, dia), vistoEm);
       if (venceHoje.length === 0) continue;
       if (!(await reguaAindaLigada(admin, accountId))) {
         saida.desligadaNoMeio = true;
         break;
       }
-      if (!janelaAberta(relogio(), dia, automacao.horaEnvio, fuso)) {
+      if (!janelaAberta(relogio(), dia, automacao.horaEnvio, fuso, fimDaJanela(automacao))) {
         saida.janelaFechou += 1;
         continue;
       }
       const ids = await travar(
         admin,
-        venceHoje.map((p) => ({ account_id: accountId, cobranca_id: p.id, asaas_customer_id: grupo.asaasCustomerId, tipo: "vence_hoje" as const, marco: 0, vencimento: p.vencimento, automation_id: automacao.id, automation_nome: automacao.nome, contact_id: ligado.contact_id, resultado: "reservado" as const, detalhe: null })),
+        venceHoje.map((p) => ({ account_id: accountId, cobranca_id: p.id, asaas_customer_id: grupo.asaasCustomerId, tipo: "vence_hoje" as const, marco: automacao.marco, vencimento: p.vencimento, automation_id: automacao.id, automation_nome: automacao.nome, contact_id: ligado.contact_id, resultado: "reservado" as const, detalhe: null })),
       );
       if (ids === null || ids.length === 0) continue;
       const conversationId = await conversaDoContato(admin, accountId, ligado.contact_id, automacao.channelId, automacao.id);
-      const vars = montarVariaveis({ clienteNome: ligado.nome, escritorioNome: escritorio, vencidas: [], cruzaram: [], venceHoje, hoje: dia, agora, fuso });
+      const vars = montarVariaveis({ clienteNome: ligado.nome, pessoa: ligado.pessoa, escritorioNome: escritorio, vencidas: [], cruzaram: [], venceHoje, hoje: dia, agora, fuso });
       const carimbo = new Date().toISOString();
       const disparo = await disparar({
         accountId,

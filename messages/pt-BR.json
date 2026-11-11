@@ -913,6 +913,7 @@
         "erroTrocar": "Não foi possível mudar a cobrança automática deste cliente.",
         "desligadaNaConta": "Cobrança automática DESLIGADA na conta (Configurações → Integrações → Asaas): há automação ligada, mas nada sai até ligar o interruptor.",
         "lembrete": "lembrete do vencimento",
+        "lembreteNoite": "lembrete da noite",
         "marco": "{dias} dia(s) de atraso",
         "resultado": {
           "reservado": "em andamento ({quando})",
@@ -2844,7 +2845,8 @@
           "channel": "Canal de entrada",
           "deal_stage": "Negócio está na etapa",
           "deal_status": "Negócio está",
-          "meta_window_open": "Janela de 24h da Meta aberta"
+          "meta_window_open": "Janela de 24h da Meta aberta",
+          "asaas_situacao": "Situação da cobrança (Asaas)"
         },
         "operandLabel": "Operando",
         "horaDoDiaInicio": "Início",
@@ -2857,6 +2859,16 @@
         "horaDoDiaIncompleta": "Escolha o início e o fim — sem os dois, a condição responde sempre Não.",
         "horaDoDiaSegASex": "Só de segunda a sexta",
         "horaDoDiaSegASexHelp": "Sábado e domingo respondem Não (feriados não são conferidos). Numa janela que atravessa a meia-noite, a madrugada conta para o dia em que a janela começou: a de sábado é a noite de sexta.",
+        "cobrancaParcelasLabel": "Parcelas vencidas: a partir de",
+        "cobrancaParcelasAjuda": "Quantas parcelas vencidas o cliente tem, somando todas as cobranças dele (2 = duas ou mais). Em branco, não olha.",
+        "cobrancaDiasLabel": "Dias de atraso da mais antiga: a partir de",
+        "cobrancaDiasAjuda": "Dias de calendário desde o vencimento da parcela mais antiga (15 = o próprio dia 15 já conta). Em branco, não olha.",
+        "cobrancaAjuda": "Responde Sim quando QUALQUER um dos dois é alcançado. A situação é a que a régua acabou de conferir no Asaas para esta mensagem. Só funciona nas cobranças de atraso da régua — no lembrete do vencimento não há parcela vencida.",
+        "cobrancaSemLimite": "Preencha pelo menos um dos dois — sem nenhum, a condição responde sempre Não.",
+        "cobrancaLimiteInvalido": "Use números inteiros: de 1 a 99 parcelas e de 1 a 365 dias. Fora disso, o limite não vale.",
+        "cobrancaResumoParcelas": "{n, plural, one {# parcela ou mais} other {# parcelas ou mais}}",
+        "cobrancaResumoDias": "{n, plural, one {# dia de atraso ou mais} other {# dias de atraso ou mais}}",
+        "cobrancaResumoOu": " ou ",
         "mensagemContemLabel": "Texto que a mensagem contém",
         "negocioAberto": "Aberto",
         "escolhaStatus": "Escolha o status",
@@ -3161,6 +3173,8 @@
         "diasAjuda": "Dias corridos depois do vencimento. Cada marco é uma automação: 1, 5, 30… A mensagem lista todas as parcelas vencidas do cliente, não só a que cruzou este marco.",
         "horaLabel": "Enviar a partir de",
         "horaAjuda": "Entre 08:00 e 17:00. A mensagem sai entre esta hora e as 18:00 do dia do marco; agendador parado até as 18:00 = marco perdido naquele dia.",
+        "horaAjudaLembrete": "Antes das 18:00 é o lembrete do DIA: sai entre esta hora e as 18:00. A partir das 18:00 vira o lembrete da NOITE, até as 21:00 (ex.: 20:00, assinado como \"Mensagem automática\").",
+        "horaAjudaNoite": "Lembrete da NOITE: sai entre esta hora e as 21:00, só para quem ainda não pagou o que vence hoje (o CRM confere no Asaas antes). Use \"Assinar como\" = \"Mensagem automática\".",
         "diasUteisLabel": "Só em dia útil",
         "diasUteisAjuda": "Sábado, domingo e feriado nacional de data fixa empurram a mensagem para o dia útil seguinte.",
         "conexaoAviso": "A mensagem desta automação precisa da conexão escolhida no passo (falha fechada: nunca sai pelo número padrão). Sem 'Aguardar': cada marco é uma automação própria.",
@@ -3240,6 +3254,10 @@
           "condicao_sem_conexao": "Escolha a conexão que a condição confere.",
           "condicao_horario_invalido": "Escolha o horário de início e o de fim da condição (diferentes entre si).",
           "condicao_dias_uteis_invalido": "Marque ou desmarque de novo a opção “Só de segunda a sexta” da condição.",
+          "condicao_cobranca_sem_limite": "Preencha pelo menos um limite da situação da cobrança (parcelas ou dias de atraso).",
+          "condicao_cobranca_limite_invalido": "Os limites da situação da cobrança são números inteiros: de 1 a 99 parcelas e de 1 a 365 dias.",
+          "condicao_cobranca_fora_da_regua": "A condição “Situação da cobrança” só funciona na régua de cobrança do Asaas: troque o critério.",
+          "condicao_cobranca_no_lembrete": "No lembrete do vencimento não há parcela vencida: a “Situação da cobrança” responderia sempre Não. Use-a nas cobranças de atraso.",
           "webhook_sem_endereco": "Escreva o endereço (URL) do webhook.",
           "webhook_endereco_invalido": "Corrija o endereço do webhook: ele tem de começar com http:// ou https://.",
           "numero_sem_telefone": "Escreva o telefone que recebe a mensagem.",
@@ -3275,6 +3293,7 @@
           "gatilho_webhook_invalido": "Escolha de novo o webhook que dispara a automação.",
           "gatilho_dias_de_atraso_invalido": "Escolha com quantos dias de atraso a cobrança sai (de 1 a 365).",
           "gatilho_hora_de_envio_invalida": "Escolha a hora de envio entre 08:00 e 17:00.",
+          "gatilho_hora_do_lembrete_invalida": "Escolha a hora do lembrete entre 08:00 e 17:00 (lembrete do dia) ou entre 18:00 e 20:30 (lembrete da noite).",
           "gatilho_dias_uteis_invalido": "Marque ou desmarque de novo a opção “Só em dia útil”.",
           "gatilho_status_invalidos": "Escolha de novo os status do gatilho: ganho, perdido ou aberto.",
           "gatilho_atlas_sem_situacao": "Marque ao menos uma situação do Atlas Gestor no gatilho.",
@@ -3392,25 +3411,37 @@
         }
       },
       "evento": {
+        "saudacao": {
+          "rotulo": "Saudação",
+          "legenda": "“Olá, Maria!” com o primeiro nome; para empresa (CNPJ) ou cliente sem nome, só “Olá!”."
+        },
         "cliente_nome": {
           "rotulo": "Nome do cliente no Asaas",
           "legenda": "O nome completo, como está no Asaas."
         },
         "cliente_primeiro_nome": {
           "rotulo": "Primeiro nome do cliente",
-          "legenda": "Só o primeiro nome, com a inicial maiúscula."
+          "legenda": "Só o primeiro nome, com a inicial maiúscula (mesmo vindo em caixa alta do Asaas); empresa (CNPJ) fica como está."
         },
         "escritorio_nome": {
           "rotulo": "Nome do escritório",
-          "legenda": "O nome da conta."
+          "legenda": "O nome automático da assinatura (Configurações → Assinatura); sem ele, o nome da conta."
+        },
+        "cobranca_situacao": {
+          "rotulo": "Situação em uma frase",
+          "legenda": "Para seguir “Vi aqui que…”: “a parcela 3 de 12, de R$ 450,00, venceu ontem” ou “duas parcelas estão em aberto, somando R$ 900,00, e a mais antiga venceu em 11/10”."
+        },
+        "cobranca_links": {
+          "rotulo": "Link(s) de pagamento",
+          "legenda": "Com UMA cobrança a pagar, só o link dela; com mais de uma (inclusive a que vence hoje junto), a lista com um link por linha — o mesmo texto serve aos dois casos."
         },
         "cobranca_detalhe": {
           "rotulo": "Parcelas em aberto",
-          "legenda": "Todas as parcelas vencidas, uma por linha, com valor, vencimento e link de pagamento. No lembrete, só a que vence hoje."
+          "legenda": "Todas as parcelas vencidas, uma por linha, com valor, vencimento e o link na linha de baixo. No lembrete, só a que vence hoje. Nunca a descrição da cobrança."
         },
         "cobranca_parcelas": {
           "rotulo": "Números das parcelas",
-          "legenda": "Quais parcelas estão em aberto (2/12, 3/12…)."
+          "legenda": "Quais parcelas estão em aberto (2/12, 3/12…); a cobrança avulsa aparece como “cobrança”."
         },
         "cobranca_valor": {
           "rotulo": "Valor em aberto",
@@ -3422,7 +3453,11 @@
         },
         "cobranca_quantidade": {
           "rotulo": "Quantidade de parcelas",
-          "legenda": "Quantas parcelas estão em aberto."
+          "legenda": "Quantas parcelas a mensagem lista (as vencidas; no lembrete, as que vencem hoje)."
+        },
+        "vencidas_quantidade": {
+          "rotulo": "Quantidade de vencidas",
+          "legenda": "Quantas parcelas vencidas o cliente tem; 0 no lembrete do vencimento."
         },
         "dias_de_atraso": {
           "rotulo": "Dias de atraso (o marco)",
@@ -5010,7 +5045,7 @@
         },
         "regua": {
           "titulo": "Cobrança automática",
-          "desc": "Com o interruptor ligado, o CRM manda pelo WhatsApp o lembrete no dia do vencimento e a cobrança nos marcos de atraso — pelas automações dos gatilhos do Asaas, uma mensagem por cliente com todas as parcelas vencidas. Ligar não é retroativo: só o que vencer daqui em diante entra.",
+          "desc": "Com o interruptor ligado, o CRM manda pelo WhatsApp os lembretes no dia do vencimento (o do dia e, se houver, o da noite, até as 21:00) e a cobrança nos marcos de atraso — pelas automações dos gatilhos do Asaas, uma mensagem por cliente com todas as parcelas vencidas. Ligar não é retroativo: só o que vencer daqui em diante entra.",
           "estadoLigada": "Ligada",
           "estadoDesligada": "Desligada",
           "automacoes": "{ligadas} de {total} automações da régua ligadas",
@@ -5018,7 +5053,7 @@
           "ligadasMasDesligada": "há automação ligada, mas nada sai até ligar o interruptor",
           "ligadaSemAutomacao": "sem automação ligada, nada sai — ligue uma em Automações",
           "marcoRepetido": "Duas ou mais automações ligadas têm o mesmo marco ({marcos} dias): só uma delas envia, a outra fica travada.",
-          "lembreteRepetido": "Há mais de um lembrete do vencimento ligado: só um deles envia.",
+          "lembreteRepetido": "Há mais de um lembrete do vencimento ligado no mesmo turno (dia ou noite): só um deles envia.",
           "excecoes": "{n} cliente(s) marcado(s) para não receber a cobrança automática (lista \"Sem cobrança automática\").",
           "intervaloLabel": "Intervalo mínimo entre cobranças (dias)",
           "intervaloGravar": "Gravar",

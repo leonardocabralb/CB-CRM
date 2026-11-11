@@ -1991,3 +1991,20 @@ nome da época em que foram aplicadas.
   anotações, nenhuma marcada. Teste de ponta a ponta no preview (lead de
   teste): apagar marca e desafixa, a lixeira mostra, restaurar e "Desfazer"
   desmarcam.
+
+- **1133_cb_asaas_lembrete_da_noite** — o CHECK `cb_asaas_regua_envios_marco_ck`
+  passa a aceitar `marco` 0 ou 1 no `vence_hoje` (antes só 0): o lembrete da
+  NOITE da régua do Asaas tem a sua trava (0 = do dia, 1 = da noite), e o do
+  dia já enviado não barra o da noite pelo UNIQUE. PR #494.
+
+  ADITIVA, aplicada ANTES do deploy (o app novo grava `marco = 1`).
+  Autorização do operador em 10/11/2026 ("Pode aplicar", depois do CI verde no
+  commit `90e00a22`), aplicada em 10/11/2026 (histórico `20261110235844`) pela
+  Management API, com o arquivo idêntico ao do commit (sha256 `1445c72c…`), cujo
+  replay do CI ("Apply to a clean database") passou. Também o replay LOCAL
+  completo (256 migrations + `verify-schema.sql`, aplicada duas vezes) e 4
+  cenários (dia e noite da mesma cobrança aceitos; noite repetida recusada
+  pelo UNIQUE; `marco` 2 no lembrete e 0 no atraso recusados pelo CHECK).
+  Conferida: o CHECK novo, o UNIQUE intacto, o comentário da coluna; a única
+  trava existente (`marco = 0`) segue válida.
+

@@ -16,6 +16,8 @@ paths:
   - "src/lib/notes/anotacao-da-automacao*"
   - "src/components/automations/automation-builder.tsx"
   - "src/components/automations/condicao-por-campo-fields*"
+  - "src/lib/automations/situacao-da-cobranca*"
+  - "src/components/automations/situacao-da-cobranca-fields*"
 ---
 
 # Automações — passos com regra própria
@@ -211,6 +213,28 @@ ausente = `equals`), `value`.
   dicionários) com o NOME do campo — quem desenha condição precisa carregar
   `nomes.campos` (a página do funil e `GET /api/cb/execucoes` carregam), senão
   sai "(apagado)".
+
+### Condição "Situação da cobrança" (`asaas_situacao`, 10/11/2026)
+
+Só na régua do Asaas: "2 parcelas vencidas ou mais, OU a mais antiga com 15
+dias ou mais" → a anotação marcando quem liga para negociar.
+`situacao-da-cobranca.ts` (puro).
+
+- ⚠️ **Lê as `vars` que a VARREDURA passa** (`vencidas_quantidade`,
+  `dias_de_atraso_maior`, de `montarVariaveis`), nunca o banco: é a foto que
+  acabou de ser RECONFERIDA no Asaas, a mesma da mensagem.
+  `cobranca_quantidade` não serve (no lembrete conta as que vencem hoje).
+- **"A partir de"**: 15 dias inclui o próprio dia 15 (é o marco de 15 que pega
+  quem atrasou UMA parcela). Limite em branco não é olhado; os dois em branco
+  a ativação recusa (`condicao_cobranca_sem_limite`). Sem vencida não há atraso.
+- ⚠️ **Só nas COBRANÇAS de atraso** (`asaas_cobranca_vencida`). Fora da
+  régua responde "não" com a nota (`só a régua do Asaas a entrega`); no
+  LEMBRETE a varredura passa `vencidas: []` e ela responderia sempre "não".
+  `validateAsaasReguaForActivation` a recusa nos dois, em qualquer escopo
+  (`condicao_cobranca_fora_da_regua`, `condicao_cobranca_no_lembrete`), e o
+  construtor só a oferece com `cobrancaDeAtraso` (ou já gravada).
+- Desviada em `executeStepsFrom` (a nota do registro diz quantas vencidas e o
+  maior atraso) e cópia no `evaluateCondition`: mudou um, muda o outro.
 
 ### "Fixar a conversa no número" (`pin_conversation_channel`)
 
