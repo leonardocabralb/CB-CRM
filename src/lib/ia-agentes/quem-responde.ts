@@ -18,7 +18,10 @@
 //   2. uma automação desta mensagem FALOU (ou vai falar) com o contato
 //      (`ResultadoDoDisparo.falou`, E4) → ninguém;
 //   3. conversa encerrada, ou pausada (D26: gente respondeu, o botão, a
-//      transferência, uma automação) → ninguém;
+//      transferência, uma automação) → ninguém — MENOS a pausa TEMPORÁRIA que
+//      quem chama declara (`pausaTemporaria`, 1138: `gente`/`botao` com N > 0
+//      na conta, `pausa.ts`): aí as regras seguem, e o agente que atende vem
+//      marcado `sobrePausa` (o turno espera a equipe e levanta a pausa);
 //   4. sem card aberto, etapa sem agente, agente desligado ou arquivado,
 //      agente sem a conexão, card anterior ao agente (D27) → ninguém;
 //   5. senão → o agente da etapa, com o card e a etapa (o turno confere que
@@ -29,6 +32,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { ehInstagram } from '@/lib/cb-channels/transporte'
 import { chaveDePessoa } from '@/lib/contacts/dedupe'
+
+import { ehMotivoTemporario } from './pausa'
 
 /** Tipos de mensagem que abrem turno (E9). Localização e toque em botão (`interactive`) não. */
 export const TIPOS_QUE_ABREM_TURNO: ReadonlySet<string> = new Set(['text', 'audio', 'image', 'document', 'video'])
@@ -143,6 +148,11 @@ export interface FatosDaMensagem {
   encerrada: boolean
   /** `conversations.ai_autoreply_disabled`. */
   pausada: boolean
+  /**
+   * A pausa NÃO segura (1138): quem chama já decidiu que ela é temporária e
+   * volta (`pausa.ts`). Ausente = a pausa segura, como antes.
+   */
+  pausaTemporaria?: boolean
   card: CardDoContato | null
   /** O agente da etapa do card (nulo = a etapa não tem agente). */
   agente: AgenteDaEtapa | null
@@ -179,7 +189,8 @@ export type MotivoDoAgenteQueNaoAtende = (typeof MOTIVOS_DO_AGENTE_QUE_NAO_ATEND
 
 export type QuemResponde =
   | { quem: 'ninguem'; motivo: MotivoDeNinguem }
-  | { quem: 'agente'; agenteId: string; dealId: string; stageId: string }
+  /** `sobrePausa`: o agente atende POR CIMA de uma pausa temporária (1138) — o turno espera a equipe. */
+  | { quem: 'agente'; agenteId: string; dealId: string; stageId: string; sobrePausa?: true }
 
 function instante(iso: string | null): number | null {
   if (!iso) return null
@@ -195,7 +206,7 @@ export function quemResponde(f: FatosDaMensagem): QuemResponde {
   if (f.roboConsumiu) return { quem: 'ninguem', motivo: 'robo' }
   if (f.automacaoFalou) return { quem: 'ninguem', motivo: 'automacao_falou' }
   if (f.encerrada) return { quem: 'ninguem', motivo: 'encerrada' }
-  if (f.pausada) return { quem: 'ninguem', motivo: 'pausada' }
+  if (f.pausada && f.pausaTemporaria !== true) return { quem: 'ninguem', motivo: 'pausada' }
   if (!f.card) return { quem: 'ninguem', motivo: 'sem_card' }
   if (!f.agente) return { quem: 'ninguem', motivo: 'etapa_sem_agente' }
   if (!f.agente.ativo || f.agente.arquivado) return { quem: 'ninguem', motivo: 'agente_desligado' }
@@ -208,7 +219,13 @@ export function quemResponde(f: FatosDaMensagem): QuemResponde {
   if (entrou === null || desde === null || ligado === null || entrou < Math.max(desde, ligado)) {
     return { quem: 'ninguem', motivo: 'card_antigo' }
   }
-  return { quem: 'agente', agenteId: f.agente.id, dealId: f.card.id, stageId: f.card.stageId }
+  return {
+    quem: 'agente',
+    agenteId: f.agente.id,
+    dealId: f.card.id,
+    stageId: f.card.stageId,
+    ...(f.pausada ? { sobrePausa: true as const } : {}),
+  }
 }
 
 // ------------------------------------------------------------
@@ -224,6 +241,12 @@ export interface LeituraDaConversa {
   ehConexaoDaConta: boolean
   encerrada: boolean
   pausada: boolean
+  /** `conversations.ia_pausada_por` (com a pausa; nulo sem ela). */
+  pausadaPor: string | null
+  /** `conversations.ia_pausada_em`. */
+  pausadaEm: string | null
+  /** `conversations.aguardando_desde` (972): a 1ª mensagem do cliente sem resposta. */
+  aguardandoDesde: string | null
   card: CardDoContato | null
   agente: AgenteDaEtapa | null
 }
@@ -388,7 +411,7 @@ export async function lerQuemAtende(
   const [{ data: conv, error: erroConv }, { data: canais, error: erroCanal }] = await Promise.all([
     db
       .from('conversations')
-      .select('id, contact_id, group_id, status, ai_autoreply_disabled')
+      .select('id, contact_id, group_id, status, ai_autoreply_disabled, ia_pausada_por, ia_pausada_em, aguardando_desde')
       .eq('id', args.conversationId)
       .eq('account_id', args.accountId)
       .maybeSingle(),
@@ -404,9 +427,13 @@ export async function lerQuemAtende(
     group_id: string | null
     status: string
     ai_autoreply_disabled: boolean | null
+    ia_pausada_por?: string | null
+    ia_pausada_em?: string | null
+    aguardando_desde?: string | null
   }
   const conexoes = (canais ?? []) as Array<{ id: string; kind: string; display_phone?: unknown }>
   const canal = conexoes.find((x) => x.id === args.canalId)
+  const pausada = c.ai_autoreply_disabled === true
   const leitura: LeituraDaConversa = {
     contactId: c.contact_id,
     ehGrupo: c.group_id !== null,
@@ -415,11 +442,17 @@ export async function lerQuemAtende(
     ehInstagram: canal ? ehInstagram(canal) : false,
     ehConexaoDaConta: false,
     encerrada: c.status === 'closed',
-    pausada: c.ai_autoreply_disabled === true,
+    pausada,
+    pausadaPor: pausada && typeof c.ia_pausada_por === 'string' ? c.ia_pausada_por : null,
+    pausadaEm: pausada && typeof c.ia_pausada_em === 'string' ? c.ia_pausada_em : null,
+    aguardandoDesde: typeof c.aguardando_desde === 'string' ? c.aguardando_desde : null,
     card: null,
     agente: null,
   }
-  if (leitura.ehGrupo || leitura.ehInstagram || leitura.encerrada || leitura.pausada || !c.contact_id) return leitura
+  // A pausa PERMANENTE para aqui; a temporária (1138) precisa do card e do
+  // agente (quem chama decide, com o N da conta, se ela segura).
+  const pausaQueSegura = leitura.pausada && !ehMotivoTemporario(leitura.pausadaPor)
+  if (leitura.ehGrupo || leitura.ehInstagram || leitura.encerrada || pausaQueSegura || !c.contact_id) return leitura
 
   const { data: contato, error: erroContato } = await db
     .from('contacts')

@@ -1402,3 +1402,10 @@ describe('marcar reunião (F5)', () => {
     expect(reuniaoNaoMarcada([registroDaRecusa({ tipo: 'marcar_reuniao', n: 9, motivo: 'fora_da_lista' })])).toBe('fora_da_lista')
   })
 })
+
+describe('lerAcoes — o rótulo da equipe imitado pelo modelo sai (1138)', () => {
+  it('no começo da resposta e de uma linha', () => {
+    expect(lerAcoes('[Team member] Oi! Recebi seu holerite.').texto).toBe('Oi! Recebi seu holerite.')
+    expect(lerAcoes('Oi!\n[Team member] Segue o próximo passo. [[TRANSFERIR]]').texto).toBe('Oi!\nSegue o próximo passo.')
+  })
+})

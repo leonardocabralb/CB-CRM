@@ -330,6 +330,7 @@ testados; `prepararMidias` em `turno.ts`; `contexto.ts` e `pedido.ts`.
   `aiContextMessageLimit`, env `AI_CONTEXT_MESSAGE_LIMIT`), mídia lida contando
   uma; o Playground corta pelo MESMO `aiContextMessageLimit()` (a env vale
   nos dois).
+- A fala da EQUIPE vai rotulada `[Team member]`, sem nome: `ia-pausa.md`.
 - **Playground**: continua só texto — não recebe arquivo.
 - ⚠️ **Áudio pela OpenAI (a queda da transcrição, `transcrever.ts`)**: texto
   VAZIO é o áudio sem fala e vira `MARCA_INAUDIVEL` (`[inaudível]`), o mesmo

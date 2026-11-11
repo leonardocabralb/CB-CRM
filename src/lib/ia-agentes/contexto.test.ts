@@ -4,8 +4,11 @@ import {
   montarConversa,
   MOTIVO_SEM_LEITOR,
   NOTA_DA_RESPOSTA_CRUZADA,
+  ROTULO_DA_EQUIPE,
+  semRotuloDaEquipe,
   terminarNoCliente,
   TETO_DA_LEITURA_NO_CONTEXTO,
+  type MensagemDoContexto,
 } from './contexto'
 
 describe('terminarNoCliente — a conversa ao modelo nunca termina na empresa (revisão de 09/11/2026)', () => {
@@ -182,5 +185,56 @@ describe('montarConversa — o que o agente lê', () => {
 
   it('texto vazio não vira turno vazio', () => {
     expect(montarConversa([{ sender_type: 'customer', content_type: 'text', content_text: '   ' }])).toEqual([])
+  })
+})
+
+describe('montarConversa — a fala da EQUIPE vai rotulada (1138, decisão do operador de 11/11/2026)', () => {
+  const linha = (p: Partial<MensagemDoContexto>): MensagemDoContexto => ({
+    sender_type: 'agent',
+    content_type: 'text',
+    content_text: 'Me manda o holerite.',
+    ...p,
+  })
+
+  it('a equipe pelo CRM (`sender_id`) e pelo celular (`from_device`): rótulo, SEM o nome da pessoa', () => {
+    const [crm, celular] = montarConversa([linha({ sender_id: 'membro-1' }), linha({ from_device: true })])
+    expect(crm).toEqual({ role: 'assistant', content: `${ROTULO_DA_EQUIPE} Me manda o holerite.` })
+    expect(celular.content).toBe(`${ROTULO_DA_EQUIPE} Me manda o holerite.`)
+  })
+
+  it('a IA, o robô, a automação e a mensagem sem autor (API) ficam sem rótulo', () => {
+    const conversa = montarConversa([
+      linha({ sender_type: 'bot', ia_agente_id: 'ag-1' }),
+      linha({ sender_type: 'bot' }),
+      linha({ sender_id: null, from_device: false }),
+      linha({ sender_type: 'agent', sender_id: 'membro-1', ia_agente_id: 'ag-1' }),
+    ])
+    expect(conversa.every((m) => !m.content.startsWith(ROTULO_DA_EQUIPE))).toBe(true)
+  })
+
+  it('a fala da cliente nunca leva rótulo', () => {
+    expect(montarConversa([linha({ sender_type: 'customer', from_device: true })])[0]).toEqual({
+      role: 'user',
+      content: 'Me manda o holerite.',
+    })
+  })
+
+  it('vazia continua fora (o rótulo sozinho não é fala)', () => {
+    expect(montarConversa([linha({ sender_id: 'membro-1', content_text: '  ' })])).toEqual([])
+  })
+})
+
+describe('semRotuloDaEquipe — o rótulo que o modelo imitou nunca chega ao cliente', () => {
+  it.each([
+    ['[Team member] Oi, tudo bem?', 'Oi, tudo bem?'],
+    ['[team member]: Oi', 'Oi'],
+    ['  [ Team Member ] — Oi', 'Oi'],
+    ['Oi!\n[Team member] Segue o link.', 'Oi!\nSegue o link.'],
+  ])('%j → %j', (de, para) => {
+    expect(semRotuloDaEquipe(de)).toBe(para)
+  })
+
+  it('no meio da frase fica (não é o rótulo imitado)', () => {
+    expect(semRotuloDaEquipe('O [Team member] disse')).toBe('O [Team member] disse')
   })
 })

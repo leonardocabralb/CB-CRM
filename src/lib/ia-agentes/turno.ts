@@ -174,6 +174,15 @@ import {
   TIPOS_QUE_ABREM_TURNO,
   type CardDoContato,
 } from './quem-responde'
+import {
+  ehMotivoTemporario,
+  ERRO_DA_ARMACAO_PELA_EQUIPE,
+  ERRO_DA_EQUIPE_RESPONDEU,
+  ERRO_DA_ESPERA_DA_EQUIPE,
+  lerVoltaAposMin,
+  voltarDaPausa,
+  type ResultadoDaVolta,
+} from './pausa'
 import { obterAgente } from './repo'
 import {
   motivoDaParada,
@@ -517,7 +526,14 @@ async function funilAindaVaiFalar(
 }
 
 type Conferencia =
-  | { ok: true; contactId: string | null; card: CardDoContato; agente: IaAgente }
+  | {
+      ok: true
+      contactId: string | null
+      card: CardDoContato
+      agente: IaAgente
+      /** O agente atende por cima de uma pausa TEMPORÁRIA (1138), com o N da conta: o turno a levanta. */
+      sobrePausa: { minutos: number } | null
+    }
   | { ok: false; desfecho: Desfecho }
 
 /**
@@ -529,7 +545,12 @@ type Conferencia =
  * automação de funil ainda por falar (reagenda)? Roda antes de gerar e de
  * novo antes de enviar ou passar.
  */
-async function conferir(db: SupabaseClient, turno: LinhaDoTurno, gatilho: Gatilho): Promise<Conferencia> {
+async function conferir(
+  db: SupabaseClient,
+  turno: LinhaDoTurno,
+  gatilho: Gatilho,
+  opcoes: { aceitaPausaTemporaria: boolean } = { aceitaPausaTemporaria: false },
+): Promise<Conferencia> {
   if (!turno.canal_id || !turno.ia_agente_id || !turno.deal_id || !turno.stage_id) {
     return { ok: false, desfecho: { status: 'descartado', erro: 'turno sem agente, card ou conexão' } }
   }
@@ -539,6 +560,13 @@ async function conferir(db: SupabaseClient, turno: LinhaDoTurno, gatilho: Gatilh
     canalId: turno.canal_id,
   })
   if (!leitura) return { ok: false, desfecho: { status: 'descartado', erro: 'conversa' } }
+  // A PAUSA TEMPORÁRIA (1138) só passa na 1ª conferência: o turno a LEVANTA
+  // logo depois (`conduzir`), e a pausa que aparecer depois disso é gente
+  // respondendo enquanto o modelo pensava — segura, como sempre.
+  const minutos =
+    opcoes.aceitaPausaTemporaria && leitura.pausada && ehMotivoTemporario(leitura.pausadaPor)
+      ? await lerVoltaAposMin(db, turno.account_id)
+      : 0
   const decisao = quemResponde({
     ...leitura,
     canalId: turno.canal_id,
@@ -546,6 +574,7 @@ async function conferir(db: SupabaseClient, turno: LinhaDoTurno, gatilho: Gatilh
     ehRespostaDeBotao: false,
     roboConsumiu: false,
     automacaoFalou: false,
+    pausaTemporaria: minutos > 0,
   })
   if (decisao.quem === 'ninguem') {
     return decisao.motivo === 'pausada'
@@ -587,7 +616,41 @@ async function conferir(db: SupabaseClient, turno: LinhaDoTurno, gatilho: Gatilh
   if (await funilAindaVaiFalar(db, turno, leitura.contactId, gatilho)) {
     return { ok: false, desfecho: { status: 'reagendar' } }
   }
-  return { ok: true, contactId: leitura.contactId, card: leitura.card, agente }
+  return {
+    ok: true,
+    contactId: leitura.contactId,
+    card: leitura.card,
+    agente,
+    sobrePausa: decisao.sobrePausa ? { minutos } : null,
+  }
+}
+
+/**
+ * O turno LEVANTA a pausa temporária (1138) — o desfecho quando não levanta.
+ * `null` = pode seguir (levantou, ou a conversa já não estava pausada).
+ */
+function desfechoDaVolta(volta: { resultado: ResultadoDaVolta; voltaEm: string | null }): Desfecho | null {
+  switch (volta.resultado) {
+    case 'voltou':
+    case 'nao_pausada':
+      return null
+    case 'cedo':
+      return volta.voltaEm
+        ? { status: 'reagendar', executarApos: volta.voltaEm, erro: ERRO_DA_ESPERA_DA_EQUIPE }
+        : { status: 'pausado_no_meio', erro: 'a pausa ainda não venceu' }
+    case 'equipe_respondeu':
+      return { status: 'descartado', erro: ERRO_DA_EQUIPE_RESPONDEU }
+    case 'alguem_escreveu':
+      return { status: 'descartado', erro: 'alguém escreveu depois da fala da equipe' }
+    case 'encerrada':
+      return { status: 'descartado', erro: 'encerrada' }
+    case 'sem_gatilho':
+      return { status: 'descartado', erro: 'a mensagem sumiu ou foi apagada' }
+    case 'descartado':
+      return { status: 'abandonado' }
+    case 'permanente':
+      return { status: 'pausado_no_meio', erro: 'a pausa da conversa é permanente' }
+  }
 }
 
 // ------------------------------------------------------------
@@ -1102,7 +1165,7 @@ async function conduzir(
   if (gatilhoLido.edited_at) return { status: 'descartado', erro: 'o cliente editou a mensagem' }
   const gatilho = gatilhoLido as Gatilho
 
-  const primeira = await conferir(db, turno, gatilho)
+  const primeira = await conferir(db, turno, gatilho, { aceitaPausaTemporaria: true })
   if (!primeira.ok) return primeira.desfecho
   const { agente } = primeira
   andamento.agente = agente
@@ -1139,6 +1202,17 @@ async function conduzir(
       }
     }
     return { status: 'reagendar', executarApos: new Date(abertura).toISOString(), erro: ERRO_DA_ESPERA_DO_HORARIO }
+  }
+
+  // A PAUSA TEMPORÁRIA (1138): dentro do horário, a IA VOLTA — se a cliente
+  // está esperando há N min e ninguém da equipe respondeu depois do gatilho
+  // (cedo = espera mais; a equipe respondeu = descarta). Levantada ANTES de
+  // gerar: a transferência que o modelo pedir passa a valer (por cima da pausa
+  // temporária ela não gravaria nada), e a fala de gente durante a geração
+  // pausa de novo (o turno vivo) — a 2ª conferência e a reserva seguram.
+  if (primeira.sobrePausa) {
+    const naoVoltou = desfechoDaVolta(await voltarDaPausa(db, turno, primeira.sobrePausa.minutos))
+    if (naoVoltou) return naoVoltou
   }
   andamento.abertoDesde = aberturaDeHoje(agente.horario, agora)
 
@@ -1774,8 +1848,29 @@ const ERRO_DA_RESPOSTA: Record<ParadaDaResposta, string> = {
 }
 
 type ConferenciaDaRetomada =
-  | { ok: true; contactId: string | null; agente: IaAgente }
+  | {
+      ok: true
+      contactId: string | null
+      agente: IaAgente
+      /** A retomada passa por cima da pausa `gente` (1138), com o N da conta: o envio a levanta. */
+      sobrePausa: { minutos: number } | null
+    }
   | { ok: false; desfecho: Desfecho }
+
+/**
+ * A pausa que a RETOMADA atravessa (1138): só a `gente`, com N > 0 na conta —
+ * o follow-up da fala da equipe (P4). O "Pausar" sem resposta, o "Desativar",
+ * a transferência e a automação param a série. A retomada ancorada na fala do
+ * PRÓPRIO agente não chega aqui com a pausa `gente`: a equipe escreveu depois
+ * da âncora, e `motivoDaParada` a para.
+ */
+async function minutosDaPausaDaRetomada(
+  db: SupabaseClient,
+  accountId: string,
+  leitura: { pausada: boolean; pausadaPor: string | null },
+): Promise<number> {
+  return leitura.pausada && leitura.pausadaPor === 'gente' ? lerVoltaAposMin(db, accountId) : 0
+}
 
 /**
  * A retomada ainda vale? O card na etapa do turno com o MESMO agente (a
@@ -1801,6 +1896,7 @@ async function conferirRetomada(
     canalId: turno.canal_id,
   })
   if (!leitura) return { ok: false, desfecho: { status: 'descartado', erro: 'conversa' } }
+  const minutos = await minutosDaPausaDaRetomada(db, turno.account_id, leitura)
   const decisao = quemResponde({
     ...leitura,
     canalId: turno.canal_id,
@@ -1808,6 +1904,7 @@ async function conferirRetomada(
     ehRespostaDeBotao: false,
     roboConsumiu: false,
     automacaoFalou: false,
+    pausaTemporaria: minutos > 0,
   })
   if (decisao.quem === 'ninguem') {
     return decisao.motivo === 'pausada'
@@ -1865,7 +1962,83 @@ async function conferirRetomada(
       return { ok: false, desfecho: { status: 'reagendar', executarApos: new Date(proxima.instante).toISOString() } }
     }
   }
-  return { ok: true, contactId: leitura.contactId, agente }
+  return { ok: true, contactId: leitura.contactId, agente, sobrePausa: decisao.sobrePausa ? { minutos } : null }
+}
+
+/**
+ * A PRÉ-ARMAÇÃO do follow-up depois da fala da EQUIPE (1138, P4): o gatilho da
+ * pausa por gente grava a linha só com a âncora (a mensagem da equipe) e a
+ * conexão; aqui ela ganha o agente, o card e a etapa pela régua de sempre
+ * (`lerQuemAtende` + `quemResponde`, a pausa `gente` atravessada) e a
+ * tentativa 1 da cadência do agente. Depois segue como toda retomada — a
+ * conferência a REAGENDA para o vencimento certo. Nada aplicável = descarta.
+ * O SQL não escolhe o card: essa régua é do TS (`lerCardEAgente`).
+ */
+async function resolverArmacaoDaEquipe(
+  db: SupabaseClient,
+  turno: LinhaDoTurno,
+): Promise<
+  | Pick<LinhaDoTurno, 'ia_agente_id' | 'deal_id' | 'stage_id' | 'tentativa' | 'tentativas' | 'erro'>
+  | Desfecho
+> {
+  if (!turno.mensagem_gatilho_id || !turno.canal_id) return { status: 'descartado', erro: 'pré-armação sem âncora ou conexão' }
+  const { data: ancoraLida, error: erroDaAncora } = await db
+    .from('messages')
+    .select('id, gravada_em, deleted_at')
+    .eq('id', turno.mensagem_gatilho_id)
+    .maybeSingle()
+  if (erroDaAncora) throw new Error(`leitura da fala da equipe falhou: ${erroDaAncora.message}`)
+  const ancora = ancoraLida as { id: string; gravada_em: string | null; deleted_at: string | null } | null
+  if (!ancora || ancora.deleted_at || !ancora.gravada_em) {
+    return { status: 'descartado', erro: 'a fala da equipe sumiu ou foi apagada' }
+  }
+
+  const leitura = await lerQuemAtende(db, {
+    accountId: turno.account_id,
+    conversationId: turno.conversation_id,
+    canalId: turno.canal_id,
+  })
+  if (!leitura) return { status: 'descartado', erro: 'conversa' }
+  const minutos = await minutosDaPausaDaRetomada(db, turno.account_id, leitura)
+  const decisao = quemResponde({
+    ...leitura,
+    canalId: turno.canal_id,
+    conteudo: CONTEUDO_DA_RETOMADA,
+    ehRespostaDeBotao: false,
+    roboConsumiu: false,
+    automacaoFalou: false,
+    pausaTemporaria: minutos > 0,
+  })
+  if (decisao.quem === 'ninguem') return { status: 'descartado', erro: decisao.motivo }
+  const agente = await obterAgente(turno.account_id, decisao.agenteId)
+  if (!agente) return { status: 'descartado', erro: 'agente indisponível' }
+  if (!agente.retomada.ativa || agente.retomada.cadencia.length === 0) {
+    return { status: 'descartado', erro: 'a retomada está desligada no agente' }
+  }
+  const { depois } = await lerMensagensDepois(db, {
+    conversationId: turno.conversation_id,
+    ancoraGravadaEm: ancora.gravada_em,
+    agenteId: agente.id,
+  })
+  const parada = motivoDaParada(depois, agente.id)
+  if (parada) return { status: 'descartado', erro: ERRO_DA_PARADA_DA_EQUIPE[parada] }
+
+  const resolvida = {
+    ia_agente_id: agente.id,
+    deal_id: decisao.dealId,
+    stage_id: decisao.stageId,
+    tentativa: 1,
+    tentativas: agente.retomada.cadencia.length,
+    erro: null,
+  }
+  if (!(await gravarNoTurno(db, turno, resolvida))) return { status: 'abandonado' }
+  return resolvida
+}
+
+const ERRO_DA_PARADA_DA_EQUIPE: Record<MotivoDaParada, string> = {
+  cliente_respondeu: 'o cliente escreveu depois da fala da equipe',
+  equipe_respondeu: 'a equipe escreveu de novo',
+  robo_falou: 'o robô, uma automação ou outro agente escreveu depois da fala da equipe',
 }
 
 /**
@@ -1880,20 +2053,34 @@ async function conduzirRetomada(
   inicio: number,
   andamento: Andamento,
 ): Promise<Desfecho> {
+  if (turno.erro === ERRO_DA_ARMACAO_PELA_EQUIPE && !turno.ia_agente_id) {
+    const resolvida = await resolverArmacaoDaEquipe(db, turno)
+    if ('status' in resolvida) return resolvida
+    // NO MESMO objeto: o encerramento (e o `armarRetomada` da tentativa
+    // seguinte) lê o turno que `executarTurno` tem na mão.
+    Object.assign(turno, resolvida)
+  }
   const tentativa = turno.tentativa ?? 0
   if (!turno.mensagem_gatilho_id || !turno.canal_id || tentativa < 1) {
     return { status: 'descartado', erro: 'retomada sem âncora ou sem tentativa' }
   }
   const { data: ancoraLida, error: erroDaAncora } = await db
     .from('messages')
-    .select('id, gravada_em, deleted_at')
+    .select('id, gravada_em, deleted_at, sender_type')
     .eq('id', turno.mensagem_gatilho_id)
     .maybeSingle()
   if (erroDaAncora) throw new Error(`leitura da âncora falhou: ${erroDaAncora.message}`)
-  const ancora = ancoraLida as { id: string; gravada_em: string | null; deleted_at: string | null } | null
+  const ancora = ancoraLida as {
+    id: string
+    gravada_em: string | null
+    deleted_at: string | null
+    sender_type?: string | null
+  } | null
   if (!ancora || ancora.deleted_at || !ancora.gravada_em) {
     return { status: 'descartado', erro: 'a mensagem do agente sumiu ou foi apagada' }
   }
+  // A série ancorada na fala da EQUIPE (1138): o pedido diz de quem é a última.
+  const daEquipe = ancora.sender_type === 'agent'
 
   const primeira = await conferirRetomada(db, turno, ancora.gravada_em, { reprogramar: true })
   if (!primeira.ok) return primeira.desfecho
@@ -1960,6 +2147,7 @@ async function conduzirRetomada(
       tentativa,
       de: turno.tentativas ?? agente.retomada.cadencia.length,
       semResposta,
+      daEquipe,
     },
   })
   const pedido = juntarPartes(partes)
@@ -2028,6 +2216,14 @@ async function conduzirRetomada(
   if (!dono) return { status: 'falhou', erro: 'a conta não tem dono' }
   const contactId = segunda.contactId
   if (!contactId) return { status: 'descartado', erro: 'conversa sem contato' }
+
+  // O follow-up da fala da EQUIPE (1138, P7) LEVANTA a pausa `gente` logo
+  // antes da reserva: a cliente que responder a ele é respondida pela IA na
+  // hora. Sob a trava da conversa; quem escreveu depois da âncora segura.
+  if (segunda.sobrePausa) {
+    const naoVoltou = desfechoDaVolta(await voltarDaPausa(db, turno, segunda.sobrePausa.minutos))
+    if (naoVoltou) return naoVoltou
+  }
 
   // A última palavra, no banco, com a conversa travada: além das recusas do
   // turno, a retomada recusa quem escreveu depois da âncora e a retomada

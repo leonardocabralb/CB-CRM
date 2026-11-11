@@ -15,6 +15,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { after } from 'next/server'
 
+import { ERRO_DA_ESPERA_DA_EQUIPE } from './pausa'
+
 /** A rajada: cada mensagem nova empurra o turno; ele roda uma vez, sobre a última. */
 export const ESPERA_DA_RAJADA_MS = 8_000
 /**
@@ -39,6 +41,8 @@ export const JANELA_DO_AUDIO_MS = 2 * 60_000
 export const REAGENDAR_AUDIO_MS = 10_000
 /** Folga do disparo depois do `executar_apos` (os dois relógios não são o mesmo). */
 const FOLGA_DO_DISPARO_MS = 1_000
+/** Acima disto o disparo no próprio processo não vale a pena: a rede do cron roda o turno. */
+export const ESPERA_MAXIMA_NO_PROCESSO_MS = 60_000
 
 export interface TurnoNaFila {
   id: string
@@ -55,6 +59,10 @@ export interface TurnoNaFila {
  * `veioDePassagem` (D25): o turno que a triagem abriu para o agente de
  * destino, sobre a MESMA mensagem, sem a espera da rajada. Ele não passa de
  * novo (`turno.ts`).
+ *
+ * `esperaMs` (1138): a espera da PAUSA TEMPORÁRIA — o turno roda quando a
+ * cliente estiver esperando há N min (`voltaDaPausaEm`); nunca menos que a
+ * rajada. Ausente = a rajada.
  */
 export async function enfileirarTurno(
   db: SupabaseClient,
@@ -67,8 +75,12 @@ export async function enfileirarTurno(
     stageId: string
     mensagemId: string
     veioDePassagem?: boolean
+    esperaMs?: number
   },
 ): Promise<TurnoNaFila | null> {
+  const espera = args.veioDePassagem
+    ? 0
+    : Math.round(Math.max(ESPERA_DA_RAJADA_MS, Number.isFinite(args.esperaMs) ? (args.esperaMs as number) : 0))
   const { data, error } = await db.rpc('cb_ia_enfileirar_turno', {
     p_account_id: args.accountId,
     p_conversation_id: args.conversationId,
@@ -78,7 +90,7 @@ export async function enfileirarTurno(
     p_deal_id: args.dealId,
     p_stage_id: args.stageId,
     p_veio_de_passagem: args.veioDePassagem === true,
-    p_espera_ms: args.veioDePassagem ? 0 : ESPERA_DA_RAJADA_MS,
+    p_espera_ms: espera,
   })
   if (error) {
     console.error('[ia-agentes] enfileirar o turno falhou:', error.message)
@@ -135,6 +147,25 @@ export async function descartarPendente(
   }
 }
 
+/**
+ * Marca o pendente que espera a EQUIPE responder (a pausa temporária, 1138):
+ * a aba Turnos diz "aguardando a equipe responder" e a faixa do fio, "volta
+ * às …". Só o pendente (`aguardando`): a mensagem seguinte da cliente o
+ * devolve limpo e marca de novo. Melhor esforço: sem a marca, ele roda igual.
+ */
+export async function marcarEsperaDaEquipe(db: SupabaseClient, turnoId: string): Promise<void> {
+  try {
+    const { error } = await db
+      .from('cb_ia_turnos')
+      .update({ erro: ERRO_DA_ESPERA_DA_EQUIPE, updated_at: new Date().toISOString() })
+      .eq('id', turnoId)
+      .eq('status', 'aguardando')
+    if (error) console.error('[ia-agentes] marcar a espera da equipe falhou:', error.message)
+  } catch (err) {
+    console.error('[ia-agentes] marcar a espera da equipe falhou:', err)
+  }
+}
+
 function dormir(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -147,6 +178,8 @@ function dormir(ms: number): Promise<void> {
  * ⚠️ Fora de pedido (`after` lança) NÃO há plano B com `await`: segurar quem
  * chamou por 8 s é o que a fila existe para evitar. A rede do cron roda o
  * turno no tique seguinte.
+ * ⚠️ Espera LONGA (a pausa temporária, 1138: minutos) não segura um `after()`
+ * aberto: quem roda é a rede do cron (o laço rápido, ~15 s).
  */
 export function agendarDisparo(
   turno: TurnoNaFila,
@@ -154,6 +187,7 @@ export function agendarDisparo(
 ): void {
   const alvo = Date.parse(turno.executarApos)
   const espera = Number.isFinite(alvo) ? Math.max(0, alvo - Date.now()) + FOLGA_DO_DISPARO_MS : ESPERA_DA_RAJADA_MS
+  if (espera > ESPERA_MAXIMA_NO_PROCESSO_MS) return
   try {
     after(async () => {
       await dormir(espera)

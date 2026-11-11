@@ -18,6 +18,8 @@ let erroDoUpdate: { message: string } | null
 let erroDoCanal: { message: string } | null
 let papelRecusado: boolean
 const updates: Array<Record<string, unknown>> = []
+/** O filtro `.or()` do UPDATE (o "Pausar" não rebaixa a pausa permanente, 1138). */
+const filtrosOr: string[] = []
 const leituras: Array<{ tabela: string; filtros: Array<[string, unknown]> }> = []
 
 function leitura(tabela: string, resposta: () => { data: Linha; error: unknown }) {
@@ -62,6 +64,10 @@ const supabase = {
       updates.push(payload)
       const cadeia = {
         eq: () => cadeia,
+        or: (f: string) => {
+          filtrosOr.push(f)
+          return cadeia
+        },
         select: async () => ({ data: linhasGravadas, error: erroDoUpdate }),
       }
       return cadeia
@@ -107,6 +113,7 @@ beforeEach(() => {
   erroDoCanal = null
   papelRecusado = false
   updates.length = 0
+  filtrosOr.length = 0
   leituras.length = 0
 })
 
@@ -114,7 +121,7 @@ describe('POST /api/ai/autoreply — pausar', () => {
   it('grava a pausa com o motivo `botao` e o instante', async () => {
     const res = await chamar({ paused: true })
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ success: true, paused: true })
+    expect(await res.json()).toEqual({ success: true, paused: true, permanente: false })
     expect(updates).toHaveLength(1)
     const [u] = updates
     expect(u.ai_autoreply_disabled).toBe(true)
@@ -128,6 +135,34 @@ describe('POST /api/ai/autoreply — pausar', () => {
   it('pausar nunca atribui a conversa (o "Assumir" saiu), nem a pedido', async () => {
     await chamar({ paused: true, assign_to_me: true })
     expect('assigned_agent_id' in updates[0]).toBe(false)
+  })
+
+  it('o "Pausar" (temporário, 1138) só casa sem pausa ou com a temporária: nunca rebaixa a desativada', async () => {
+    await chamar({ paused: true })
+    expect(filtrosOr).toEqual(['ai_autoreply_disabled.eq.false,ia_pausada_por.in.(gente,botao)'])
+  })
+
+  it('o Pausar sobre a pausa permanente (0 linhas) é 409, nunca sucesso', async () => {
+    linhasGravadas = []
+    const res = await chamar({ paused: true })
+    expect(res.status).toBe(409)
+  })
+})
+
+describe('POST /api/ai/autoreply — desativar (1138)', () => {
+  it('grava `desativada` (permanente até o Retomar), por cima de qualquer pausa', async () => {
+    const res = await chamar({ paused: true, permanente: true })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ success: true, paused: true, permanente: true })
+    expect(updates[0]).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'desativada' })
+    expect(filtrosOr).toEqual([])
+    expect('ia_retomada_em' in updates[0]).toBe(false)
+  })
+
+  it('`permanente` que não é booleano é 400, sem escrever', async () => {
+    const res = await chamar({ paused: true, permanente: 'sim' })
+    expect(res.status).toBe(400)
+    expect(updates).toHaveLength(0)
   })
 })
 

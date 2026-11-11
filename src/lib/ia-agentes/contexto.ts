@@ -23,6 +23,14 @@
 // A figurinha é `[sticker]` (nada a ler — `ehFigurinha`, a régua da
 // entrada). A mídia da EQUIPE fica só com o rótulo: ninguém a lê.
 //
+// ⚠️ A fala de GENTE da equipe (1138: `agent` com `sender_id` ou do celular,
+// sem `ia_agente_id` — a régua da pausa por gente) vai com o rótulo
+// `ROTULO_DA_EQUIPE`, SEM o nome da pessoa (decisão do operador, 11/11/2026):
+// com a pausa temporária, a IA volta no meio de uma conversa da equipe e
+// precisa saber o que a equipe já disse. A IA, o robô e as automações ficam
+// sem rótulo, como antes. O pedido explica o rótulo (`pedido.ts`), e o rótulo
+// que o modelo imitar sai da resposta (`semRotuloDaEquipe`, em `lerAcoes`).
+//
 // `montarConversa` é PURA (testada); `lerConversaDaConexao` é o I/O.
 // ============================================================
 
@@ -44,6 +52,32 @@ export interface MensagemDoContexto {
   transcricao?: string | null
   transcricao_status?: string | null
   transcricao_erro?: string | null
+  /** Quem da equipe escreveu pelo CRM (o rótulo da equipe, 1138). */
+  sender_id?: string | null
+  /** Escrita no celular pareado (gente, sem `sender_id`). */
+  from_device?: boolean | null
+  /** A fala de um agente de IA (nunca da equipe). */
+  ia_agente_id?: string | null
+}
+
+/** O rótulo da fala da EQUIPE no contexto do modelo (1138), sem o nome da pessoa. */
+export const ROTULO_DA_EQUIPE = '[Team member]'
+
+/**
+ * A fala é da EQUIPE (gente)? A régua da pausa por gente (1049/1118):
+ * `agent` com `sender_id` ou do celular, sem `ia_agente_id`.
+ */
+export function ehFalaDaEquipe(m: MensagemDoContexto): boolean {
+  return m.sender_type === 'agent' && (!!m.sender_id || m.from_device === true) && !m.ia_agente_id
+}
+
+/**
+ * Tira o rótulo da equipe que o modelo IMITOU no começo de uma linha da
+ * resposta (caixa e colchete indiferentes, com o ":" ou o travessão depois):
+ * o rótulo é para o modelo, nunca para o cliente.
+ */
+export function semRotuloDaEquipe(texto: string): string {
+  return texto.replace(/(^|\n)[ \t]*\[\s*team\s+member\s*\][ \t]*[:\-–—]?[ \t]*/gi, '$1')
 }
 
 /** Teto da leitura de uma imagem ou documento no pedido, em caracteres. */
@@ -125,10 +159,14 @@ function descrever(m: MensagemDoContexto, semLeitor?: ReadonlySet<string>): stri
  */
 export function montarConversa(linhas: MensagemDoContexto[], semLeitor?: ReadonlySet<string>): ChatMessage[] {
   return linhas
-    .map((m) => ({
-      role: (m.sender_type === 'customer' ? 'user' : 'assistant') as ChatMessage['role'],
-      content: descrever(m, semLeitor),
-    }))
+    .map((m) => {
+      const conteudo = descrever(m, semLeitor)
+      return {
+        role: (m.sender_type === 'customer' ? 'user' : 'assistant') as ChatMessage['role'],
+        // Vazio continua vazio (sai no filtro): o rótulo sozinho não é fala.
+        content: conteudo && ehFalaDaEquipe(m) ? `${ROTULO_DA_EQUIPE} ${conteudo}` : conteudo,
+      }
+    })
     .filter((m) => m.content.length > 0)
 }
 
@@ -167,7 +205,7 @@ export async function lerConversaDaConexao(
   const { data, error } = await db
     .from('messages')
     .select(
-      'id, sender_type, content_type, content_text, media_type, media_filename, transcricao, transcricao_status, transcricao_erro',
+      'id, sender_type, content_type, content_text, media_type, media_filename, transcricao, transcricao_status, transcricao_erro, sender_id, from_device, ia_agente_id',
     )
     .eq('conversation_id', args.conversationId)
     .eq('channel_id', args.canalId)

@@ -25,6 +25,25 @@ faz, em `.claude/rules/ia-agentes.md`. ⚠️ "Retomada" aqui é o FOLLOW-UP; o
   escreveu. Robô, automação e gente não armam. Conversa ENCERRADA durante o
   turno (a automação que o agente executou) não arma: `armarRetomada` relê a
   conversa (1109, `ia-agentes-turno.md`).
+- ⚠️⚠️ **A fala da EQUIPE também arma (1138, P4 e P7 do operador,
+  11/11/2026)**, com a cadência do agente da etapa, contada DELA: a equipe
+  pediu o holerite e a cliente sumiu → a IA cobra. Quem arma é o gatilho da
+  pausa por gente (a única porta de toda fala de gente): uma linha de
+  PRÉ-ARMAÇÃO (`ERRO_DA_ARMACAO_PELA_EQUIPE`, sem agente/card/etapa; só com N
+  > 0 na conta, pausa `gente` e um agente ligado com a conexão e a retomada —
+  `ia-pausa.md`). `conduzirRetomada` a RESOLVE (`resolverArmacaoDaEquipe`:
+  `lerQuemAtende` + `quemResponde` atravessando a pausa `gente`, a retomada
+  ligada, ninguém depois da âncora) e grava agente, card, etapa, `tentativa
+  = 1`, `tentativas` = a cadência — no MESMO objeto do turno (o `encerrar` e o
+  `armarRetomada` da seguinte o leem) — e segue como toda retomada (a
+  conferência a reagenda para o vencimento). Nada aplicável = `descartado`.
+- ⚠️ **A retomada atravessa SÓ a pausa `gente`** (com N > 0;
+  `minutosDaPausaDaRetomada`): o "Pausar" sem resposta, o "Desativar", a
+  transferência e a automação param a série. O follow-up que SAI levanta a
+  pausa (`cb_ia_voltar_da_pausa`, logo antes da reserva; `alguem_escreveu`
+  descarta): a cliente que responde a ele é respondida pela IA na hora (P7).
+  O pedido ganha a linha "a última foi da equipe" (`daEquipe`, parte
+  VARIÁVEL, pela `sender_type` da âncora).
 - ⚠️⚠️ **Arma com o card e a etapa de AGORA** (revisão de 09/11/2026): a
   própria resposta pode ter movido o card (`mover_etapa`); armada com a etapa
   do começo do turno, ela era descartada SEMPRE no vencimento ("o card mudou

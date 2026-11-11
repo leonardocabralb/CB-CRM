@@ -237,6 +237,7 @@ import { executarAcoes } from './executar-acoes'
 import { opcoesDoAgente } from './ferramentas'
 import { JANELA_DO_AUDIO_MS, REAGENDAR_AUDIO_MS } from './fila'
 import { ERRO_DA_ESPERA_DO_HORARIO } from './horario'
+import { ERRO_DA_ARMACAO_PELA_EQUIPE, ERRO_DA_ESPERA_DA_EQUIPE } from './pausa'
 import { CANARIO_DAS_REGRAS } from './regras-do-sistema'
 import { obterAgente } from './repo'
 import {
@@ -484,6 +485,46 @@ function montarCenario(): void {
     ).length
     if (respostas >= (ag.teto_respostas as number)) return r('teto')
     return r('ok')
+  }
+  // A volta da pausa TEMPORÁRIA (1138): a régua do SQL, na ordem dele.
+  banco.rpcs.cb_ia_voltar_da_pausa = ({ p_turno_id, p_rodando_desde, p_minutos }) => {
+    const r = (resultado: string, volta_em: string | null = null) => ({ data: [{ resultado, volta_em }], error: null })
+    const t = banco.tabelas.cb_ia_turnos.find((x) => x.id === p_turno_id)
+    if (!t || t.status !== 'rodando' || t.rodando_desde !== p_rodando_desde) return r('descartado')
+    const c = banco.tabelas.conversations.find((x) => x.id === t.conversation_id)
+    if (!c || c.status === 'closed') return r('encerrada')
+    if (!c.ai_autoreply_disabled) return r('nao_pausada')
+    const minutos = Number(p_minutos ?? 0)
+    if (minutos <= 0 || !['gente', 'botao'].includes(c.ia_pausada_por as string)) return r('permanente')
+    const g = banco.tabelas.messages.find((m) => m.id === t.mensagem_gatilho_id)
+    if (!g || !temValor(g.gravada_em)) return r('sem_gatilho')
+    const depois = banco.tabelas.messages.filter(
+      (m) => m.conversation_id === t.conversation_id && temValor(m.gravada_em) && comparar(m.gravada_em, g.gravada_em) > 0,
+    )
+    let volta: string | null = null
+    if (t.tipo === 'retomada') {
+      if (c.ia_pausada_por !== 'gente') return r('permanente')
+      if (depois.some((m) => m.sender_type === 'customer' || (m.sender_type === 'agent' && m.nao_saiu !== true))) {
+        return r('alguem_escreveu')
+      }
+    } else {
+      const gente = depois.some(
+        (m) =>
+          m.sender_type === 'agent' &&
+          (temValor(m.sender_id) || m.from_device === true) &&
+          !temValor(m.ia_agente_id) &&
+          m.nao_saiu !== true,
+      )
+      if (gente) return r('equipe_respondeu')
+      const ancora = Math.max(
+        Date.parse((c.aguardando_desde ?? g.gravada_em) as string),
+        Date.parse((c.ia_pausada_em ?? g.gravada_em) as string),
+      )
+      volta = new Date(ancora + minutos * 60_000).toISOString()
+      if (Date.now() < Date.parse(volta)) return r('cedo', volta)
+    }
+    Object.assign(c, { ai_autoreply_disabled: false, ia_pausada_por: null, ia_pausada_em: null })
+    return r('voltou', volta)
   }
 }
 
@@ -1069,7 +1110,22 @@ describe('executarTurno — fora do horário espera a abertura (25/10/2026)', ()
 
   it('⚠️ na abertura TUDO é conferido de novo: a equipe respondeu no fim de semana (pausa por gente) — não responde', async () => {
     await executarTurno(TURNO)
-    Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: 'gente' })
+    // A fala da equipe DEPOIS da mensagem da cliente (1138: é ela que segura a
+    // volta da pausa temporária; sem ela, os 15 min já venceram e a IA volta).
+    banco.tabelas.messages.push(
+      mensagem({ id: 'msg-equipe', sender_type: 'agent', sender_id: MEMBRO, message_id: 'wamid.equipe', gravada_em: haMs(10_000) }),
+    )
+    Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: 'gente', ia_pausada_em: haMs(10_000) })
+    vi.setSystemTime(Date.parse(ABERTURA) + 1_000)
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'descartado', erro: 'a equipe respondeu' })
+    expect(conversa().ai_autoreply_disabled).toBe(true)
+    expect(generateReply).not.toHaveBeenCalled()
+  })
+
+  it('na abertura, a pausa DESATIVADA segura (permanente) — não responde', async () => {
+    await executarTurno(TURNO)
+    Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: 'desativada' })
     vi.setSystemTime(Date.parse(ABERTURA) + 1_000)
     await executarTurno(TURNO)
     expect(turno().status).toBe('pausado_no_meio')
@@ -3434,6 +3490,132 @@ describe('executarTurno — marcar reunião (F5)', () => {
 // A RETOMADA (1056): o cliente não respondeu
 // ------------------------------------------------------------
 
+describe('executarTurno — a pausa TEMPORÁRIA (1138)', () => {
+  const MIN = 60_000
+
+  /** A conversa pausada por `motivo`, com a cliente esperando desde `esperaHaMs`. */
+  function pausada(motivo: string, esperaHaMs: number, pausadaHaMs = esperaHaMs + MIN): void {
+    Object.assign(banco.tabelas.messages.find((m) => m.id === GATILHO)!, {
+      gravada_em: haMs(esperaHaMs),
+      created_at: haMs(esperaHaMs),
+    })
+    Object.assign(conversa(), {
+      ai_autoreply_disabled: true,
+      ia_pausada_por: motivo,
+      ia_pausada_em: haMs(pausadaHaMs),
+      aguardando_desde: haMs(esperaHaMs),
+    })
+  }
+  const voltas = () => banco.rpcChamadas.filter((c) => c.nome === 'cb_ia_voltar_da_pausa')
+
+  it('pausa por gente, a cliente esperando há 20 min sem a equipe: a IA VOLTA (a pausa sai) e responde', async () => {
+    pausada('gente', 20 * MIN)
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: false, ia_pausada_por: null })
+    expect(voltas()).toHaveLength(1)
+    expect(voltas()[0].args.p_minutos).toBe(15)
+    expect(engineSendText).toHaveBeenCalledTimes(1)
+  })
+
+  it('o "Pausar" (botao) também é temporário', async () => {
+    pausada('botao', 20 * MIN)
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(conversa().ai_autoreply_disabled).toBe(false)
+  })
+
+  it('antes dos 15 min: volta à fila para a hora certa, com a marca da espera da equipe, sem gerar', async () => {
+    pausada('gente', 5 * MIN)
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({
+      status: 'aguardando',
+      executar_apos: new Date(Date.parse(conversa().aguardando_desde as string) + 15 * MIN).toISOString(),
+      erro: ERRO_DA_ESPERA_DA_EQUIPE,
+    })
+    expect(conversa().ai_autoreply_disabled).toBe(true)
+    expect(generateReply).not.toHaveBeenCalled()
+    // Minutos não cabem num `after()`: quem roda é a rede do cron.
+    expect(after).not.toHaveBeenCalled()
+  })
+
+  it('o "Pausar" apertado DEPOIS da mensagem recomeça a contagem dali', async () => {
+    pausada('botao', 20 * MIN, 2 * MIN)
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({
+      status: 'aguardando',
+      executar_apos: new Date(Date.parse(conversa().ia_pausada_em as string) + 15 * MIN).toISOString(),
+    })
+  })
+
+  it('a equipe respondeu depois da mensagem: descarta, e a pausa fica', async () => {
+    pausada('gente', 20 * MIN)
+    banco.tabelas.messages.push(
+      mensagem({ id: 'msg-celular', sender_type: 'agent', from_device: true, message_id: 'wamid.cel', gravada_em: haMs(MIN) }),
+    )
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'descartado', erro: 'a equipe respondeu' })
+    expect(conversa().ai_autoreply_disabled).toBe(true)
+    expect(generateReply).not.toHaveBeenCalled()
+  })
+
+  it.each(['transferencia', 'automacao', 'desativada'])('a pausa %s é PERMANENTE: não volta', async (motivo) => {
+    pausada(motivo, 20 * MIN)
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('pausado_no_meio')
+    expect(voltas()).toHaveLength(0)
+    expect(conversa().ai_autoreply_disabled).toBe(true)
+  })
+
+  it('N = 0 na conta: tudo como antes (a pausa por gente segura)', async () => {
+    banco.tabelas.ai_configs = [{ account_id: CONTA, channel_id: null, ia_volta_apos_min: 0 }]
+    pausada('gente', 20 * MIN)
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('pausado_no_meio')
+    expect(voltas()).toHaveLength(0)
+  })
+
+  it('N da conta: 30 min seguram a mensagem de 20 min atrás', async () => {
+    banco.tabelas.ai_configs = [{ account_id: CONTA, channel_id: null, ia_volta_apos_min: 30 }]
+    pausada('gente', 20 * MIN)
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('aguardando')
+    expect(voltas()[0].args.p_minutos).toBe(30)
+  })
+
+  it('a leitura da configuração que FALHA: o turno falha e a conversa continua pausada (o lado que não fala)', async () => {
+    banco.falhas.push({ tabela: 'ai_configs', op: 'select', erro: { message: 'timeout' } })
+    pausada('gente', 20 * MIN)
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('falhou')
+    expect(conversa().ai_autoreply_disabled).toBe(true)
+    expect(generateReply).not.toHaveBeenCalled()
+  })
+
+  it('a equipe que responde DURANTE a geração pausa de novo: a 2ª conferência segura', async () => {
+    pausada('gente', 20 * MIN)
+    vi.mocked(generateReply).mockImplementation(async () => {
+      Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: 'gente', ia_pausada_em: new Date().toISOString() })
+      return { text: 'Olá!', handoff: false, usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } }
+    })
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('pausado_no_meio')
+    expect(engineSendText).not.toHaveBeenCalled()
+  })
+
+  it('depois de voltar, a transferência pedida pelo modelo VALE (a pausa vira transferência)', async () => {
+    pausada('gente', 20 * MIN)
+    vi.mocked(generateReply).mockResolvedValue({
+      text: '[[HANDOFF]]',
+      handoff: true,
+      usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+    })
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('transferiu')
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'transferencia' })
+  })
+})
+
 describe('a RETOMADA (1056)', () => {
   // Segunda, 28/09/2026, 12:00 em Brasília: dentro da janela padrão (08–21).
   const MEIO_DIA = new Date('2026-09-28T15:00:00Z')
@@ -4064,6 +4246,104 @@ describe('a RETOMADA (1056)', () => {
       conversa().janela_meta = { [CANAL]: haMs(60 * MIN) }
       await executarTurno(RETOMADA)
       expect(turno(RETOMADA).status).toBe('respondeu')
+    })
+  })
+
+  describe('depois da fala da EQUIPE (1138, P4 e P7)', () => {
+    const EQUIPE = 'msg-equipe'
+
+    /** A fala da equipe de `haQuantoMs` atrás, a pausa por gente e a PRÉ-ARMAÇÃO que o gatilho gravou. */
+    function comPreArmacao(haQuantoMs: number, motivo = 'gente'): void {
+      Object.assign(banco.tabelas.messages.find((m) => m.id === GATILHO)!, {
+        gravada_em: haMs(haQuantoMs + MIN),
+        created_at: haMs(haQuantoMs + MIN),
+      })
+      banco.tabelas.messages.push(
+        mensagem({
+          id: EQUIPE,
+          sender_type: 'agent',
+          sender_id: MEMBRO,
+          message_id: 'wamid.equipe',
+          content_text: 'Me manda o holerite, por favor.',
+          gravada_em: haMs(haQuantoMs),
+          created_at: haMs(haQuantoMs),
+        }),
+      )
+      Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: motivo, ia_pausada_em: haMs(haQuantoMs) })
+      banco.tabelas.cb_ia_turnos = [
+        {
+          ...turno(),
+          id: RETOMADA,
+          tipo: 'retomada',
+          tentativa: 1,
+          tentativas: 1,
+          ia_agente_id: null,
+          deal_id: null,
+          stage_id: null,
+          mensagem_gatilho_id: EQUIPE,
+          mensagem_inicial_id: EQUIPE,
+          erro: ERRO_DA_ARMACAO_PELA_EQUIPE,
+          executar_apos: haMs(1_000),
+        },
+      ]
+    }
+
+    it('a pré-armação vira a 1ª tentativa: agente, card, etapa e a cadência, para a fala da equipe + 15 min', async () => {
+      comPreArmacao(MIN)
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA)).toMatchObject({
+        status: 'aguardando',
+        ia_agente_id: AGENTE,
+        deal_id: CARD,
+        stage_id: ETAPA,
+        tentativa: 1,
+        tentativas: CADENCIA.length,
+        erro: null,
+        executar_apos: new Date(MEIO_DIA.getTime() - MIN + 15 * MIN).toISOString(),
+      })
+      expect(generateReply).not.toHaveBeenCalled()
+      expect(conversa().ai_autoreply_disabled).toBe(true)
+    })
+
+    it('vencida: o follow-up sai, LEVANTA a pausa, diz ao modelo que a última fala foi da equipe e arma a seguinte', async () => {
+      comPreArmacao(20 * MIN)
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA).status).toBe('respondeu')
+      expect(conversa()).toMatchObject({ ai_autoreply_disabled: false, ia_pausada_por: null })
+      const pedido = vi.mocked(generateReply).mock.calls[0][0]
+      expect(pedido.systemPrompt).toContain('written by a person from the team')
+      // A fala da equipe chega ao modelo ROTULADA, sem o nome da pessoa.
+      expect(pedido.messages.some((m) => m.content.includes('[Team member] Me manda o holerite'))).toBe(true)
+      expect(retomadas()).toMatchObject([{ tentativa: 2, mensagem_gatilho_id: EQUIPE, ia_agente_id: AGENTE }])
+    })
+
+    it('com o "Pausar" (botao) a série depois da equipe não roda', async () => {
+      comPreArmacao(20 * MIN, 'botao')
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA)).toMatchObject({ status: 'descartado', erro: 'pausada' })
+      expect(generateReply).not.toHaveBeenCalled()
+    })
+
+    it('N = 0 na conta: nada (a pausa por gente é permanente)', async () => {
+      banco.tabelas.ai_configs = [{ account_id: CONTA, channel_id: null, ia_volta_apos_min: 0 }]
+      comPreArmacao(20 * MIN)
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA).status).toBe('descartado')
+      expect(generateReply).not.toHaveBeenCalled()
+    })
+
+    it('a cliente escreveu depois da fala da equipe: a pré-armação sai', async () => {
+      comPreArmacao(20 * MIN)
+      banco.tabelas.messages.push(mensagem({ id: 'msg-depois', message_id: 'wamid.depois', gravada_em: haMs(MIN) }))
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA)).toMatchObject({ status: 'descartado', erro: 'o cliente escreveu depois da fala da equipe' })
+    })
+
+    it('retomada desligada no agente: a pré-armação sai', async () => {
+      agenteLido().retomada = retomadaLigada({ ativa: false })
+      comPreArmacao(20 * MIN)
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA)).toMatchObject({ status: 'descartado', erro: 'a retomada está desligada no agente' })
     })
   })
 })

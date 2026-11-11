@@ -2,8 +2,9 @@
 
 Branch `feat/ia-pausa-temporaria`. Vale para TODOS os agentes de IA
 (Trabalhista, Previdenciário, Bancário), como configuração da CONTA.
-Estado: **plano com P1–P7 decididas em 11/11/2026** (seção 3); implementação
-nesta branch.
+Estado: **P1–P7 decididas e IMPLEMENTADAS nesta branch (11/11/2026)**; a
+1138 NÃO aplicada (espera o "pode" do operador). A regra viva é
+`.claude/rules/ia-pausa.md`; este plano guarda o desenho e as decisões.
 
 ## 1. Como é hoje
 
@@ -97,15 +98,15 @@ segue o caminho de sempre.
   respondeu'`). Sem isso, a faixa e a aba Turnos diriam "volta às 14:32"
   sobre uma conversa já respondida. A ordem das travas é a de hoje
   (`messages` → `conversations` → `cb_ia_turnos`, como o encerrar).
-- **No turno** (`turno.ts`): `conferir` vê a pausa temporária e pergunta à
-  função nova (4.6) SEM levantar: equipe respondeu depois do gatilho =
-  `descartado`; antes do prazo = `reagendar` para `âncora + N` com a marca
-  `ERRO_DA_ESPERA_DA_EQUIPE` (a aba Turnos a traduz, como a do horário).
-  Vencido: segue (horário, áudio, mídias, geração, 2ª conferência). **Logo
-  antes da reserva**, a mesma função LEVANTA a pausa, sob a trava da conversa
-  e com a cerca de posse do turno. Equipe que responde entre o levantar e a
-  reserva: o gatilho pausa de novo (há turno vivo) e a reserva devolve
-  `pausada` → `pausado_no_meio`, como hoje.
+- **No turno** (`turno.ts`): a 1ª `conferir` aceita a pausa temporária;
+  depois do HORÁRIO (fora dele, espera a abertura), a função nova (4.6)
+  decide: equipe respondeu depois do gatilho = `descartado`; antes do prazo =
+  `reagendar` para `âncora + N` com a marca `ERRO_DA_ESPERA_DA_EQUIPE` (a aba
+  Turnos a traduz, como a do horário); vencido = LEVANTA a pausa, sob a trava
+  da conversa e com a cerca de posse, ANTES de gerar — assim a transferência
+  que o modelo pedir passa a valer (por cima de uma pausa ela não grava nada).
+  A 2ª conferência é estrita: equipe que responde durante a geração pausa de
+  novo (há turno vivo) e o turno termina `pausado_no_meio`, como hoje.
 - **Levantar a pausa não zera o teto** (`ia_retomada_em` fica) nem toca o
   responsável; só o Retomar zera o teto. A resposta que sai arma a retomada
   (follow-ups) pelo caminho de sempre (`armarRetomada`).
@@ -151,10 +152,11 @@ ligações) e 1131 (frases autorizadas). Conferir `ls supabase/migrations` E
 3. `cb_pausar_ia_por_gente()` recriada: o corpo de hoje + o descarte do
    pendente de resposta na conversa já pausada + a PRÉ-ARMAÇÃO do follow-up
    depois da equipe (4.11). O gatilho (WHEN da 1118) não muda.
-4. `cb_ia_voltar_da_pausa(p_turno_id, p_rodando_desde, p_minutos,
-   p_levantar)` → `(resultado text, volta_em timestamptz)`: `nao_pausada` |
-   `permanente` | `equipe_respondeu` | `cedo` | `voltou` | `descartado`
-   (posse perdida). Trava a conversa (`FOR NO KEY UPDATE`), confere o turno
+4. `cb_ia_voltar_da_pausa(p_turno_id, p_rodando_desde, p_minutos)` →
+   `(resultado text, volta_em timestamptz)`: `voltou` | `cedo` |
+   `equipe_respondeu` | `alguem_escreveu` (retomada) | `permanente` |
+   `nao_pausada` | `encerrada` | `sem_gatilho` | `descartado` (posse
+   perdida). Trava a conversa (`FOR NO KEY UPDATE`), confere o turno
    (`rodando` + `rodando_desde`), "gente depois do gatilho" pela régua do
    gatilho (`agent` com `sender_id` ou `from_device`, sem `ia_agente_id`,
    `NOT nao_saiu`, `gravada_em`). INVOKER, `REVOKE` de PUBLIC/anon/
@@ -310,7 +312,21 @@ migration converte as antigas em `desativada` (uma linha a mais).
 - A mensagem da cliente que não abre turno (figurinha, localização) não faz a
   IA voltar.
 
-## 7. Ordem de entrega
+## 7. Provas (11/11/2026)
+
+- Testes: os do motor (entrada, turno, retomada, contexto, pedido, ações,
+  pausa), das rotas e da faixa; pino `pausa-temporaria-1138.test.ts`; a
+  suíte inteira verde.
+- Replay completo local (`pg-replay`, banco vazio até a 1138, como o CI):
+  aplica; `verify-schema.sql` OK.
+- Cenários locais com dado FICTÍCIO (`cenarios-1138`, fora do repositório):
+  a conferência da própria 1138 COM dado (gatilho, pré-armação, âncora
+  movida, follow-up levantando, `cedo`, N = 0, `equipe_respondeu`,
+  `desativada`, descarte do retorno, `botao` → `gente`); o compositor sob
+  RLS pausa e pré-arma; a ligação não pré-arma; os CHECKs; o service_role
+  chama a função pelos tipos do PostgREST.
+
+## 8. Ordem de entrega
 
 1. Decisões P1–P6 (esta seção 3).
 2. Migration + pinos; replay local (`~/Downloads/CB-CRM/ferramentas/pg-replay`).

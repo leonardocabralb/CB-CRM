@@ -46,6 +46,8 @@ export const CODIGOS_CONHECIDOS = [
   'sem_mensagens',
   'sem_configuracao',
   'cotacao_invalida',
+  // A pausa temporária da conta (1138, `PUT /api/cb/ia/pausa`).
+  'minutos_invalidos',
   'documento_invalido',
   'contato_nao_encontrado',
   // As recusas do Salvar das Ferramentas (F4): o PATCH devolve também `itens`.
@@ -184,6 +186,9 @@ export const ERROS_GRAVADOS_PELO_BANCO = {
   'conexão apagada': 'turnos.erroDoBanco.conexaoApagada',
   'fichas unidas': 'turnos.erroDoBanco.fichasUnidas',
   'o cliente escreveu antes da retomada': 'turnos.erroDoBanco.clienteEscreveu',
+  // A pausa temporária (1138): o gatilho da pausa por gente descarta o retorno
+  // que esperava a equipe (`ERRO_DA_EQUIPE_RESPONDEU`, que o turno também grava).
+  'a equipe respondeu': 'turnos.erroDoBanco.equipeRespondeu',
 } as const;
 
 export function textoDoErroDoTurno(t: ReturnType<typeof useTranslations>, erro: string): string {

@@ -84,6 +84,10 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
       agente: { id: 'ag-1', nome: 'Triagem' },
       pausada: false,
       pausadaPor: null,
+      // Sem a linha padrão de `ai_configs`: o padrão da conta (1138).
+      pausaTemporaria: false,
+      voltaAposMin: 15,
+      voltaEm: null,
       motivo: null,
       naoAtende: null,
     })
@@ -210,6 +214,10 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
         agente: null,
         pausada: false,
         pausadaPor: null,
+        // Sem agente que atenda e sem pausa, o N da conta nem é lido.
+        pausaTemporaria: false,
+        voltaAposMin: 0,
+        voltaEm: null,
         motivo: 'card_antigo',
         naoAtende: { agente: { id: 'ag-1', nome: 'Triagem' }, motivo: 'card_antigo' },
       })
@@ -260,7 +268,16 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
         instrucoes: 'segredo do administrador',
       }
       const corpo = await (await chamar()).json()
-      expect(Object.keys(corpo).sort()).toEqual(['agente', 'motivo', 'naoAtende', 'pausada', 'pausadaPor'])
+      expect(Object.keys(corpo).sort()).toEqual([
+        'agente',
+        'motivo',
+        'naoAtende',
+        'pausaTemporaria',
+        'pausada',
+        'pausadaPor',
+        'voltaAposMin',
+        'voltaEm',
+      ])
       expect(Object.keys(corpo.naoAtende).sort()).toEqual(['agente', 'motivo'])
       expect(Object.keys(corpo.naoAtende.agente).sort()).toEqual(['id', 'nome'])
       expect(JSON.stringify(corpo)).not.toMatch(/canal-1|2026-09|segredo/)
@@ -275,5 +292,47 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
   it('erro de banco é 500, nunca "ninguém responde"', async () => {
     banco['deals:erro'] = { message: 'timeout' }
     expect((await chamar()).status).toBe(500)
+  })
+
+  describe('a pausa TEMPORÁRIA (1138)', () => {
+    beforeEach(() => {
+      banco.conversations = { ...(banco.conversations as object), ai_autoreply_disabled: true, ia_pausada_por: 'gente' }
+      banco.ai_configs = { ia_volta_apos_min: 15 }
+    })
+
+    it('pausa por gente com N > 0: temporária, com o N e quando a IA volta (o pendente que espera a equipe)', async () => {
+      banco.cb_ia_turnos = [{ executar_apos: '2026-11-11T15:15:00Z' }]
+      expect(await (await chamar()).json()).toMatchObject({
+        pausada: true,
+        pausadaPor: 'gente',
+        pausaTemporaria: true,
+        voltaAposMin: 15,
+        voltaEm: '2026-11-11T15:15:00Z',
+      })
+      const espera = consultas.find((c) => c.tabela === 'cb_ia_turnos')!
+      expect(espera.filtros).toContainEqual(['eq', 'account_id', 'conta-1'])
+      expect(espera.filtros).toContainEqual(['eq', 'status', 'aguardando'])
+      expect(espera.filtros).toContainEqual(['eq', 'erro', 'aguardando a equipe responder'])
+    })
+
+    it('sem mensagem esperando: temporária, sem a hora', async () => {
+      expect(await (await chamar()).json()).toMatchObject({ pausaTemporaria: true, voltaEm: null })
+    })
+
+    it('N = 0 na conta: a pausa não é temporária (como antes), e nada de procurar a espera', async () => {
+      banco.ai_configs = { ia_volta_apos_min: 0 }
+      expect(await (await chamar()).json()).toMatchObject({ pausaTemporaria: false, voltaAposMin: 0, voltaEm: null })
+      expect(consultas.some((c) => c.tabela === 'cb_ia_turnos')).toBe(false)
+    })
+
+    it.each(['desativada', 'transferencia', 'automacao'])('pausa %s: permanente', async (motivo) => {
+      banco.conversations = { ...(banco.conversations as object), ia_pausada_por: motivo }
+      expect(await (await chamar()).json()).toMatchObject({ pausaTemporaria: false, voltaAposMin: 15 })
+    })
+
+    it('a leitura do N da conta que falha é 500 (nunca "não volta" por ignorância)', async () => {
+      banco['ai_configs:erro'] = { message: 'timeout' }
+      expect((await chamar()).status).toBe(500)
+    })
   })
 })
