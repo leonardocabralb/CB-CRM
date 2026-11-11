@@ -427,7 +427,7 @@ describe('criar_tarefa', () => {
 })
 
 describe('executar_automacao', () => {
-  it('com o rótulo "ia:<agente>" e a conversa, o contato e a conexão do turno', async () => {
+  it('com o rótulo "ia:<agente>", a conversa, o contato e a conexão do turno — e a MARCA do agente (09/11/2026)', async () => {
     const r = await executarAcoes(db, CTX, [acao({ tipo: 'executar_automacao', id: 'auto-1', nome: 'Boas-vindas' })])
     expect(runAutomationById).toHaveBeenCalledWith({
       automationId: 'auto-1',
@@ -436,6 +436,8 @@ describe('executar_automacao', () => {
       context: { conversation_id: 'conv-1', channel_id: 'canal-1' },
       triggerType: 'tag_added',
       rotuloDoDisparo: 'ia:Triagem',
+      // As mensagens da automação falam em nome do agente: não param a retomada dele.
+      iaAgenteId: 'ag-1',
     })
     expect(r.registros[0]).toMatchObject({ ok: true })
     expect(notas()[0].texto).toContain('Boas-vindas')

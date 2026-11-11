@@ -214,8 +214,12 @@ export function dentroDaJanela(
  * Quando sai a tentativa `tentativa` (0-based), ou por que a série para.
  *
  * `ultimaRetomada`: quando a retomada anterior desta série SAIU de fato (nulo
- * na primeira). `fimDaJanelaMeta`: quando fecha a janela de 24 h da Meta na
- * conexão (nulo = a conexão não é oficial, ou nada a conferir).
+ * na primeira). ⚠️ Na PRIMEIRA ela é IGNORADA: a fala do agente depois da
+ * âncora só pode ser a da automação que ele executou no MESMO turno (o vídeo
+ * e o link saem com a marca dele, 09/11/2026) — tomada por retomada, o piso
+ * de 30 min empurrava o 1º toque de 15 para 30 min. `fimDaJanelaMeta`: quando
+ * fecha a janela de 24 h da Meta na conexão (nulo = a conexão não é oficial,
+ * ou nada a conferir).
  *
  * A ordem: o vencimento nominal (âncora + cadência; o espaçamento da cadência
  * depois da anterior; o piso de 30 min depois dela; e nunca antes de agora) →
@@ -241,7 +245,8 @@ export function proximaRetomada(args: {
   if (!janela) return { tipo: 'parar', motivo: 'sem_janela' }
 
   const k = args.tentativa
-  const anterior = args.ultimaRetomada
+  // A primeira não tem anterior (ver o comentário da função).
+  const anterior = k === 0 ? null : args.ultimaRetomada
   let t = Math.max(
     args.ancora + config.cadencia[k] * 60_000,
     // O ESPAÇAMENTO: a anterior adiada (janela, lembrete, cron) empurra esta.

@@ -296,8 +296,9 @@ quem cuida, marcando a pessoa. `src/lib/notes/anotacao-da-automacao.ts`
 ### "Enviar arquivo" do ACERVO (`send_media` com `acervo_id`, 09/11/2026)
 
 O vídeo das gestantes que a automação executada pelo agente de IA manda
-depois do link do ZapSign. `midia-do-passo.ts` (puro + a cópia), o mesmo
-campo do nó "Enviar mídia" do robô (`whatsapp-envio.md`).
+ANTES do link do ZapSign (o link por último: ela não pode ver o vídeo e perder
+o link). `midia-do-passo.ts` (puro + a cópia), o mesmo campo do nó "Enviar
+mídia" do robô (`whatsapp-envio.md`).
 
 - ⚠️⚠️ **O motor manda a CÓPIA CONGELADA do item** (`prepararMidiaDoPasso` →
   `copiaCongeladaDoAcervo`): UMA por item, criada no 1º envio e
@@ -329,6 +330,21 @@ campo do nó "Enviar mídia" do robô (`whatsapp-envio.md`).
   ignoraria o upload); escolher troca o tipo pelo do item, com aviso; o
   título vem da lista lida na RAIZ (só quando algum passo aponta item) ou do
   escolhido agora; "apagado" só com a lista carregada.
+
+### A automação executada pelo AGENTE DE IA fala em nome dele (09/11/2026)
+
+- ⚠️⚠️ **`runAutomationById({ iaAgenteId })` é a ÚNICA porta da marca**
+  (`AutomationContext.ia_agente_id`, por `comMarcaDoAgente`: o contexto
+  recebido perde a que trouxer): o texto (`automations/meta-send.ts`) e a
+  mídia (`flows/meta-send.ts`) saem com `messages.ia_agente_id`. Passam o
+  turno (`executar-acoes.ts`) e o "Acionar automação" da automação dele; a
+  retentativa a leva no contexto da fila. ⚠️ O disparo por EVENTO a descarta
+  (`dispararAutomacoes`): a cascata da etiqueta copia o contexto da mãe, e a
+  972 conta `bot` COM a marca como "respondido" — a automação de evento
+  marcada calaria o alerta de quem espera gente. Pino
+  `src/lib/ia-agentes/envio.chamadores.test.ts`; o porquê (a retomada do
+  agente parava): `ia-retomada.md`. Botões, lista, modelo e o aviso a outro
+  número saem SEM a marca.
 
 ### "Não repetir para o mesmo contato por N horas" (`trigger_config.nao_repetir_horas`)
 

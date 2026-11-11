@@ -341,9 +341,10 @@ ingestões), `fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron
   áudio que não se ouve e o envio incerto — pausa `transferencia` + pendente,
   destino só sem responsável, anotação "IA · <agente>". Nunca por cima de pausa ou de
   conversa encerrada (zero linhas = sem nota, `pausado_no_meio`).
-- ⚠️ **Só o turno passa `iaAgenteId` ao `engineSendText`** (pino
-  default-deny): a 972 conta `bot` COM `ia_agente_id` como "respondido".
-  Depois do envio, `conversations.ia_agente_id` = o ÚLTIMO agente que respondeu.
+- ⚠️ **Só o turno passa `iaAgenteId`** (pino default-deny: a 972 conta `bot`
+  COM `ia_agente_id` como "respondido"), e o motor na automação que o agente
+  EXECUTOU (`ia-retomada.md`). `conversations.ia_agente_id` = o ÚLTIMO agente
+  que respondeu.
 - ⚠️ **O contexto é SÓ da conexão do turno** (D4); áudio pela transcrição
   (reagenda até 2 min de `gravada_em`), imagem/PDF pela leitura
   (`prepararMidias`), vídeo como descrição (`contexto.ts`).

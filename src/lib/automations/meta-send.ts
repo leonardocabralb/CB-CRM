@@ -66,6 +66,15 @@ interface SendTextArgs {
    * o motor, que retenta (`envio-que-falhou.ts`). Ausente = grava na hora.
    */
   aoFalhar?: AoFalhar
+  /**
+   * NOSSO (09/11/2026): o agente de IA que EXECUTOU a automação no turno dele
+   * — o texto sai em nome dele (`messages.ia_agente_id`) e não para a
+   * retomada dele. ⚠️ A 972 conta `bot` COM a marca como "respondido": só o
+   * motor passa, e só o que `runAutomationById` recebeu do turno
+   * (`AutomationContext.ia_agente_id`). Pino default-deny em
+   * `src/lib/ia-agentes/envio.chamadores.test.ts`.
+   */
+  iaAgenteId?: string | null
 }
 
 interface SendTemplateArgs {
@@ -293,6 +302,8 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       ? textoFinal
       : templateContentText(templateRow, input.params ?? [])
   const template_name = input.kind === 'template' ? input.templateName : null
+  // NOSSO: o agente de IA em nome de quem o TEXTO sai (ver `SendTextArgs.iaAgenteId`).
+  const iaAgenteId = input.kind === 'text' ? (input.iaAgenteId ?? null) : null
   const previa =
     input.kind === 'template'
       ? (content_text ?? `[template:${input.templateName}]`)
@@ -395,6 +406,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         texto: content_text,
         previa,
         templateName: template_name,
+        iaAgenteId,
       },
       err,
       input.aoFalhar,
@@ -424,6 +436,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       remote_jid_lid: endereco?.remoteJidLid ?? null,
       from_me: ehEvolution(channel) ? true : null,
       status: 'sent',
+      ...(iaAgenteId ? { ia_agente_id: iaAgenteId } : {}),
     })
     .select('id')
     .single()

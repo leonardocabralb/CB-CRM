@@ -149,6 +149,10 @@ qualquer uma é pergunta ao operador.
   não zera (1130, `ia.md`); (3) a resposta que move o card para a etapa de
   OUTRO agente (ou sem agente) não arma retomada; para outra etapa do mesmo,
   arma com ela (`ia-retomada.md`).
+- A automação que o agente de IA executa fala EM NOME dele e não para a
+  retomada dele; o disparo por evento nunca leva a marca (09/11/2026: no
+  Trabalhista, o vídeo e o link da assinatura saem por automação, com o link
+  por ÚLTIMO, e os follow-ups da IA seguem depois; `ia-retomada.md`).
 - Agente de IA fora do horário: a mensagem espera e ele responde quando o
   horário abrir, se ninguém da equipe respondeu antes; o padrão da Anthropic
   é o Haiku 5.5, e o seletor mostra os modelos da chave (25/10/2026).
