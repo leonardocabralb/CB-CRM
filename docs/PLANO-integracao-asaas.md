@@ -2468,7 +2468,7 @@ Jurídico; ligar as automações e o interruptor depois das 18h (os primeiros
 envios saem no dia útil seguinte, 08h e 09h); acompanhar os primeiros.
 
 
-## 13. O módulo "Cobrança automática" (11/11/2026, 1134)
+## 13. O módulo "Cobrança automática" (11/11/2026, 1135)
 
 Pedido do operador: transformar a régua num MÓDULO configurável de um lugar
 só (para levar ao Atlas CRM), com as telas desenhadas no canvas "hoje ×
@@ -2497,7 +2497,7 @@ régua nasce desligada.
   atalho; no construtor, o aviso.
 - Aba Cobranças da conversa: "Próxima (prevista)", "Ligação pedida" e, para o
   administrador, o atalho para configurar.
-- Migration 1134: `regua_escritorio_nome` e `aviso_inadimplencia_ativo` em
+- Migration 1135: `regua_escritorio_nome` e `aviso_inadimplencia_ativo` em
   `cb_asaas_config` (aditiva).
 
 Regras da área: `.claude/rules/cobranca-automatica.md`.

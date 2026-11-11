@@ -69,7 +69,7 @@ describe("abaDaAutomacao e contarPorAba", () => {
     expect(Object.fromEntries(c)).toEqual({ [ABA_GERAL]: 2, [ABA_DA_COBRANCA]: 0, a1: 2, a2: 0, a3: 0 })
   })
 
-  it("as automações da régua do Asaas vão para a aba fixa da Cobrança automática (1134), seja qual for a área", () => {
+  it("as automações da régua do Asaas vão para a aba fixa da Cobrança automática (1135), seja qual for a área", () => {
     expect(abaDaAutomacao("a1", ids, "asaas_cobranca_vencida")).toBe(ABA_DA_COBRANCA)
     expect(abaDaAutomacao(null, ids, "asaas_cobranca_vence_hoje")).toBe(ABA_DA_COBRANCA)
     expect(abaDaAutomacao("a1", ids, "keyword_match")).toBe("a1")

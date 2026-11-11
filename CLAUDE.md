@@ -552,7 +552,7 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   telefone em três fontes, cadeado, cancelamento e lembretes.
 - `.claude/rules/integracoes-asaas.md` — espelho de cobranças, vínculo,
   ficha criada pelo CRM, cadeado do ciclo, webhook, régua.
-- `.claude/rules/cobranca-automatica.md` — a tela da régua (1134): fachada
+- `.claude/rules/cobranca-automatica.md` — a tela da régua (1135): fachada
   sobre as automações, "Pedir ligação", aviso desligável.
 - `.claude/rules/integracoes-zapsign.md` — assinatura move o card: webhook
   pelo cabeçalho, releitura, casamento sem criar contato, cadeado do disparo.

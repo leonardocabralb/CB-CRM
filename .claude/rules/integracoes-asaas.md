@@ -271,7 +271,7 @@ o CRM só lê. O lado do MOTOR da régua (gatilhos `asaas_*` que casam só pelo
   baixo, "(com juros e multa)" só com juros. O tipo de pessoa vem do
   `cpf_cnpj` (`tipoDePessoa`); o documento não entra nas `vars`. Pessoa em
   CAIXA ALTA ganha a inicial maiúscula; empresa fica como está.
-- `escritorio_nome`: `regua_escritorio_nome` (1134), senão
+- `escritorio_nome`: `regua_escritorio_nome` (1135), senão
   `assinatura_nome_automatica`, senão `accounts.name` (`nomeDoEscritorio`). A
   prévia do construtor ainda usa o da conta; a da tela "Cobrança automática",
   não. A tela inteira (fachada sobre estas automações): `cobranca-automatica.md`.
@@ -317,7 +317,7 @@ o CRM só lê. O lado do MOTOR da régua (gatilhos `asaas_*` que casam só pelo
   ainda não pagou o que vence hoje. Um lembrete por turno (o de menor id); o
   cartão avisa dois no MESMO turno. A cobrança de atraso segue até as 18:00.
 - ⚠️ O interruptor é `PUT /api/cb/asaas/regua/interruptor` (que grava
-  também o nome do escritório e o aviso de inadimplência, 1134), NÃO o PUT da
+  também o nome do escritório e o aviso de inadimplência, 1135), NÃO o PUT da
   config: confere ROWCOUNT, e SÓ a transição desligado → ligado carimba
   `regua_ativada_em` (UPDATE cercado em `regua_ativa = false`) — um PUT
   repetido empurraria a fronteira da D13 para a frente.

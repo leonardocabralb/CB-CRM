@@ -8,7 +8,7 @@ import { ehGatilhoDaRegua } from "@/lib/asaas/regua"
 
 /**
  * As automações da régua do Asaas são as ETAPAS da "Cobrança automática"
- * (1134): na lista de Automações ganham o selo e o atalho para a tela do
+ * (1135): na lista de Automações ganham o selo e o atalho para a tela do
  * módulo, e no construtor um aviso (`AvisoDaRegua`). Decisão do operador
  * (11/11/2026): o construtor só AVISA, não trava — a tela do módulo lê o que
  * está gravado, então nada fica dessincronizado.

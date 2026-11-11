@@ -107,7 +107,7 @@ export function IntegracoesPanel() {
   // admin lia uma acusação de não ser admin durante o fetch do perfil — o
   // esqueleto diz a mesma coisa que a tela vai dizer, sem mentir.
   const { profileLoading, accountId } = useAuth();
-  // A tela "Cobrança automática" do Asaas (1134) é uma SUB-ABA desta seção
+  // A tela "Cobrança automática" do Asaas (1135) é uma SUB-ABA desta seção
   // (`?aba=cobranca`, `&etapa=<id>` no texto de uma etapa) — a convenção do
   // `?aba=` da API: a página de Configurações a apaga ao trocar de seção.
   const params = useSearchParams();

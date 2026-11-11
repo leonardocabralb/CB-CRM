@@ -38,7 +38,7 @@ import { rotuloDaEtapa, type RespostaDoModulo, type T } from "./cobranca-comum";
 import { TextoDaEtapa } from "./cobranca-texto-da-etapa";
 
 /**
- * A tela "Cobrança automática" (1134), em Configurações › Integrações ›
+ * A tela "Cobrança automática" (1135), em Configurações › Integrações ›
  * Asaas (`?tab=integracoes&aba=cobranca`). Configura de um lugar só a régua
  * do Asaas (998): o interruptor, quem manda (número, quem assina, nome do
  * escritório), a cadência (lembretes do dia e da noite, cobranças por dias de

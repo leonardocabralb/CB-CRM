@@ -1,6 +1,6 @@
 /**
  * A PRÓXIMA etapa prevista da régua para um cliente — a linha "Próxima" da
- * aba Cobranças (1134). É ESTIMATIVA, e a tela diz isso: na hora a varredura
+ * aba Cobranças (1135). É ESTIMATIVA, e a tela diz isso: na hora a varredura
  * relê cada parcela no Asaas (a paga não recebe nada), escolhe a automação de
  * novo e respeita o "uma por dia". Aqui se aplica o que dá para saber de
  * antemão — as etapas LIGADAS, a trava do que já saiu, o dia-alvo do marco

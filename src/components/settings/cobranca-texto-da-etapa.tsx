@@ -21,7 +21,7 @@ import { rotuloDaEtapa, type RespostaDoModulo } from "./cobranca-comum";
 
 /**
  * O texto de UMA etapa da régua, aberto pela tela "Cobrança automática"
- * (1134; `?tab=integracoes&aba=cobranca&etapa=<id>`). O editor é o MESMO do
+ * (1135; `?tab=integracoes&aba=cobranca&etapa=<id>`). O editor é o MESMO do
  * construtor (campos em roxo, "Inserir campo", prévia com cliente real); o
  * que muda é a prévia POR CASO — uma parcela, várias, empresa — montada pelas
  * mesmas funções do envio (`previa-da-regua.ts`), com o nome do escritório e

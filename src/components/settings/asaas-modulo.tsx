@@ -14,7 +14,7 @@ import { primeirosPassos } from "@/lib/asaas/primeiros-passos";
 import { cn } from "@/lib/utils";
 
 /**
- * Os blocos do MÓDULO no cartão do Asaas (1134): "Primeiros passos", "O que a
+ * Os blocos do MÓDULO no cartão do Asaas (1135): "Primeiros passos", "O que a
  * integração faz" (cada função, onde aparece, se está ligada e o gesto) e o
  * resumo da "Cobrança automática", cuja configuração inteira mora na tela
  * própria (`?tab=integracoes&aba=cobranca`). Antes o cartão tinha ali o

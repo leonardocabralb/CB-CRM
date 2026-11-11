@@ -1,6 +1,6 @@
 /**
  * A prévia POR CASO do texto de uma etapa da régua (tela "Cobrança
- * automática", 1134): como a mensagem sai com UMA parcela, com VÁRIAS e para
+ * automática", 1135): como a mensagem sai com UMA parcela, com VÁRIAS e para
  * EMPRESA — sem precisar achar um cliente real em cada situação. As variáveis
  * saem da MESMA função do envio (`montarVariaveis`), com parcelas fictícias.
  * A prévia com cliente real continua a do construtor (`/api/automations/previa`).

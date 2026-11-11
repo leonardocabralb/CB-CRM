@@ -179,7 +179,7 @@ interface ConfigDaRegua {
   regua_ativada_em: string | null;
   regua_intervalo_dias: number;
   vencidas_listadas_em: string | null;
-  /** o nome do escritório da tela "Cobrança automática" (1134); `null` = o de antes */
+  /** o nome do escritório da tela "Cobrança automática" (1135); `null` = o de antes */
   regua_escritorio_nome: string | null;
 }
 
@@ -757,7 +757,7 @@ export async function varrerRegua(admin: SupabaseClient, accountId: string, deps
       if (e.tipo === "atraso" && RESULTADOS_QUE_CONTAM_COMO_ENVIO.has(e.resultado) && !ultimaCobranca.has(e.asaas_customer_id)) ultimaCobranca.set(e.asaas_customer_id, e.criado_em);
     }
 
-    // `{{vars.escritorio_nome}}`: o da tela "Cobrança automática" (1134);
+    // `{{vars.escritorio_nome}}`: o da tela "Cobrança automática" (1135);
     // sem ele, o nome AUTOMÁTICO da assinatura (o do escritório,
     // `nomeParaAssinar`), não `accounts.name` — que nesta conta é o nome do
     // dono, e a mensagem diria "Aqui é do <dono>" (medido em 10/11/2026). Sem

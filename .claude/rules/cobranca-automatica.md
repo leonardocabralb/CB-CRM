@@ -11,7 +11,7 @@ paths:
   - "src/components/automations/selo-da-regua.tsx"
 ---
 
-# Cobrança automática do Asaas — o módulo (1134)
+# Cobrança automática do Asaas — o módulo (1135)
 
 A tela própria da régua (998) em Configurações › Integrações › Asaas
 (`?tab=integracoes&aba=cobranca`, `&etapa=<id>` no texto), os blocos
@@ -53,7 +53,7 @@ decisões: `docs/PLANO-integracao-asaas.md` §13.
 - A "Ligação pedida" da aba Cobranças e o "N esperando ligação" da tela leem a
   etiqueta que a condição PERGUNTA e o passo PÕE nas cobranças — sem coluna.
 
-### Nome do escritório e aviso de inadimplência (1134)
+### Nome do escritório e aviso de inadimplência (1135)
 
 - `{{vars.escritorio_nome}}` = `cb_asaas_config.regua_escritorio_nome`, senão
   o nome automático da assinatura, senão `accounts.name` — `nomeDoEscritorio`,

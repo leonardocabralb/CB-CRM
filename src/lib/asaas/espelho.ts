@@ -29,9 +29,9 @@ export interface ConfigDoEspelho {
   last_error: string | null;
   /** o interruptor "Cobrança automática" (998, D20) — ausente na linha anterior à migration */
   regua_ativa?: boolean | null;
-  /** ícone, faixa e filtro "Inadimplentes" (1134); `false` desliga — ausente/nulo é ligado */
+  /** ícone, faixa e filtro "Inadimplentes" (1135); `false` desliga — ausente/nulo é ligado */
   aviso_inadimplencia_ativo?: boolean | null;
-  /** a fronteira da ativação (D13) e o intervalo mínimo — a "Próxima" da aba Cobranças (1134) */
+  /** a fronteira da ativação (D13) e o intervalo mínimo — a "Próxima" da aba Cobranças (1135) */
   regua_ativada_em?: string | null;
   regua_intervalo_dias?: number | null;
 }

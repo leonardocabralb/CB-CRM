@@ -1,7 +1,7 @@
 /**
  * Os textos e horários PADRÃO da régua do Asaas (998), num lugar só: o
  * "Criar régua padrão" (`POST /api/cb/asaas/regua`) cria as automações com
- * eles, e a tela "Cobrança automática" (1134) os usa para "Restaurar o texto
+ * eles, e a tela "Cobrança automática" (1135) os usa para "Restaurar o texto
  * padrão" e para a etapa nova. Puro, sem I/O — a tela importa daqui.
  *
  * `saudacao` em vez de "Olá, {{vars.cliente_primeiro_nome}}!": empresa (CNPJ)
@@ -52,7 +52,7 @@ export function nomeDaCobranca(dias: number): string {
 export const NOME_DO_LEMBRETE_DO_DIA = "Lembrete · vence hoje";
 export const NOME_DO_LEMBRETE_DA_NOITE = "Lembrete · noite";
 
-/** A anotação padrão do "Pedir ligação à equipe" (1134): as `vars` são as da cobrança que acabou de sair. */
+/** A anotação padrão do "Pedir ligação à equipe" (1135): as `vars` são as da cobrança que acabou de sair. */
 export function textoPadraoDaLigacao(etiqueta: string): string {
   return [
     "Ligar para este cliente para combinar o pagamento.",

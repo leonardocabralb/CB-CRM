@@ -159,7 +159,7 @@ describe("motivoDaNeutralizacao — a régua ÚNICA do recorte e da dica do pain
     expect(motivoDaNeutralizacao(lerRespostaDoResumo(corpo({}, { leituraFresca: false })))).toBeNull();
   });
 
-  it("o aviso DESLIGADO em Integrações (1134) neutraliza o filtro e cala ícone e faixa, mesmo com contatos no corpo", () => {
+  it("o aviso DESLIGADO em Integrações (1135) neutraliza o filtro e cala ícone e faixa, mesmo com contatos no corpo", () => {
     const desligado = lerRespostaDoResumo(corpo({ c1: [] }, { avisoDesligado: true }));
     expect(desligado?.avisoDesligado).toBe(true);
     expect(motivoDaNeutralizacao(desligado)).toBe("aviso_desligado");

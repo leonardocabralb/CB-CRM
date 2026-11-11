@@ -18,7 +18,7 @@ export const TETO_DO_NOME_DA_AREA = 40
 export const ABA_GERAL = "__geral__"
 
 /**
- * A aba FIXA "Cobrança automática" (1134): as automações da régua do Asaas
+ * A aba FIXA "Cobrança automática" (1135): as automações da régua do Asaas
  * são as etapas do módulo e ficam juntas nela, seja qual for a área gravada.
  * Só aparece quando a conta tem alguma.
  */

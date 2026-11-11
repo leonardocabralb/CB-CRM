@@ -101,7 +101,7 @@ export function BarraDeAbas({
           onClick={() => onAba(a.id)}
         />
       ))}
-      {/* A aba fixa da régua do Asaas (1134): só com automação nela. */}
+      {/* A aba fixa da régua do Asaas (1135): só com automação nela. */}
       {((contagem.get(ABA_DA_COBRANCA) ?? 0) > 0 || aba === ABA_DA_COBRANCA) && (
         <Aba
           ativa={aba === ABA_DA_COBRANCA}

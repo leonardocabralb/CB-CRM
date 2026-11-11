@@ -68,7 +68,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ con
     const automacoesDaRegua = (daRegua ?? []) as { id: string; name: string; trigger_type: string; trigger_config: unknown; is_active: boolean }[];
     const ligadas = automacoesDaRegua.filter((a) => a.is_active);
 
-    // A PRÓXIMA etapa prevista (1134) — estimativa, só com a régua ligada.
+    // A PRÓXIMA etapa prevista (1135) — estimativa, só com a régua ligada.
     const agora = new Date();
     let proxima = null;
     if (config.regua_ativa === true && ligadas.length > 0) {
@@ -88,7 +88,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ con
       });
     }
 
-    // A LIGAÇÃO PEDIDA (1134): a etiqueta do "Pedir ligação" das cobranças
+    // A LIGAÇÃO PEDIDA (1135): a etiqueta do "Pedir ligação" das cobranças
     // (a que a condição pergunta E o passo põe) está nesta ficha agora?
     let ligacao: { etiqueta: string; desde: string } | null = null;
     const idsDaRegua = automacoesDaRegua.filter((a) => a.trigger_type === "asaas_cobranca_vencida").map((a) => a.id);

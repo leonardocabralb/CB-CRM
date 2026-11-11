@@ -42,7 +42,7 @@ describe("primeirosPassos", () => {
   });
 });
 
-// As chaves MONTADAS das telas do módulo (1134) escapam dos portões de i18n:
+// As chaves MONTADAS das telas do módulo (1135) escapam dos portões de i18n:
 // este teste as cobra nos dois dicionários.
 describe("as chaves montadas do módulo nos dois dicionários", () => {
   const ler = (arq: string) => JSON.parse(fs.readFileSync(path.join(process.cwd(), "messages", arq), "utf8")) as Record<string, unknown>;

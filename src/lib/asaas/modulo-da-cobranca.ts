@@ -1,5 +1,5 @@
 /**
- * O módulo "Cobrança automática" (1134): a tela que configura de um lugar só
+ * O módulo "Cobrança automática" (1135): a tela que configura de um lugar só
  * a régua do Asaas (998). É uma FACHADA sobre as automações da régua — o
  * motor continua o mesmo, e cada etapa continua sendo uma automação que o
  * construtor também abre (decisão do operador, 11/11/2026: lá ele só AVISA).
@@ -384,7 +384,7 @@ export function patchesDoModulo(automacoes: readonly AutomacaoDoModulo[], m: Mud
 // O nome do escritório que vai em {{vars.escritorio_nome}}
 // ------------------------------------------------------------------
 
-/** O do módulo (1134), senão o automático da assinatura, senão o da conta — a mesma ordem da varredura. */
+/** O do módulo (1135), senão o automático da assinatura, senão o da conta — a mesma ordem da varredura. */
 export function nomeDoEscritorio(doModulo: string | null | undefined, automatico: string | null | undefined, daConta: string | null | undefined): string {
   return doModulo?.trim() || automatico?.trim() || daConta?.trim() || "";
 }

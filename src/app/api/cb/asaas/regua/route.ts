@@ -40,7 +40,7 @@ import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit
  * desconsidere" porque o boleto pago no caixa fica PENDING até compensar.
  *
  * Com corpo `{ dias, canal_id?, assinatura? }` (a etapa nova da tela
- * "Cobrança automática", 1134) cria SÓ a cobrança daquele marco, desligada,
+ * "Cobrança automática", 1135) cria SÓ a cobrança daquele marco, desligada,
  * com o texto padrão, a conexão e a assinatura de "Quem manda" — 409 se o
  * marco já existe. A conexão tem de ser da conta (senão 400); o resto da
  * conferência (conectada, por QR Code) é a da ativação, como no construtor.

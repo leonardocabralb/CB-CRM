@@ -2,7 +2,7 @@ import type { useTranslations } from "next-intl";
 
 import type { AutomacaoDoModulo, EtapaDoModulo } from "@/lib/asaas/modulo-da-cobranca";
 
-/** O que `GET /api/cb/asaas/regua/modulo` devolve (tela "Cobrança automática", 1134). */
+/** O que `GET /api/cb/asaas/regua/modulo` devolve (tela "Cobrança automática", 1135). */
 export interface RespostaDoModulo {
   conectado: boolean;
   config?: {

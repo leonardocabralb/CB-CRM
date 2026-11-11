@@ -35,7 +35,7 @@ export async function GET() {
     const admin = supabaseAdmin();
     const config = await lerConfigDoEspelho(admin, ctx.accountId);
     if (!config) return NextResponse.json({ conectado: false, leituraFresca: false, atualizadoEm: null, cicloCompleto: false, contatos: {} });
-    // O aviso DESLIGADO na tela de Integrações (1134): o ícone, a faixa e o
+    // O aviso DESLIGADO na tela de Integrações (1135): o ícone, a faixa e o
     // filtro calam. Responde SEM contatos e com a marca — o navegador
     // neutraliza o filtro (`aviso_desligado`) em vez de ler "ninguém deve".
     if (config.aviso_inadimplencia_ativo === false) {

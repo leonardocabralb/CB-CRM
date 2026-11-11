@@ -177,7 +177,7 @@ qualquer uma é pergunta ao operador.
   automações e o construtor só AVISA (não trava); "Pedir ligação" numa frase;
   nome do escritório próprio da régua; o aviso de inadimplência (ícone,
   faixa, filtro) pode ser desligado no cartão — a aba Cobranças fica
-  (`cobranca-automatica.md`, 1134).
+  (`cobranca-automatica.md`, 1135).
 - Atlas: vincular/desvincular à mão só admin; a faixa acende também com
   suspenso e inativo; a linha do Atlas aparece a todos (sem recorte de
   perfil); o Atlas "ativo" NÃO apaga a linha do funil (30/09/2026).

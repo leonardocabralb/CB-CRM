@@ -60,7 +60,7 @@ interface Resposta {
   podeCriarDaqui: boolean;
   /** o bloco "Cobrança automática" (998) */
   regua: ReguaDoCartao;
-  /** o aviso de inadimplência da caixa (1134); ausente (rota anterior) = ligado */
+  /** o aviso de inadimplência da caixa (1135); ausente (rota anterior) = ligado */
   avisoAtivo?: boolean;
 }
 

@@ -1,4 +1,8 @@
--- 1134 — O MÓDULO "Cobrança automática" do Asaas (11/11/2026).
+-- 1135 — O MÓDULO "Cobrança automática" do Asaas (11/11/2026).
+--
+-- ⚠️ Aplicada na produção com o nome `1134_cb_asaas_modulo_da_cobranca`
+-- (20261111120022): a `1134_cb_ligacoes_pelo_crm` entrou no `main` antes,
+-- e este arquivo foi renumerado para 1135. Idempotente (IF NOT EXISTS).
 --
 -- A régua (998) ganha uma tela própria em Configurações › Integrações ›
 -- Asaas › Cobrança automática, que configura de um lugar só o que hoje fica
@@ -33,9 +37,9 @@ ALTER TABLE public.cb_asaas_config
   CHECK (regua_escritorio_nome IS NULL OR char_length(btrim(regua_escritorio_nome)) BETWEEN 1 AND 120);
 
 COMMENT ON COLUMN public.cb_asaas_config.regua_escritorio_nome IS
-  'O nome do escritório em {{vars.escritorio_nome}} da régua (1134). NULO = o nome automático da assinatura, senão o da conta.';
+  'O nome do escritório em {{vars.escritorio_nome}} da régua (1135). NULO = o nome automático da assinatura, senão o da conta.';
 COMMENT ON COLUMN public.cb_asaas_config.aviso_inadimplencia_ativo IS
-  'Ícone, faixa e filtro "Inadimplentes" na caixa de entrada (1134). Desligado, a aba Cobranças continua.';
+  'Ícone, faixa e filtro "Inadimplentes" na caixa de entrada (1135). Desligado, a aba Cobranças continua.';
 
 DO $$
 BEGIN
@@ -44,24 +48,24 @@ BEGIN
      WHERE table_schema = 'public' AND table_name = 'cb_asaas_config'
        AND column_name = 'aviso_inadimplencia_ativo' AND is_nullable = 'NO' AND column_default = 'true'
   ) THEN
-    RAISE EXCEPTION '1134: aviso_inadimplencia_ativo não ficou NOT NULL DEFAULT true';
+    RAISE EXCEPTION '1135: aviso_inadimplencia_ativo não ficou NOT NULL DEFAULT true';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns
      WHERE table_schema = 'public' AND table_name = 'cb_asaas_config'
        AND column_name = 'regua_escritorio_nome' AND is_nullable = 'YES'
   ) THEN
-    RAISE EXCEPTION '1134: regua_escritorio_nome ausente ou NOT NULL';
+    RAISE EXCEPTION '1135: regua_escritorio_nome ausente ou NOT NULL';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
      WHERE conrelid = 'public.cb_asaas_config'::regclass
        AND conname = 'cb_asaas_config_regua_escritorio_nome_ck'
   ) THEN
-    RAISE EXCEPTION '1134: o CHECK do nome do escritório não foi criado';
+    RAISE EXCEPTION '1135: o CHECK do nome do escritório não foi criado';
   END IF;
   -- nenhuma conta mudou de comportamento: o aviso segue ligado em todas
   IF EXISTS (SELECT 1 FROM public.cb_asaas_config WHERE aviso_inadimplencia_ativo IS NOT TRUE) THEN
-    RAISE EXCEPTION '1134: alguma conta nasceu com o aviso desligado';
+    RAISE EXCEPTION '1135: alguma conta nasceu com o aviso desligado';
   END IF;
 END $$;

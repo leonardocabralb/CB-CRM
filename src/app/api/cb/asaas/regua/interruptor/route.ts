@@ -8,7 +8,7 @@ import { TETO_DO_NOME_DO_ESCRITORIO } from "@/lib/asaas/modulo-da-cobranca";
 /**
  * PUT /api/cb/asaas/regua/interruptor  (admin+) — o interruptor "Cobrança
  * automática" (998, D20), o intervalo mínimo entre cobranças (D11, 13/09) e,
- * da tela "Cobrança automática" (1134), o nome do escritório da régua e o
+ * da tela "Cobrança automática" (1135), o nome do escritório da régua e o
  * aviso de inadimplência da caixa de entrada.
  * Corpo: `{ regua_ativa?: boolean, regua_intervalo_dias?: number,
  * regua_escritorio_nome?: string | null, aviso_inadimplencia_ativo?: boolean }`.

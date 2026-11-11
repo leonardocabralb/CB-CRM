@@ -26,7 +26,7 @@ export interface RespostaDoResumo {
    */
   cicloCompleto: boolean;
   /**
-   * O aviso foi DESLIGADO na tela de Integrações (1134): ícone, faixa e filtro
+   * O aviso foi DESLIGADO na tela de Integrações (1135): ícone, faixa e filtro
    * calam, e `contatos` vem vazio de propósito — nunca é "ninguém deve".
    */
   avisoDesligado: boolean;
@@ -154,7 +154,7 @@ export function dividaDoContato(resumo: RespostaDoResumo | null, contactId: stri
  *   o 8 de todo ciclo. Um conjunto vazio aí faria uma visão salva esconder
  *   a caixa inteira com cara de "ninguém deve" (Codex, PR #203).
  * - `aviso_desligado`: o administrador desligou o aviso de inadimplência na
- *   tela de Integrações (1134) — a rota manda os contatos vazios de propósito.
+ *   tela de Integrações (1135) — a rota manda os contatos vazios de propósito.
  *
  * ⚠️ Leitura ANTIGA (espelho parado) NÃO neutraliza: é a MESMA régua do
  * ícone da linha — um interruptor que cala em silêncio sobre dado velho
@@ -221,9 +221,9 @@ export interface RespostaDoContato {
   reguaComAutomacoes: boolean;
   /** o histórico da régua deste contato, mais recente primeiro */
   envios: EnvioDaReguaNaAba[];
-  /** a próxima etapa PREVISTA (1134) — estimativa; `null` sem régua ligada ou sem nada a cobrar */
+  /** a próxima etapa PREVISTA (1135) — estimativa; `null` sem régua ligada ou sem nada a cobrar */
   proxima: { dia: string; hora: string; tipo: "atraso" | "vence_hoje"; marco: number } | null;
-  /** a etiqueta do "Pedir ligação" está nesta ficha (1134): a régua não pede de novo até alguém tirá-la */
+  /** a etiqueta do "Pedir ligação" está nesta ficha (1135): a régua não pede de novo até alguém tirá-la */
   ligacao: { etiqueta: string; desde: string } | null;
 }
 

@@ -67,7 +67,7 @@ export async function GET(request: Request) {
       origemAlcancavel: origem !== null,
       podeCriarDaqui: podeCriarDaqui(origem, request),
       regua,
-      // o aviso de inadimplência da caixa (1134): o cartão o liga e desliga
+      // o aviso de inadimplência da caixa (1135): o cartão o liga e desliga
       avisoAtivo: data?.aviso_inadimplencia_ativo !== false,
     });
   } catch (err) {

@@ -2137,7 +2137,7 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
           {isEditing ? t("save") : t("saveDraft")}
         </Button>
       </header>
-      {/* NOSSO (1134): automação da régua do Asaas = etapa da "Cobrança automática"; só avisa. */}
+      {/* NOSSO (1135): automação da régua do Asaas = etapa da "Cobrança automática"; só avisa. */}
       <AvisoDaRegua gatilho={state.trigger_type} />
 
       {/* Canvas */}

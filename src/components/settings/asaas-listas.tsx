@@ -45,7 +45,7 @@ interface Props {
   versao: number;
   /** o vínculo mudou por aqui: o cartão relê o resumo */
   aoMudar: () => void;
-  /** só estas abas (a tela "Cobrança automática" mostra a lista de exceção e os ligados, 1134); ausente = todas */
+  /** só estas abas (a tela "Cobrança automática" mostra a lista de exceção e os ligados, 1135); ausente = todas */
   listas?: readonly NomeDaLista[];
   /** a aba que abre primeiro; ausente = a primeira de `listas` */
   listaInicial?: NomeDaLista;

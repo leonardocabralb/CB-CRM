@@ -9,7 +9,7 @@ import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit
 
 /**
  * GET /api/cb/asaas/regua/modulo  (admin+) — o que a tela "Cobrança
- * automática" (1134) precisa num pedido só:
+ * automática" (1135) precisa num pedido só:
  *
  * - `config`: o interruptor, o intervalo, o nome do escritório (o do módulo
  *   e o que vale sem ele) e o aviso de inadimplência;

@@ -342,7 +342,7 @@ export function AbaCobrancas({ dados, carregando, falhou, recarregar }: AbaCobra
         <div>
           <TituloDeSecao className="mb-1.5">{t("regua.titulo")}</TituloDeSecao>
           {dados.reguaComAutomacoes && !dados.reguaAtiva && <p className="mb-1.5 px-1 text-xs text-amber-700 dark:text-amber-300">{t("regua.desligadaNaConta")}</p>}
-          {/* NOSSO (1134): a próxima etapa PREVISTA e a ligação pedida. */}
+          {/* NOSSO (1135): a próxima etapa PREVISTA e a ligação pedida. */}
           {dados.proxima && (
             <div className="mb-1.5 rounded-md border border-primary/30 bg-primary/5 px-2 py-1.5 text-xs">
               <p className="text-[11px] font-medium text-primary">{t("regua.proxima")}</p>
