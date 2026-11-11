@@ -4904,7 +4904,9 @@
           "etapas": "{ligadas} of {total} steps on",
           "excecoes": "{n, plural, =0 {nobody left out} one {# client left out} other {# clients left out}}",
           "repetido": "There are repeated steps: check the billing screen.",
-          "configurar": "Set up automatic billing"
+          "configurar": "Set up automatic billing",
+          "ligada": "On",
+          "desligada": "Off"
         }
       },
       "origem": {
@@ -5552,9 +5554,9 @@
             "empresa": "Company (CNPJ)"
           },
           "legenda": {
-            "uma": "A person with one installment: just the link, no list.",
-            "varias": "Two installments: the sentence adds them up and names the oldest; each installment has its link.",
-            "empresa": "Company (CNPJ): just \"Olá!\", no name. A one-off charge shows as \"a cobrança\" — the internal description never reaches the client."
+            "uma": "A person (CPF) with one installment overdue since yesterday.",
+            "varias": "A person with two overdue installments, the oldest 18 days ago.",
+            "empresa": "A company (CNPJ) with a one-off charge: the greeting has no name, and the charge's internal description never reaches the client."
           },
           "previaReal": "To see it with a real client, use the editor's \"Preview\" on the left."
         }

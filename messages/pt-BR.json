@@ -4897,7 +4897,9 @@
           "etapas": "{ligadas} de {total} etapas ligadas",
           "excecoes": "{n, plural, =0 {ninguém fora da cobrança} one {# cliente não recebe} other {# clientes não recebem}}",
           "repetido": "Há etapas repetidas: confira na tela da cobrança.",
-          "configurar": "Configurar cobrança automática"
+          "configurar": "Configurar cobrança automática",
+          "ligada": "Ligada",
+          "desligada": "Desligada"
         }
       },
       "origem": {
@@ -5545,9 +5547,9 @@
             "empresa": "Empresa (CNPJ)"
           },
           "legenda": {
-            "uma": "Pessoa com uma parcela: só o link, sem lista.",
-            "varias": "Duas parcelas: a frase soma e diz a mais antiga; cada parcela com o seu link.",
-            "empresa": "Empresa (CNPJ): só \"Olá!\", sem nome. Cobrança avulsa aparece como \"a cobrança\" — a descrição interna nunca vai ao cliente."
+            "uma": "Pessoa (CPF) com uma parcela vencida ontem.",
+            "varias": "Pessoa com duas parcelas vencidas, a mais antiga há 18 dias.",
+            "empresa": "Empresa (CNPJ) com uma cobrança avulsa: a saudação sai sem nome, e a descrição interna da cobrança nunca vai ao cliente."
           },
           "previaReal": "Para ver com um cliente de verdade, use \"Prévia\" do editor, à esquerda."
         }

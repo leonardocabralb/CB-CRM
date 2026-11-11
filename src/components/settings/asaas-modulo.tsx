@@ -176,7 +176,7 @@ export function ResumoDaCobranca({ regua, semCobranca }: { regua: ReguaDoCartao;
           <Zap className="size-3.5" aria-hidden="true" />
           {t("resumo.titulo")}
         </p>
-        <span className={regua.ativa ? "text-emerald-700" : "text-muted-foreground"}>{regua.ativa ? t("ligado") : t("desligado")}</span>
+        <span className={regua.ativa ? "text-emerald-700" : "text-muted-foreground"}>{regua.ativa ? t("resumo.ligada") : t("resumo.desligada")}</span>
       </div>
       <p className="text-muted-foreground">
         {t("resumo.etapas", { ligadas: regua.automacoesLigadas, total: regua.automacoesTotal })}

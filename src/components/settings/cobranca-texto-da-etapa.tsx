@@ -163,7 +163,7 @@ export function TextoDaEtapa({
 
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="min-w-0 space-y-3 rounded-lg border border-border bg-card p-4">
-          <VariaveisProvider gatilho={automacao.trigger_type} webhookId={null}>
+          <VariaveisProvider gatilho={automacao.trigger_type} webhookId={null} escritorio={escritorio}>
             <CampoComVariaveis rotulo={t("texto.mensagem")} value={texto} onChange={(v) => setRascunho({ ...meu, texto: v })} />
           </VariaveisProvider>
           <div className="grid gap-3 sm:grid-cols-2">

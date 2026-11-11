@@ -285,20 +285,26 @@ export function CobrancaAutomatica({ etapaAberta, aoAbrirEtapa }: { etapaAberta:
   };
 
   const mexerNaEtapa = (id: string, m: { hora?: string; ligada?: boolean }) => setRascunho((r) => ({ ...r, etapas: { ...r.etapas, [id]: { ...r.etapas[id], ...m } } }));
+  const nomeDaEtiqueta = (id: string) => (id ? etiquetas?.find((x) => x.id === id)?.name : undefined) ?? t("etiquetaPadrao");
   const mexerNaLigacao = (m: Partial<LigacaoDaRegua>) =>
     setRascunho((r) => {
       const base = (r.ligacao !== undefined ? r.ligacao : ligacaoGravada) ?? { parcelas: 2, dias: 15, mencionados: [], tagId: "", texto: "" };
-      return { ...r, ligacao: { ...base, ...m } };
+      const nova = { ...base, ...m };
+      // O texto PADRÃO cita a etiqueta ("tire a etiqueta X"): trocada a
+      // etiqueta, ele acompanha — texto escrito à mão fica como está.
+      if (m.tagId !== undefined && m.tagId !== base.tagId && base.texto === textoPadraoDaLigacao(nomeDaEtiqueta(base.tagId))) {
+        nova.texto = textoPadraoDaLigacao(nomeDaEtiqueta(m.tagId));
+      }
+      return { ...r, ligacao: nova };
     });
   const ligarLigacao = (ligar: boolean) => {
     if (!ligar) {
       setRascunho((r) => ({ ...r, ligacao: null }));
       return;
     }
-    const etiqueta = etiquetas?.[0];
     setRascunho((r) => ({
       ...r,
-      ligacao: ligacaoGravada ?? { parcelas: 2, dias: 15, mencionados: [], tagId: "", texto: textoPadraoDaLigacao(etiqueta?.name ?? t("etiquetaPadrao")) },
+      ligacao: ligacaoGravada ?? { parcelas: 2, dias: 15, mencionados: [], tagId: "", texto: textoPadraoDaLigacao(t("etiquetaPadrao")) },
     }));
   };
 
@@ -392,7 +398,7 @@ export function CobrancaAutomatica({ etapaAberta, aoAbrirEtapa }: { etapaAberta:
           <div className="min-w-0 space-y-1.5">
             <Label>{t("quemManda.numero")}</Label>
             <Select value={canalAtual} onValueChange={(v) => v && setRascunho((r) => ({ ...r, canalId: v }))}>
-              <SelectTrigger className="w-full">
+              <SelectTrigger className="w-full" aria-label={t("quemManda.numero")}>
                 <SelectValue>{canalAtual ? nomeDaConexao(canalAtual) : estado.canal.tipo === "varios" ? t("quemManda.varios") : t("quemManda.escolher")}</SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -527,7 +533,7 @@ export function CobrancaAutomatica({ etapaAberta, aoAbrirEtapa }: { etapaAberta:
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1.5 rounded-md border border-border p-3">
             <label className="flex items-center gap-2 text-[13px] font-medium text-foreground">
-              <Checkbox checked={uteisAtual === true} onCheckedChange={(v) => setRascunho((r) => ({ ...r, somenteDiasUteis: v === true }))} />
+              <Checkbox aria-label={t("regras.diasUteis")} checked={uteisAtual === true} onCheckedChange={(v) => setRascunho((r) => ({ ...r, somenteDiasUteis: v === true }))} />
               {t("regras.diasUteis")}
             </label>
             <p className="text-[11px] text-muted-foreground">{uteisAtual === null ? t("regras.diasUteisMisto") : t("regras.diasUteisAjuda")}</p>
@@ -579,6 +585,7 @@ export function CobrancaAutomatica({ etapaAberta, aoAbrirEtapa }: { etapaAberta:
                       .map((m) => (
                         <label key={m.user_id} className="flex items-center gap-2 text-xs text-foreground">
                           <Checkbox
+                            aria-label={m.full_name || t("semNome")}
                             checked={ligacaoAtual.mencionados.includes(m.user_id)}
                             onCheckedChange={(v) => mexerNaLigacao({ mencionados: v === true ? [...ligacaoAtual.mencionados, m.user_id] : ligacaoAtual.mencionados.filter((x) => x !== m.user_id) })}
                           />
@@ -591,7 +598,7 @@ export function CobrancaAutomatica({ etapaAberta, aoAbrirEtapa }: { etapaAberta:
               <div className="space-y-1.5">
                 <Label>{t("ligacao.etiqueta")}</Label>
                 <Select value={ligacaoAtual.tagId} onValueChange={(v) => v && mexerNaLigacao({ tagId: v })}>
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger className="w-full" aria-label={t("ligacao.etiqueta")}>
                     <SelectValue>{ligacaoAtual.tagId ? (etiquetas?.find((x) => x.id === ligacaoAtual.tagId)?.name ?? t("ligacao.etiquetaApagada")) : t("ligacao.escolherEtiqueta")}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
@@ -605,7 +612,7 @@ export function CobrancaAutomatica({ etapaAberta, aoAbrirEtapa }: { etapaAberta:
                 <p className="text-[11px] text-muted-foreground">{etiquetas === null ? t("ligacao.etiquetasFalharam") : t("ligacao.etiquetaAjuda")}</p>
               </div>
             </div>
-            <VariaveisProvider gatilho="asaas_cobranca_vencida" webhookId={null}>
+            <VariaveisProvider gatilho="asaas_cobranca_vencida" webhookId={null} escritorio={escritorioAtual.trim() || config.escritorioPadrao}>
               <CampoComVariaveis rotulo={t("ligacao.texto")} value={ligacaoAtual.texto} onChange={(texto) => mexerNaLigacao({ texto })} previa={false} ajuda={t("ligacao.textoAjuda")} />
             </VariaveisProvider>
             {ligacaoIncompleta && <p className="text-xs text-destructive">{t("ligacao.incompleta")}</p>}
