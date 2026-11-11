@@ -625,6 +625,20 @@ describe("varrerRegua — o lembrete do vencimento (D17)", () => {
     ]);
   });
 
+  it("dia em dias ÚTEIS e noite em dias CORRIDOS: no sábado o da noite sai — a releitura usa os dias do lembrete do grupo (Codex, PR #494)", async () => {
+    const e = estado({
+      automations: [automacao("a-0", "asaas_cobranca_vence_hoje", { hora_envio: "08:00" }, "Lembrete"), automacao("a-noite", "asaas_cobranca_vence_hoje", { hora_envio: "20:00", somente_dias_uteis: false }, "Lembrete · noite")],
+      cb_asaas_cobrancas: [cobranca("s1", "cus_a", { status: "PENDING", vencimento: "2026-09-12", vista_vencida_em: null })],
+    });
+    const respostas = { listas: {}, recursos: { "/payments/pay_s1": noAsaas("s1", "cus_a", { status: "PENDING", dueDate: "2026-09-12" }) } };
+    const sabado20h = new Date("2026-09-12T23:10:00Z"); // sábado, 20:10
+    const { d, disparos } = deps(e, respostas, { agora: sabado20h });
+    const r = await varrerRegua(dubleDoSupabase(e), CONTA, d);
+    expect(r.enviados).toBe(1);
+    expect(disparos.chamadas[0].context?.automation_id).toBe("a-noite");
+    expect(e.tabelas.cb_asaas_regua_envios[0]).toMatchObject({ tipo: "vence_hoje", marco: 1, resultado: "enviado" });
+  });
+
   it("quem PAGOU durante o dia não recebe o da noite: a releitura no Asaas o tira antes da trava", async () => {
     const e = estado({
       automations: [automacao("a-noite", "asaas_cobranca_vence_hoje", { hora_envio: "20:00" }, "Lembrete · noite")],

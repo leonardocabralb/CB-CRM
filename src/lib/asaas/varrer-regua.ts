@@ -952,7 +952,12 @@ export async function varrerRegua(admin: SupabaseClient, accountId: string, deps
       // junto) e não gasta GET no Asaas a cada ciclo do dia (Codex, PR #212).
       const aLembrar = await semLembreteTravado(admin, accountId, grupo.venceHoje, automacao.marco);
       if (aLembrar.length === 0) continue;
-      const venceHoje = await reconfirmar(admin, accountId, cliente, aLembrar, (p) => cabeNoLembrete(p, diasDoLembreteHoje, dia), vistoEm);
+      // ⚠️ Os dias do lembrete DESTE grupo (o do turno dele), a MESMA cerca
+      // de `agruparLembretes`: com o do dia em dias úteis e o da noite em dias
+      // corridos, a releitura pela regra do dia recusava as parcelas de
+      // sábado que a noite selecionou (Codex, PR #494).
+      const diasDoGrupo: ReadonlySet<string> = new Set(diasDoLembrete(dia, automacao.somenteDiasUteis));
+      const venceHoje = await reconfirmar(admin, accountId, cliente, aLembrar, (p) => cabeNoLembrete(p, diasDoGrupo, dia), vistoEm);
       if (venceHoje.length === 0) continue;
       if (!(await reguaAindaLigada(admin, accountId))) {
         saida.desligadaNoMeio = true;
