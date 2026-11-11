@@ -139,6 +139,82 @@ export function lerTrechosDaOpenAi(corpo: unknown): TrechoDoLado[] | null {
   return texto ? [{ inicio: 0, texto }] : [];
 }
 
+/** Um trecho com som do lado, em segundos do arquivo: `[começo, fim]`. */
+export type TrechoComSom = readonly [number, number];
+
+/** O pedaço do começo do arquivo onde mora o cabeçalho do Opus (a etiqueta). */
+const TETO_DO_CABECALHO = 256 * 1024;
+const ETIQUETA_DO_SOM = 'CB_SOM=';
+
+/**
+ * Os trechos com som que a máquina mediu no lado (a etiqueta `CB_SOM` do
+ * cabeçalho do Opus, `maquina-de-ligacoes/src/gravacao.ts`): `[]` = o lado
+ * todo em silêncio. `null` = sem a medição (máquina antiga, medição que
+ * falhou, etiqueta fora da forma) — aí nada se filtra, como antes.
+ *
+ * O cabeçalho é o pacote `OpusTags`: "OpusTags", o tamanho e o nome do
+ * programa, o número de etiquetas e cada uma como tamanho + "CHAVE=valor"
+ * (inteiros de 32 bits, little-endian).
+ */
+export function somDaGravacao(arquivo: Uint8Array): TrechoComSom[] | null {
+  const fim = Math.min(arquivo.length, TETO_DO_CABECALHO);
+  const magia = [...'OpusTags'].map((c) => c.charCodeAt(0));
+  let p = -1;
+  for (let i = 0; i + magia.length <= fim && p < 0; i++) {
+    if (magia.every((b, j) => arquivo[i + j] === b)) p = i + magia.length;
+  }
+  if (p < 0) return null;
+  const visao = new DataView(arquivo.buffer, arquivo.byteOffset, fim);
+  const inteiro = (): number | null => {
+    if (p + 4 > fim) return null;
+    const v = visao.getUint32(p, true);
+    p += 4;
+    return v;
+  };
+  const programa = inteiro();
+  if (programa === null) return null;
+  p += programa;
+  const quantas = inteiro();
+  if (quantas === null) return null;
+  const leitor = new TextDecoder();
+  for (let k = 0; k < Math.min(quantas, 64); k++) {
+    const tamanho = inteiro();
+    if (tamanho === null || p + tamanho > fim) return null;
+    const etiqueta = leitor.decode(arquivo.subarray(p, p + tamanho));
+    p += tamanho;
+    if (etiqueta.slice(0, ETIQUETA_DO_SOM.length).toUpperCase() === ETIQUETA_DO_SOM) {
+      return valorDoSom(etiqueta.slice(ETIQUETA_DO_SOM.length));
+    }
+  }
+  return null;
+}
+
+function valorDoSom(valor: string): TrechoComSom[] | null {
+  if (valor === 'nenhum') return [];
+  const trechos: TrechoComSom[] = [];
+  for (const parte of valor.split(',')) {
+    const m = /^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/.exec(parte);
+    if (!m || Number(m[1]) > Number(m[2])) return null;
+    trechos.push([Number(m[1]), Number(m[2])]);
+  }
+  return trechos;
+}
+
+/** A folga em volta do começo do trecho: o horário do provedor vem em segundos inteiros e erra um pouco. */
+const FOLGA_ANTES_S = 2;
+const FOLGA_DEPOIS_S = 3;
+
+/**
+ * ⚠️ O Gemini INVENTA fala sobre áudio sem voz (11/11/2026: um lado só com
+ * bipe e silêncio virou um monólogo inteiro). Fica só o trecho que começa
+ * perto de som medido; o lado todo em silêncio fica sem trecho nenhum. Sem a
+ * medição (`null`), tudo fica.
+ */
+export function soComSom(trechos: TrechoDoLado[], som: TrechoComSom[] | null): TrechoDoLado[] {
+  if (!som) return trechos;
+  return trechos.filter((t) => som.some(([a, b]) => a <= t.inicio + FOLGA_DEPOIS_S && b >= t.inicio - FOLGA_ANTES_S));
+}
+
 /**
  * Os dois lados num diálogo, pela ordem do horário. Trechos seguidos da mesma
  * pessoa viram um só (o horário é o do primeiro): o diálogo lê como turnos de

@@ -60,6 +60,10 @@ desenho: §8.12 e §8.13 do plano.
   fragmento do PulseAudio NÃO mudam nada. Sem atendimento, a pasta é
   apagada. O "encerrada" vai ao CRM antes de a gravação fechar; a linha fica
   ocupada até ela fechar (a cauda de uma não pode ter a voz da seguinte).
+  Depois do corte, cada LADO ganha a etiqueta `CB_SOM` (onde há som, medido
+  pelo `silencedetect`): é o que impede o Gemini de inventar fala no lado mudo
+  (`ligacoes-transcricao.md`). Medir ou etiquetar que falha manda o arquivo
+  sem etiqueta, nunca segura a gravação.
 - ⚠️⚠️ **Um perfil por contêiner, nunca dois no mesmo `/perfil`**: a trava do
   Chrome é apagada no `iniciar.sh`, e dois Chromes na mesma sessão a
   corrompem.

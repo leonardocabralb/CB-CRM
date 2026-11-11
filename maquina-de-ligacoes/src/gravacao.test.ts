@@ -4,12 +4,16 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   MARGEM_DO_CORTE_MS,
+  argumentosDaEtiqueta,
+  argumentosDaMedicao,
   argumentosDoCorte,
   argumentosDoFfmpeg,
   comecarGravacao,
   enviarGravacoes,
   iniciosDasEntradas,
   segundosACortar,
+  trechosComSom,
+  valorDaEtiqueta,
 } from './gravacao.js'
 
 const SEGREDO = 'segredo-de-teste-com-mais-de-32-caracteres'
@@ -86,6 +90,58 @@ describe('o corte do que veio antes do atendimento (medido em 11/11/2026)', () =
   it('o corte copia o fluxo (sem recodificar) a partir do segundo dado', () => {
     expect(argumentosDoCorte('/g/lig-1/estereo.ogg', '/g/lig-1/estereo.ogg.corte.ogg', 10.5).join(' ')).toBe(
       '-hide_banner -loglevel error -ss 10.500 -i /g/lig-1/estereo.ogg -c copy -y /g/lig-1/estereo.ogg.corte.ogg',
+    )
+  })
+})
+
+describe('o som de cada lado (a etiqueta CB_SOM, 11/11/2026)', () => {
+  // As linhas na forma que o ffmpeg imprime (o prefixo muda de versão).
+  const duracao = '  Duration: 00:00:29.91, start: -0.993521, bitrate: 11 kb/s'
+  const silencio = (inicio: number, fim?: number) =>
+    fim === undefined
+      ? [`[silencedetect @ 0x55d] silence_start: ${inicio}`]
+      : [`[Parsed_silencedetect_0 @ 0xa73] silence_start: ${inicio}`, `[Parsed_silencedetect_0 @ 0xa73] silence_end: ${fim} | silence_duration: ${fim - inicio}`]
+
+  it('mede pelo silencedetect, sem recodificar nada', () => {
+    expect(argumentosDaMedicao('/g/lig-1/cliente.ogg').join(' ')).toBe(
+      '-hide_banner -nostats -i /g/lig-1/cliente.ogg -af silencedetect=n=-40dB:d=0.5 -f null -',
+    )
+  })
+
+  it('o som é o que sobra entre os silêncios, até a duração', () => {
+    expect(trechosComSom([duracao, ...silencio(0, 0.609646), ...silencio(1.010312, 2.35375), ...silencio(26.9, 29.91)])).toEqual([
+      [0.6, 1.1],
+      [2.3, 26.9],
+    ])
+  })
+
+  it('o silêncio que vai até o fim pode vir sem silence_end (ffmpeg 5.1)', () => {
+    expect(trechosComSom([duracao, ...silencio(1, 2), ...silencio(3.2)])).toEqual([
+      [0, 1],
+      [2, 3.2],
+    ])
+    expect(trechosComSom([duracao, ...silencio(20)])).toEqual([[0, 20]])
+  })
+
+  it('lado todo em silêncio: nenhum trecho; sem silêncio nenhum: o arquivo inteiro', () => {
+    expect(trechosComSom(['  Duration: 00:00:06.01, start: 0.000000', ...silencio(0, 6)])).toEqual([])
+    expect(trechosComSom(['  Duration: 00:00:06.01, start: 0.000000', ...silencio(0)])).toEqual([])
+    expect(trechosComSom(['  Duration: 00:01:02.50, start: 0.000000'])).toEqual([[0, 62.5]])
+  })
+
+  it('sem a duração não dá para medir: nulo (o arquivo vai sem etiqueta)', () => {
+    expect(trechosComSom(silencio(1, 2))).toBeNull()
+    expect(trechosComSom([])).toBeNull()
+  })
+
+  it('o valor da etiqueta: uma casa decimal, ou "nenhum" (o ffmpeg descarta a vazia)', () => {
+    expect(valorDaEtiqueta([[0, 1.2], [3.4, 8.9]])).toBe('0.0-1.2,3.4-8.9')
+    expect(valorDaEtiqueta([])).toBe('nenhum')
+  })
+
+  it('a etiqueta entra copiando o fluxo (o áudio não muda)', () => {
+    expect(argumentosDaEtiqueta('/g/a.ogg', '/g/a.ogg.som.ogg', 'nenhum').join(' ')).toBe(
+      '-hide_banner -loglevel error -i /g/a.ogg -map 0 -c copy -metadata CB_SOM=nenhum -y /g/a.ogg.som.ogg',
     )
   })
 })

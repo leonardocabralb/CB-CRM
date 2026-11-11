@@ -255,3 +255,6 @@ qualquer uma é pergunta ao operador.
   vira um cartão no fio, com o resumo e os botões "Ouvir" e "Ver
   transcrição"; as outras ligações continuam pílula
   (`ligacoes-transcricao.md`).
+- Fala inventada na transcrição da ligação (11/11/2026): proteção MÍNIMA, sem
+  precisar testar tudo de novo — o trecho sem som medido por perto sai; som
+  sem voz (um bipe) ainda passa (`ligacoes-transcricao.md`).

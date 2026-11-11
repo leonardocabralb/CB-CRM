@@ -51,6 +51,8 @@ import {
   lerTrechosDoGemini,
   limparResumo,
   MODELO_DA_LIGACAO_OPENAI,
+  soComSom,
+  somDaGravacao,
   type Trecho,
   type TrechoDoLado,
 } from './dialogo';
@@ -407,7 +409,12 @@ export async function transcreverLigacao(db: SupabaseClient, ligacaoId: string):
       return falhar(db, linha, claimIso, cliente.erro ?? atendente.erro ?? 'resposta vazia');
     }
 
-    const trechos: Trecho[] = intercalar(cliente.trechos, atendente.trechos);
+    // ⚠️ O trecho sem som medido por perto sai: o provedor inventa fala sobre
+    // áudio sem voz (`soComSom`). Sem a etiqueta da máquina, tudo fica.
+    const trechos: Trecho[] = intercalar(
+      soComSom(cliente.trechos, somDaGravacao(audioDoCliente)),
+      soComSom(atendente.trechos, somDaGravacao(audioDoAtendente)),
+    );
     let resumo: string | null = null;
     if (trechos.length > 0) {
       const r = await resumir(provedor, chave, dialogoEmTexto(trechos, ROTULOS_DO_RESUMO));

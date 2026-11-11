@@ -14,7 +14,7 @@ ligação de WhatsApp do que a telefônica. Vizinho deste plano:
 | 1    | Teste A: a máquina liga, com áudio de arquivo              | em curso (10/11/2026)  |
 | 2    | Teste B: o áudio no navegador do atendente                 | ✅ 10/11/2026 (falta P8) |
 | 3    | Decidir a máquina: upgrade para a KVM 4 × segunda VPS      | ✅ 10/11/2026: fica na VPS atual (D8) |
-| 4    | Ligar e atender pelo CRM: botão, toque, gravação, transcrição | desenho pronto (§8), decisões tomadas (§8.10); ✅ 4a pronta e testada em 10/11/2026 (§8.13); ✅ 4b no ar e testada ao vivo em 11/11/2026 (§8.14); ✅ 4c (a tela) no ar e testada ao vivo em 11/11/2026 (#500, §8.15); ✅ 4d (transcrição e resumo, §8.16) e 4e (o interruptor, o QR, o Reparear, os alarmes e a sentinela, §8.17) publicadas JUNTAS em 11/11/2026 (D18); teste ao vivo no mesmo dia: interruptor, ligação, gravação e transcrição OK, e o achado do Gemini que inventa fala sobre áudio sem voz (proteção proposta); faltam o toque com o interruptor desligado e o Reparear (§8.17) |
+| 4    | Ligar e atender pelo CRM: botão, toque, gravação, transcrição | desenho pronto (§8), decisões tomadas (§8.10); ✅ 4a pronta e testada em 10/11/2026 (§8.13); ✅ 4b no ar e testada ao vivo em 11/11/2026 (§8.14); ✅ 4c (a tela) no ar e testada ao vivo em 11/11/2026 (#500, §8.15); ✅ 4d (transcrição e resumo, §8.16) e 4e (o interruptor, o QR, o Reparear, os alarmes e a sentinela, §8.17) publicadas JUNTAS em 11/11/2026 (D18); teste ao vivo no mesmo dia: interruptor, ligação, gravação e transcrição OK, toque com o interruptor desligado OK; achado: o Gemini inventa fala sobre áudio sem voz (proteção mínima: a etiqueta do som); falta o Reparear (§8.17) |
 | 5    | Atender pelo CRM (ligação recebida)                        | incorporada à Fase 4   |
 
 ## 1. Por que uma máquina central (o que foi descartado)
@@ -1596,21 +1596,33 @@ Previdenciário):**
   canal do atendente só tem o bipe e silêncio; a instrução "sem nenhuma fala,
   devolva a lista vazia" não segurou. Numa ligação real, o lado em silêncio ou
   só com ruído corre o mesmo risco — e o diálogo entra no contexto da IA.
-  **Proposta (espera o "pode" do operador):** a máquina mede os trechos com
-  som de cada lado (`silencedetect`) e os manda com a gravação; o CRM não
-  transcreve o lado sem som e descarta o trecho que o som não cobre (pega
-  também o bipe: a fala estimada de um trecho tem de estar coberta por som).
-  Máquina, migration e CRM: fase própria.
+  **A proteção, MÍNIMA por decisão do operador** ("só o mínimo, sem
+  precisar testar tudo de novo"): a máquina mede onde há som em cada lado
+  (`silencedetect`, −40 dB, silêncio de 0,5 s) e grava a etiqueta `CB_SOM` no
+  cabeçalho do Opus do próprio arquivo — sem rota, contrato ou migration
+  novos; o CRM descarta o trecho que não começa perto de som (2 s antes, 3 s
+  depois), e o lado mudo fica sem trecho. Sem a etiqueta, nada muda. Provada
+  com o ffmpeg de verdade nas duas gravações do teste e num arquivo mudo.
+  Limite escrito: detecta SOM, não voz — som sem voz com ritmo (o bipe do
+  microfone de teste) ainda passa; pegar isso exigiria detectar voz.
+  Descartado por ser mais do que o mínimo: a máquina mandar os trechos por
+  cabeçalho e o CRM guardá-los numa coluna (migration), e a medição pelo
+  tamanho dos pacotes do Opus (medido: no silêncio ele ainda gasta ~1 kB/s,
+  perto da fala).
 - **Pedidos do operador na hora** (#507): o interruptor desligado era quase
   invisível (o `Switch` do app inteiro passou a cinza no desligado, e o
   inativo, que nunca esmaecia, esmaece) e a ligação com o que ouvir e ler
   ganhou destaque — vira um CARTÃO no fio, com o resumo e os botões "Ouvir" e
   "Ver transcrição"; o resto segue pílula.
 
-**Falta:** o toque com o interruptor desligado (o cartão some); o Reparear,
+- **Toque com o interruptor desligado:** o cartão que tocava sumiu ao
+  desligar (o conserto do Codex no #506), e o interruptor voltou a ligar.
+
+**Falta:** o Reparear,
 que mede os seletores do "Desconectar" e do QR vencido (exige o celular da
-Previdenciário à mão para ler o QR novo); o alarme (opcional); a proteção
-contra a fala inventada.
+Previdenciário à mão para ler o QR novo); o alarme (opcional); a imagem nova da
+máquina com a etiqueta do som e uma ligação com um lado mudo, para ver o
+filtro ao vivo.
 
 ## 9. Fase 5: atender pelo CRM
 

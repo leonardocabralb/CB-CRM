@@ -26,6 +26,13 @@
  *   ~0,3 s). Sem o carimbo, a gravação fica inteira;
  * - parar espera a CAUDA antes do SIGINT;
  * - sem atendimento, nada fica: a pasta é apagada.
+ *
+ * ⚠️ O SOM DE CADA LADO (11/11/2026): o Gemini INVENTOU um monólogo inteiro
+ * sobre um lado que só tinha um bipe e silêncio. Depois do corte, cada lado
+ * passa pelo `silencedetect`, e os trechos com som vão numa etiqueta do
+ * próprio Ogg (`CB_SOM`, no cabeçalho do Opus): o CRM descarta o trecho
+ * transcrito sem som por perto (`soComSom`, `dialogo.ts`). Medir ou etiquetar
+ * que falha deixa o arquivo como está (o CRM, sem a etiqueta, não filtra).
  */
 import { spawn } from 'node:child_process'
 import { mkdir, readFile, readdir, rename, rm, rmdir, stat } from 'node:fs/promises'
@@ -111,6 +118,103 @@ async function cortarInicio(caminho: string, segundos: number, registrar: (linha
     registrar(`gravação: o corte de ${caminho} falhou; fica inteira`)
   } catch (erro) {
     registrar(`gravação: o corte de ${caminho} falhou (${erro instanceof Error ? erro.message : String(erro)}); fica inteira`)
+  }
+  await rm(provisorio, { force: true }).catch(() => {})
+}
+
+/** A etiqueta do Ogg com os trechos com som (o CRM a lê: `somDaGravacao`, `dialogo.ts`). */
+export const ETIQUETA_DO_SOM = 'CB_SOM'
+/** Abaixo disto é silêncio: o ruído da sala fica em ~−60 dB, a fala passa de −35 (medido em 11/11/2026). */
+const LIMIAR_DO_SILENCIO = '-40dB'
+/** Silêncio mais curto que isto é pausa da fala, não silêncio. */
+const SILENCIO_MINIMO_S = 0.5
+
+export function argumentosDaMedicao(arquivo: string): string[] {
+  return [
+    '-hide_banner',
+    '-nostats',
+    '-i',
+    arquivo,
+    '-af',
+    `silencedetect=n=${LIMIAR_DO_SILENCIO}:d=${SILENCIO_MINIMO_S}`,
+    '-f',
+    'null',
+    '-',
+  ]
+}
+
+/**
+ * Os trechos COM som (segundos), do que o `silencedetect` imprimiu: o
+ * complemento dos silêncios dentro da duração. Nulo = sem a duração (não dá
+ * para dizer onde acaba o último trecho). O silêncio que vai até o fim pode
+ * vir sem `silence_end` (o ffmpeg 5.1 da imagem não o imprime no fim).
+ */
+export function trechosComSom(linhas: readonly string[]): Array<[number, number]> | null {
+  let duracao: number | null = null
+  const silencios: Array<[number, number | null]> = []
+  for (const linha of linhas) {
+    const d = /Duration: (\d+):(\d{2}):(\d{2}(?:\.\d+)?)/.exec(linha)
+    if (d && duracao === null) duracao = Number(d[1]) * 3600 + Number(d[2]) * 60 + Number(d[3])
+    const comeco = /silence_start: (-?\d+(?:\.\d+)?)/.exec(linha)
+    if (comeco) silencios.push([Math.max(0, Number(comeco[1])), null])
+    const fim = /silence_end: (-?\d+(?:\.\d+)?)/.exec(linha)
+    const aberto = silencios[silencios.length - 1]
+    if (fim && aberto && aberto[1] === null) aberto[1] = Number(fim[1])
+  }
+  if (duracao === null || !Number.isFinite(duracao)) return null
+  const som: Array<[number, number]> = []
+  let desde = 0
+  for (const [inicio, fim] of silencios) {
+    if (inicio > desde) som.push([desde, Math.min(inicio, duracao)])
+    desde = Math.max(desde, fim ?? duracao)
+  }
+  if (desde < duracao) som.push([desde, duracao])
+  // Uma casa decimal. Sobra de menos de 50 ms não é som: o `silence_end` do
+  // fim sai em 6 s num arquivo cuja duração diz 6,01 (medido no ffmpeg 8).
+  return som
+    .filter(([a, b]) => b - a >= 0.05)
+    .map(([a, b]): [number, number] => [Math.floor(a * 10) / 10, Math.ceil(b * 10) / 10])
+}
+
+/** O valor da etiqueta: `0.0-1.2,3.4-8.9`, ou `nenhum` (o ffmpeg descarta etiqueta vazia). */
+export function valorDaEtiqueta(som: ReadonlyArray<readonly [number, number]>): string {
+  return som.length ? som.map(([a, b]) => `${a.toFixed(1)}-${b.toFixed(1)}`).join(',') : 'nenhum'
+}
+
+export function argumentosDaEtiqueta(origem: string, destino: string, valor: string): string[] {
+  return ['-hide_banner', '-loglevel', 'error', '-i', origem, '-map', '0', '-c', 'copy', '-metadata', `${ETIQUETA_DO_SOM}=${valor}`, '-y', destino]
+}
+
+/** Roda o ffmpeg; devolve a saída de erro (onde ele escreve) e se saiu com 0. Nunca lança. */
+function rodarFfmpeg(argumentos: string[]): Promise<{ ok: boolean; saida: string }> {
+  return new Promise((pronto) => {
+    const processo = spawn('ffmpeg', argumentos, { stdio: ['ignore', 'ignore', 'pipe'] })
+    let saida = ''
+    processo.stderr.setEncoding('utf8')
+    // Só o começo importa para a duração; os silêncios vêm em linhas curtas.
+    processo.stderr.on('data', (texto: string) => {
+      if (saida.length < 2_000_000) saida += texto
+    })
+    processo.once('error', () => pronto({ ok: false, saida }))
+    processo.once('exit', (codigo) => pronto({ ok: codigo === 0, saida }))
+  })
+}
+
+/** Mede o som de um lado e o grava na etiqueta, no lugar. Falhou, o arquivo fica como está. Nunca lança. */
+async function marcarSom(caminho: string, registrar: (linha: string) => void): Promise<void> {
+  const provisorio = `${caminho}.som.ogg`
+  try {
+    const medida = await rodarFfmpeg(argumentosDaMedicao(caminho))
+    const som = medida.ok ? trechosComSom(medida.saida.split('\n')) : null
+    if (!som) {
+      registrar(`gravação: a medição do som de ${caminho} falhou; vai sem etiqueta`)
+      return
+    }
+    const escrita = await rodarFfmpeg(argumentosDaEtiqueta(caminho, provisorio, valorDaEtiqueta(som)))
+    if (escrita.ok && (await stat(provisorio)).size > 0) return await rename(provisorio, caminho)
+    registrar(`gravação: a etiqueta do som de ${caminho} falhou; vai sem etiqueta`)
+  } catch (erro) {
+    registrar(`gravação: o som de ${caminho} falhou (${erro instanceof Error ? erro.message : String(erro)}); vai sem etiqueta`)
   }
   await rm(provisorio, { force: true }).catch(() => {})
 }
@@ -213,6 +317,8 @@ export async function comecarGravacao(
         const segundos = segundosACortar(atendidaEm, inicio)
         if (segundos !== null) await cortarInicio(join(pasta, nome), segundos, registrar)
       }
+      // Depois do corte: o horário da etiqueta é o do arquivo que vai ao CRM.
+      for (const nome of ['cliente.ogg', 'atendente.ogg']) await marcarSom(join(pasta, nome), registrar)
     },
   }
 }
