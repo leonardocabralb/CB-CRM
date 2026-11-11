@@ -12,6 +12,12 @@
 // ⚠️ A tela diz QUANDO a série para (o cliente respondeu, a equipe assumiu, o
 // card saiu da etapa, perto dos lembretes da reunião): é o que o operador
 // precisa saber antes de ligar.
+//
+// 10/11/2026 (o operador não entendia quantas tentativas e de quanto em
+// quanto tempo): a cadência é uma LISTA numerada ("Tentativa 2 · 1 h depois
+// da resposta do agente"), com a linha do tempo em cima e "Nova tentativa"
+// embaixo; quando para vira chips, com o texto inteiro ao abrir. O Salvar é o
+// da barra do detalhe (`registrarSalvar`).
 // ============================================================
 
 import { useEffect, useMemo, useState } from 'react';
@@ -26,8 +32,8 @@ import { Switch } from '@/components/ui/switch';
 import { CADENCIA_PADRAO, cadenciaValida, LIMITES_DA_RETOMADA } from '@/lib/ia-agentes/retomada';
 import { cn } from '@/lib/utils';
 import { acrescentarIntervalo, retomadaMudou, type RascunhoDaAba } from './rascunho';
-import { textoDoCodigo, textoDoIntervalo } from './textos';
-import type { ConfigDaRetomada, IaAgente } from './tipos';
+import { PARADAS_A_VISTA, textoDoCodigo, textoDoIntervalo } from './textos';
+import type { ConfigDaRetomada, IaAgente, SalvarDaAba } from './tipos';
 
 const UNIDADES = ['min', 'h', 'd'] as const;
 type Unidade = (typeof UNIDADES)[number];
@@ -43,6 +49,7 @@ export function RetomadaDoAgente({
   aoSalvar,
   aoMudarNaoSalvo,
   aoMudarRascunho,
+  registrarSalvar,
 }: {
   agente: IaAgente;
   aoSalvar: (novo: IaAgente) => void;
@@ -50,12 +57,13 @@ export function RetomadaDoAgente({
   aoMudarNaoSalvo?: (naoSalvo: boolean) => void;
   /** Avisa o detalhe do que o Salvar mandaria agora: é o RASCUNHO que o Playground testa (DC4). */
   aoMudarRascunho?: (rascunho: RascunhoDaAba | null) => void;
+  /** Entrega ao detalhe o Salvar desta aba (a barra de salvar o chama). */
+  registrarSalvar?: (salvar: SalvarDaAba | null) => void;
 }) {
   const t = useTranslations('IaAgentes');
   const [rascunho, setRascunho] = useState<ConfigDaRetomada>(() => copiar(agente.retomada));
   const [valor, setValor] = useState('');
   const [unidade, setUnidade] = useState<Unidade>('h');
-  const [salvando, setSalvando] = useState(false);
 
   const naoSalvo = retomadaMudou(agente.retomada, rascunho);
   useEffect(() => {
@@ -74,7 +82,6 @@ export function RetomadaDoAgente({
 
   const janelaValida =
     HORA.test(rascunho.janela.inicio) && HORA.test(rascunho.janela.fim) && rascunho.janela.inicio < rascunho.janela.fim;
-  const podeSalvar = naoSalvo && !salvando && janelaValida && cadenciaValida(rascunho.cadencia);
   const ehPadrao =
     rascunho.cadencia.length === CADENCIA_PADRAO.length && rascunho.cadencia.every((m, i) => m === CADENCIA_PADRAO[i]);
 
@@ -94,9 +101,17 @@ export function RetomadaDoAgente({
     setValor('');
   }
 
-  async function salvar() {
-    if (!podeSalvar) return;
-    setSalvando(true);
+  /** O Salvar desta aba (a barra do detalhe o chama): `true` = gravou ou não havia o que gravar. */
+  async function salvar(): Promise<boolean> {
+    if (!naoSalvo) return true;
+    if (!janelaValida) {
+      toast.error(t('retomada.janelaInvalida'));
+      return false;
+    }
+    if (!cadenciaValida(rascunho.cadencia)) {
+      toast.error(t('retomada.invalido'));
+      return false;
+    }
     try {
       const res = await fetch(`/api/cb/ia/agentes/${agente.id}`, {
         method: 'PATCH',
@@ -106,23 +121,30 @@ export function RetomadaDoAgente({
       const corpo = (await res.json().catch(() => ({}))) as { agente?: IaAgente; code?: string; error?: string };
       if (!res.ok || !corpo.agente) {
         toast.error(textoDoCodigo(t, corpo.code, corpo.error));
-        return;
+        return false;
       }
       toast.success(t('retomada.salvo'));
       setRascunho(copiar(corpo.agente.retomada));
       aoSalvar(corpo.agente);
+      return true;
     } catch {
       toast.error(t('erro.generico'));
-    } finally {
-      setSalvando(false);
+      return false;
     }
   }
+  // A barra de salvar do detalhe chama o Salvar MAIS RECENTE (o do último render).
+  useEffect(() => {
+    registrarSalvar?.(salvar);
+  });
+  useEffect(() => () => registrarSalvar?.(null), [registrarSalvar]);
+
+  const ultima = rascunho.cadencia.at(-1);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <p className="text-sm text-muted-foreground">{t('retomada.explicacao')}</p>
 
-      <div className="flex items-center justify-between gap-3 rounded-md border border-border p-3">
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
         <div className="min-w-0">
           <p className="text-sm font-medium text-foreground">{t('retomada.ligar')}</p>
           <p className="text-xs text-muted-foreground">{t('retomada.ligarDica')}</p>
@@ -134,9 +156,14 @@ export function RetomadaDoAgente({
         />
       </div>
 
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="text-sm font-semibold text-foreground">{t('retomada.cadencia')}</h3>
+      <section className={cn('space-y-3 rounded-lg border border-border p-4', !rascunho.ativa && 'opacity-70')}>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0 space-y-0.5">
+            <h3 className="text-sm font-semibold text-foreground">
+              {t('retomada.tentativas', { n: rascunho.cadencia.length, max: LIMITES_DA_RETOMADA.tentativasMax })}
+            </h3>
+            <p className="text-xs text-muted-foreground">{t('retomada.tentativasDica')}</p>
+          </div>
           {!ehPadrao ? (
             <Button
               variant="ghost"
@@ -148,78 +175,101 @@ export function RetomadaDoAgente({
             </Button>
           ) : null}
         </div>
-        <p className="text-xs text-muted-foreground">
-          {t('retomada.cadenciaDica', { max: LIMITES_DA_RETOMADA.tentativasMax })}
-        </p>
-        <ul className="flex flex-wrap gap-1.5" aria-label={t('retomada.cadencia')}>
+
+        {/* A linha do tempo: a resposta do agente e, depois dela, cada tentativa. */}
+        <div className="flex flex-wrap items-center gap-y-2 text-xs" aria-hidden>
+          <span className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-muted-foreground">
+            {t('retomada.linhaInicio')}
+          </span>
+          {rascunho.cadencia.map((minutos) => (
+            <span key={minutos} className="flex items-center">
+              <span className="mx-1 h-px w-4 bg-border sm:w-6" />
+              <span className="rounded-full border border-primary/40 bg-primary/5 px-2 py-0.5 text-foreground">
+                +{textoDoIntervalo(t, minutos)}
+              </span>
+            </span>
+          ))}
+        </div>
+
+        <ol className="divide-y divide-border rounded-md border border-border" aria-label={t('retomada.cadencia')}>
           {rascunho.cadencia.map((minutos, i) => (
-            <li
-              key={minutos}
-              className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 py-0.5 pr-1 pl-2.5 text-xs text-foreground"
-              title={t('retomada.tentativa', { n: i + 1 })}
-            >
-              {textoDoIntervalo(t, minutos)}
-              <button
-                type="button"
-                className="rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
+            <li key={minutos} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+              <span className="min-w-0">
+                <span className="font-medium text-foreground">{t('retomada.tentativa', { n: i + 1 })}</span>
+                <span className="text-muted-foreground">
+                  {' · '}
+                  {t('retomada.depoisDaResposta', { tempo: textoDoIntervalo(t, minutos) })}
+                </span>
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-muted-foreground"
                 aria-label={t('retomada.remover', { tempo: textoDoIntervalo(t, minutos) })}
                 // A cadência tem pelo menos UMA tentativa (para desligar, a chave).
                 disabled={rascunho.cadencia.length <= LIMITES_DA_RETOMADA.tentativasMin}
                 onClick={() => setRascunho((x) => ({ ...x, cadencia: x.cadencia.filter((m) => m !== minutos) }))}
               >
-                <X className="size-3" />
-              </button>
+                <X className="size-3.5" />
+              </Button>
             </li>
           ))}
-        </ul>
-        <div className="flex flex-wrap items-center gap-2">
-          <Label htmlFor="retomada-valor" className="sr-only">
-            {t('retomada.novoIntervalo')}
-          </Label>
-          <Input
-            id="retomada-valor"
-            inputMode="numeric"
-            className="w-20"
-            value={valor}
-            placeholder={t('retomada.novoIntervalo')}
-            onChange={(e) => setValor(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                acrescentar();
-              }
-            }}
-          />
-          <div className="flex gap-1" role="group" aria-label={t('retomada.unidadeDoIntervalo')}>
-            {UNIDADES.map((u) => (
-              <button
-                key={u}
-                type="button"
-                aria-pressed={unidade === u}
-                onClick={() => setUnidade(u)}
-                className={cn(
-                  'rounded-md border px-2 py-1 text-xs',
-                  unidade === u ? 'border-primary bg-primary/5' : 'border-border text-muted-foreground'
-                )}
-              >
-                {t(`retomada.unidadeNome.${u}`)}
-              </button>
-            ))}
+        </ol>
+
+        {rascunho.cadencia.length < LIMITES_DA_RETOMADA.tentativasMax ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Label htmlFor="retomada-valor" className="text-sm text-foreground">
+              {t('retomada.novaTentativa')}
+            </Label>
+            <Input
+              id="retomada-valor"
+              inputMode="numeric"
+              className="w-20"
+              value={valor}
+              placeholder={t('retomada.novoIntervalo')}
+              onChange={(e) => setValor(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  acrescentar();
+                }
+              }}
+            />
+            <div className="flex gap-1" role="group" aria-label={t('retomada.unidadeDoIntervalo')}>
+              {UNIDADES.map((u) => (
+                <button
+                  key={u}
+                  type="button"
+                  aria-pressed={unidade === u}
+                  onClick={() => setUnidade(u)}
+                  className={cn(
+                    'rounded-md border px-2 py-1 text-xs',
+                    unidade === u ? 'border-primary bg-primary/5' : 'border-border text-muted-foreground'
+                  )}
+                >
+                  {t(`retomada.unidadeNome.${u}`)}
+                </button>
+              ))}
+            </div>
+            <span className="text-xs text-muted-foreground">{t('retomada.depoisDaRespostaCurto')}</span>
+            <Button variant="outline" size="sm" onClick={acrescentar} disabled={!valor.trim()}>
+              <Plus className="size-3.5" /> {t('retomada.adicionar')}
+            </Button>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={acrescentar}
-            disabled={!valor.trim() || rascunho.cadencia.length >= LIMITES_DA_RETOMADA.tentativasMax}
-          >
-            <Plus className="size-3.5" /> {t('retomada.adicionar')}
-          </Button>
-        </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">{t('retomada.cheia', { max: LIMITES_DA_RETOMADA.tentativasMax })}</p>
+        )}
+        <p className="text-xs text-muted-foreground">
+          {t('retomada.limitesDaCadencia')}
+          {ultima !== undefined ? ` ${t('retomada.ultimaEm', { tempo: textoDoIntervalo(t, ultima) })}` : ''}
+        </p>
       </section>
 
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold text-foreground">{t('retomada.janela')}</h3>
-        <p className="text-xs text-muted-foreground">{t('retomada.janelaDica')}</p>
+      <section className={cn('space-y-3 rounded-lg border border-border p-4', !rascunho.ativa && 'opacity-70')}>
+        <div className="space-y-0.5">
+          <h3 className="text-sm font-semibold text-foreground">{t('retomada.janela')}</h3>
+          <p className="text-xs text-muted-foreground">{t('retomada.janelaDica')}</p>
+        </div>
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <Input
             type="time"
@@ -245,15 +295,21 @@ export function RetomadaDoAgente({
         ) : null}
       </section>
 
-      <p className="rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-        {t('retomada.paradas')}
-      </p>
-
-      <div className="flex justify-end border-t border-border pt-4">
-        <Button onClick={() => void salvar()} disabled={!podeSalvar}>
-          {t('retomada.salvar')}
-        </Button>
-      </div>
+      {/* Quando a série para sozinha: o resumo à vista, o texto inteiro ao abrir. */}
+      <section className="space-y-2 rounded-lg border border-border p-4">
+        <h3 className="text-sm font-semibold text-foreground">{t('retomada.paraQuando')}</h3>
+        <ul className="flex flex-wrap gap-1.5">
+          {PARADAS_A_VISTA.map((p) => (
+            <li key={p} className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-xs text-foreground">
+              {t(`retomada.para.${p}`)}
+            </li>
+          ))}
+        </ul>
+        <details className="text-xs text-muted-foreground">
+          <summary className="cursor-pointer hover:text-foreground">{t('retomada.paradasDetalhe')}</summary>
+          <p className="mt-1.5">{t('retomada.paradas')}</p>
+        </details>
+      </section>
     </div>
   );
 }

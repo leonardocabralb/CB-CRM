@@ -32,6 +32,12 @@ export interface GenerateArgs {
    * Playground); as outras chamadas seguem no global.
    */
   tetoMs?: number
+  /**
+   * NOSSO (10/11/2026): devolve também o RESUMO do raciocínio, onde o modelo
+   * já raciocina por padrão (Anthropic família 5, Gemini 2.5+). Só o
+   * Playground passa; o turno e a retomada, nunca — o pedido deles não muda.
+   */
+  mostrarRaciocinio?: boolean
 }
 
 /**
@@ -50,9 +56,10 @@ export async function generateReply(args: GenerateArgs): Promise<GenerateResult>
     systemPartes,
     messages,
     timeoutMs,
+    ...(args.mostrarRaciocinio === true ? { raciocinio: true } : {}),
   }
 
-  let result: { text: string; usage: AiUsage | null }
+  let result: { text: string; usage: AiUsage | null; raciocinio?: string }
   switch (config.provider) {
     case 'openai':
       result = await generateOpenAi(providerArgs)
@@ -70,7 +77,8 @@ export async function generateReply(args: GenerateArgs): Promise<GenerateResult>
       })
   }
 
-  return parseGeneration(result.text, result.usage)
+  const gerada = parseGeneration(result.text, result.usage)
+  return result.raciocinio ? { ...gerada, raciocinio: result.raciocinio } : gerada
 }
 
 /**

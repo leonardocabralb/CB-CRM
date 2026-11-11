@@ -150,3 +150,10 @@ export async function buscarChaves(): Promise<ChavesDaConta> {
 /** Os modelos de partida (D do plano, 5.9): as instruções e regras moram no dicionário. */
 export const MODELOS_DE_PARTIDA = ['em_branco', 'triagem', 'cobranca', 'financeiro'] as const
 export type ModeloDePartida = (typeof MODELOS_DE_PARTIDA)[number]
+
+/**
+ * O Salvar de uma aba do agente (10/11/2026): a barra de salvar do detalhe o
+ * chama. `true` = gravou, ou não havia o que gravar; `false` = não gravou (a
+ * própria aba já disse por quê).
+ */
+export type SalvarDaAba = () => Promise<boolean>

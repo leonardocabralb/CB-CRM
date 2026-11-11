@@ -127,7 +127,7 @@ describe('Gemini', () => {
     const com = (name: string, metodos = ['generateContent']) => ehModeloDeTextoDoGemini({ name, supportedGenerationMethods: metodos })
     expect(com('models/gemini-3.8-flash')).toBe(true)
     expect(com('models/gemini-3.8-flash', ['countTokens'])).toBe(false)
-    for (const fora of ['gemini-embedding-9', 'imagen-9', 'gemini-3-flash-image', 'nano-banana-pro-preview', 'gemini-nano-banana-2.1', 'veo-9', 'gemini-3-flash-tts', 'aqa', 'gemini-3.5-transcribe', 'gemini-3-flash-native-audio']) {
+    for (const fora of ['gemini-embedding-9', 'imagen-9', 'gemini-3-flash-image', 'nano-banana-pro-preview', 'gemini-nano-banana-2.1', 'veo-9', 'gemini-3-flash-tts', 'aqa', 'gemini-3.5-transcribe', 'gemini-3-flash-native-audio', 'lyria-3.5', 'lyria-3-pro-preview', 'gemini-robotics-er-2-preview', 'gemini-2.5-computer-use-preview-10-2025', 'deep-research-max-preview-04-2026', 'antigravity-preview-latest']) {
       expect(com(`models/${fora}`), fora).toBe(false)
     }
     expect(ehModeloDeTextoDoGemini(null)).toBe(false)

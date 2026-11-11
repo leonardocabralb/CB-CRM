@@ -6322,13 +6322,28 @@
       "partida": "Starting point",
       "emBranco": "Blank",
       "emBrancoDica": "No instructions or rules.",
-      "criar": "Create agent"
+      "criar": "Create agent",
+      "passos": "Steps",
+      "passo1": "What it is for",
+      "passo2": "Name and model",
+      "trazNada": "You write the instructions and rules.",
+      "traz": "Comes with instructions and {n, plural, one {# rule} other {# rules}}",
+      "regrasQueVem": "Rules that come with it",
+      "tudoMuda": "All of this can be changed later, in Configuration.",
+      "nomeDica": "Shows in the list, in the conversation banner (\"AI · name\") and to the agents that hand conversations to it.",
+      "outroModelo": "Another model…",
+      "depois": "After creating it",
+      "depois1": "Write the instructions and rules (Configuration).",
+      "depois2": "Choose what it sees about the customer (Access) and what it can do in the CRM (Tools).",
+      "depois3": "Test it in the Playground.",
+      "depois4": "Select the connections and stages where it works, and turn it on.",
+      "continuar": "Continue",
+      "voltar": "Back"
     },
     "campo": {
       "nome": "Name",
       "nomeExemplo": "e.g. Triage",
       "ativo": "On",
-      "ativoDica": "When on, it answers the customers whose deal is in the stages selected under \"Where it works\".",
       "descricao": "Description",
       "descricaoDica": "One sentence about what this agent does. It's what another agent reads to decide whether to hand the conversation over.",
       "instrucoes": "Instructions",
@@ -6362,8 +6377,8 @@
       "podePassarParaDica": "The other agents this one can hand the conversation to. When handing over, it still saves the field, the tag and the task from the same reply; the deal goes to the chosen agent's stage, and that agent then replies to the same customer message — or only to the next one, if an automation listens to the destination stage (the automation speaks first).",
       "passarSemEtapa": "(no stage: the handover goes to the team)",
       "semOutrosAgentes": "There are no other agents in the account.",
-      "ativoLigando": "Once saved as on, the agent only handles cards that ENTER the stages from now on. Cards already there stay with the team.",
-      "ativoDesligando": "Once saved, the agent stops replying. If it is turned back on later, it only handles cards that ENTER the stages from then on: cards already there stay with the team.",
+      "ativoLigando": "Once on, the agent only handles cards that ENTER the stages from now on. Cards already there stay with the team.",
+      "ativoDesligando": "Once off, the agent stops replying. If it is turned back on later, it only handles cards that ENTER the stages from then on: cards already there stay with the team.",
       "conduzFechamento": "Handles the closing",
       "conduzFechamentoDica": "Off (the default), the agent never talks about fees or invites the customer to hire the office. On, it presents the fees and conditions written in the instructions, the rules or the knowledge base, answers objections and sends the contract link written there; the hiring only counts once the contract is signed.",
       "conduzFechamentoLigando": "Once saved as on, this agent presents the fees and conditions exactly as written in the instructions, the rules or the knowledge base, and invites the customer to sign through the contract link. Write the amounts, the conditions and the link there. Still forbidden: promising results, amounts or deadlines; negotiating or giving a discount that is not written; closing or confirming a deal and saying the contract is signed or closed (a customer who says they signed hears that the signature will be confirmed); claiming to be a lawyer or a person from the team.",
@@ -6371,13 +6386,43 @@
       "horarioDica": "Outside these hours the agent does not reply right away: the message waits in the queue and it replies when the hours open, unless someone on the team has replied first. On the official Meta connection, only if the 24-hour window is still open by then; otherwise the message stays with the team."
     },
     "config": {
-      "modelo": "Provider and model",
-      "transferencia": "Limit and handover",
-      "salvar": "Save",
       "salvo": "Agent saved.",
       "arquivar": "Archive agent",
       "arquivarConfirma": "Archive this agent? It leaves the list and is turned off; past usage keeps its name.",
-      "arquivado": "Agent archived."
+      "arquivado": "Agent archived.",
+      "faltaNomeOuModelo": "Name the agent and pick a model before saving.",
+      "indice": "Configuration sections",
+      "secao": {
+        "identidade": {
+          "titulo": "Identity",
+          "porque": "How the agent shows up to the team, in the conversation banner and to the other agents that hand conversations to it."
+        },
+        "comoFala": {
+          "titulo": "How it talks",
+          "porque": "What changes the replies the most: who it is, the goal, the tone and what it never does. After changing it, test in the Playground.",
+          "semInstrucoes": "With no instructions, the agent answers with the system rules only."
+        },
+        "modelo": {
+          "titulo": "Model",
+          "porque": "Who writes the replies. The customer's audio, images and documents are read by the account key, not by this model."
+        },
+        "ondeAtua": {
+          "titulo": "Where it works",
+          "porque": "The connections and pipeline stages where it answers. Without both, it answers no one.",
+          "semConexao": "No connection selected: the agent answers no one."
+        },
+        "quando": {
+          "titulo": "When it answers"
+        },
+        "limites": {
+          "titulo": "Limits and handoff",
+          "porque": "How many replies it gives, who gets the conversation when it hands off and which agents it can pass the customer to."
+        },
+        "arquivar": {
+          "titulo": "Archive the agent",
+          "porque": "It leaves the list and stops answering. The usage history stays."
+        }
+      }
     },
     "ondeAtua": {
       "titulo": "Where it works",
@@ -6402,7 +6447,43 @@
       "playground": "Playground",
       "uso": "Usage",
       "turnos": "Turns",
-      "retomada": "Follow-ups"
+      "retomada": "Follow-ups",
+      "prontidao": {
+        "pronto": "Ready to answer",
+        "falta": "{n, plural, one {# item missing to answer} other {# items missing to answer}}",
+        "instrucoes": "Instructions written",
+        "semInstrucoes": "No instructions",
+        "semChave": "No {provedor} key",
+        "conexoes": "{n, plural, one {# connection} other {# connections}}",
+        "semConexao": "No connection selected",
+        "etapas": "{n, plural, one {# stage} other {# stages}}",
+        "semEtapa": "No stage selected"
+      },
+      "ligar": {
+        "rotulo": "Answers customers",
+        "estadoLigado": "On",
+        "estadoDesligado": "Off",
+        "tituloLigar": "Turn the agent on?",
+        "tituloDesligar": "Turn the agent off?",
+        "aindaFalta": "Still missing: {itens}. Turned on like this, it answers no one.",
+        "configuracaoNaoSalva": "The Configuration tab has unsaved changes: turning on does not save them.",
+        "confirmarLigar": "Turn on",
+        "confirmarDesligar": "Turn off",
+        "ligado": "Agent turned on.",
+        "desligado": "Agent turned off."
+      },
+      "salvar": {
+        "naoSalvo": "Unsaved changes: {abas}",
+        "naoSalvoNaAba": "Unsaved change",
+        "descartar": "Discard",
+        "salvar": "Save changes"
+      },
+      "sair": {
+        "titulo": "Leave without saving?",
+        "texto": "There are unsaved changes in {abas}. If you leave now, they are lost.",
+        "ficar": "Keep editing",
+        "sair": "Leave without saving"
+      }
     },
     "acesso": {
       "explicacao": "What this agent can see about the customer besides the conversation. This is customer data sent to the AI provider with every reply: tick only what its job needs. With nothing ticked, it sees only the conversation.",
@@ -6430,9 +6511,10 @@
         "nenhum": "This account has no custom fields.",
         "nenhumNaBusca": "No field with that name.",
         "marcados": "{n, plural, =0 {None ticked} one {# ticked} other {# ticked}}",
-        "limite": "At most {max} fields per agent. Untick one to tick another."
+        "limite": "At most {max} fields per agent. Untick one to tick another.",
+        "escolher": "Choose fields ({n} of {total})",
+        "recolher": "Collapse the list"
       },
-      "salvar": "Save access",
       "salvo": "Access saved."
     },
     "base": {
@@ -6443,7 +6525,6 @@
       "vazia": "The account has no documents in the knowledge base yet. Create them in Manage documents.",
       "atualizado": "Updated {data}",
       "marcados": "{n, plural, =0 {No document ticked: the agent replies without a knowledge base.} one {# document ticked} other {# documents ticked}}",
-      "salvar": "Save knowledge base",
       "salvo": "Knowledge base saved.",
       "teto": "That is the maximum per agent ({n} documents): unmark one to mark another."
     },
@@ -6457,7 +6538,6 @@
       "limite": "At most {max} per agent. Untick one to tick another.",
       "nenhumNaBusca": "Nothing with that name.",
       "recusado": "Refused when saving.",
-      "salvar": "Save tools",
       "salvo": "Tools saved.",
       "tipoDesconhecido": "Other ({tipo})",
       "transferir": "Hand over to the team",
@@ -6550,14 +6630,15 @@
         "emailLiberado": "E-mail field ticked in “Fill in a field”. Save to apply."
       },
       "instrucoesPedem": "The instructions ask for “{ferramenta}”, but the tool is turned off: the agent cannot do it.",
-      "instrucoesTrecho": "Excerpt: “{trecho}”"
+      "instrucoesTrecho": "Excerpt: “{trecho}”",
+      "escolher": "Choose ({n} of {total})",
+      "recolher": "Collapse the list"
     },
     "playground": {
       "explicacao": "Chat as if you were the customer. The test uses what's on screen — the unsaved changes in Settings, Access, Tools and Follow-up — or what's saved, your choice; the Knowledge base is always the saved one. Same model as production; the spend counts as testing. Actions are only simulated here.",
       "naoSalvo": "There are unsaved changes in {abas}; this test uses what is SAVED.",
       "recomecar": "Start over",
       "vazio": "Send a message to see how this agent would answer.",
-      "transferiria": "Here the agent would hand over to a person",
       "passaria": "Here the agent would hand the conversation to {agente}. In production, the deal goes to that agent's stage and it answers this same message — if an automation listens to the destination stage, the automation speaks first and the agent only answers the customer's next message.",
       "tokens": "{n} tokens",
       "pensando": "Thinking…",
@@ -6572,12 +6653,8 @@
       "contatoFalhou": "The search failed. Type again to retry.",
       "contatoMais": "Showing the first {count}. Keep typing to narrow it down.",
       "limparContato": "Remove the customer",
-      "viu": "The agent saw: {itens} · {trechos}",
       "conversa": "the conversation",
       "trechos": "{n, plural, =0 {no knowledge-base excerpt} one {# knowledge-base excerpt} other {# knowledge-base excerpts}}",
-      "acoesSimuladas": "Actions (simulated): {itens}",
-      "acoesRecusadas": "Refused: {itens}",
-      "recusada": "{tipo} ({motivo})",
       "linkInventado": "The agent made up a link: in production this reply would be held back and the conversation would go to a person.",
       "reuniaoPrometida": "The agent said it booked the meeting without booking it: in production this reply would be held back and the conversation would go to a person.",
       "pedidoVazado": "The agent revealed part of its internal instructions: in production this reply would be held back and the conversation would go to a person.",
@@ -6617,7 +6694,6 @@
       },
       "retomadaParadaDesconhecida": "The follow-ups would stop without sending anything.",
       "acaoPrometida": "The agent said it did something in the system (task, field, tag, stage…) without doing it: in production this reply would be held back and the conversation would go to a person.",
-      "acoesAntesDaPassagem": "Before handing over (simulated): {itens}",
       "testar": "Test:",
       "testarSalvo": "Saved",
       "testarRascunho": "Draft (what's on screen)",
@@ -6647,7 +6723,69 @@
       "verPedidoDica": "Each new reply comes with the text sent to the model (rules, instructions, customer data, knowledge base and actions), to check why it answered that way.",
       "pedidoEnviado": "Request sent to the model",
       "retomadaDesligada": "Follow-up is off in this version of the agent: in production, nothing would be sent.",
-      "limiteDeTestes": "Per-minute test limit reached. Try again in {s} s."
+      "limiteDeTestes": "Per-minute test limit reached. Try again in {s} s.",
+      "efeitoTitulo": "What would have happened in the CRM (simulated)",
+      "efeitoAntesDaPassagem": "Before handing the conversation over (simulated)",
+      "efeitoNenhum": "No CRM action in this reply.",
+      "efeito": {
+        "mover_etapa": "Card moved to",
+        "etiquetar": "Tag added",
+        "tirar_etiqueta": "Tag removed",
+        "preencher_campo": "Field filled",
+        "criar_tarefa": "Task created for",
+        "executar_automacao": "Automation run",
+        "marcar_reuniao": "Meeting booked for"
+      },
+      "efeitoTransferir": "Would hand the conversation to the team",
+      "efeitoDesconhecido": "Action \"{tipo}\"",
+      "efeitoReuniaoNome": "under the name {valor}",
+      "efeitoRetida": "Reply held back: the conversation would go to the team",
+      "efeitoEquipeDetalhe": "The conversation becomes Pending and the AI is paused until someone clicks \"Resume AI\".",
+      "efeitoPassagem": "Would hand the conversation to the agent",
+      "efeitoPassagemDetalhe": "The card moves to its stage and it answers this same message — if an automation listens to the destination stage, the automation speaks first.",
+      "efeitoNaoFaria": "Would not do: {tipo}",
+      "destinoFila": "Unassigned queue (anyone can take it)",
+      "destinoMembro": "Owner: {nome}",
+      "destinoCarregando": "Owner set on the agent",
+      "destinoDesconhecido": "Owner set on the agent (not on the team, or not loaded)",
+      "bastidores": {
+        "titulo": "Behind the scenes",
+        "raciocinio": "How the model reasoned (provider summary, usually in English: the language of the internal rules)",
+        "raciocinioVazio": "The model returned no reasoning for this reply (sometimes it answers directly, without thinking first).",
+        "raciocinioIndisponivel": "This model does not return its reasoning. Claude family 5 models (Sonnet, Haiku, Opus) and Gemini 2.5 and later do.",
+        "raciocinioDesconhecido": "No reasoning for this reply.",
+        "respostaCrua": "What the model wrote (with the action markers)",
+        "viu": "What the agent saw",
+        "pedidoAbrir": "Show the exact text ({n} characters)",
+        "pedidoDica": "Check \"Show the prompt sent to the model\", above, to see the exact text in the next replies."
+      },
+      "lead": {
+        "titulo": "The lead after this conversation",
+        "subtitulo": "Everything the agent would have done in the CRM. Simulated: nothing was saved.",
+        "vazio": "Talk to the agent to see here what it would do with the lead: stage, tags, fields, tasks and who it would hand the conversation to.",
+        "semMudanca": "So far the agent only talked: no change in the CRM.",
+        "nada": "None",
+        "resposta": "reply {n}",
+        "etapa": "Card stage",
+        "etapaIgual": "Unchanged",
+        "etapaDoAgente": "Would go to the stage of the agent {agente}",
+        "etiquetas": "Tags",
+        "aplicada": "Added",
+        "retirada": "Removed",
+        "campos": "Fields filled ({n})",
+        "tarefas": "Tasks",
+        "tarefaPara": "for {nome}",
+        "automacoes": "Automations run",
+        "reuniao": "Meeting",
+        "atendimento": "Handling",
+        "continuaComOAgente": "Stays with this agent",
+        "passouParaAEquipe": "Handed to the team · {destino}",
+        "passouParaAEquipeDetalhe": "In production the AI would be paused from here on, until someone clicks \"Resume AI\".",
+        "retidaDetalhe": "In production the reply would not go out: it would be held back and the conversation would go to the team.",
+        "passouParaOAgente": "Handed to the agent {agente}",
+        "passouParaOAgenteDetalhe": "In production, from here on that agent answers."
+      },
+      "efeitoEquipeDetalhePessoa": "Goes to this person only if the conversation has no owner yet. The conversation becomes Pending and the AI is paused until someone clicks \"Resume AI\"."
     },
     "uso": {
       "explicacao": "Last {dias} days. Amounts in R$ are an ESTIMATE from each model's list price and today's exchange rate.",
@@ -6890,7 +7028,6 @@
       "ligar": "Follow up when the customer doesn't answer",
       "ligarDica": "Only for the agent's last reply left unanswered — never after a message from the bot, the team or an automation (except one the agent itself ran in that reply, which speaks on its behalf).",
       "cadencia": "Cadence",
-      "cadenciaDica": "Each attempt goes out this long after the agent's last unanswered reply. If one is delayed (outside the window, near a meeting reminder), the following ones keep their spacing — and never go out less than 30 min after the previous one. From 1 to {max} attempts, 10 min to 7 days each.",
       "tentativa": "Attempt {n}",
       "remover": "Remove {tempo}",
       "novoIntervalo": "Time",
@@ -6917,8 +7054,24 @@
       "inicio": "Window start",
       "fim": "Window end",
       "paradas": "Follow-ups stop on their own when the customer answers, when someone from the team writes or pauses the AI, when the conversation is closed, when the deal leaves the agent's stage and near the customer's meeting: never within 30 min of a meeting reminder, and never in the 90 min before it. On an official Meta connection, also when the 24-hour window closes. If nothing is pending, the agent ends the follow-ups without sending anything — and they never hand the conversation to the team. Each follow-up counts toward the agent's reply limit.",
-      "salvar": "Save follow-ups",
-      "salvo": "Follow-ups saved."
+      "salvo": "Follow-ups saved.",
+      "tentativas": "{n, plural, one {# attempt} other {# attempts}} (up to {max})",
+      "tentativasDica": "Counted from the agent's last reply that got no answer. If one is delayed (outside the window, near a meeting reminder), the next ones keep their spacing — and never go out less than 30 min after the previous one.",
+      "linhaInicio": "Agent's reply",
+      "depoisDaResposta": "{tempo} after the agent's reply",
+      "novaTentativa": "New attempt:",
+      "depoisDaRespostaCurto": "after the reply",
+      "limitesDaCadencia": "Each attempt: 10 min to 7 days after the reply.",
+      "ultimaEm": "The last one goes out {tempo} after the reply.",
+      "paraQuando": "Stops on its own when",
+      "para": {
+        "cliente": "the customer replies",
+        "equipe": "the team writes or pauses the AI",
+        "encerrada": "the conversation is closed",
+        "etapa": "the card leaves the agent's stage",
+        "reuniao": "the customer's meeting is close"
+      },
+      "paradasDetalhe": "See all the rules"
     },
     "modeloDaChave": {
       "carregando": "Loading the models for this key…",

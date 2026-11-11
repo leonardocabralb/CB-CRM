@@ -36,13 +36,18 @@
 //     (`avisoDoEmailDaReuniao`): para quem não tem e-mail na ficha, ele pede
 //     o e-mail e passa para a equipe. O botão "Liberar o campo E-mail" liga
 //     "Preencher campo" e marca o campo, SEM salvar (`liberarCampoDoEmail`).
+//
+// 10/11/2026: cada ferramenta é um cartão, em duas colunas; ligada, mostra o
+// que está liberado e a lista (dezenas de campos, de etiquetas) fica
+// recolhida atrás de "Escolher" — aberta sozinha enquanto nada está marcado.
+// O Salvar é o da barra do detalhe (`registrarSalvar`).
 // ============================================================
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { RefreshCw, Search } from 'lucide-react';
+import { ChevronDown, RefreshCw, Search } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -74,7 +79,7 @@ import {
   type RascunhoDasFerramentas,
 } from './rascunho';
 import { motivoForaDaD5, rotuloDoTipoDeAcao, rotuloDoTipoDoCampo, textoDoCodigo } from './textos';
-import { TIPOS_DE_ACAO, type IaAgente, type OpcoesDasFerramentas, type TipoDeAcao } from './tipos';
+import { TIPOS_DE_ACAO, type IaAgente, type OpcoesDasFerramentas, type SalvarDaAba, type TipoDeAcao } from './tipos';
 
 type Carga = { fase: 'carregando' } | { fase: 'falhou' } | { fase: 'pronto'; opcoes: OpcoesDasFerramentas };
 
@@ -89,6 +94,7 @@ export function FerramentasDoAgente({
   aoSalvar,
   aoMudarNaoSalvo,
   aoMudarRascunho,
+  registrarSalvar,
 }: {
   agente: IaAgente;
   aoSalvar: (novo: IaAgente) => void;
@@ -96,11 +102,15 @@ export function FerramentasDoAgente({
   aoMudarNaoSalvo?: (naoSalvo: boolean) => void;
   /** Avisa o detalhe do que o Salvar mandaria agora: é o RASCUNHO que o Playground testa (DC4). */
   aoMudarRascunho?: (rascunho: RascunhoDaAba | null) => void;
+  /** Entrega ao detalhe o Salvar desta aba (a barra de salvar o chama). */
+  registrarSalvar?: (salvar: SalvarDaAba | null) => void;
 }) {
   const t = useTranslations('IaAgentes');
   const [rascunho, setRascunho] = useState<RascunhoDasFerramentas>(() => rascunhoDasFerramentas(agente.ferramentas));
   const [carga, setCarga] = useState<Carga>({ fase: 'carregando' });
-  const [salvando, setSalvando] = useState(false);
+  // As listas abertas (ligar a ferramenta ou "Escolher" abre; "Recolher" fecha); a que
+  // não tem nada marcado fica aberta de todo jeito.
+  const [abertas, setAbertas] = useState<ReadonlySet<TipoDeAcao>>(() => new Set());
   // Os ids que o último Salvar teve recusados (400 com `itens`): ficam
   // marcados na lista até a próxima tentativa.
   const [recusados, setRecusados] = useState<ReadonlySet<string>>(() => new Set());
@@ -169,6 +179,8 @@ export function FerramentasDoAgente({
   }
 
   function alternarTipo(tipo: TipoDeAcao, ligar: boolean) {
+    // Ligar abre a lista (e ela fica aberta ao marcar o 1º item, até a pessoa recolher).
+    if (ligar) setAbertas((a) => (a.has(tipo) ? a : new Set([...a, tipo])));
     setRascunho((r) => ({
       ...r,
       ligadas: ligar ? (r.ligadas.includes(tipo) ? r.ligadas : [...r.ligadas, tipo]) : r.ligadas.filter((x) => x !== tipo),
@@ -190,9 +202,9 @@ export function FerramentasDoAgente({
     });
   }
 
-  async function salvar() {
-    if (!naoSalvo) return;
-    setSalvando(true);
+  /** O Salvar desta aba (a barra do detalhe o chama): `true` = gravou ou não havia o que gravar. */
+  async function salvar(): Promise<boolean> {
+    if (!naoSalvo) return true;
     setRecusados(new Set());
     try {
       const res = await fetch(`/api/cb/ia/agentes/${agente.id}`, {
@@ -211,17 +223,31 @@ export function FerramentasDoAgente({
         if (Array.isArray(corpo.itens)) {
           setRecusados(new Set(corpo.itens.filter((x): x is string => typeof x === 'string')));
         }
-        return;
+        return false;
       }
       toast.success(t('ferramentas.salvo'));
       // O rascunho passa a ser o que o servidor gravou (sem os itens órfãos).
       setRascunho(rascunhoDasFerramentas(corpo.agente.ferramentas));
       aoSalvar(corpo.agente);
+      return true;
     } catch {
       toast.error(t('erro.generico'));
-    } finally {
-      setSalvando(false);
+      return false;
     }
+  }
+  // A barra de salvar do detalhe chama o Salvar MAIS RECENTE (o do último render).
+  useEffect(() => {
+    registrarSalvar?.(salvar);
+  });
+  useEffect(() => () => registrarSalvar?.(null), [registrarSalvar]);
+
+  function alternarLista(tipo: TipoDeAcao) {
+    setAbertas((a) => {
+      const nova = new Set(a);
+      if (nova.has(tipo)) nova.delete(tipo);
+      else nova.add(tipo);
+      return nova;
+    });
   }
 
   return (
@@ -241,7 +267,7 @@ export function FerramentasDoAgente({
         </div>
       ) : null}
 
-      <div className="space-y-3">
+      <div className="grid gap-3 lg:grid-cols-2">
         {TIPOS_DE_ACAO.map((tipo) => {
           const ligada = rascunho.ligadas.includes(tipo);
           const reuniao =
@@ -255,8 +281,20 @@ export function FerramentasDoAgente({
             tipo === 'marcar_reuniao' && carga.fase === 'pronto' && reuniao?.fase !== 'desconectado'
               ? avisoDoEmailDaReuniao(carga.opcoes, rascunho)
               : null;
+          // O que está liberado (os nomes, à vista) e se a lista está aberta.
+          const itens = ligada && carga.fase === 'pronto' && !reuniao ? itensDoTipo(carga.opcoes, tipo) : [];
+          const marcadosDoTipo = itens.filter((i) => rascunho.listas[tipo].includes(i.id));
+          const listaAberta = abertas.has(tipo) || marcadosDoTipo.length === 0;
           return (
-            <section key={tipo} className="space-y-3 rounded-md border border-border p-3">
+            <section
+              key={tipo}
+              className={cn(
+                'min-w-0 space-y-3 rounded-lg border p-3',
+                ligada ? 'border-primary/40 bg-primary/[0.03]' : 'border-border',
+                // A lista aberta precisa da largura toda.
+                ligada && listaAberta && itens.length > 0 && 'lg:col-span-2',
+              )}
+            >
               <label className={cn('flex items-start gap-3', naoLiga ? 'cursor-not-allowed' : 'cursor-pointer')}>
                 <Switch
                   className="mt-0.5"
@@ -292,24 +330,52 @@ export function FerramentasDoAgente({
                     {avisoDoEmail ? <AvisoDoEmail aviso={avisoDoEmail} aoLiberar={liberarEmail} /> : null}
                   </div>
                 ) : (
-                  <ListaDoTipo
-                    tipo={tipo}
-                    itens={itensDoTipo(carga.opcoes, tipo)}
-                    marcados={rascunho.listas[tipo]}
-                    recusados={recusados}
-                    aoAlternar={(id) => alternarItem(tipo, id)}
-                  />
+                  <div className="space-y-2">
+                    {itens.length > 0 ? (
+                      <div className="flex flex-wrap items-center gap-1">
+                        {marcadosDoTipo.slice(0, 8).map((i) => (
+                          <span
+                            key={i.id}
+                            className="max-w-full truncate rounded-full border border-border bg-background px-2 py-0.5 text-xs text-foreground"
+                            title={i.nome}
+                          >
+                            {i.nome}
+                          </span>
+                        ))}
+                        {marcadosDoTipo.length > 8 ? (
+                          <span className="text-xs text-muted-foreground">+{marcadosDoTipo.length - 8}</span>
+                        ) : null}
+                        {marcadosDoTipo.length > 0 ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs text-muted-foreground"
+                            aria-expanded={listaAberta}
+                            onClick={() => alternarLista(tipo)}
+                          >
+                            {listaAberta
+                              ? t('ferramentas.recolher')
+                              : t('ferramentas.escolher', { n: marcadosDoTipo.length, total: itens.length })}
+                            <ChevronDown className={cn('size-3.5 transition-transform', listaAberta && 'rotate-180')} />
+                          </Button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {listaAberta ? (
+                      <ListaDoTipo
+                        tipo={tipo}
+                        itens={itens}
+                        marcados={rascunho.listas[tipo]}
+                        recusados={recusados}
+                        aoAlternar={(id) => alternarItem(tipo, id)}
+                      />
+                    ) : null}
+                  </div>
                 )
               ) : null}
             </section>
           );
         })}
-      </div>
-
-      <div className="flex justify-end border-t border-border pt-4">
-        <Button onClick={() => void salvar()} disabled={salvando || !naoSalvo}>
-          {t('ferramentas.salvar')}
-        </Button>
       </div>
     </div>
   );
