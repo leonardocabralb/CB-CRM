@@ -1,0 +1,5 @@
+# A imagem do computador de ligações remontada toda semana, com o Chrome do dia
+# (docs/INFRA-VPS.md §4; ops/vps/ligacoes/atualizar-maquinas.sh). Domingo, 07:10
+# UTC (04:10 em Brasília), fora do expediente. `flock`: uma execução por vez;
+# `timeout`: a montagem e a espera pela linha livre cabem em 2 h.
+10 7 * * 0 root flock -n /root/ligacoes/.atualizar.lock nice -n 10 timeout 7200 sh /root/ligacoes/atualizar-maquinas.sh

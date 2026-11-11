@@ -9,6 +9,7 @@ import { Header } from '@/components/layout/header';
 import { AccountAccessAlert } from '@/components/layout/account-access-alert';
 import { PresenceHeartbeat } from '@/components/presence/presence-heartbeat';
 import { BrowserNotificationsListener } from '@/components/notifications/browser-notifications-listener';
+import { LigacoesProvider } from '@/components/ligacoes/ligacoes-provider';
 import { TelaBloqueada } from '@/components/auth/tela-bloqueada';
 import { FaixaDeSimulacao } from '@/components/auth/faixa-de-simulacao';
 import { PortaDeEntrada } from '@/components/entrada/porta-de-entrada';
@@ -147,15 +148,20 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
     >
       <PortaDeEntrada key={user.id} userId={user.id}>
         {(entradaPendente) => (
-          // ⚠️ `--altura-visivel` é a área acima do teclado do celular
-          // (`useTelaAcimaDoTeclado`), com queda em `100dvh`. Com `h-screen`, o
-          // teclado aberto empurrava a página inteira para cima e o cabeçalho
-          // da conversa sumia (relato do operador no iPhone, 14/09/2026).
-          // ⚠️ E o `top` acompanha o empurrão (`--deslocamento-visivel`): se o
-          // iPhone mantém a área visível deslocada, a casca desce junto e o
-          // topo fica na tela (print do operador, 15/09/2026). `relative` +
-          // `top`, NUNCA `transform`: transform faria todo `fixed` de dentro da
-          // casca se posicionar por ela. Sem a variável, `top` volta a `auto`.
+          // A ligação pelo CRM (4c) mora AQUI, em volta do layout inteiro: o
+          // botão "Ligar" do fio a pede pelo contexto, e o painel e o cartão
+          // que toca não remontam ao navegar. Só depois do "Continuar", como
+          // a presença (`ativo`).
+          <LigacoesProvider ativo={!entradaPendente}>
+          {/* ⚠️ `--altura-visivel` é a área acima do teclado do celular
+          (`useTelaAcimaDoTeclado`), com queda em `100dvh`. Com `h-screen`, o
+          teclado aberto empurrava a página inteira para cima e o cabeçalho
+          da conversa sumia (relato do operador no iPhone, 14/09/2026).
+          ⚠️ E o `top` acompanha o empurrão (`--deslocamento-visivel`): se o
+          iPhone mantém a área visível deslocada, a casca desce junto e o
+          topo fica na tela (print do operador, 15/09/2026). `relative` +
+          `top`, NUNCA `transform`: transform faria todo `fixed` de dentro da
+          casca se posicionar por ela. Sem a variável, `top` volta a `auto`. */}
           <div className="bg-background relative top-[var(--deslocamento-visivel)] flex h-[var(--altura-visivel,100dvh)] overflow-hidden">
             {/* Reports this tab's online/away presence once we know a user is
             signed in. Headless — renders nothing. */}
@@ -188,6 +194,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
               </main>
             </div>
           </div>
+          </LigacoesProvider>
         )}
       </PortaDeEntrada>
     </ExigenciaDoCelular>

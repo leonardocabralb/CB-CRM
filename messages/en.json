@@ -580,7 +580,10 @@
       "duracaoSeg": "{segundos}s",
       "duracaoMin": "{minutos} min {segundos}s",
       "dicaPerdida": "The customer called on WhatsApp and nobody answered. The CRM does not carry call audio: call back from the phone or reply by message.",
-      "previa": "📞 Call"
+      "previa": "📞 Call",
+      "ouvir": "Listen",
+      "ouvirDica": "Listen to the call recording",
+      "fecharGravacao": "Close the recording"
     },
     "audioPlayer": {
       "tocar": "Play audio",
@@ -7936,6 +7939,7 @@
     "poderesHint": "The role applies account-wide. The screens and scope below only narrow what is shown — checking an area never grants the right to change it.",
     "poderes": {
       "send-messages": "Reply to customers on WhatsApp",
+      "make-calls": "Make and answer WhatsApp calls in the CRM (on the profile's numbers that have a calling computer)",
       "write-notes": "Write internal notes",
       "manage-deals": "Move deals across the pipeline (creating and deleting pipelines is admin-only)",
       "view-reports": "See the pipeline reports: lead list, Performance and Health",
@@ -8254,5 +8258,75 @@
     "corrigir": "Correct",
     "verOutrosDias": "See the {n} from other days",
     "esconderOutrosDias": "Hide"
+  },
+  "Ligacoes": {
+    "botao": {
+      "ligar": "Call on WhatsApp",
+      "grupo": "Groups can't be called",
+      "sem_telefone": "This contact has no WhatsApp phone",
+      "sem_poder": "Your profile can't make calls in the CRM",
+      "computador_fora": "This number's calling computer is offline",
+      "sem_whatsapp": "WhatsApp on this number's calling computer is disconnected",
+      "em_outra_ligacao": "You're already on a call",
+      "linha_ocupada": "This number is already on a call",
+      "linha_ocupadaCom": "This number is on a call with {nome}",
+      "tocando_agora": "A call is ringing on this number right now"
+    },
+    "painel": {
+      "microfone": "Allow the microphone…",
+      "conectando": "Connecting audio…",
+      "chamando": "Calling…",
+      "emLigacao": "On call",
+      "gravando": "Recording",
+      "encerrada": "Ended",
+      "naoAtendida": "Not answered",
+      "desligando": "Hanging up…",
+      "mudo": "Mute the microphone",
+      "comSom": "Unmute the microphone",
+      "desligar": "Hang up",
+      "abrirConversa": "Open conversation",
+      "fechar": "Close",
+      "avisoDoFim": "The call ends on its own at 30 minutes",
+      "duracaoSeg": "{segundos}s",
+      "duracaoMin": "{minutos} min {segundos}s",
+      "erroAoDesligar": "Couldn't hang up. Try again."
+    },
+    "recusa": {
+      "grupo": "Groups can't be called.",
+      "conversa_nao_encontrada": "Conversation not found.",
+      "conversa_sem_numero": "This conversation has no office number yet. Pin the number in the header and try again.",
+      "sem_computador": "This number has no calling computer.",
+      "computador_fora": "This number's calling computer is offline.",
+      "sem_telefone": "We couldn't find this contact's WhatsApp phone.",
+      "tocando_agora": "A call is ringing on this number right now. Answer it or wait for it to end.",
+      "ocupada": "This number is already on a call.",
+      "limite_por_hora": "Limit of 20 calls per hour on this number. Wait a little.",
+      "ja_atendida": "Someone else already answered this call.",
+      "ja_encerrada": "This call has already ended.",
+      "nao_esta_tocando": "This call is no longer ringing.",
+      "sem_resposta_webrtc": "The calling computer didn't set up the audio. Try again.",
+      "ligacoes_nao_configuradas": "CRM calls are not configured on this installation.",
+      "whatsapp_desconectado": "WhatsApp on the calling computer is disconnected.",
+      "outra_chamada": "The calling computer has another call on screen.",
+      "nada_tocando": "The call stopped ringing before it was answered.",
+      "sem_resposta": "The calling computer didn't respond. Try again.",
+      "microfone_negado": "The browser didn't allow the microphone. Allow the microphone for this site and try again.",
+      "microfone_indisponivel": "No microphone available on this computer.",
+      "audio_falhou": "Couldn't set up the call audio.",
+      "rede": "The call wasn't confirmed: the CRM didn't respond. If it started, it drops on its own in a few seconds.",
+      "desconhecida": "The call didn't go through. Try again."
+    },
+    "toque": {
+      "titulo": "WhatsApp call",
+      "celularTambem": "Also ringing on the office phone",
+      "atender": "Answer",
+      "silenciar": "Silence",
+      "silenciada": "Ring silenced",
+      "atendidaPor": "Answered by {nome}",
+      "atendidaPorAlguem": "Answered by someone else",
+      "numeroDesconhecido": "Unknown number",
+      "emOutraLigacao": "You're already on a call",
+      "notificacao": "{quem} is calling on {conexao}"
+    }
   }
 }

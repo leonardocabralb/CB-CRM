@@ -15,10 +15,12 @@
 # (só root lê); o segredo do CRM nunca entra no contêiner. Recriar o
 # contêiner (docker rm + este script) refaz o arquivo.
 #
-# O contêiner nasce PARADO (docker create): até a 4c ele só liga nas sessões
-# de teste (`docker start ligacoes-<nome>`; ao terminar, `docker stop`). O
+# O contêiner nasce PARADO (docker create): ligar é `docker start
+# ligacoes-<nome>` e desligar, `docker stop` — com ele parado, o "Ligar" do
+# CRM fica desligado ("fora do ar") e a recebida não toca no CRM. O
 # --restart unless-stopped respeita o stop, inclusive depois de um reinício
-# da VPS.
+# da VPS. A remontagem semanal (atualizar-maquinas.sh) usa este script e
+# devolve o contêiner ao estado em que o achou.
 set -eu
 
 NOME="${1:-}"

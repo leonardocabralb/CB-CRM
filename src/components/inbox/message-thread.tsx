@@ -28,6 +28,7 @@ import { FaixaDeNoShow } from "./faixa-de-no-show";
 import { dividaDoContato, leituraAindaFresca, type RespostaDoResumo } from "@/lib/asaas/aviso-na-conversa";
 import { ExecutarAutomacaoDialog } from "./executar-automacao-dialog";
 import { CopiarLinkDaConversa } from "@/components/inbox/copiar-link-da-conversa";
+import { BotaoLigar } from "@/components/ligacoes/botao-ligar";
 import { AvataresNaConversa } from "./avatares-na-conversa";
 import { FaixaDePresenca } from "./faixa-de-presenca";
 import { FaixaDeConexao } from "./faixa-de-conexao";
@@ -2991,6 +2992,18 @@ export function MessageThread({
                 <MessageSquareDot className="h-3.5 w-3.5" />
               )}
             </button>
+          )}
+
+          {/* Ligar pelo WhatsApp (4c): só onde o número da conversa tem
+              computador de ligações; desligado com o porquê. */}
+          {conversation && (
+            <BotaoLigar
+              conversationId={conversation.id}
+              canalId={conversation.channel_id ?? null}
+              ehGrupo={ehGrupo}
+              temTelefone={Boolean(contact?.phone)}
+              nome={contactDisplayName}
+            />
           )}
 
           {/* A lupa: busca DENTRO desta conversa (09/09/2026). Fica acesa

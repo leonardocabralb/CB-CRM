@@ -30,7 +30,7 @@ function montar() {
   const esperas: { ate: number; pronto: () => void }[] = []
   const tela: { estado: EstadoDoWhatsapp; chamada: FaseDaChamada } = { estado: 'conectado', chamada: { fase: 'nenhuma' } }
   const feito = { discar: [] as string[], cliquesEmAceitar: 0, desligar: 0, conectar: 0, encerrarPonte: 0, sair: [] as string[] }
-  const gravacoes = { comecadas: [] as string[], paradas: 0 }
+  const gravacoes = { comecadas: [] as string[], paradas: [] as (number | null)[] }
   const avisos: Aviso[] = []
   const encerradas: string[] = []
   const registros: string[] = []
@@ -106,9 +106,9 @@ function montar() {
       comecar: async (ligacao) => {
         gravacoes.comecadas.push(ligacao)
         return {
-          parar: async () => {
+          parar: async (atendidaEm) => {
             if (controle.segurarGravacao) await new Promise<void>((pronto) => (controle.soltarGravacao = pronto))
-            gravacoes.paradas += 1
+            gravacoes.paradas.push(atendidaEm)
           },
         }
       },
@@ -214,7 +214,9 @@ describe('ligação feita', () => {
     const [fim] = m.fins()
     expect(fim.motivo).toBe('cliente_desligou')
     expect(fim.duracao_seg).toBe(65)
-    expect(m.gravacoes.paradas).toBe(1)
+    // Parada com o instante do atendimento: o que veio antes dele sai no corte.
+    expect(m.gravacoes.paradas).toHaveLength(1)
+    expect(m.gravacoes.paradas[0]).toEqual(expect.any(Number))
     expect(m.feito.encerrarPonte).toBe(1)
     expect(m.encerradas).toEqual(['lig-1'])
   })
@@ -237,7 +239,9 @@ describe('ligação feita', () => {
     await ligarAteChamar(naoAtendida)
     await telaSemChamada(naoAtendida)
     expect(naoAtendida.fins()[0].motivo).toBe('nao_atendida')
-    expect(naoAtendida.gravacoes.comecadas).toEqual([])
+    // A gravação abriu no pedido e sai sem guardar nada (ninguém atendeu).
+    expect(naoAtendida.gravacoes.comecadas).toEqual(['lig-1'])
+    expect(naoAtendida.gravacoes.paradas).toEqual([null])
 
     const ocupado = montar()
     await ligarAteChamar(ocupado)
@@ -265,7 +269,7 @@ describe('ligação feita', () => {
     expect(await m.maquina.atender({ ...PEDIDO, ligacao: 'lig-2' })).toEqual({ ok: false, recusa: 'ocupada' })
   })
 
-  it('a linha segue ocupada enquanto a gravação e a ponte da anterior fecham', async () => {
+  it('a linha segue ocupada enquanto a gravação da anterior fecha (a cauda), mas o fim já foi ao CRM', async () => {
     const m = montar()
     m.controle.segurarGravacao = true
     await ligarAteAtender(m)
@@ -276,11 +280,26 @@ describe('ligação feita', () => {
     await m.passar(0)
     expect(m.maquina.estado().ligacao?.fase).toBe('encerrando')
     expect(await m.maquina.ligar({ ...PEDIDO, ligacao: 'lig-2' })).toEqual({ ok: false, recusa: 'ocupada' })
-    expect(m.fins()).toEqual([])
+    // O painel do atendente para na hora: o "encerrada" não espera a cauda.
+    expect(m.fins()[0].motivo).toBe('cliente_desligou')
+    expect(m.feito.encerrarPonte).toBe(1)
+    // O envio só depois de a gravação fechar.
+    expect(m.encerradas).toEqual([])
     m.controle.soltarGravacao()
     await fechando
-    expect(m.fins()[0].motivo).toBe('cliente_desligou')
+    expect(m.encerradas).toEqual(['lig-1'])
     expect(m.maquina.estado().ligacao).toBeNull()
+  })
+
+  it('desligado enquanto o ffmpeg abria: a gravação que chega depois sai sem guardar nada', async () => {
+    const m = montar()
+    await m.maquina.tique()
+    const pedido = m.maquina.ligar(PEDIDO)
+    await m.maquina.desligar('lig-1')
+    await pedido
+    expect(m.gravacoes.comecadas).toEqual(['lig-1'])
+    expect(m.gravacoes.paradas.every((p) => p === null)).toBe(true)
+    expect(m.feito.discar).toEqual([])
   })
 
   it('oferta recusada pela ponte devolve a linha', async () => {
@@ -289,6 +308,9 @@ describe('ligação feita', () => {
     await m.maquina.tique()
     expect(await m.maquina.ligar(PEDIDO)).toEqual({ ok: false, recusa: 'oferta_invalida' })
     expect(m.maquina.estado().ligacao).toBeNull()
+    // A gravação aberta no pedido sai sem guardar nada.
+    expect(m.gravacoes.comecadas).toEqual(['lig-1'])
+    expect(m.gravacoes.paradas).toEqual([null])
     // A montagem que falhou (ou estourou o prazo) é invalidada na página antes
     // de a linha soltar: senão ela voltaria por cima da ponte da próxima.
     expect(m.feito.encerrarPonte).toBe(1)

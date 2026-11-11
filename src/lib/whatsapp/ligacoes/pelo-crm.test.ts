@@ -436,6 +436,8 @@ describe('os avisos da máquina', () => {
     expect(faixas()).toHaveLength(1);
     expect(ligacoes()[0].message_id).toBe(faixas()[0].id);
     expect(faixas()[0].ligacao).toMatchObject({ motivo: 'cliente_desligou', duracao_seg: 30 });
+    // O ▶ da faixa (4c) acha a gravação pelo id da ligação.
+    expect(faixas()[0].ligacao).toMatchObject({ ligacao_id: ID });
   });
 
   it('a faixa que entrou sem o vínculo é LIGADA na repetição, sem duplicar', async () => {
