@@ -2467,3 +2467,40 @@ etiqueta nas quatro cobranças; conferir que o perfil de quem liga enxerga o
 Jurídico; ligar as automações e o interruptor depois das 18h (os primeiros
 envios saem no dia útil seguinte, 08h e 09h); acompanhar os primeiros.
 
+
+## 13. O módulo "Cobrança automática" (11/11/2026, 1134)
+
+Pedido do operador: transformar a régua num MÓDULO configurável de um lugar
+só (para levar ao Atlas CRM), com as telas desenhadas no canvas "hoje ×
+proposta" e aprovadas ("Pronto, pode fazer essas mudanças").
+
+**Decisões (11/11/2026):** fachada sobre as automações (o motor não muda);
+o construtor só AVISA (não trava); aviso de inadimplência desligável;
+nome do escritório próprio da régua; o módulo existe em toda instalação e a
+régua nasce desligada.
+
+**O que entrou:**
+
+- Tela própria em Configurações › Integrações › Asaas
+  (`?tab=integracoes&aba=cobranca`): interruptor; "Quem manda" (número,
+  quem assina, nome do escritório); cadência em linha do tempo e tabela
+  (horário, texto, ligada; "Adicionar cobrança" de N dias; "Criar as etapas
+  padrão que faltam"); regras (dias úteis, intervalo); "Pedir ligação à
+  equipe" numa frase (limites, quem marcar, etiqueta, texto); "Quem não
+  recebe" (as listas do cartão); os números dos últimos 7 dias.
+- Texto da etapa (`&etapa=<id>`): o editor do construtor e a prévia POR CASO
+  (uma parcela, várias, empresa) com o escritório e a assinatura da tela.
+- Cartão do Asaas: "Primeiros passos", "O que a integração faz" (com o
+  liga/desliga do aviso de inadimplência) e o resumo da cobrança com o botão
+  para a tela; o bloco antigo (`asaas-regua.tsx`) saiu.
+- Automações: aba fixa "Cobrança automática", selo "Régua de cobrança" e
+  atalho; no construtor, o aviso.
+- Aba Cobranças da conversa: "Próxima (prevista)", "Ligação pedida" e, para o
+  administrador, o atalho para configurar.
+- Migration 1134: `regua_escritorio_nome` e `aviso_inadimplencia_ativo` em
+  `cb_asaas_config` (aditiva).
+
+Regras da área: `.claude/rules/cobranca-automatica.md`.
+
+**Pendente:** configurar e ligar a régua do CB pela tela nova (pede o "pode
+gravar" do operador); o porte ao Atlas CRM (traz junto o #494).

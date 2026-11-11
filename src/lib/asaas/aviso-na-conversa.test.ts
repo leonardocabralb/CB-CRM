@@ -61,7 +61,7 @@ describe("lerRespostaDoResumo — parse defensivo", () => {
   });
 
   it("desconectado é uma resposta válida, com contatos vazios", () => {
-    expect(lerRespostaDoResumo({ conectado: false, leituraFresca: false, atualizadoEm: null, cicloCompleto: false, contatos: {} })).toEqual({ conectado: false, leituraFresca: false, atualizadoEm: null, cicloCompleto: false, contatos: {} });
+    expect(lerRespostaDoResumo({ conectado: false, leituraFresca: false, atualizadoEm: null, cicloCompleto: false, contatos: {} })).toEqual({ conectado: false, leituraFresca: false, atualizadoEm: null, cicloCompleto: false, avisoDesligado: false, contatos: {} });
   });
 
   it("`cicloCompleto` ausente (rota de uma versão anterior) conta como NÃO completo — neutraliza, em vez de afirmar", () => {
@@ -157,6 +157,14 @@ describe("motivoDaNeutralizacao — a régua ÚNICA do recorte e da dica do pain
     expect(motivoDaNeutralizacao(lerRespostaDoResumo(corpo({})))).toBeNull();
     // leitura ANTIGA não é motivo: o recorte vale, e a tela diz de quando é
     expect(motivoDaNeutralizacao(lerRespostaDoResumo(corpo({}, { leituraFresca: false })))).toBeNull();
+  });
+
+  it("o aviso DESLIGADO em Integrações (1134) neutraliza o filtro e cala ícone e faixa, mesmo com contatos no corpo", () => {
+    const desligado = lerRespostaDoResumo(corpo({ c1: [] }, { avisoDesligado: true }));
+    expect(desligado?.avisoDesligado).toBe(true);
+    expect(motivoDaNeutralizacao(desligado)).toBe("aviso_desligado");
+    expect(idsInadimplentes(desligado, new Date())).toBeNull();
+    expect(lerRespostaDoResumo(corpo({}))?.avisoDesligado).toBe(false);
   });
 });
 

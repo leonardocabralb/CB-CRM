@@ -1,8 +1,20 @@
 import { NextResponse } from "next/server";
 
 import { GATILHOS_DA_REGUA, HORA_PADRAO_COBRANCA, HORA_PADRAO_LEMBRETE, lerAutomacaoDaRegua } from "@/lib/asaas/regua";
+import {
+  ASSINATURA_DA_NOITE,
+  HORA_PADRAO_LEMBRETE_DA_NOITE,
+  MARCOS_PADRAO,
+  NOME_DO_LEMBRETE_DA_NOITE,
+  NOME_DO_LEMBRETE_DO_DIA,
+  nomeDaCobranca,
+  TEXTO_DA_COBRANCA,
+  TEXTO_DO_LEMBRETE,
+  TEXTO_DO_LEMBRETE_DA_NOITE,
+} from "@/lib/asaas/textos-da-regua";
 import { supabaseAdmin } from "@/lib/automations/admin-client";
 import { insertSteps } from "@/lib/automations/steps-tree";
+import { normalizarAssinatura } from "@/lib/assinatura/assinatura";
 import { requireRole, toErrorResponse } from "@/lib/auth/account";
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
 
@@ -26,46 +38,24 @@ import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit
  * pela D2, esta é a PRIMEIRA mensagem que o cliente recebe deste número, e a
  * assinatura da conta pode estar desligada; e dizem "se já pagou,
  * desconsidere" porque o boleto pago no caixa fica PENDING até compensar.
+ *
+ * Com corpo `{ dias, canal_id?, assinatura? }` (a etapa nova da tela
+ * "Cobrança automática", 1134) cria SÓ a cobrança daquele marco, desligada,
+ * com o texto padrão, a conexão e a assinatura de "Quem manda" — 409 se o
+ * marco já existe. A conexão tem de ser da conta (senão 400); o resto da
+ * conferência (conectada, por QR Code) é a da ativação, como no construtor.
  */
 
-const MARCOS_PADRAO = [1, 5, 15, 30] as const;
-
-// `saudacao` em vez de "Olá, {{vars.cliente_primeiro_nome}}!": empresa (CNPJ)
-// recebe só "Olá!", e o nome de pessoa sai com a inicial maiúscula. A frase
-// da situação e os links servem a uma cobrança e a várias, e os links já
-// trazem a que vence hoje junto (10/11/2026) — um "Total em aberto" depois
-// dela somaria só as vencidas (revisão do PR #494).
-const TEXTO_DA_COBRANCA = [
-  "{{vars.saudacao}} Aqui é do {{vars.escritorio_nome}}.",
-  "Vi aqui que {{vars.cobranca_situacao}}. Ainda não identificamos o pagamento. Para pagar:",
-  "{{vars.cobranca_links}}",
-  "Se já pagou, pode desconsiderar esta mensagem. Qualquer dúvida, é só responder por aqui.",
-].join("\n");
-
-// O lembrete da NOITE (D12 revista, 10/11/2026): de propósito com cara de
-// mensagem automática — lembra no fim do dia sem parecer uma pessoa cobrando.
-// A assinatura "Mensagem automática" vem pelo "Assinar como" da automação.
-const HORA_PADRAO_LEMBRETE_DA_NOITE = "20:00";
-const ASSINATURA_DA_NOITE = "Mensagem automática";
-const TEXTO_DO_LEMBRETE_DA_NOITE = [
-  "Lembrete de pagamento: {{vars.cobranca_situacao}}.",
-  "Para pagar:",
-  "{{vars.cobranca_links}}",
-  "Se já pagou, desconsidere esta mensagem.",
-].join("\n");
-
-const TEXTO_DO_LEMBRETE = [
-  "{{vars.saudacao}} Aqui é do {{vars.escritorio_nome}}.",
-  "Passando para lembrar que {{vars.cobranca_situacao}}. Para pagar:",
-  "{{vars.cobranca_links}}",
-  "Se já pagou, pode desconsiderar. Qualquer dúvida, é só responder por aqui.",
-].join("\n");
-
-export async function POST() {
+export async function POST(request: Request) {
   try {
     const ctx = await requireRole("admin");
     const limit = checkRateLimit(`cb:asaas:regua:${ctx.userId}`, RATE_LIMITS.adminAction);
     if (!limit.success) return rateLimitResponse(limit);
+
+    const pedido = (await request.json().catch(() => null)) as { dias?: unknown; canal_id?: unknown; assinatura?: unknown } | null;
+    const umaEtapa = pedido !== null && pedido.dias !== undefined;
+    const diasPedidos = Number(pedido?.dias);
+    if (umaEtapa && (!Number.isInteger(diasPedidos) || diasPedidos < 1 || diasPedidos > 365)) return NextResponse.json({ error: "bad_request" }, { status: 400 });
 
     const admin = supabaseAdmin();
     const { data: existentes, error } = await admin
@@ -94,7 +84,13 @@ export async function POST() {
       .order("is_default", { ascending: false })
       .order("created_at", { ascending: true })
       .limit(1);
-    const canalId = (canais?.[0]?.id as string | undefined) ?? null;
+    let canalId = (canais?.[0]?.id as string | undefined) ?? null;
+    if (umaEtapa && typeof pedido?.canal_id === "string") {
+      const { data: daConta, error: erroDoCanal } = await admin.from("cb_channels").select("id").eq("id", pedido.canal_id).eq("account_id", ctx.accountId).maybeSingle();
+      if (erroDoCanal) return NextResponse.json({ error: "db_error" }, { status: 500 });
+      if (!daConta) return NextResponse.json({ error: "canal_invalido" }, { status: 400 });
+      canalId = daConta.id as string;
+    }
     const passo = (texto: string) => ({ step_type: "send_message", step_config: canalId ? { text: texto, channel_id: canalId } : { text: texto } });
 
     const criadas: string[] = [];
@@ -125,17 +121,24 @@ export async function POST() {
         throw new Error(erroPassos);
       }
       criadas.push(nome);
+      return automacao.id as string;
     };
+
+    if (umaEtapa) {
+      if (marcosExistentes.has(diasPedidos)) return NextResponse.json({ error: "ja_existe" }, { status: 409 });
+      const id = await criar(nomeDaCobranca(diasPedidos), "asaas_cobranca_vencida", { dias_de_atraso: diasPedidos, hora_envio: HORA_PADRAO_COBRANCA, somente_dias_uteis: true }, TEXTO_DA_COBRANCA, normalizarAssinatura(pedido?.assinatura));
+      return NextResponse.json({ ok: true, criadas, id });
+    }
 
     for (const marco of MARCOS_PADRAO) {
       if (marcosExistentes.has(marco)) continue;
-      await criar(`Cobrança · ${marco} dia${marco > 1 ? "s" : ""}`, "asaas_cobranca_vencida", { dias_de_atraso: marco, hora_envio: HORA_PADRAO_COBRANCA, somente_dias_uteis: true }, TEXTO_DA_COBRANCA);
+      await criar(nomeDaCobranca(marco), "asaas_cobranca_vencida", { dias_de_atraso: marco, hora_envio: HORA_PADRAO_COBRANCA, somente_dias_uteis: true }, TEXTO_DA_COBRANCA);
     }
     if (!turnosExistentes.has(0)) {
-      await criar("Lembrete · vence hoje", "asaas_cobranca_vence_hoje", { hora_envio: HORA_PADRAO_LEMBRETE, somente_dias_uteis: true }, TEXTO_DO_LEMBRETE);
+      await criar(NOME_DO_LEMBRETE_DO_DIA, "asaas_cobranca_vence_hoje", { hora_envio: HORA_PADRAO_LEMBRETE, somente_dias_uteis: true }, TEXTO_DO_LEMBRETE);
     }
     if (!turnosExistentes.has(1)) {
-      await criar("Lembrete · noite", "asaas_cobranca_vence_hoje", { hora_envio: HORA_PADRAO_LEMBRETE_DA_NOITE, somente_dias_uteis: true }, TEXTO_DO_LEMBRETE_DA_NOITE, ASSINATURA_DA_NOITE);
+      await criar(NOME_DO_LEMBRETE_DA_NOITE, "asaas_cobranca_vence_hoje", { hora_envio: HORA_PADRAO_LEMBRETE_DA_NOITE, somente_dias_uteis: true }, TEXTO_DO_LEMBRETE_DA_NOITE, ASSINATURA_DA_NOITE);
     }
     return NextResponse.json({ ok: true, criadas, semConexao: canalId === null });
   } catch (err) {

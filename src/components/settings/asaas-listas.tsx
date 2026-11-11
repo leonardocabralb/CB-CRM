@@ -45,13 +45,17 @@ interface Props {
   versao: number;
   /** o vínculo mudou por aqui: o cartão relê o resumo */
   aoMudar: () => void;
+  /** só estas abas (a tela "Cobrança automática" mostra a lista de exceção e os ligados, 1134); ausente = todas */
+  listas?: readonly NomeDaLista[];
+  /** a aba que abre primeiro; ausente = a primeira de `listas` */
+  listaInicial?: NomeDaLista;
 }
 
 const FAIXAS: Faixa[] = ["", "ate_5", "de_6_a_30", "mais_de_30"];
 
-export function AsaasListas({ resumo, versao, aoMudar }: Props) {
+export function AsaasListas({ resumo, versao, aoMudar, listas = NOMES_DAS_LISTAS, listaInicial }: Props) {
   const t = useTranslations("Settings.integracoes");
-  const [lista, setLista] = useState<NomeDaLista>("confirmar");
+  const [lista, setLista] = useState<NomeDaLista>(listaInicial ?? listas[0] ?? "confirmar");
   const [pagina, setPagina] = useState(1);
   const [digitado, setDigitado] = useState("");
   const [busca, setBusca] = useState("");
@@ -182,7 +186,7 @@ export function AsaasListas({ resumo, versao, aoMudar }: Props) {
   return (
     <div className="min-w-0 space-y-3">
       <div className="flex flex-wrap gap-1.5">
-        {NOMES_DAS_LISTAS.map((nome) => {
+        {listas.map((nome) => {
           const n = contagem(nome);
           return (
             <button

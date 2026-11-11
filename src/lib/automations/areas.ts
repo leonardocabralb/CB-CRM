@@ -9,11 +9,20 @@
 // instalação tem as suas.
 // ============================================================
 
+import { ehGatilhoDaRegua } from "@/lib/asaas/regua"
+
 /** Espelho do CHECK da 1055 (há teste lendo a migration). */
 export const TETO_DO_NOME_DA_AREA = 40
 
 /** O filtro da aba "Geral" (automações sem área). */
 export const ABA_GERAL = "__geral__"
+
+/**
+ * A aba FIXA "Cobrança automática" (1134): as automações da régua do Asaas
+ * são as etapas do módulo e ficam juntas nela, seja qual for a área gravada.
+ * Só aparece quando a conta tem alguma.
+ */
+export const ABA_DA_COBRANCA = "__cobranca__"
 
 export interface AreaDeAutomacao {
   id: string
@@ -70,19 +79,20 @@ export function ordenarAreas<T extends AreaDeAutomacao>(areas: readonly T[]): T[
  * áreas ainda não voltou, ou foi apagada com a tela aberta) cai em "Geral" —
  * é o que o banco faz ao apagar (SET NULL), e sumir da lista seria pior.
  */
-export function abaDaAutomacao(areaId: string | null | undefined, idsDasAreas: ReadonlySet<string>): string {
+export function abaDaAutomacao(areaId: string | null | undefined, idsDasAreas: ReadonlySet<string>, gatilho?: string | null): string {
+  if (ehGatilhoDaRegua(gatilho)) return ABA_DA_COBRANCA
   return areaId && idsDasAreas.has(areaId) ? areaId : ABA_GERAL
 }
 
 /** Quantas automações há em cada aba (`ABA_GERAL` incluída, zero incluído). */
 export function contarPorAba(
-  automacoes: readonly { area_id?: string | null }[],
+  automacoes: readonly { area_id?: string | null; trigger_type?: string | null }[],
   areas: readonly AreaDeAutomacao[],
 ): Map<string, number> {
   const ids = new Set(areas.map((a) => a.id))
-  const contagem = new Map<string, number>([[ABA_GERAL, 0], ...areas.map((a) => [a.id, 0] as [string, number])])
+  const contagem = new Map<string, number>([[ABA_GERAL, 0], [ABA_DA_COBRANCA, 0], ...areas.map((a) => [a.id, 0] as [string, number])])
   for (const a of automacoes) {
-    const aba = abaDaAutomacao(a.area_id, ids)
+    const aba = abaDaAutomacao(a.area_id, ids, a.trigger_type)
     contagem.set(aba, (contagem.get(aba) ?? 0) + 1)
   }
   return contagem

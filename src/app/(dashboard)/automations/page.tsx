@@ -55,7 +55,8 @@ import { TRIGGER_META, triggerMeta, formatRelative } from "@/lib/automations/tri
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
 import { useAreasDeAutomacao } from "@/hooks/use-areas-de-automacao"
-import { ABA_GERAL, abaDaAutomacao, contarPorAba, type AreaDeAutomacao } from "@/lib/automations/areas"
+import { ABA_DA_COBRANCA, ABA_GERAL, abaDaAutomacao, contarPorAba, type AreaDeAutomacao } from "@/lib/automations/areas"
+import { LinkDaRegua, SeloDaRegua } from "@/components/automations/selo-da-regua"
 import { BarraDeAbas, GerenciarAbasDialog } from "@/components/automations/abas-de-automacao"
 import { useAutomacoesFavoritas } from "@/hooks/use-automacoes-favoritas"
 
@@ -259,13 +260,13 @@ export default function AutomationsPage() {
   const idsDasAbas = new Set((abas ?? []).map((x) => x.id))
   // Aba guardada que não existe mais (apagada) volta para "Todas".
   const abaVigente =
-    abas === null || aba === null || aba === ABA_GERAL || idsDasAbas.has(aba) ? aba : null
+    abas === null || aba === null || aba === ABA_GERAL || aba === ABA_DA_COBRANCA || idsDasAbas.has(aba) ? aba : null
   // Favoritas primeiro; o resto na ordem de sempre (o sort é estável).
   const favoritasPrimeiro = (lista: Automation[]) =>
     favoritas ? [...lista].sort((a, b) => Number(favoritas.has(b.id)) - Number(favoritas.has(a.id))) : lista
   const visiveis = favoritasPrimeiro(
     abas && abaVigente !== null
-      ? noCanal.filter((a) => abaDaAutomacao(a.area_id, idsDasAbas) === abaVigente)
+      ? noCanal.filter((a) => abaDaAutomacao(a.area_id, idsDasAbas, a.trigger_type) === abaVigente)
       : noCanal,
   )
   const contagem = contarPorAba(noCanal, abas ?? [])
@@ -276,8 +277,8 @@ export default function AutomationsPage() {
   // que têm automação — é o que tira a lista comprida de uma coluna só.
   const grupos: { id: string; nome: string; itens: Automation[] }[] | null =
     abas && abas.length > 0 && abaVigente === null
-      ? [{ id: ABA_GERAL, nome: tAbas("geral") }, ...abas.map((x) => ({ id: x.id, nome: x.nome }))]
-          .map((g) => ({ ...g, itens: visiveis.filter((a) => abaDaAutomacao(a.area_id, idsDasAbas) === g.id) }))
+      ? [{ id: ABA_GERAL, nome: tAbas("geral") }, ...abas.map((x) => ({ id: x.id, nome: x.nome })), { id: ABA_DA_COBRANCA, nome: tAbas("cobranca") }]
+          .map((g) => ({ ...g, itens: visiveis.filter((a) => abaDaAutomacao(a.area_id, idsDasAbas, a.trigger_type) === g.id) }))
           .filter((g) => g.itens.length > 0)
       : null
 
@@ -548,10 +549,12 @@ function AutomationCard({
             {/* Só as restritas ganham etiqueta: "todos os canais" em cada
                 linha viraria ruído, e é quem TEM escopo que precisa saltar. */}
             <ChannelScopeBadge channels={channels} scope={automation.channel_ids} />
+            <SeloDaRegua gatilho={automation.trigger_type} />
           </div>
         </button>
 
         <div className="flex items-center gap-3">
+          <LinkDaRegua gatilho={automation.trigger_type} />
           {/* Pessoal (1079): qualquer membro marca as suas, sem guarda de papel. */}
           {favorita !== null && (
             <button

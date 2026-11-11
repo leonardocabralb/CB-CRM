@@ -35,7 +35,7 @@ export async function GET(request: Request) {
     const { data, error } = await admin
       .from("cb_asaas_config")
       .select(
-        "chave_nome, ambiente, chave_expira_em, status, last_sync_at, last_sync_attempt_at, vencidas_listadas_em, last_full_sync_at, sincronizando_desde, last_error, created_at, webhook_token, webhook_state, webhook_erro, webhook_email, webhook_asaas_id, webhook_religado_em, webhook_conferido_em, last_event_at, regua_ativa, regua_ativada_em, regua_intervalo_dias",
+        "chave_nome, ambiente, chave_expira_em, status, last_sync_at, last_sync_attempt_at, vencidas_listadas_em, last_full_sync_at, sincronizando_desde, last_error, created_at, webhook_token, webhook_state, webhook_erro, webhook_email, webhook_asaas_id, webhook_religado_em, webhook_conferido_em, last_event_at, regua_ativa, regua_ativada_em, regua_intervalo_dias, aviso_inadimplencia_ativo",
       )
       .eq("account_id", ctx.accountId)
       .maybeSingle();
@@ -67,6 +67,8 @@ export async function GET(request: Request) {
       origemAlcancavel: origem !== null,
       podeCriarDaqui: podeCriarDaqui(origem, request),
       regua,
+      // o aviso de inadimplência da caixa (1134): o cartão o liga e desliga
+      avisoAtivo: data?.aviso_inadimplencia_ativo !== false,
     });
   } catch (err) {
     return toErrorResponse(err);

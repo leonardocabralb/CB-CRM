@@ -29,6 +29,11 @@ export interface ConfigDoEspelho {
   last_error: string | null;
   /** o interruptor "Cobrança automática" (998, D20) — ausente na linha anterior à migration */
   regua_ativa?: boolean | null;
+  /** ícone, faixa e filtro "Inadimplentes" (1134); `false` desliga — ausente/nulo é ligado */
+  aviso_inadimplencia_ativo?: boolean | null;
+  /** a fronteira da ativação (D13) e o intervalo mínimo — a "Próxima" da aba Cobranças (1134) */
+  regua_ativada_em?: string | null;
+  regua_intervalo_dias?: number | null;
 }
 
 export interface Espelho {
@@ -82,7 +87,7 @@ export function lerParcela(l: Record<string, unknown>): ParcelaDoEspelho {
 export async function lerConfigDoEspelho(admin: SupabaseClient, accountId: string): Promise<ConfigDoEspelho | null> {
   const { data, error } = await admin
     .from("cb_asaas_config")
-    .select("status, last_sync_at, last_sync_attempt_at, vencidas_listadas_em, last_full_sync_at, sincronizando_desde, vinculo_completo_em, last_error, regua_ativa")
+    .select("status, last_sync_at, last_sync_attempt_at, vencidas_listadas_em, last_full_sync_at, sincronizando_desde, vinculo_completo_em, last_error, regua_ativa, aviso_inadimplencia_ativo, regua_ativada_em, regua_intervalo_dias")
     .eq("account_id", accountId)
     .maybeSingle();
   if (error) throw new Error(`config: ${error.message}`);

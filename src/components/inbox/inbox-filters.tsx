@@ -721,9 +721,11 @@ export function InboxFilters({
                 <p className="mt-1 px-0.5 text-[11px] text-muted-foreground">
                   {asaasNeutralizado === "desconectado"
                     ? t("delinquentDisconnected")
-                    : asaasNeutralizado === "sem_resposta"
-                      ? t("delinquentChecking")
-                      : t("delinquentPending")}
+                    : asaasNeutralizado === "aviso_desligado"
+                      ? t("delinquentAlertOff")
+                      : asaasNeutralizado === "sem_resposta"
+                          ? t("delinquentChecking")
+                        : t("delinquentPending")}
                 </p>
               )}
             </div>

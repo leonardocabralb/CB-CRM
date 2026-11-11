@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { CalendarDays, ChevronDown, RefreshCw, Sparkles } from 'lucide-react';
 
@@ -16,6 +17,7 @@ import {
 } from '@/components/agentes-de-ia/provedor-e-modelo';
 import { useAuth } from '@/hooks/use-auth';
 import { AsaasCard } from './asaas-card';
+import { CobrancaAutomatica } from './cobranca-automatica';
 import { MetaAdsCard } from './meta-ads-card';
 import { CalendlyCard } from './calendly-card';
 import { TldvCard } from './tldv-card';
@@ -105,6 +107,26 @@ export function IntegracoesPanel() {
   // admin lia uma acusação de não ser admin durante o fetch do perfil — o
   // esqueleto diz a mesma coisa que a tela vai dizer, sem mentir.
   const { profileLoading, accountId } = useAuth();
+  // A tela "Cobrança automática" do Asaas (1134) é uma SUB-ABA desta seção
+  // (`?aba=cobranca`, `&etapa=<id>` no texto de uma etapa) — a convenção do
+  // `?aba=` da API: a página de Configurações a apaga ao trocar de seção.
+  const params = useSearchParams();
+  const router = useRouter();
+  const naCobranca = params.get('aba') === 'cobranca';
+  const abrirEtapa = (id: string | null) => {
+    const p = new URLSearchParams(params.toString());
+    if (id) p.set('etapa', id);
+    else p.delete('etapa');
+    router.replace(`/settings?${p.toString()}`, { scroll: false });
+  };
+
+  if (naCobranca) {
+    return (
+      <RequireRole min="admin" fallback={profileLoading ? <Esqueleto /> : <p className="text-sm text-muted-foreground">{t('somenteAdmin')}</p>}>
+        <CobrancaAutomatica key={accountId ?? 'sem-conta'} etapaAberta={params.get('etapa')} aoAbrirEtapa={abrirEtapa} />
+      </RequireRole>
+    );
+  }
 
   return (
     <div>

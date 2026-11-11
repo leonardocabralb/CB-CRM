@@ -3,11 +3,16 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/automations/admin-client";
 import { requireRole, toErrorResponse } from "@/lib/auth/account";
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
+import { TETO_DO_NOME_DO_ESCRITORIO } from "@/lib/asaas/modulo-da-cobranca";
 
 /**
  * PUT /api/cb/asaas/regua/interruptor  (admin+) — o interruptor "Cobrança
- * automática" (998, D20) e o intervalo mínimo entre cobranças (D11, 13/09).
- * Corpo: `{ regua_ativa?: boolean, regua_intervalo_dias?: number }`.
+ * automática" (998, D20), o intervalo mínimo entre cobranças (D11, 13/09) e,
+ * da tela "Cobrança automática" (1134), o nome do escritório da régua e o
+ * aviso de inadimplência da caixa de entrada.
+ * Corpo: `{ regua_ativa?: boolean, regua_intervalo_dias?: number,
+ * regua_escritorio_nome?: string | null, aviso_inadimplencia_ativo?: boolean }`.
+ * O nome é aparado; vazio vira NULO (volta ao nome automático da assinatura).
  *
  * ⚠️ LIGAR carimba `regua_ativada_em`: só a parcela vista vencida DEPOIS
  * disto entra na régua (D13) — ligar não é retroativo, e religar depois de
@@ -28,7 +33,7 @@ export async function PUT(request: Request) {
     const limit = checkRateLimit(`cb:asaas:regua-interruptor:${ctx.userId}`, RATE_LIMITS.adminAction);
     if (!limit.success) return rateLimitResponse(limit);
 
-    const corpo = (await request.json().catch(() => null)) as { regua_ativa?: unknown; regua_intervalo_dias?: unknown } | null;
+    const corpo = (await request.json().catch(() => null)) as { regua_ativa?: unknown; regua_intervalo_dias?: unknown; regua_escritorio_nome?: unknown; aviso_inadimplencia_ativo?: unknown } | null;
     const patch: Record<string, unknown> = {};
     if (typeof corpo?.regua_ativa === "boolean") patch.regua_ativa = corpo.regua_ativa;
     if (corpo?.regua_intervalo_dias !== undefined) {
@@ -36,11 +41,19 @@ export async function PUT(request: Request) {
       if (!Number.isInteger(dias) || dias < 0 || dias > 60) return NextResponse.json({ error: "bad_request" }, { status: 400 });
       patch.regua_intervalo_dias = dias;
     }
+    if (corpo && "regua_escritorio_nome" in corpo) {
+      const v = corpo.regua_escritorio_nome;
+      if (v !== null && typeof v !== "string") return NextResponse.json({ error: "bad_request" }, { status: 400 });
+      const nome = typeof v === "string" ? v.replace(/\s+/g, " ").trim() : "";
+      if (nome.length > TETO_DO_NOME_DO_ESCRITORIO) return NextResponse.json({ error: "bad_request" }, { status: 400 });
+      patch.regua_escritorio_nome = nome || null;
+    }
+    if (typeof corpo?.aviso_inadimplencia_ativo === "boolean") patch.aviso_inadimplencia_ativo = corpo.aviso_inadimplencia_ativo;
     if (Object.keys(patch).length === 0) return NextResponse.json({ error: "bad_request" }, { status: 400 });
     const agora = new Date().toISOString();
     patch.updated_at = agora;
     const admin = supabaseAdmin();
-    const colunas = "regua_ativa, regua_ativada_em, regua_intervalo_dias";
+    const colunas = "regua_ativa, regua_ativada_em, regua_intervalo_dias, regua_escritorio_nome, aviso_inadimplencia_ativo";
 
     if (patch.regua_ativa === true) {
       // A transição desligado → ligado, cercada: só ela carimba.

@@ -303,7 +303,8 @@
       "searchInsideMessages": "Buscar também dentro das mensagens",
       "previaNaoSuportada": "Mensagem não suportada",
       "rascunho": "Rascunho:",
-      "rascunhoAnexos": "{n, plural, =1 {1 anexo} other {# anexos}}"
+      "rascunhoAnexos": "{n, plural, =1 {1 anexo} other {# anexos}}",
+      "delinquentAlertOff": "O aviso de inadimplência está desligado em Integrações › Asaas: o filtro não tem efeito."
     },
     "messageThread": {
       "unknownAuthor": "Desconhecido",
@@ -931,7 +932,13 @@
           "sem_automacao": "a automação foi desligada antes de sair ({quando})",
           "incerto": "sem desfecho registrado ({quando}) — pode ter saído; não é reenviada",
           "na_fila": "na fila do motor ({quando}) — a conexão recusou o envio; nova tentativa em minutos"
-        }
+        },
+        "proxima": "Próxima (prevista)",
+        "proximaQuando": "{dia}, a partir de {hora}",
+        "proximaDica": "Estimativa: na hora o Asaas é relido — pagou antes, não sai.",
+        "ligacaoPedida": "Ligação pedida",
+        "ligacaoPedidaDesde": "Etiqueta \"{etiqueta}\" na ficha desde {quando}: a régua não pede de novo até alguém tirá-la.",
+        "configurar": "Configurar a cobrança automática"
       }
     },
     "execucoes": {
@@ -2565,7 +2572,8 @@
           "semPermissao": "Seu perfil não pode mudar as abas.",
           "falhou": "Não foi possível salvar. Tente de novo.",
           "mover": "Não foi possível mover a automação. Tente de novo."
-        }
+        },
+        "cobranca": "Cobrança automática"
       }
     },
     "edit": {
@@ -3636,6 +3644,12 @@
     "anotacaoGravada": {
       "autor": "Automação \"{nome}\"",
       "semNome": "membro sem nome"
+    },
+    "regua": {
+      "selo": "Régua de cobrança",
+      "editarNaRegua": "Editar na régua",
+      "aviso": "Esta automação é uma etapa da Cobrança automática do Asaas. Dias, horário, texto, número e assinatura se mudam por lá, para a régua continuar coerente — aqui também dá, mas a tela da cobrança é o lugar.",
+      "abrir": "Abrir Cobrança automática"
     }
   },
   "Flows": {
@@ -4799,7 +4813,92 @@
         "radar": "Radar de Atendimento",
         "transcricao": "Transcrição de áudio",
         "leitura": "Leitura de imagem e documentos (agentes de IA)",
-        "rag": "Base de conhecimento (RAG)"
+        "rag": "Base de conhecimento (RAG)",
+        "erroGravar": "Não foi possível gravar.",
+        "ligado": "Ligado",
+        "desligado": "Desligado",
+        "ligar": "Ligar",
+        "desligar": "Desligar",
+        "onde": "Onde: {onde}",
+        "passos": {
+          "titulo": "Primeiros passos",
+          "feitos": "{feitos} de {total} feitos",
+          "situacao": {
+            "feito": "Feito",
+            "falta": "Falta",
+            "nao_sei": "Conferindo"
+          },
+          "conectar": {
+            "titulo": "Conectar a chave",
+            "desc": "A chave da API do Asaas, só de leitura e webhooks."
+          },
+          "webhook": {
+            "titulo": "Aviso na hora",
+            "desc": "O webhook que o CRM cria sozinho."
+          },
+          "primeira_leitura": {
+            "titulo": "Primeira leitura",
+            "desc": "{n, plural, =0 {Nenhum cliente lido ainda.} one {Um cliente lido.} other {# clientes lidos.}}"
+          },
+          "vinculos": {
+            "titulo": "Revisar os vínculos",
+            "desc": "{n, plural, =0 {Nada para confirmar.} one {Um cliente para confirmar.} other {# clientes para confirmar.}}"
+          },
+          "cobranca": {
+            "titulo": "Ligar a cobrança",
+            "desc": "Cadência, textos e quem manda."
+          }
+        },
+        "funcoes": {
+          "titulo": "O que a integração faz",
+          "fonte": "O Asaas é a fonte; o CRM só lê.",
+          "vinculo": {
+            "titulo": "Vínculo com as fichas",
+            "desc": "Liga cada cliente do Asaas a um contato pelo telefone, CPF ou e-mail. Sem certeza, vai para revisão.",
+            "onde": "aqui, em \"Ver as listas\"",
+            "status": "{ligados} ligados · {confirmar} para confirmar",
+            "acao": "Revisar"
+          },
+          "aviso": {
+            "titulo": "Aviso de inadimplência",
+            "desc": "Ícone na lista de conversas, faixa acima do campo de mensagem e o filtro \"Inadimplentes\". A aba Cobranças da conversa fica sempre.",
+            "onde": "Caixa de entrada",
+            "statusLigado": "Ligado · {n, plural, =0 {ninguém devendo} one {# devendo} other {# devendo}}",
+            "confirmarDesligar": "Desligar o aviso de inadimplência? O ícone, a faixa e o filtro \"Inadimplentes\" somem para toda a equipe. A aba Cobranças continua.",
+            "ligado": "Aviso de inadimplência ligado.",
+            "desligado": "Aviso de inadimplência desligado."
+          },
+          "filtro": {
+            "titulo": "Filtro \"Inadimplentes\"",
+            "desc": "Separa na caixa de entrada as conversas de quem tem parcela vencida.",
+            "onde": "Caixa de entrada › ajustes dos filtros",
+            "status": "Disponível",
+            "semAviso": "Some com o aviso desligado",
+            "acao": "Abrir a caixa"
+          },
+          "excecao": {
+            "titulo": "Clientes que não recebem cobrança",
+            "desc": "Quem está aqui nunca recebe lembrete nem cobrança automática.",
+            "onde": "o sino da aba Cobranças e a tela Cobrança automática",
+            "status": "{n, plural, =0 {Ninguém} one {# cliente} other {# clientes}}",
+            "acao": "Ver a lista"
+          },
+          "cobranca": {
+            "titulo": "Cobrança automática",
+            "desc": "Lembrete no dia do vencimento e cobrança dos atrasos, pelo WhatsApp, com a cadência, os textos e quem assina.",
+            "onde": "a tela própria, Cobrança automática",
+            "statusLigada": "Ligada · {ligadas} de {total} etapas",
+            "statusDesligada": "Desligada",
+            "acao": "Configurar"
+          }
+        },
+        "resumo": {
+          "titulo": "Cobrança automática",
+          "etapas": "{ligadas} de {total} etapas ligadas",
+          "excecoes": "{n, plural, =0 {ninguém fora da cobrança} one {# cliente não recebe} other {# clientes não recebem}}",
+          "repetido": "Há etapas repetidas: confira na tela da cobrança.",
+          "configurar": "Configurar cobrança automática"
+        }
       },
       "origem": {
         "agente": "herdado do agente",
@@ -5280,6 +5379,178 @@
         "banco": "Não foi possível gravar agora — tente de novo.",
         "modelo_em_uso_recusado": "A chave nova não alcança o modelo {modelo}, que está em uso — e a chave atual alcança. Nada foi trocado: troque o modelo antes, ou use uma chave com acesso a ele.",
         "transcricao_recusada": "A chave nova não alcança o modelo da transcrição de áudio ({modelo}), que é fixo no sistema. Nada foi gravado: use uma chave do Google com acesso a ele."
+      },
+      "cobranca": {
+        "conexaoApagada": "(conexão apagada)",
+        "erroDesconhecido": "Não foi possível gravar.",
+        "erroDeRede": "Sem resposta do servidor.",
+        "configuracaoGeral": "Nome do escritório e intervalo",
+        "erroGravar": "Não foi possível gravar. Tente de novo.",
+        "salvo": "Cobrança automática salva.",
+        "salvoComRecusas": "{n, plural, one {Uma etapa não foi gravada} other {# etapas não foram gravadas}} — veja o motivo abaixo.",
+        "confirmarLigar": "Ligar a cobrança automática? Ela NÃO é retroativa: só entra o que vencer (ou completar um marco) daqui em diante. As mensagens saem pelas etapas ligadas.",
+        "ligada": "Cobrança automática ligada.",
+        "desligada": "Cobrança automática desligada.",
+        "erroCriar": "Não foi possível criar a etapa.",
+        "padraoCriada": "{n, plural, =0 {Nenhuma etapa faltava} one {Uma etapa criada (desligada)} other {# etapas criadas (desligadas)}}.",
+        "padraoSemConexao": "Nenhum WhatsApp por QR Code conectado: escolha o número em \"Quem manda\" antes de ligar.",
+        "diasInvalidos": "Dias de atraso: um número de 1 a 365.",
+        "etapaJaExiste": "Já existe a cobrança de {dias, plural, one {# dia} other {# dias}}.",
+        "etapaCriada": "Cobrança de {dias, plural, one {# dia} other {# dias}} criada, desligada.",
+        "etiquetaPadrao": "Ligar para cobrar",
+        "voltar": "Integrações › Asaas",
+        "carregarFalhou": "Não consegui ler a cobrança automática.",
+        "tentarDeNovo": "Tentar de novo",
+        "carregando": "Carregando…",
+        "naoConectado": "Conecte o Asaas em Integrações para configurar a cobrança automática.",
+        "titulo": "Cobrança automática",
+        "estadoLigada": "Ligada",
+        "estadoDesligada": "Desligada",
+        "interruptor": "Ligar",
+        "desc": "Lembrete no dia do vencimento e cobrança dos atrasos, pelo WhatsApp. O Asaas continua sendo a fonte: antes de cada envio o CRM confere de novo se a parcela foi paga. Uma mensagem por cliente, com todas as parcelas em aberto, sem reabrir a conversa nem mexer nas não lidas.",
+        "ativadaEm": "Ligada em {quando}: só entra o que venceu depois disso.",
+        "ligadaSemEtapa": "Ligada, mas nenhuma etapa está ligada: nada sai.",
+        "etapasLigadasMasDesligada": "Há etapas ligadas, mas a cobrança automática está desligada: nada sai.",
+        "semNome": "(sem nome)",
+        "recusas": "Não gravado:",
+        "naoSalvo": "Há mudanças não salvas.",
+        "tudoSalvo": "Tudo salvo. As etapas são automações que o módulo cuida — o construtor de automações também as abre.",
+        "descartar": "Descartar",
+        "salvar": "Salvar",
+        "quemManda": {
+          "titulo": "Quem manda",
+          "desc": "Vale para todas as etapas.",
+          "numero": "Número que envia",
+          "varios": "Vários números",
+          "escolher": "Escolha um número",
+          "desconectada": "desconectado",
+          "conexoesFalharam": "Não consegui ler as conexões.",
+          "semConexao": "Nenhum WhatsApp por QR Code nesta conta.",
+          "numeroAjuda": "Todas as mensagens saem por ele. Só WhatsApp por QR Code; desconectado, nada sai.",
+          "variosAviso": "Hoje as etapas usam números diferentes ({nomes}). Escolha um para todas.",
+          "envioSemConexao": "Alguma etapa está sem número: ela não liga até você escolher um.",
+          "assina": "Quem assina",
+          "variasAssinaturas": "Assinaturas diferentes — digite uma para todas",
+          "assinaPlaceholder": "Sem nome (usa a assinatura da conta)",
+          "assinaAjuda": "Vai no alto de cada mensagem. O lembrete da noite assina \"Mensagem automática\" (no texto dele).",
+          "assinaturaDesligada": "A assinatura está desligada na conta (Configurações › Assinatura): as mensagens saem sem nome.",
+          "escritorio": "Nome do escritório",
+          "escritorioPlaceholder": "O nome da conta",
+          "escritorioAjuda": "Entra no campo \"Nome do escritório\" dos textos. Em branco, vale \"{padrao}\" (o nome automático da assinatura)."
+        },
+        "cadencia": {
+          "titulo": "Cadência",
+          "desc": "Cada etapa é uma automação que o módulo cria e cuida. O horário é de quando começa a sair; a cobrança vai até as 18:00 e o lembrete da noite até as 21:00.",
+          "vazia": "Nenhuma etapa ainda. Crie as etapas padrão para começar.",
+          "linhaDoTempo": "Linha do tempo das etapas",
+          "lembrete": "lembrete",
+          "cobranca": "cobrança",
+          "etapa": "Etapa",
+          "quando": "Quando",
+          "horario": "A partir de",
+          "texto": "Texto",
+          "ligada": "Ligada",
+          "mensagemAutomatica": "Mensagem automática",
+          "horaDaCobranca": "Entre 08:00 e 17:00.",
+          "horaDaNoite": "Entre 18:00 e 20:30.",
+          "horaDoDia": "Entre 08:00 e 17:00.",
+          "semTexto": "(sem mensagem)",
+          "editarTexto": "Editar texto",
+          "ligarEtapa": "Ligar a etapa {etapa}",
+          "marcoRepetido": "Mais de uma cobrança com os mesmos dias ({marcos}): só a de menor número cobra.",
+          "lembreteRepetido": "Mais de um lembrete no mesmo turno: só um sai.",
+          "diasPlaceholder": "Dias",
+          "adicionar": "Adicionar cobrança",
+          "criarPadrao": "Criar as etapas padrão que faltam",
+          "salveAntes": "Salve as mudanças antes de criar etapa.",
+          "adicionarAjuda": "Nasce desligada, com o texto padrão, o número e quem assina daqui.",
+          "quandoNoite": "No dia do vencimento, se ainda estiver em aberto",
+          "quandoDia": "No dia do vencimento",
+          "quandoCobranca": "{dias, plural, one {# dia} other {# dias}} de atraso"
+        },
+        "regras": {
+          "titulo": "Regras",
+          "diasUteis": "Só em dia útil",
+          "diasUteisMisto": "Hoje cada etapa está de um jeito. Marque ou desmarque para todas.",
+          "diasUteisAjuda": "Sábado, domingo e feriado nacional empurram a mensagem para o dia útil seguinte.",
+          "intervalo": "Intervalo mínimo entre cobranças",
+          "dias": "dias",
+          "intervaloAjuda": "Uma cobrança enviada há menos que isso segura a próxima. O lembrete do vencimento não conta.",
+          "umaPorDia": "Uma mensagem por dia",
+          "umaPorDiaAjuda": "Se no mesmo dia sai uma cobrança para o cliente, o lembrete da manhã não sai: a cobrança já fala da parcela de hoje. O da noite só sai se ela continuar em aberto.",
+          "naoRetroativa": "Não manda nada atrasado",
+          "naoRetroativaAjuda": "Ligar não dispara o que já passou: só o que vencer ou completar um marco daqui em diante."
+        },
+        "ligacao": {
+          "titulo": "Pedir ligação à equipe",
+          "desc": "Uma anotação interna na conversa marcando quem liga para combinar o pagamento, com uma etiqueta. Uma vez por cliente, até alguém tirar a etiqueta. Não manda nada ao cliente.",
+          "diferente": "Hoje as cobranças pedem a ligação de formas diferentes (mexidas no construtor). Salvar aqui iguala todas.",
+          "aMao": "Há uma condição \"Situação da cobrança\" montada à mão em {etapas}: ela continua lá. Tire-a no construtor se esta já basta.",
+          "quando": "Quando o cliente tiver",
+          "parcelas": "Parcelas vencidas",
+          "parcelasOu": "parcelas vencidas ou mais, ou",
+          "dias": "Dias de atraso",
+          "diasOuMais": "dias de atraso ou mais (deixe em branco o que não vale).",
+          "marcar": "Marcar na anotação",
+          "etiqueta": "Etiqueta",
+          "etiquetaApagada": "(etiqueta apagada)",
+          "escolherEtiqueta": "Escolha a etiqueta",
+          "etiquetasFalharam": "Não consegui ler as etiquetas.",
+          "etiquetaAjuda": "Posta junto com a anotação. Enquanto estiver na ficha, a régua não pede de novo. Crie etiquetas em Campos e etiquetas.",
+          "texto": "Texto da anotação",
+          "textoAjuda": "Os campos da cobrança são os da mensagem que acabou de sair.",
+          "incompleta": "Para pedir a ligação: um limite, alguém marcado, a etiqueta e o texto.",
+          "pendentes": "{n, plural, =0 {Nenhum cliente esperando ligação agora.} one {Um cliente esperando ligação agora (com a etiqueta).} other {# clientes esperando ligação agora (com a etiqueta).}}",
+          "desligada": "Desligado: a régua não pede ligação a ninguém."
+        },
+        "excecoes": {
+          "titulo": "Quem não recebe",
+          "desc": "Quem está na lista \"Sem cobrança automática\" nunca recebe lembrete nem cobrança. Para incluir alguém, use o sino na aba \"Ligados\" (ou na aba Cobranças da conversa)."
+        },
+        "semana": {
+          "titulo": "Últimos 7 dias",
+          "numeros": "{lembretes, plural, one {# lembrete} other {# lembretes}} · {cobrancas, plural, one {# cobrança} other {# cobranças}} · {falhas, plural, =0 {nenhuma falha} one {# não enviada} other {# não enviadas}}",
+          "falhou": "Não consegui contar os envios.",
+          "verAutomacoes": "Ver as automações"
+        },
+        "etapa": {
+          "lembreteNoite": "Lembrete · noite",
+          "lembreteDia": "Lembrete · dia",
+          "cobranca": "Cobrança · {dias, plural, one {# dia} other {# dias}}",
+          "venceNoite": "Vence · noite",
+          "venceDia": "Vence · manhã",
+          "dias": "{dias, plural, one {# dia} other {# dias}}"
+        },
+        "texto": {
+          "voltar": "Cobrança automática",
+          "naoAchada": "Esta etapa não existe mais.",
+          "salvo": "Texto salvo.",
+          "titulo": "Texto da etapa",
+          "restaurar": "Restaurar o texto padrão",
+          "desc": "O mesmo editor do construtor (os campos em roxo). A prévia mostra os casos que importam sem precisar achar um cliente em cada situação.",
+          "etapas": "Etapas",
+          "salveAntes": "Salve ou descarte antes de trocar de etapa.",
+          "mensagem": "Texto da mensagem",
+          "assina": "Assina",
+          "semAssinatura": "Sem nome (a assinatura da conta)",
+          "assinaNoite": "Só desta etapa. O padrão é \"Mensagem automática\".",
+          "assinaComum": "Vem de \"Quem manda\".",
+          "enviarPor": "Enviar por",
+          "semConexao": "Sem número",
+          "enviarPorAjuda": "Vem de \"Quem manda\".",
+          "previa": "Prévia com",
+          "caso": {
+            "uma": "Uma parcela",
+            "varias": "Várias parcelas",
+            "empresa": "Empresa (CNPJ)"
+          },
+          "legenda": {
+            "uma": "Pessoa com uma parcela: só o link, sem lista.",
+            "varias": "Duas parcelas: a frase soma e diz a mais antiga; cada parcela com o seu link.",
+            "empresa": "Empresa (CNPJ): só \"Olá!\", sem nome. Cobrança avulsa aparece como \"a cobrança\" — a descrição interna nunca vai ao cliente."
+          },
+          "previaReal": "Para ver com um cliente de verdade, use \"Prévia\" do editor, à esquerda."
+        }
       }
     },
     "groups": {
