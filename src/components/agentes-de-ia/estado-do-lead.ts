@@ -91,6 +91,9 @@ export function estadoDoLead(turnos: readonly RespostaParaOLead[]): EstadoDoLead
       }
     }
     if (x.passaPara && !transfere) {
+      // A passagem leva o card para a etapa do DESTINO (`passar()` no turno muda
+      // funil e etapa): a etapa somada antes não vale mais (Codex, #495).
+      etapa = null;
       atendimento = { tipo: 'agente', agente: x.passaPara, retida: false, resposta };
     } else if (transfere) {
       atendimento = { tipo: 'equipe', retida: x.retida === true, resposta };

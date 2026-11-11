@@ -97,9 +97,13 @@ function ehObjeto(v: unknown): v is Record<string, unknown> {
  * imagem (Imagen, os "-image" e os "Nano Banana", que geram imagem — medido na
  * chave real em 25/10/2026), vídeo (Veo), voz e áudio nativo, `aqa` e a
  * transcrição — o `gemini-3.5-transcribe` responde 200 VAZIO pelo
- * `generateContent`, cobrando a entrada (`.claude/rules/ia.md`).
+ * `generateContent`, cobrando a entrada (`.claude/rules/ia.md`). E (10/11/2026,
+ * a lista da chave real) os que não CONVERSAM, embora atendam ao
+ * `generateContent`: música (Lyria), robótica, computer use, pesquisa
+ * profunda e os agentes do Antigravity.
  */
-const FORA_DO_GEMINI = /(embedding|imagen|image|nano-banana|veo|video|tts|aqa|transcribe|audio)/i
+const FORA_DO_GEMINI =
+  /(embedding|imagen|image|nano-banana|veo|video|tts|aqa|transcribe|audio|lyria|robotics|computer-use|deep-research|antigravity)/i
 
 export function ehModeloDeTextoDoGemini(m: unknown): boolean {
   if (!ehObjeto(m) || typeof m.name !== 'string') return false

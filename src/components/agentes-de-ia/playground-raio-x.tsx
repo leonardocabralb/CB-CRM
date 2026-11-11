@@ -67,6 +67,8 @@ export interface RespostaDoRaioX {
   mostraRaciocinio?: boolean;
   /** O que o modelo escreveu, com os marcadores (fora a retomada). */
   respostaCrua?: string;
+  /** O "Transferir para" da versão que gerou a resposta (nulo = a fila). */
+  transferirPara?: string | null;
   retomada?: unknown;
 }
 
@@ -417,14 +419,19 @@ function Bloco({ titulo, children }: { titulo: string; children: ReactNode }) {
 export function PainelDoLead({
   turnos,
   agenteId,
-  destinoDaTransferencia,
+  destinoDaResposta,
 }: {
   turnos: ReadonlyArray<RespostaParaOLead & RespostaDoRaioX>;
   agenteId: string;
-  destinoDaTransferencia: DestinoDaTransferencia;
+  /** O destino da transferência da versão que gerou cada resposta (Codex, #495). */
+  destinoDaResposta: (x: RespostaDoRaioX) => DestinoDaTransferencia;
 }) {
   const t = useTranslations('IaAgentes');
   const e: EstadoDoLead = estadoDoLead(turnos.map((x) => ({ ...x, retida: x.role === 'assistant' && respostaRetida(x) })));
+  // A resposta em que a conversa foi para a equipe: o destino é o da versão dela.
+  const respostaDoAtendimento =
+    e.atendimento === null ? undefined : turnos.filter((x) => x.role === 'assistant')[e.atendimento.resposta - 1];
+  const destinoDoAtendimento = respostaDoAtendimento ? destinoDaResposta(respostaDoAtendimento).texto : '';
   const nada = <p className="text-xs text-muted-foreground">{t('playground.lead.nada')}</p>;
 
   return (
@@ -529,7 +536,7 @@ export function PainelDoLead({
                   <span className="min-w-0 break-words font-medium text-foreground">
                     {e.atendimento.tipo === 'agente'
                       ? t('playground.lead.passouParaOAgente', { agente: e.atendimento.agente ?? '' })
-                      : t('playground.lead.passouParaAEquipe', { destino: destinoDaTransferencia.texto })}
+                      : t('playground.lead.passouParaAEquipe', { destino: destinoDoAtendimento })}
                   </span>
                   <DaResposta agenteId={agenteId} n={e.atendimento.resposta} />
                 </div>

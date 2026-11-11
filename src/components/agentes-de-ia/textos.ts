@@ -445,3 +445,17 @@ export function textoDaParadaDaRetomada(t: ReturnType<typeof useTranslations>, p
     ? t(`playground.retomadaParada.${parada}`)
     : t('playground.retomadaParadaDesconhecida');
 }
+
+/**
+ * Quando a retomada para sozinha, em chips na aba Retomada (10/11/2026): o
+ * resumo à vista — o texto inteiro (`retomada.paradas`) fica ao abrir.
+ * `IaAgentes.retomada.para.<p>`, chave MONTADA cobrada em `textos.test.ts`.
+ */
+export const PARADAS_A_VISTA = ['cliente', 'equipe', 'encerrada', 'etapa', 'reuniao'] as const;
+
+/**
+ * As seções da Configuração, na ordem da página (10/11/2026): o índice ao
+ * lado leva a cada uma. `IaAgentes.config.secao.<s>.titulo`, chave MONTADA
+ * cobrada em `textos.test.ts`.
+ */
+export const SECOES_DA_CONFIGURACAO = ['identidade', 'comoFala', 'modelo', 'ondeAtua', 'quando', 'limites', 'arquivar'] as const;

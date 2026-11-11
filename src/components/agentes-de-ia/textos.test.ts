@@ -19,6 +19,8 @@ import {
   ERROS_GRAVADOS_PELO_BANCO,
   CODIGOS_DA_D5,
   MOTIVOS_DE_RECUSA,
+  PARADAS_A_VISTA,
+  SECOES_DA_CONFIGURACAO,
   STATUS_DO_TURNO,
   TIPOS_DE_CAMPO,
   fraseDaAcao,
@@ -95,6 +97,14 @@ describe.each(['en.json', 'pt-BR.json'])('IaAgentes em %s', (arquivo) => {
       expect(em(d, `playground.efeito.${tipo}`), tipo).toBeTruthy()
     }
     expect(em(d, 'playground.efeitoTransferir')).toBeTruthy()
+    // Quando a retomada para, em chips (10/11/2026).
+    for (const p of PARADAS_A_VISTA) expect(em(d, `retomada.para.${p}`), p).toBeTruthy()
+    // As seções da Configuração e as abas do detalhe (10/11/2026): os rótulos montados.
+    for (const sec of SECOES_DA_CONFIGURACAO) expect(em(d, `config.secao.${sec}.titulo`), sec).toBeTruthy()
+    const detalhe = readFileSync(join(__dirname, 'detalhe-do-agente.tsx'), 'utf8')
+    const abas = [...detalhe.matchAll(/\{ id: '(\w+)', grupo:/g)].map((m) => m[1])
+    expect(abas.length).toBe(8)
+    for (const aba of abas) expect(em(d, `detalhe.${aba}`), aba).toBeTruthy()
     expect(em(d, 'playground.efeitoDesconhecido')).toBeTruthy()
     expect(em(d, 'ferramentas.tipoDesconhecido')).toBeTruthy()
     expect(em(d, 'playground.acaoDesconhecida')).toBeTruthy()

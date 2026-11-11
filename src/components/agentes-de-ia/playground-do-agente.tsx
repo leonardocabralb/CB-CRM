@@ -172,6 +172,8 @@ interface Turno {
   mostraRaciocinio?: boolean;
   /** Só do agente: o que o modelo escreveu, com os marcadores (fora a retomada). */
   respostaCrua?: string;
+  /** Só do agente: o "Transferir para" da versão que gerou esta resposta (nulo = a fila). */
+  transferirPara?: string | null;
 }
 
 /** Um lado da comparação salvo × rascunho. */
@@ -211,10 +213,16 @@ function lerBastidores(corpo: Record<string, unknown>, mostra: boolean): Pick<Tu
 }
 
 /** O corpo da resposta da rota → a bolha do agente. `mostra` = o modelo da versão devolve o raciocínio. */
-function turnoDaResposta(corpo: Record<string, unknown>, versao: Versao, mostra: boolean): Turno {
+function turnoDaResposta(
+  corpo: Record<string, unknown>,
+  versao: Versao,
+  mostra: boolean,
+  transferirPara: string | null,
+): Turno {
   const usage = corpo.usage as { totalTokens?: unknown } | null | undefined;
   return {
     ...lerBastidores(corpo, mostra),
+    transferirPara,
     role: 'assistant',
     content: typeof corpo.reply === 'string' ? corpo.reply : '',
     handoff: corpo.handoff === true,
@@ -362,24 +370,35 @@ export function PlaygroundDoAgente({
       vivo = false;
     };
   }, []);
-  const transferirPara =
-    usaRascunho && rascunho.transferir_para !== undefined
-      ? typeof rascunho.transferir_para === 'string'
-        ? rascunho.transferir_para
+  // O "Transferir para" de uma versão (o do rascunho, se ele o mudou). Cada
+  // resposta guarda o DA VERSÃO QUE A GEROU (Codex, #495): na comparação, o
+  // salvo e o rascunho podem transferir para pessoas diferentes, e trocar
+  // "Testar" depois não muda o que uma resposta antiga diria.
+  const transferirParaDa = (r: Record<string, unknown> | null): string | null =>
+    r && r.transferir_para !== undefined
+      ? typeof r.transferir_para === 'string'
+        ? r.transferir_para
         : null
       : agente.transferirPara;
-  const membroDoDestino = transferirPara && membros ? membros.find((m) => m.user_id === transferirPara) : undefined;
-  const destinoDaTransferencia: DestinoDaTransferencia = {
-    texto:
-      transferirPara === null
-        ? t('playground.destinoFila')
-        : membroDoDestino
-          ? t('playground.destinoMembro', { nome: memberLabel(membroDoDestino) })
-          : membros === undefined
-            ? t('playground.destinoCarregando')
-            : t('playground.destinoDesconhecido'),
-    pessoa: transferirPara !== null,
+  const transferirParaDaChamada = transferirParaDa(rascunhoDaChamada);
+  /** O destino em texto, com o nome pela equipe lida. */
+  const destinoDe = (id: string | null): DestinoDaTransferencia => {
+    const membro = id && membros ? membros.find((m) => m.user_id === id) : undefined;
+    return {
+      texto:
+        id === null
+          ? t('playground.destinoFila')
+          : membro
+            ? t('playground.destinoMembro', { nome: memberLabel(membro) })
+            : membros === undefined
+              ? t('playground.destinoCarregando')
+              : t('playground.destinoDesconhecido'),
+      pessoa: id !== null,
+    };
   };
+  /** O destino de uma resposta: o da versão que a gerou (a de agora, se ela não o guardou). */
+  const destinoDaResposta = (x: { transferirPara?: string | null }): DestinoDaTransferencia =>
+    destinoDe(x.transferirPara !== undefined ? x.transferirPara : transferirParaDaChamada);
 
   // O que mudou no rascunho, separado do que não muda a resposta do teste.
   const chaves = rascunho ? Object.keys(rascunho) : [];
@@ -460,6 +479,7 @@ export function PlaygroundDoAgente({
     const proximos: Turno[] = [...turnos, { role: 'user', content: conteudo }];
     const versao = versaoDaChamada;
     const mostra = mostraODaVersao;
+    const destino = transferirParaDaChamada;
     setTurnos(proximos);
     setTexto('');
     setComparacao(null);
@@ -475,13 +495,14 @@ export function PlaygroundDoAgente({
       setTexto(conteudo);
       return;
     }
-    setTurnos([...proximos, turnoDaResposta(r.corpo, versao, mostra)]);
+    setTurnos([...proximos, turnoDaResposta(r.corpo, versao, mostra, destino)]);
   }
 
   async function simularRetomada() {
     if (ocupado || tentativaDaRetomada === null) return;
     const versao = versaoDaChamada;
     const mostra = mostraODaVersao;
+    const destino = transferirParaDaChamada;
     setComparacao(null);
     setEnviando(true);
     const r = await chamar({
@@ -512,6 +533,7 @@ export function PlaygroundDoAgente({
         versao,
         pedido: typeof r.corpo.pedido === 'string' ? r.corpo.pedido : undefined,
         ...lerBastidores(r.corpo, mostra),
+        transferirPara: destino,
       },
     ]);
   }
@@ -535,13 +557,14 @@ export function PlaygroundDoAgente({
       chamar({ messages: mensagens }),
       chamar({ messages: mensagens, rascunho: doRascunho }),
     ]);
-    const lado = (x: typeof s, versao: Versao, mostra: boolean): LadoDaComparacao =>
-      x.ok ? { fase: 'pronto', turno: turnoDaResposta(x.corpo, versao, mostra) } : { fase: 'falhou', texto: x.texto };
+    const lado = (x: typeof s, versao: Versao, mostra: boolean, destino: string | null): LadoDaComparacao =>
+      x.ok ? { fase: 'pronto', turno: turnoDaResposta(x.corpo, versao, mostra, destino) } : { fase: 'falhou', texto: x.texto };
     setComparacao({
       pergunta: turnos[ate].content,
       salvoEm,
-      salvo: lado(s, { tipo: 'salvo', em: salvoEm }, mostraNoSalvo),
-      rascunho: lado(r, { tipo: 'rascunho' }, mostraNoRascunho),
+      // Cada lado com o "Transferir para" da SUA versão (Codex, #495).
+      salvo: lado(s, { tipo: 'salvo', em: salvoEm }, mostraNoSalvo, agente.transferirPara),
+      rascunho: lado(r, { tipo: 'rascunho' }, mostraNoRascunho, transferirParaDa(doRascunho)),
     });
   }
 
@@ -558,6 +581,7 @@ export function PlaygroundDoAgente({
     const antes = turnos;
     const versao = versaoDaChamada;
     const mostra = mostraODaVersao;
+    const destino = transferirParaDaChamada;
     const doRascunho = rascunhoDaChamada;
     const salvoNoInicio = agente.updatedAt;
     const salvouNoMeio = () => salvoEmRef.current !== salvoNoInicio;
@@ -588,7 +612,7 @@ export function PlaygroundDoAgente({
           // laço devolve a conversa de antes (Codex #442).
           if (!vivoRef.current || pararRef.current || salvouNoMeio()) continue;
           if (r.ok) {
-            novos = [...novos, turnoDaResposta(r.corpo, versao, mostra)];
+            novos = [...novos, turnoDaResposta(r.corpo, versao, mostra, destino)];
             setTurnos(novos);
             setRoteiro({ feitas: i + 1, total, pausadoAte: null });
             break;
@@ -771,7 +795,7 @@ export function PlaygroundDoAgente({
                 )}
               >
                 {x.role === 'assistant' ? (
-                  <ConteudoDaResposta x={x} destinoDaTransferencia={destinoDaTransferencia} />
+                  <ConteudoDaResposta x={x} destinoDaTransferencia={destinoDaResposta(x)} />
                 ) : (
                   <p className="whitespace-pre-wrap">{x.content}</p>
                 )}
@@ -809,12 +833,12 @@ export function PlaygroundDoAgente({
                 <LadoComparado
                   titulo={t('playground.comparacaoSalvo', { hora: horaDe(comparacao.salvoEm) })}
                   lado={comparacao.salvo}
-                  destinoDaTransferencia={destinoDaTransferencia}
+                  destinoDaResposta={destinoDaResposta}
                 />
                 <LadoComparado
                   titulo={t('playground.comparacaoRascunho')}
                   lado={comparacao.rascunho}
-                  destinoDaTransferencia={destinoDaTransferencia}
+                  destinoDaResposta={destinoDaResposta}
                 />
               </div>
             </div>
@@ -881,7 +905,7 @@ export function PlaygroundDoAgente({
           </Button>
         </div>
       </div>
-      <PainelDoLead turnos={turnos} agenteId={agente.id} destinoDaTransferencia={destinoDaTransferencia} />
+      <PainelDoLead turnos={turnos} agenteId={agente.id} destinoDaResposta={destinoDaResposta} />
       </div>
     </div>
   );
@@ -891,11 +915,11 @@ export function PlaygroundDoAgente({
 function LadoComparado({
   titulo,
   lado,
-  destinoDaTransferencia,
+  destinoDaResposta,
 }: {
   titulo: string;
   lado: LadoDaComparacao;
-  destinoDaTransferencia: DestinoDaTransferencia;
+  destinoDaResposta: (x: Turno) => DestinoDaTransferencia;
 }) {
   return (
     <div className="min-w-0 break-words rounded-lg bg-muted px-3 py-2 text-sm text-foreground">
@@ -905,7 +929,7 @@ function LadoComparado({
       ) : lado.fase === 'falhou' ? (
         <p className="text-xs text-red-700 dark:text-red-300">{lado.texto}</p>
       ) : (
-        <ConteudoDaResposta x={lado.turno} destinoDaTransferencia={destinoDaTransferencia} />
+        <ConteudoDaResposta x={lado.turno} destinoDaTransferencia={destinoDaResposta(lado.turno)} />
       )}
     </div>
   );

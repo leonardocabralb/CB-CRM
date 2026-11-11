@@ -87,6 +87,12 @@ describe('estadoDoLead — a soma do que o agente teria feito', () => {
     expect(estadoDoLead([agente([], { passaPara: 'Cobrança', handoff: true })]).atendimento?.tipo).toBe('equipe');
   });
 
+  it('a passagem DEPOIS de mover o card apaga a etapa somada: o card vai para a etapa do destino (Codex, #495)', () => {
+    const e = estadoDoLead([agente([{ tipo: 'mover_etapa', nome: 'Funil · Etapa A' }]), agente([], { passaPara: 'Cobrança' })]);
+    expect(e.etapa).toBeNull();
+    expect(e.atendimento).toMatchObject({ tipo: 'agente', agente: 'Cobrança', resposta: 2 });
+  });
+
   it('as RECUSADAS não entram (não aconteceriam)', () => {
     const e = estadoDoLead([
       { role: 'assistant', acoes: { aceitas: [], recusadas: [{ tipo: 'preencher_campo', motivo: 'nao_liberada' }] } },
