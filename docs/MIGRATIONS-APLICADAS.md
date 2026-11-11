@@ -2074,3 +2074,21 @@ nome da época em que foram aplicadas.
   local do zero e, com dado fictício, aplicada duas vezes (o tipo inventado
   recusado). Conferida na produção: a coluna anulável, o computador da
   Previdenciário DESLIGADO (o operador liga na tela) e os quatro tipos.
+
+- **1138_cb_ia_pausa_temporaria** — a pausa TEMPORÁRIA da IA (revisa a D26;
+  P1–P7 do operador de 11/11/2026): `ai_configs.ia_volta_apos_min` (padrão
+  15; 0 = como antes), o motivo `desativada` no CHECK de
+  `conversations.ia_pausada_por`, o gatilho da pausa por gente recriado (a
+  temporária respondida vira `gente`, o retorno descartado, a pré-armação do
+  follow-up da equipe; régua da 1050 e WARNING) e `cb_ia_voltar_da_pausa`.
+  PR #507.
+
+  ADITIVA, aplicada ANTES do deploy com o "pode gravar" explícito do operador
+  ("aplicar a migration 1138 no banco de PRODUÇÃO"), em 11/11/2026 às 20:26
+  BRT (histórico `20261111232650`), com o arquivo idêntico ao do commit
+  `658e19f7` (sha256 `feec786f…`), cujo replay do CI passou e que o Codex
+  revisou sem achados. Antes: o replay local do zero e 7 cenários com dado
+  fictício. Conferida na produção: a coluna com 15 na conta, o CHECK com os
+  cinco motivos, a função fechada a anon/authenticated e aberta ao
+  service_role, o gatilho novo ligado, nenhuma pré-armação (agentes
+  desligados).
