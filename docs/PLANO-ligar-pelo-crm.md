@@ -14,7 +14,7 @@ ligação de WhatsApp do que a telefônica. Vizinho deste plano:
 | 1    | Teste A: a máquina liga, com áudio de arquivo              | em curso (10/11/2026)  |
 | 2    | Teste B: o áudio no navegador do atendente                 | ✅ 10/11/2026 (falta P8) |
 | 3    | Decidir a máquina: upgrade para a KVM 4 × segunda VPS      | ✅ 10/11/2026: fica na VPS atual (D8) |
-| 4    | Ligar e atender pelo CRM: botão, toque, gravação, transcrição | desenho pronto (§8), decisões tomadas (§8.10); ✅ 4a pronta e testada em 10/11/2026 (§8.13); 4b em curso (§8.14) |
+| 4    | Ligar e atender pelo CRM: botão, toque, gravação, transcrição | desenho pronto (§8), decisões tomadas (§8.10); ✅ 4a pronta e testada em 10/11/2026 (§8.13); ✅ 4b no ar e testada ao vivo em 11/11/2026 (§8.14); próxima: 4c (a tela) |
 | 5    | Atender pelo CRM (ligação recebida)                        | incorporada à Fase 4   |
 
 ## 1. Por que uma máquina central (o que foi descartado)
@@ -1287,6 +1287,41 @@ sinal de vida atualiza o computador; a bancada sai de cena.
 - A prova da migration num Postgres com dado: `cenarios-1134` (a reserva
   chamada, a faixa sem efeito na espera e na pausa, a trava de uma por
   número, a RLS) e um mutante sem a cerca nova, que a conferência reprova.
+
+**No ar (PR #497, merge `767a92d3`, 11/11/2026).** A 1134 entrou antes do
+deploy (`20261111015917`); o `crm_crm` entrou na `LigacoesNet` pelo `stack
+deploy` das três linhas; a máquina foi recriada com a imagem `-7` (as
+correções do Codex da 4a), o segredo derivado e a URL `http://crm_crm:3000`;
+o computador está em `cb_computadores_de_ligacao`. O primeiro sinal chegou em
+segundos (WhatsApp conectado, Chrome 157). Pelo domínio público, a rota da
+máquina é 404 e a de ligar sem login, 401.
+
+**Teste ao vivo (10–11/11/2026, operador com o lead de teste; as rotas
+chamadas pelo navegador do painel, com um bipe baixo no lugar da voz do
+atendente):**
+
+| Ligação | O que aconteceu | Resultado |
+| --- | --- | --- |
+| Feita, sem atender | conectando → chamando; tocou ~30 s | `nao_atendida`; faixa "Ligação feita pelo CRM · por … · não atendida" |
+| Feita, atendida | chamando → em ligação; o cliente desligou | `atendida`, 24 s; faixa com a duração; estéreo + os dois lados no bucket privado (68/29/36 KB); toca pela rota (URL assinada) |
+| Recebida, a ponte com a oferta montada 13 min antes | a ponte do navegador falhou (o candidato público tinha expirado); a máquina não atendeu | a marca saiu e a régua de hoje decidiu **perdida** 11 s depois do fim — o caminho da falha, como desenhado |
+| Recebida, atendida pelo CRM | o `terminate` da Evolution chegou 1 s ANTES da confirmação da máquina (o teste D da 4a) | **`atendida`**, 32 s, UMA faixa (a de registro), gravação de 117 KB — o "atendida pelo CRM vira perdida" está consertado |
+
+Nas quatro: o "em atraso", as não lidas e a IA da conversa não mudaram com a
+faixa de registro (a perdida da 3ª somou a não lida, como toda perdida), e a
+linha ao vivo sumiu no fim. A conversa do lead ficou fixada na Previdenciário
+durante o teste e voltou ao Bancário - Jurídico; a máquina foi PARADA de novo
+(fica parada fora dos testes até a 4c).
+
+**Para a 4c (medido aqui):**
+- A oferta WebRTC se monta NO CLIQUE ("Ligar"/"Atender"), nunca antes: a de
+  13 min falhou (o endereço público do navegador expira com o NAT).
+- ⚠️ **A gravação começa ~5 s depois do atendimento** (24 s de ligação, 19 s
+  de áudio): o ffmpeg leva esse tempo para abrir o PulseAudio. Os primeiros
+  segundos da conversa ficam fora — corrigir na máquina (abrir o ffmpeg
+  antes, no "chamando", e cortar a gravação no atendimento) antes da 4d.
+- A rota de atender respondeu em ~5 s (a ponte do lado da máquina); a tela
+  precisa mostrar "Conectando o áudio…" nesse meio-tempo.
 
 ## 9. Fase 5: atender pelo CRM
 
