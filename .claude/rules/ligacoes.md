@@ -57,8 +57,9 @@ desenho: §8.12 e §8.13 do plano.
   configurações do WhatsApp quebra a máquina.
 - A máquina de estados (`ligacao.ts`): uma ligação por vez, e a linha só
   fica livre DEPOIS de fechar a gravação e a ponte da anterior (`encerrando`)
-  e de acabar o passo dela que ainda mexe na tela (`passoNaTela`: desligar
-  no meio do discar não para o Playwright); nunca disca nem atende antes de
+  e de o pedido dela (ligar, atender) parar de mexer na tela e na ponte
+  (`pedidoEmCurso`: desligar no meio não para o Playwright); nunca disca nem
+  atende antes de
   a ponte do atendente ligar; desliga aos 30 min do atendimento (D13), com um
   teto também desde o pedido, e com a ponte caída por 15 s. Fechar a aba no
   meio deixa a linha ocupada por ~18 s. A aba que não responde por 60 s de

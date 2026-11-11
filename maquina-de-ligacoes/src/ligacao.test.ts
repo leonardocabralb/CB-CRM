@@ -49,6 +49,9 @@ function montar() {
     desligarFalha: 0,
     /** A leitura da tela lança erro (a aba travada). */
     telaTravada: false,
+    /** Segura a próxima leitura da tela até `soltarRetrato()` (o atender lendo a tela). */
+    segurarRetrato: false,
+    soltarRetrato: () => {},
     /** O discar clica (a chamada sai) e DEPOIS lança (o quadro demorou). */
     discarLanca: false,
   }
@@ -57,6 +60,10 @@ function montar() {
     whatsapp: {
       retrato: async () => {
         if (controle.telaTravada) throw new Error('a leitura da tela: sem resposta em 5 s')
+        if (controle.segurarRetrato) {
+          controle.segurarRetrato = false
+          await new Promise<void>((pronto) => (controle.soltarRetrato = pronto))
+        }
         return { estado: tela.estado, chamada: tela.chamada }
       },
       discar: async (numero) => {
@@ -346,23 +353,20 @@ describe('desligar', () => {
     expect(await m.maquina.ligar(outra)).toEqual({ ok: true, resposta: 'v=0 resposta' })
   })
 
-  it('a ligação cancelada na espera da rede não solta a linha do passo de outra', async () => {
+  it('desligada na espera da rede, a linha fica livre na volta seguinte da espera (e nada é discado)', async () => {
     const m = montar()
     await m.maquina.tique()
     await m.maquina.ligar(PEDIDO)
     await m.maquina.desligar('lig-1')
-    // A 2ª nasce e começa a discar antes de o `seguir` da 1ª acordar.
-    m.controle.segurarDiscar = true
-    await m.maquina.ligar({ ...PEDIDO, ligacao: 'lig-2' })
+    const outra = { ...PEDIDO, ligacao: 'lig-2' }
+    expect(await m.maquina.ligar(outra)).toEqual({ ok: false, recusa: 'ocupada' })
+    await m.passar(200)
+    expect(await m.maquina.ligar(outra)).toEqual({ ok: true, resposta: 'v=0 resposta' })
     m.maquina.aoMudarARede('connected')
     await m.passar(200)
+    // Só a 2ª discou: o `seguir` da 1ª viu o cancelamento e não chegou ao passo.
     expect(m.feito.discar).toEqual([PEDIDO.numero])
-    await m.maquina.desligar('lig-2')
-    await m.passar(1_000)
-    expect(await m.maquina.ligar({ ...PEDIDO, ligacao: 'lig-3' })).toEqual({ ok: false, recusa: 'ocupada' })
-    m.controle.soltarDiscar()
-    await m.passar(0)
-    expect(await m.maquina.ligar({ ...PEDIDO, ligacao: 'lig-3' })).toEqual({ ok: true, resposta: 'v=0 resposta' })
+    expect(m.maquina.estado().ligacao?.id).toBe('lig-2')
   })
 
   it('aos 30 minutos do atendimento', async () => {
@@ -496,6 +500,23 @@ describe('ligação recebida', () => {
     m.maquina.aoMudarARede('connected')
     await m.passar(200)
     expect(m.fins()[0].motivo).toBe('cliente_desligou')
+  })
+
+  it('desligada enquanto o atender lê a tela: a leitura que volta não apaga nada, e a linha só fica livre depois dela', async () => {
+    const m = montar()
+    await m.maquina.tique()
+    m.tela.chamada = { fase: 'nenhuma' }
+    m.controle.segurarRetrato = true
+    const atendendo = m.maquina.atender(PEDIDO)
+    await m.passar(0)
+    await m.maquina.desligar('lig-1')
+    expect(m.fins()[0].motivo).toBe('atendente_desligou')
+    const outra = { ...PEDIDO, ligacao: 'lig-2' }
+    expect(await m.maquina.ligar(outra)).toEqual({ ok: false, recusa: 'ocupada' })
+    m.controle.soltarRetrato()
+    expect(await atendendo).toEqual({ ok: false, recusa: 'nao_encontrada' })
+    expect(await m.maquina.ligar(outra)).toEqual({ ok: true, resposta: 'v=0 resposta' })
+    expect(m.maquina.estado().ligacao?.id).toBe('lig-2')
   })
 
   it('OUTRA pessoa passou a tocar enquanto a ponte ligava: não aceita', async () => {

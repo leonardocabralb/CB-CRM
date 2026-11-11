@@ -3,7 +3,8 @@
  *
  * - UMA ligação por vez (um Chrome por número; a VPS dá conta de uma, D8). A
  *   linha só fica livre DEPOIS da limpeza da anterior (gravação e ponte) e
- *   do passo dela que ainda mexe na tela (discar, aceitar).
+ *   de o pedido dela (ligar, atender) parar de mexer na tela e na ponte —
+ *   desligar no meio encerra a ligação, mas não interrompe o Playwright.
  * - Nunca disca nem atende antes de a ponte do atendente ligar: o cliente
  *   nunca fala com o vazio.
  * - Desliga sozinha aos 30 min (D13) e quando a ponte fica caída por 15 s.
@@ -137,8 +138,13 @@ export class Maquina {
   private gravacao: { parar(): Promise<void> } | null = null
   private versaoDoChrome = ''
   private telaSemRespostaDesde: number | null = null
-  /** Um passo (discar, aceitar) ainda mexe na tela: a linha segue ocupada, mesmo sem ligação. */
-  private passoNaTela = false
+  /**
+   * Um pedido (ligar, atender) ainda mexe na tela ou na ponte: a linha segue
+   * ocupada mesmo depois de a ligação dele ser encerrada (desligar no meio não
+   * interrompe o Playwright). Marcado na entrada do pedido; solto na recusa ou
+   * no fim do `seguir`.
+   */
+  private pedidoEmCurso = false
   private orfaAvisada = false
 
   constructor(private readonly d: Dependencias) {}
@@ -170,11 +176,12 @@ export class Maquina {
   }
 
   async ligar(pedido: PedidoDeLigacao): Promise<Resultado> {
-    if (this.atual || this.passoNaTela) return { ok: false, recusa: 'ocupada' }
+    if (this.atual || this.pedidoEmCurso) return { ok: false, recusa: 'ocupada' }
     if (this.estadoDoWhatsapp !== 'conectado') return { ok: false, recusa: 'whatsapp_desconectado' }
+    this.pedidoEmCurso = true
     const atual = this.nova(pedido, 'feita')
     const resposta = await this.conectarPonte(atual, pedido)
-    if (resposta === null) return { ok: false, recusa: 'oferta_invalida' }
+    if (resposta === null) return this.soltar({ ok: false, recusa: 'oferta_invalida' })
     void this.seguir(atual, async () => {
       const discou = await this.d.whatsapp.discar(pedido.numero)
       if (discou === 'sem_whatsapp') {
@@ -193,28 +200,31 @@ export class Maquina {
   }
 
   async atender(pedido: PedidoDeLigacao): Promise<Resultado> {
-    if (this.atual || this.passoNaTela) return { ok: false, recusa: 'ocupada' }
+    if (this.atual || this.pedidoEmCurso) return { ok: false, recusa: 'ocupada' }
     if (this.estadoDoWhatsapp !== 'conectado') return { ok: false, recusa: 'whatsapp_desconectado' }
+    this.pedidoEmCurso = true
     const atual = this.nova(pedido, 'recebida')
     let chamada: FaseDaChamada
     try {
       chamada = (await this.d.whatsapp.retrato()).chamada
     } catch (erro) {
       this.d.registrar(`atender: a tela não respondeu: ${mensagem(erro)}`)
-      this.atual = null
-      return { ok: false, recusa: 'falhou' }
+      if (this.atual === atual) this.atual = null
+      return this.soltar({ ok: false, recusa: 'falhou' })
     }
+    // Desligada enquanto a tela era lida: não há mais o que atender.
+    if (!this.emCurso(atual)) return this.soltar({ ok: false, recusa: 'nao_encontrada' })
     if (chamada.fase !== 'tocando') {
       this.atual = null
-      return { ok: false, recusa: 'nada_tocando' }
+      return this.soltar({ ok: false, recusa: 'nada_tocando' })
     }
     if (!mesmoNumero(chamada.quem, pedido.numero)) {
       this.atual = null
-      return { ok: false, recusa: 'outra_chamada' }
+      return this.soltar({ ok: false, recusa: 'outra_chamada' })
     }
     const quem = chamada.quem
     const resposta = await this.conectarPonte(atual, pedido)
-    if (resposta === null) return { ok: false, recusa: 'oferta_invalida' }
+    if (resposta === null) return this.soltar({ ok: false, recusa: 'oferta_invalida' })
     void this.seguir(atual, async () => {
       // A ponte leva uns segundos: o cliente pode ter desistido e OUTRA pessoa
       // estar tocando. O `aceitar` relê a tela e só aceita o mesmo `quem`.
@@ -310,6 +320,17 @@ export class Maquina {
     }
   }
 
+  /** A ligação ainda é a em curso aqui (não foi encerrada nem trocada)? */
+  private emCurso(atual: Atual): boolean {
+    return this.atual === atual
+  }
+
+  /** A recusa de um pedido solta a linha (o pedido não mexe mais em nada). */
+  private soltar(resultado: Resultado): Resultado {
+    this.pedidoEmCurso = false
+    return resultado
+  }
+
   private nova(pedido: PedidoDeLigacao, direcao: Atual['direcao']): Atual {
     const atual: Atual = {
       id: pedido.ligacao,
@@ -347,7 +368,6 @@ export class Maquina {
    */
   private async seguir(atual: Atual, passo: () => Promise<boolean>): Promise<void> {
     const cancelada = () => this.atual !== atual || atual.desligandoPor !== null
-    let naTela = false
     try {
       const limite = this.d.agora() + ESPERA_DA_PONTE_MS
       while (!REDE_LIGADA.has(this.rede)) {
@@ -356,12 +376,6 @@ export class Maquina {
         await this.d.esperar(200)
       }
       if (cancelada()) return
-      // Desligar no meio encerra a ligação, mas NÃO para o passo (o
-      // Playwright segue clicando): a linha só fica livre quando ele e a
-      // limpeza acabam. Senão a ligação seguinte mexeria na mesma tela, e o
-      // desligar daqui derrubaria a chamada DELA.
-      naTela = true
-      this.passoNaTela = true
       const comChamada = await passo()
       if (comChamada && cancelada()) await this.tentarDesligar()
     } catch (erro) {
@@ -369,9 +383,11 @@ export class Maquina {
       await this.tentarDesligar()
       if (this.atual === atual) await this.encerrar(atual, 'falhou')
     } finally {
-      // Só quem marcou desmarca: um `seguir` cancelado na espera da rede não
-      // pode soltar a linha de um passo de outra ligação.
-      if (naTela) this.passoNaTela = false
+      // Desligar no meio encerra a ligação, mas NÃO para o passo (o
+      // Playwright segue clicando): a linha só fica livre aqui, com ele e a
+      // limpeza acabados. Senão a ligação seguinte mexeria na mesma tela, e o
+      // desligar do passo cancelado derrubaria a chamada DELA.
+      this.pedidoEmCurso = false
     }
   }
 
