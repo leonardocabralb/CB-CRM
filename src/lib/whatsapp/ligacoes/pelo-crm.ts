@@ -93,7 +93,7 @@ interface Base {
 }
 
 const COLUNAS_DA_LIGACAO =
-  'id, account_id, channel_id, call_id, direcao, pelo_crm, atendente_id, telefone, conversation_id, oferta_em, criada_em, atendimento_pelo_crm_desde, atendida_pelo_crm_em, desfecho, gravacao_recebida_em, message_id';
+  'id, account_id, channel_id, call_id, direcao, pelo_crm, atendente_id, telefone, conversation_id, oferta_em, criada_em, atendimento_pelo_crm_desde, atendida_pelo_crm_em, desfecho, gravacao_recebida_em, message_id, motivo_do_fim, duracao_seg';
 
 interface LinhaPeloCrm {
   id: string;
@@ -112,7 +112,12 @@ interface LinhaPeloCrm {
   desfecho: string | null;
   gravacao_recebida_em: string | null;
   message_id: string | null;
+  motivo_do_fim: string | null;
+  duracao_seg: number | null;
 }
+
+/** Os desfechos que só a ligação pelo CRM grava — e que têm faixa. */
+const DESFECHOS_COM_FAIXA = ['atendida', 'nao_atendida'] as const;
 
 /** O status HTTP para o navegador quando a máquina recusa. */
 export function statusDaRecusa(resposta: Extract<RespostaDoComputador, { ok: false }>): number {
@@ -583,6 +588,29 @@ async function receberSinal(
     if (!desde || !(Date.parse(desde) < limite)) continue;
     await fecharSumida(db, computador.account_id, l.id as string, agendar);
   }
+  // A faixa que não entrou (falha passageira depois do desfecho) num fim que a
+  // máquina não vai repetir (o `sumiu`, ou o aviso largado depois de 30 min):
+  // o sinal a retoma, por um dia.
+  const { data: semFaixa, error: erroSemFaixa } = await db
+    .from('cb_ligacoes')
+    .select('id')
+    .eq('account_id', computador.account_id)
+    .eq('channel_id', computador.channel_id)
+    .eq('pelo_crm', true)
+    .in('desfecho', [...DESFECHOS_COM_FAIXA])
+    .is('message_id', null)
+    .gte('criada_em', new Date(Date.parse(aviso.em) - 24 * 3_600_000).toISOString());
+  if (erroSemFaixa) return 'falhou';
+  for (const l of semFaixa ?? []) {
+    await finalizar(db, computador, {
+      ligacaoId: l.id as string,
+      motivo: 'sumiu',
+      atendidaEm: null,
+      duracaoSeg: null,
+      fimEm: aviso.em,
+      agendar,
+    });
+  }
   // Toque sem fim gravado além do teto é resto (o aviso do fim não veio).
   const { error: erroDosToques } = await db
     .from('cb_ligacoes_ao_vivo')
@@ -645,10 +673,25 @@ async function finalizar(
   if (error) return 'falhou';
   const linha = data as LinhaPeloCrm | null;
   if (!linha) return 'desconhecida';
-  if (linha.desfecho || !linha.pelo_crm) {
-    // Repetido (já decidido) ou devolvido à régua: só a linha ao vivo sai.
+  if (!linha.pelo_crm) {
+    // Devolvido à régua de hoje: só a linha ao vivo sai.
     await apagarAoVivo(db, linha.id);
     return 'ok';
+  }
+  if (linha.desfecho) {
+    await apagarAoVivo(db, linha.id);
+    // Já decidido. A faixa que não entrou (falha passageira depois do
+    // desfecho: a resposta foi 500 e a máquina repetiu) entra AGORA — o aviso
+    // repetido é a nova tentativa, e a linha guarda o fim.
+    const comFaixa = (DESFECHOS_COM_FAIXA as readonly string[]).includes(linha.desfecho);
+    if (!comFaixa || linha.message_id) return 'ok';
+    return gravarFaixa(db, linha, {
+      desfecho: linha.desfecho as (typeof DESFECHOS_COM_FAIXA)[number],
+      atendidaEm: linha.atendida_pelo_crm_em,
+      motivo: (linha.motivo_do_fim as MotivoDoFim | null) ?? fim.motivo,
+      duracaoSeg: linha.duracao_seg ?? fim.duracaoSeg,
+      fimEm: fim.fimEm,
+    });
   }
 
   const atendidaEm = linha.atendida_pelo_crm_em ?? fim.atendidaEm;
@@ -677,8 +720,9 @@ async function finalizar(
   if (!minha || minha.length === 0) return 'ok';
 
   // O atendimento conhecido (o aviso `atendida` OU o do fim) vence o do fim.
-  await gravarFaixa(db, linha, { ...fim, desfecho, atendidaEm });
-  return 'ok';
+  // Falha passageira devolve 'falhou' (500): a máquina repete o aviso, e a
+  // repetição refaz a faixa (acima).
+  return gravarFaixa(db, linha, { ...fim, desfecho, atendidaEm });
 }
 
 // ------------------------------------------------------------
@@ -697,6 +741,12 @@ async function marcarErro(db: SupabaseClient, id: string, detalhe: string): Prom
   if (error) console.error('[ligacoes] registrar o erro da faixa falhou:', id, error.message);
 }
 
+/**
+ * Grava a faixa e a liga à ligação. `falhou` = passageiro (o banco não
+ * respondeu): quem chama devolve 500, e a máquina repete o aviso. O que não
+ * se resolve repetindo (sem o telefone, a conversa apagada) fica no
+ * `detalhe` e responde `ok`.
+ */
 async function gravarFaixa(
   db: SupabaseClient,
   linha: LinhaPeloCrm,
@@ -707,13 +757,16 @@ async function gravarFaixa(
     duracaoSeg: number | null;
     fimEm: string;
   },
-): Promise<void> {
+): Promise<DesfechoDoAviso> {
   // A conversa: a feita saiu de uma; a recebida é a do número que ligou,
   // criada se o número nunca escreveu (dono durável, como toda ligação).
   let conversationId = linha.conversation_id;
   let contactId: string | null = null;
   if (linha.direcao === 'recebida') {
-    if (!linha.telefone) return marcarErro(db, linha.id, 'faixa: sem o telefone de quem ligou');
+    if (!linha.telefone) {
+      await marcarErro(db, linha.id, 'faixa: sem o telefone de quem ligou');
+      return 'ok';
+    }
     try {
       const destino = await resolverDestinatario(db, linha.account_id, linha.telefone, undefined, {
         origem: { via: 'ligacao' },
@@ -721,10 +774,14 @@ async function gravarFaixa(
       conversationId = destino.conversationId;
       contactId = destino.contactId;
     } catch (err) {
-      return marcarErro(db, linha.id, `faixa: ficha ou conversa: ${err instanceof Error ? err.message : String(err)}`);
+      await marcarErro(db, linha.id, `faixa: ficha ou conversa: ${err instanceof Error ? err.message : String(err)}`);
+      return 'falhou';
     }
   }
-  if (!conversationId) return marcarErro(db, linha.id, 'faixa: a conversa não existe mais');
+  if (!conversationId) {
+    await marcarErro(db, linha.id, 'faixa: a conversa não existe mais');
+    return 'ok';
+  }
 
   const inicio = linha.direcao === 'feita' ? linha.criada_em : linha.oferta_em;
   // A hora da faixa: o atendimento; sem ele, o começo da discagem.
@@ -767,11 +824,21 @@ async function gravarFaixa(
       .select('id')
       .single(),
   );
-  const { data: mensagem, error } = resultado;
-  if (error || !mensagem) {
-    // 23505 = a faixa desta ligação já está na conversa.
-    if (!isUniqueViolation(error)) await marcarErro(db, linha.id, `faixa: ${error?.message ?? 'sem retorno'}`);
-    return;
+  let mensagem = resultado.data as { id: string } | null;
+  if (resultado.error || !mensagem) {
+    if (!isUniqueViolation(resultado.error)) {
+      await marcarErro(db, linha.id, `faixa: ${resultado.error?.message ?? 'sem retorno'}`);
+      return 'falhou';
+    }
+    // 23505: a faixa já entrou (numa tentativa cujo vínculo falhou) — liga a que existe.
+    const { data: existente, error: erroDaBusca } = await db
+      .from('messages')
+      .select('id')
+      .eq('conversation_id', conversationId)
+      .eq('message_id', `call:${linha.call_id}`)
+      .maybeSingle();
+    if (erroDaBusca || !existente) return 'falhou';
+    mensagem = { id: existente.id as string };
   }
 
   // A conversa que nasceu agora (a recebida de número novo) ganha o número
@@ -795,14 +862,19 @@ async function gravarFaixa(
     .from('cb_ligacoes')
     .update({ conversation_id: conversationId, message_id: mensagem.id })
     .eq('id', linha.id);
-  if (erroDoVinculo) console.error('[ligacoes] ligar a faixa à ligação falhou:', erroDoVinculo.message);
+  if (erroDoVinculo) {
+    // Sem o vínculo, a repetição do aviso volta aqui (o 23505 acima liga a faixa).
+    console.error('[ligacoes] ligar a faixa à ligação falhou:', erroDoVinculo.message);
+    return 'falhou';
+  }
 
   // A gravação pode ter chegado entre a leitura e o INSERT (são pedidos
   // separados da máquina): escrever-e-reler dos dois lados — um vê o outro.
   if (linha.gravacao_recebida_em === null) {
     const { data: agora } = await db.from('cb_ligacoes').select('gravacao_recebida_em').eq('id', linha.id).maybeSingle();
-    if (agora?.gravacao_recebida_em) await marcarGravacaoNaFaixa(db, mensagem.id as string);
+    if (agora?.gravacao_recebida_em) await marcarGravacaoNaFaixa(db, mensagem.id);
   }
+  return 'ok';
 }
 
 // ------------------------------------------------------------

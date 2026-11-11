@@ -418,6 +418,62 @@ describe('os avisos da máquina', () => {
     expect(ligacoes()[0].encerrada_em).toBeUndefined();
   });
 
+  it('⚠️ a faixa que falha depois do desfecho devolve 500, e o aviso REPETIDO a grava (Codex, #497)', async () => {
+    feitaEmCurso({ atendida_pelo_crm_em: '2026-11-10T20:00:20.000Z' });
+    const fim = {
+      tipo: 'encerrada',
+      ligacao: ID,
+      motivo: 'cliente_desligou',
+      atendida_em: '2026-11-10T20:00:20.000Z',
+      duracao_seg: 30,
+    };
+    banco.falhas.messages = { code: 'XX000', message: 'o banco não respondeu' };
+    expect(await aviso(fim)).toBe('falhou');
+    expect(ligacoes()[0].desfecho).toBe('atendida');
+    expect(ligacoes()[0].message_id ?? null).toBeNull();
+    delete banco.falhas.messages;
+    expect(await aviso(fim)).toBe('ok');
+    expect(faixas()).toHaveLength(1);
+    expect(ligacoes()[0].message_id).toBe(faixas()[0].id);
+    expect(faixas()[0].ligacao).toMatchObject({ motivo: 'cliente_desligou', duracao_seg: 30 });
+  });
+
+  it('a faixa que entrou sem o vínculo é LIGADA na repetição, sem duplicar', async () => {
+    feitaEmCurso({ desfecho: 'nao_atendida', motivo_do_fim: 'nao_atendida' });
+    banco.tabelas.messages.push({
+      id: 'faixa-antiga',
+      conversation_id: 'conversa-1',
+      content_type: 'call',
+      message_id: `call:crm:${ID}`,
+    });
+    // O dublê aplica o UNIQUE (conversa, message_id) da tabela de verdade.
+    const from = banco.db.from.bind(banco.db);
+    (banco.db as unknown as { from: unknown }).from = (tabela: string) => {
+      const q = from(tabela);
+      if (tabela !== 'messages') return q;
+      return {
+        ...q,
+        insert: () => ({
+          select: () => ({
+            single: () => Promise.resolve({ data: null, error: { code: '23505', message: 'duplicate key value' } }),
+          }),
+        }),
+      };
+    };
+    expect(
+      await aviso({ tipo: 'encerrada', ligacao: ID, motivo: 'nao_atendida', atendida_em: null, duracao_seg: null }),
+    ).toBe('ok');
+    expect(ligacoes()[0].message_id).toBe('faixa-antiga');
+  });
+
+  it('o sinal retoma a faixa que faltou num fim que a máquina não vai repetir (o "sumiu")', async () => {
+    feitaEmCurso({ desfecho: 'nao_atendida', motivo_do_fim: 'sumiu', criada_em: '2026-11-10T19:58:00.000Z' });
+    expect(await aviso({ tipo: 'sinal', whatsapp: 'conectado', ligacao: null, chrome: '157.0' })).toBe('ok');
+    expect(faixas()).toHaveLength(1);
+    expect(faixas()[0].ligacao).toMatchObject({ desfecho: 'nao_atendida', motivo: 'sumiu' });
+    expect(ligacoes()[0].message_id).toBe(faixas()[0].id);
+  });
+
   it('ligação que o CRM não conhece: 404 para a máquina largar o aviso', async () => {
     expect(
       await aviso({ tipo: 'encerrada', ligacao: ID, motivo: 'falhou', atendida_em: null, duracao_seg: null }),

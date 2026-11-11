@@ -189,7 +189,8 @@ PARADO fora das sessões de teste até a 4c (nada o usa nem o vigia ainda).
   nome; nunca impresso), `previdenciario/perfil` (a SESSÃO do WhatsApp:
   protegê-la como o `postgres_data`; dono 1000) e `previdenciario/gravacoes`
   (só até o CRM confirmar o envio). O `segredo.env` compartilhado da 4a, na
-  raiz da pasta, saiu na 4b.
+  raiz da pasta, não é mais lido por nada desde a 4b (apagá-lo pede o "pode"
+  do operador).
 - **Montar a imagem** (na própria VPS, ~2 min; só as camadas do código, ~10 s):
   copiar o subprojeto para `/root/ligacoes/imagem/` e
   `docker build -t maquina-de-ligacoes:<data> /root/ligacoes/imagem`.
