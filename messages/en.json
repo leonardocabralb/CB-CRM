@@ -5488,12 +5488,14 @@
           "umaPorDia": "One message a day",
           "umaPorDiaAjuda": "If a collection goes out to the client that day, the morning reminder doesn't: the collection already mentions today's installment. The evening one only goes if it is still open.",
           "naoRetroativa": "Nothing goes out late",
-          "naoRetroativaAjuda": "Turning it on doesn't fire what already passed: only what falls due or reaches a milestone from then on."
+          "naoRetroativaAjuda": "Turning it on doesn't fire what already passed: only what falls due or reaches a milestone from then on.",
+          "diasUteisVaiIgualar": "On save, it applies to every step.",
+          "manterComoEsta": "Keep each as it is"
         },
         "ligacao": {
           "titulo": "Ask the team to call",
           "desc": "An internal note on the conversation tagging who calls to arrange payment, plus a tag. Once per client, until someone removes the tag. Nothing is sent to the client.",
-          "diferente": "Today the collections ask for the call in different ways (edited in the builder). Saving here makes them all the same.",
+          "diferente": "Today only some collections ask for the call, or ask in different ways (edited in the builder). Nothing changes in them until you turn it on here (makes all the same) or turn it on and off (removes it from all).",
           "aMao": "There is a hand-built \"Billing status\" condition in {etapas}: it stays. Remove it in the builder if this one is enough.",
           "quando": "When the client has",
           "parcelas": "Overdue installments",
@@ -5510,7 +5512,8 @@
           "textoAjuda": "The billing fields are those of the message just sent.",
           "incompleta": "To ask for the call: a threshold, someone tagged, the tag and the text.",
           "pendentes": "{n, plural, =0 {No client waiting for a call right now.} one {One client waiting for a call right now (with the tag).} other {# clients waiting for a call right now (with the tag).}}",
-          "desligada": "Off: the schedule asks nobody to call."
+          "desligada": "Off: the schedule asks nobody to call.",
+          "vaiDesligar": "On save, the call request is removed from every collection."
         },
         "excecoes": {
           "titulo": "Who doesn't receive it",
@@ -5559,7 +5562,8 @@
             "empresa": "A company (CNPJ) with a one-off charge: the greeting has no name, and the charge's internal description never reaches the client."
           },
           "previaReal": "To see it with a real client, use the editor's \"Preview\" on the left."
-        }
+        },
+        "recarregarFalhou": "Could not reload automatic billing: the screen may not show what is saved. Reload the page."
       }
     },
     "groups": {

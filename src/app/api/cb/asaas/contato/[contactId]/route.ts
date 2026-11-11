@@ -90,11 +90,14 @@ export async function GET(_request: Request, { params }: { params: Promise<{ con
 
     // A LIGAÇÃO PEDIDA (1135): a etiqueta do "Pedir ligação" das cobranças
     // (a que a condição pergunta E o passo põe) está nesta ficha agora?
+    // Leitura ACESSÓRIA: falhou, a caixa some (`null` não afirma nada) e a aba
+    // segue com as parcelas — nunca 500 por causa dela. Só com cliente do
+    // Asaas ligado ao contato (o que prova que a ficha é desta conta).
     let ligacao: { etiqueta: string; desde: string } | null = null;
     const idsDaRegua = automacoesDaRegua.filter((a) => a.trigger_type === "asaas_cobranca_vencida").map((a) => a.id);
-    if (idsDaRegua.length > 0) {
+    if (idsDaRegua.length > 0 && clientes.length > 0) {
       const { data: passos, error: erroDosPassos } = await admin.from("automation_steps").select("step_type, step_config").in("automation_id", idsDaRegua).in("step_type", ["condition", "add_tag"]);
-      if (erroDosPassos) throw new Error(`passos da régua: ${erroDosPassos.message}`);
+      if (erroDosPassos) console.error("[asaas/contato] passos da régua:", erroDosPassos.message);
       const perguntadas = new Set<string>();
       const postas = new Set<string>();
       for (const p of (passos ?? []) as { step_type: string; step_config: Record<string, unknown> | null }[]) {
@@ -103,9 +106,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ con
         if (p.step_type === "add_tag" && typeof cfg.tag_id === "string") postas.add(cfg.tag_id);
       }
       const daLigacao = [...postas].filter((id) => perguntadas.has(id));
-      if (daLigacao.length > 0) {
-        const { data: naFicha, error: erroDaFicha } = await admin.from("contact_tags").select("tag_id, created_at, tags(name)").eq("contact_id", contactId).in("tag_id", daLigacao).order("created_at", { ascending: true }).limit(1);
-        if (erroDaFicha) throw new Error(`etiqueta da ligação: ${erroDaFicha.message}`);
+      if (!erroDosPassos && daLigacao.length > 0) {
+        // `tags!inner` + a conta: etiqueta de outra conta gravada num passo não vale.
+        const { data: naFicha, error: erroDaFicha } = await admin.from("contact_tags").select("tag_id, created_at, tags!inner(name, account_id)").eq("contact_id", contactId).in("tag_id", daLigacao).eq("tags.account_id", ctx.accountId).order("created_at", { ascending: true }).limit(1);
+        if (erroDaFicha) console.error("[asaas/contato] etiqueta da ligação:", erroDaFicha.message);
         const linha = (naFicha ?? [])[0] as { created_at: string; tags: { name: string } | { name: string }[] | null } | undefined;
         if (linha) {
           const tag = Array.isArray(linha.tags) ? linha.tags[0] : linha.tags;

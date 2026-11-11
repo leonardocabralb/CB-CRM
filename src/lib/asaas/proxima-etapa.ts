@@ -5,7 +5,9 @@
  * novo e respeita o "uma por dia". Aqui se aplica o que dá para saber de
  * antemão — as etapas LIGADAS, a trava do que já saiu, o dia-alvo do marco
  * (`diaAlvoDoMarco`, dias úteis e tolerância incluídos), a fronteira da
- * ativação (D13), a janela do dia e o intervalo mínimo entre cobranças.
+ * ativação (D13), a janela do dia e o intervalo mínimo entre cobranças — o
+ * marco que cai dentro dele a varredura ABSORVE (trava `absorvida`, não
+ * adia): a próxima é o marco seguinte.
  *
  * Puro, sem I/O.
  */
@@ -72,12 +74,9 @@ export function proximaEtapaPrevista(entrada: EntradaDaProxima): ProximaEtapa | 
       if (!entrouNaRegua(p, entrada.reguaAtivadaEm)) continue;
       for (const e of cobrancas) {
         if (travado("atraso", e.marco, p.vencimento)) continue;
-        let dia = diaAlvoDoMarco(p, e.marco, { hoje: entrada.hoje, reguaAtivadaEm: entrada.reguaAtivadaEm, somenteDiasUteis: e.somenteDiasUteis, fuso: entrada.fuso });
+        const dia = diaAlvoDoMarco(p, e.marco, { hoje: entrada.hoje, reguaAtivadaEm: entrada.reguaAtivadaEm, somenteDiasUteis: e.somenteDiasUteis, fuso: entrada.fuso });
         if (!dia || dia < entrada.hoje || janelaJaFechou(dia, e, entrada)) continue;
-        if (entrada.ultimaCobrancaDia && entrada.intervaloDias > 0) {
-          const liberado = somarDias(entrada.ultimaCobrancaDia, entrada.intervaloDias);
-          if (dia < liberado) dia = e.somenteDiasUteis && !ehDiaUtil(liberado) ? proximoDiaUtil(liberado) : liberado;
-        }
+        if (entrada.ultimaCobrancaDia && entrada.intervaloDias > 0 && dia < somarDias(entrada.ultimaCobrancaDia, entrada.intervaloDias)) continue;
         considerar({ dia, hora: e.horaEnvio, tipo: "atraso", marco: e.marco });
         break;
       }

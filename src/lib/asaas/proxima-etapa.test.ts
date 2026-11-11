@@ -55,10 +55,11 @@ describe("proximaEtapaPrevista", () => {
     expect(proximaEtapaPrevista({ ...base, parcelas: [p], travas })).toEqual({ dia: "2026-11-11", hora: "09:00", tipo: "atraso", marco: 5 });
   });
 
-  it("o intervalo mínimo empurra a cobrança", () => {
+  it("o marco dentro do intervalo mínimo é ABSORVIDO pela varredura: a próxima é o marco seguinte", () => {
     const p = parcela({ vencimento: "2026-11-06", vista_vencida_em: "2026-11-07T03:00:00Z" });
     const travas = [{ tipo: "atraso" as const, marco: 1, vencimento: "2026-11-06", resultado: "enviado", criadoEm: "2026-11-10T12:00:00Z" }];
-    expect(proximaEtapaPrevista({ ...base, parcelas: [p], travas, ultimaCobrancaDia: "2026-11-10" })?.dia).toBe("2026-11-13");
+    // o de 5 dias (11/11) cai dentro dos 3 dias; o de 15 (21/11, sábado) vai para segunda, 23/11
+    expect(proximaEtapaPrevista({ ...base, parcelas: [p], travas, ultimaCobrancaDia: "2026-11-10" })).toEqual({ dia: "2026-11-23", hora: "09:00", tipo: "atraso", marco: 15 });
   });
 
   it("antes da ativação (D13), cliente fora da régua e etapa desligada: nada", () => {

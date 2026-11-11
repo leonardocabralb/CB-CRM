@@ -53,22 +53,51 @@ export async function GET() {
       automacoes.push({ ...a, trigger_config: (a.trigger_config ?? null) as Record<string, unknown> | null, steps: await loadStepsTree(a.id) });
     }
 
+    // Os envios dos últimos 7 dias, em MENSAGENS: a trava é uma linha por
+    // PARCELA, e um envio fecha todas as do grupo — conta-se o log (ou,
+    // sem ele, cliente + tipo + dia). Leitura que falha ou passa do teto
+    // vira `null` (a tela cala), nunca 0.
     const desde = new Date(Date.now() - 7 * 86_400_000).toISOString();
-    const contar = async (tipo: "vence_hoje" | "atraso" | null, resultados: string[]): Promise<number | null> => {
-      let q = admin.from("cb_asaas_regua_envios").select("id", { count: "exact", head: true }).eq("account_id", ctx.accountId).gte("criado_em", desde).in("resultado", resultados);
-      if (tipo) q = q.eq("tipo", tipo);
-      const { count, error } = await q;
-      return error || count === null ? null : count;
-    };
-    const enviados = [...RESULTADOS_QUE_CONTAM_COMO_ENVIO];
-    const [lembretes, cobrancas, falhas] = await Promise.all([contar("vence_hoje", enviados), contar("atraso", enviados), contar(null, ["falhou"])]);
+    const enviados = RESULTADOS_QUE_CONTAM_COMO_ENVIO;
+    let envios7d: { lembretes: number; cobrancas: number; falhas: number } | null = null;
+    {
+      const vistos = { lembretes: new Set<string>(), cobrancas: new Set<string>(), falhas: new Set<string>() };
+      let completo = false;
+      for (let pagina = 0; pagina < 10; pagina++) {
+        const { data, error } = await admin
+          .from("cb_asaas_regua_envios")
+          .select("asaas_customer_id, tipo, resultado, criado_em, automation_log_id")
+          .eq("account_id", ctx.accountId)
+          .gte("criado_em", desde)
+          .order("id")
+          .range(pagina * 1000, pagina * 1000 + 999);
+        if (error) break;
+        const linhas = (data ?? []) as { asaas_customer_id: string; tipo: string; resultado: string; criado_em: string; automation_log_id: string | null }[];
+        for (const l of linhas) {
+          const chave = l.automation_log_id ?? `${l.asaas_customer_id}|${l.tipo}|${l.criado_em.slice(0, 10)}`;
+          if (l.resultado === "falhou") vistos.falhas.add(chave);
+          else if (enviados.has(l.resultado)) (l.tipo === "vence_hoje" ? vistos.lembretes : vistos.cobrancas).add(chave);
+        }
+        if (linhas.length < 1000) {
+          completo = true;
+          break;
+        }
+      }
+      if (completo) envios7d = { lembretes: vistos.lembretes.size, cobrancas: vistos.cobrancas.size, falhas: vistos.falhas.size };
+    }
 
     // A etiqueta do "Pedir ligação" sai do que está gravado nas cobranças.
     const estado = derivarEstado(automacoes);
     let ligacoesPendentes: number | null = null;
     if (estado.ligacao.tipo === "igual") {
-      const { count, error } = await admin.from("contact_tags").select("contact_id", { count: "exact", head: true }).eq("tag_id", estado.ligacao.config.tagId);
-      ligacoesPendentes = error || count === null ? null : count;
+      // A etiqueta sai de passos gravados (o PATCH não confere o dono dela):
+      // só conta se for DESTA conta.
+      const tagId = estado.ligacao.config.tagId;
+      const { data: daConta } = await admin.from("tags").select("id").eq("id", tagId).eq("account_id", ctx.accountId).maybeSingle();
+      if (daConta) {
+        const { count, error } = await admin.from("contact_tags").select("contact_id", { count: "exact", head: true }).eq("tag_id", tagId);
+        ligacoesPendentes = error || count === null ? null : count;
+      }
     }
 
     const escritorioPadrao = nomeDoEscritorio(null, conta?.assinatura_nome_automatica as string | null, conta?.name as string | null);
@@ -84,7 +113,7 @@ export async function GET() {
         assinaturaAtiva: conta?.assinatura_ativa !== false,
       },
       automacoes,
-      envios7d: lembretes === null || cobrancas === null || falhas === null ? null : { lembretes, cobrancas, falhas },
+      envios7d,
       ligacoesPendentes,
     });
   } catch (err) {

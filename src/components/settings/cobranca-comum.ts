@@ -20,6 +20,17 @@ export interface RespostaDoModulo {
 }
 
 
+/** `GET /api/cb/asaas/regua/modulo`; `null` = não consegui ler (nunca "não há"). */
+export async function lerModulo(): Promise<RespostaDoModulo | null> {
+  try {
+    const res = await fetch("/api/cb/asaas/regua/modulo", { cache: "no-store" });
+    if (!res.ok) return null;
+    return (await res.json()) as RespostaDoModulo;
+  } catch {
+    return null;
+  }
+}
+
 export type T = ReturnType<typeof useTranslations<"Settings.integracoes.cobranca">>;
 
 export function rotuloDaEtapa(e: EtapaDoModulo, t: T): string {

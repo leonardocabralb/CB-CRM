@@ -39,7 +39,11 @@ export async function GET() {
     // filtro calam. Responde SEM contatos e com a marca — o navegador
     // neutraliza o filtro (`aviso_desligado`) em vez de ler "ninguém deve".
     if (config.aviso_inadimplencia_ativo === false) {
-      return NextResponse.json({ conectado: true, avisoDesligado: true, leituraFresca: leituraFresca(config, new Date()), atualizadoEm: config.vencidas_listadas_em, cicloCompleto: cicloCompleto(config), contatos: {} });
+      // `cicloCompleto: false` de propósito: uma aba aberta ANTES do deploy
+      // não conhece `avisoDesligado` e leria contatos vazios com o ciclo
+      // completo como "ninguém deve" (esvaziaria a visão salva); assim ela
+      // neutraliza como "sincronizando". A nova confere o aviso antes.
+      return NextResponse.json({ conectado: true, avisoDesligado: true, leituraFresca: leituraFresca(config, new Date()), atualizadoEm: config.vencidas_listadas_em, cicloCompleto: false, contatos: {} });
     }
 
     // cliente do Asaas → contato (só os ligados), paginado. ⚠️ Acima do

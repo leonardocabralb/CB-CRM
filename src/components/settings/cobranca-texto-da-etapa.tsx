@@ -17,7 +17,7 @@ import { ASSINATURA_DA_NOITE, TEXTO_DA_COBRANCA, TEXTO_DO_LEMBRETE, TEXTO_DO_LEM
 import { chaveDaPendencia } from "@/lib/automations/pendencias";
 import { cn } from "@/lib/utils";
 
-import { rotuloDaEtapa, type RespostaDoModulo } from "./cobranca-comum";
+import { lerModulo, rotuloDaEtapa, type RespostaDoModulo } from "./cobranca-comum";
 
 /**
  * O texto de UMA etapa da régua, aberto pela tela "Cobrança automática"
@@ -91,7 +91,14 @@ export function TextoDaEtapa({
   const salvar = async () => {
     setSalvando(true);
     try {
-      const patches = patchesDoModulo([automacao], {
+      // Relê a etapa antes (revisão do PR): editada no construtor depois desta
+      // carga, o PATCH dos passos gravaria a árvore velha por cima.
+      const fresca = (await lerModulo())?.automacoes?.find((a) => a.id === automacao.id);
+      if (!fresca) {
+        toast.error(t("carregarFalhou"));
+        return;
+      }
+      const patches = patchesDoModulo([fresca], {
         etapas: {
           [automacao.id]: {
             ...(meu.texto !== undefined ? { texto: meu.texto } : {}),

@@ -5481,12 +5481,14 @@
           "umaPorDia": "Uma mensagem por dia",
           "umaPorDiaAjuda": "Se no mesmo dia sai uma cobrança para o cliente, o lembrete da manhã não sai: a cobrança já fala da parcela de hoje. O da noite só sai se ela continuar em aberto.",
           "naoRetroativa": "Não manda nada atrasado",
-          "naoRetroativaAjuda": "Ligar não dispara o que já passou: só o que vencer ou completar um marco daqui em diante."
+          "naoRetroativaAjuda": "Ligar não dispara o que já passou: só o que vencer ou completar um marco daqui em diante.",
+          "diasUteisVaiIgualar": "Ao salvar, vale para todas as etapas.",
+          "manterComoEsta": "Manter cada uma como está"
         },
         "ligacao": {
           "titulo": "Pedir ligação à equipe",
           "desc": "Uma anotação interna na conversa marcando quem liga para combinar o pagamento, com uma etiqueta. Uma vez por cliente, até alguém tirar a etiqueta. Não manda nada ao cliente.",
-          "diferente": "Hoje as cobranças pedem a ligação de formas diferentes (mexidas no construtor). Salvar aqui iguala todas.",
+          "diferente": "Hoje só algumas cobranças pedem a ligação, ou pedem de formas diferentes (mexidas no construtor). Nada muda nelas até você ligar aqui (iguala todas) ou ligar e desligar (tira de todas).",
           "aMao": "Há uma condição \"Situação da cobrança\" montada à mão em {etapas}: ela continua lá. Tire-a no construtor se esta já basta.",
           "quando": "Quando o cliente tiver",
           "parcelas": "Parcelas vencidas",
@@ -5503,7 +5505,8 @@
           "textoAjuda": "Os campos da cobrança são os da mensagem que acabou de sair.",
           "incompleta": "Para pedir a ligação: um limite, alguém marcado, a etiqueta e o texto.",
           "pendentes": "{n, plural, =0 {Nenhum cliente esperando ligação agora.} one {Um cliente esperando ligação agora (com a etiqueta).} other {# clientes esperando ligação agora (com a etiqueta).}}",
-          "desligada": "Desligado: a régua não pede ligação a ninguém."
+          "desligada": "Desligado: a régua não pede ligação a ninguém.",
+          "vaiDesligar": "Ao salvar, o pedido de ligação sai de todas as cobranças."
         },
         "excecoes": {
           "titulo": "Quem não recebe",
@@ -5552,7 +5555,8 @@
             "empresa": "Empresa (CNPJ) com uma cobrança avulsa: a saudação sai sem nome, e a descrição interna da cobrança nunca vai ao cliente."
           },
           "previaReal": "Para ver com um cliente de verdade, use \"Prévia\" do editor, à esquerda."
-        }
+        },
+        "recarregarFalhou": "Não consegui reler a cobrança automática: a tela pode não mostrar o que está gravado. Recarregue a página."
       }
     },
     "groups": {

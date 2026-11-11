@@ -85,7 +85,11 @@ export async function POST(request: Request) {
       .order("created_at", { ascending: true })
       .limit(1);
     let canalId = (canais?.[0]?.id as string | undefined) ?? null;
-    if (umaEtapa && typeof pedido?.canal_id === "string") {
+    // A tela "Cobrança automática" manda o número e quem assina de "Quem
+    // manda" também na régua padrão (1135): sem isso as etapas novas nasciam
+    // no número padrão, sem assinatura.
+    const assinaturaPedida = pedido && "assinatura" in pedido ? normalizarAssinatura(pedido.assinatura) : null;
+    if (typeof pedido?.canal_id === "string") {
       const { data: daConta, error: erroDoCanal } = await admin.from("cb_channels").select("id").eq("id", pedido.canal_id).eq("account_id", ctx.accountId).maybeSingle();
       if (erroDoCanal) return NextResponse.json({ error: "db_error" }, { status: 500 });
       if (!daConta) return NextResponse.json({ error: "canal_invalido" }, { status: 400 });
@@ -94,6 +98,7 @@ export async function POST(request: Request) {
     const passo = (texto: string) => ({ step_type: "send_message", step_config: canalId ? { text: texto, channel_id: canalId } : { text: texto } });
 
     const criadas: string[] = [];
+    const ids: string[] = [];
     const criar = async (nome: string, tipo: string, config: Record<string, unknown>, texto: string, assinatura: string | null = null) => {
       const { data: automacao, error: erroInsert } = await admin
         .from("automations")
@@ -126,21 +131,21 @@ export async function POST(request: Request) {
 
     if (umaEtapa) {
       if (marcosExistentes.has(diasPedidos)) return NextResponse.json({ error: "ja_existe" }, { status: 409 });
-      const id = await criar(nomeDaCobranca(diasPedidos), "asaas_cobranca_vencida", { dias_de_atraso: diasPedidos, hora_envio: HORA_PADRAO_COBRANCA, somente_dias_uteis: true }, TEXTO_DA_COBRANCA, normalizarAssinatura(pedido?.assinatura));
-      return NextResponse.json({ ok: true, criadas, id });
+      const id = await criar(nomeDaCobranca(diasPedidos), "asaas_cobranca_vencida", { dias_de_atraso: diasPedidos, hora_envio: HORA_PADRAO_COBRANCA, somente_dias_uteis: true }, TEXTO_DA_COBRANCA, assinaturaPedida);
+      return NextResponse.json({ ok: true, criadas, id, ids: [id] });
     }
 
     for (const marco of MARCOS_PADRAO) {
       if (marcosExistentes.has(marco)) continue;
-      await criar(nomeDaCobranca(marco), "asaas_cobranca_vencida", { dias_de_atraso: marco, hora_envio: HORA_PADRAO_COBRANCA, somente_dias_uteis: true }, TEXTO_DA_COBRANCA);
+      ids.push(await criar(nomeDaCobranca(marco), "asaas_cobranca_vencida", { dias_de_atraso: marco, hora_envio: HORA_PADRAO_COBRANCA, somente_dias_uteis: true }, TEXTO_DA_COBRANCA, assinaturaPedida));
     }
     if (!turnosExistentes.has(0)) {
-      await criar(NOME_DO_LEMBRETE_DO_DIA, "asaas_cobranca_vence_hoje", { hora_envio: HORA_PADRAO_LEMBRETE, somente_dias_uteis: true }, TEXTO_DO_LEMBRETE);
+      ids.push(await criar(NOME_DO_LEMBRETE_DO_DIA, "asaas_cobranca_vence_hoje", { hora_envio: HORA_PADRAO_LEMBRETE, somente_dias_uteis: true }, TEXTO_DO_LEMBRETE, assinaturaPedida));
     }
     if (!turnosExistentes.has(1)) {
-      await criar(NOME_DO_LEMBRETE_DA_NOITE, "asaas_cobranca_vence_hoje", { hora_envio: HORA_PADRAO_LEMBRETE_DA_NOITE, somente_dias_uteis: true }, TEXTO_DO_LEMBRETE_DA_NOITE, ASSINATURA_DA_NOITE);
+      ids.push(await criar(NOME_DO_LEMBRETE_DA_NOITE, "asaas_cobranca_vence_hoje", { hora_envio: HORA_PADRAO_LEMBRETE_DA_NOITE, somente_dias_uteis: true }, TEXTO_DO_LEMBRETE_DA_NOITE, ASSINATURA_DA_NOITE));
     }
-    return NextResponse.json({ ok: true, criadas, semConexao: canalId === null });
+    return NextResponse.json({ ok: true, criadas, ids, semConexao: canalId === null });
   } catch (err) {
     if (err instanceof Error && !("status" in err)) {
       console.error("[asaas/regua] criar régua padrão falhou:", err.message);

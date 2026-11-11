@@ -34,7 +34,7 @@ import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 import { AsaasListas } from "./asaas-listas";
-import { rotuloDaEtapa, type RespostaDoModulo, type T } from "./cobranca-comum";
+import { lerModulo, rotuloDaEtapa, type RespostaDoModulo, type T } from "./cobranca-comum";
 import { TextoDaEtapa } from "./cobranca-texto-da-etapa";
 
 /**
@@ -72,17 +72,8 @@ interface Rascunho {
 
 const RASCUNHO_VAZIO: Rascunho = { etapas: {} };
 
-async function lerModulo(): Promise<RespostaDoModulo | null> {
-  try {
-    const res = await fetch("/api/cb/asaas/regua/modulo", { cache: "no-store" });
-    if (!res.ok) return null;
-    return (await res.json()) as RespostaDoModulo;
-  } catch {
-    return null;
-  }
-}
-
 interface Recusa {
+  id: string;
   nome: string;
   motivos: string[];
 }
@@ -180,8 +171,8 @@ export function CobrancaAutomatica({ etapaAberta, aoAbrirEtapa }: { etapaAberta:
     const falhas: Recusa[] = [];
     for (const p of patches) {
       const res = await fetch(`/api/automations/${p.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p.corpo) }).catch(() => null);
-      if (!res) falhas.push({ nome: p.nome, motivos: [t("erroDeRede")] });
-      else if (!res.ok) falhas.push({ nome: p.nome, motivos: await motivosDaResposta(res) });
+      if (!res) falhas.push({ id: p.id, nome: p.nome, motivos: [t("erroDeRede")] });
+      else if (!res.ok) falhas.push({ id: p.id, nome: p.nome, motivos: await motivosDaResposta(res) });
     }
     return falhas;
   };
@@ -198,13 +189,21 @@ export function CobrancaAutomatica({ etapaAberta, aoAbrirEtapa }: { etapaAberta:
         ...(rascunho.ligacao !== undefined ? { ligacao: rascunho.ligacao } : {}),
         etapas: rascunho.etapas,
       };
-      const falhas = await aplicar(patchesDoModulo(automacoes, mudancas));
+      // Relê ANTES de calcular os PATCHes: a etapa pode ter sido editada no
+      // construtor depois desta carga (o selo e o aviso levam até lá), e o
+      // PATCH dos passos gravaria a árvore velha por cima (revisão do PR).
+      const fresco = await lerModulo();
+      if (!fresco?.automacoes) {
+        toast.error(t("carregarFalhou"));
+        return;
+      }
+      const falhas = await aplicar(patchesDoModulo(fresco.automacoes, mudancas));
       const corpoDaConfig: Record<string, unknown> = {};
       if (rascunho.escritorio !== undefined && rascunho.escritorio.trim() !== (config.escritorioNome ?? "")) corpoDaConfig.regua_escritorio_nome = rascunho.escritorio.trim() || null;
       if (rascunho.intervalo !== undefined && Number(rascunho.intervalo) !== config.intervaloDias) corpoDaConfig.regua_intervalo_dias = Number(rascunho.intervalo);
       if (Object.keys(corpoDaConfig).length > 0) {
         const res = await fetch("/api/cb/asaas/regua/interruptor", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpoDaConfig) }).catch(() => null);
-        if (!res || !res.ok) falhas.push({ nome: t("configuracaoGeral"), motivos: [t("erroGravar")] });
+        if (!res || !res.ok) falhas.push({ id: "config", nome: t("configuracaoGeral"), motivos: [t("erroGravar")] });
       }
       setRecusas(falhas);
       setRascunho(RASCUNHO_VAZIO);
@@ -237,15 +236,29 @@ export function CobrancaAutomatica({ etapaAberta, aoAbrirEtapa }: { etapaAberta:
   const criarPadrao = async () => {
     setMexendo("padrao");
     try {
-      const res = await fetch("/api/cb/asaas/regua", { method: "POST", headers: { "Content-Type": "application/json" } }).catch(() => null);
+      // As etapas padrão nascem com "Quem manda" desta tela (número e
+      // assinatura) e com o "Pedir ligação" das cobranças — senão a tela
+      // voltava dizendo "vários números" e a etapa nova, ligada, sairia por
+      // outro número (revisão do PR).
+      const res = await fetch("/api/cb/asaas/regua", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...(canalAtual ? { canal_id: canalAtual } : {}), assinatura: assinaturaAtual.trim() || null }),
+      }).catch(() => null);
       if (!res || !res.ok) {
         toast.error(t("erroCriar"));
         return;
       }
-      const corpo = (await res.json().catch(() => ({}))) as { criadas?: string[]; semConexao?: boolean };
+      const corpo = (await res.json().catch(() => ({}))) as { criadas?: string[]; ids?: string[]; semConexao?: boolean };
       toast.success(t("padraoCriada", { n: corpo.criadas?.length ?? 0 }));
       if (corpo.semConexao) toast.warning(t("padraoSemConexao"), { duration: 10_000 });
-      await carregar();
+      const novo = await carregar();
+      const criadas = (novo?.automacoes ?? []).filter((a) => (corpo.ids ?? []).includes(a.id));
+      if (criadas.length > 0 && ligacaoGravada) {
+        const falhas = await aplicar(patchesDoModulo(criadas, { ligacao: ligacaoGravada }));
+        if (falhas.length > 0) setRecusas(falhas);
+        await carregar();
+      }
     } finally {
       setMexendo(null);
     }
@@ -297,16 +310,19 @@ export function CobrancaAutomatica({ etapaAberta, aoAbrirEtapa }: { etapaAberta:
       }
       return { ...r, ligacao: nova };
     });
+  // Voltar ao estado gravado é "não mexi" (`undefined`), nunca uma mudança:
+  // ligar e desligar de volta não pode tirar o pedido de quem já o tinha.
   const ligarLigacao = (ligar: boolean) => {
     if (!ligar) {
-      setRascunho((r) => ({ ...r, ligacao: null }));
+      setRascunho((r) => ({ ...r, ligacao: estado.ligacao.tipo === "desligada" ? undefined : null }));
       return;
     }
     setRascunho((r) => ({
       ...r,
-      ligacao: ligacaoGravada ?? { parcelas: 2, dias: 15, mencionados: [], tagId: "", texto: textoPadraoDaLigacao(t("etiquetaPadrao")) },
+      ligacao: ligacaoGravada ? undefined : { parcelas: 2, dias: 15, mencionados: [], tagId: "", texto: textoPadraoDaLigacao(t("etiquetaPadrao")) },
     }));
   };
+  const assinaturaOriginal = estado.assinatura.tipo === "uma" ? (estado.assinatura.valor ?? "") : "";
 
   if (etapaAberta) {
     const automacao = automacoes.find((a) => a.id === etapaAberta);
@@ -388,6 +404,7 @@ export function CobrancaAutomatica({ etapaAberta, aoAbrirEtapa }: { etapaAberta:
           </label>
         </div>
         <p className="max-w-[80ch] text-muted-foreground">{t("desc")}</p>
+        {falhou && <p className="text-xs text-amber-700">{t("recarregarFalhou")}</p>}
         {config.ativa && config.ativadaEm && <p className="text-xs text-muted-foreground">{t("ativadaEm", { quando: new Date(config.ativadaEm).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" }) })}</p>}
         {config.ativa && ligadas === 0 && <p className="text-xs text-amber-700">{t("ligadaSemEtapa")}</p>}
         {!config.ativa && estado.etapas.some((e) => e.ligada) && <p className="text-xs text-amber-700">{t("etapasLigadasMasDesligada")}</p>}
@@ -425,7 +442,11 @@ export function CobrancaAutomatica({ etapaAberta, aoAbrirEtapa }: { etapaAberta:
               value={assinaturaAtual}
               maxLength={60}
               placeholder={estado.assinatura.tipo === "varias" ? t("quemManda.variasAssinaturas") : t("quemManda.assinaPlaceholder")}
-              onChange={(e) => setRascunho((r) => ({ ...r, assinatura: e.target.value }))}
+              onChange={(e) => {
+                // De volta ao gravado (ou vazio com assinaturas diferentes) = não mexi.
+                const v = e.target.value;
+                setRascunho((r) => ({ ...r, assinatura: v === assinaturaOriginal ? undefined : v }));
+              }}
             />
             <p className="text-[11px] text-muted-foreground">{t("quemManda.assinaAjuda")}</p>
             {!config.assinaturaAtiva && <p className="text-[11px] text-amber-700">{t("quemManda.assinaturaDesligada")}</p>}
@@ -533,10 +554,22 @@ export function CobrancaAutomatica({ etapaAberta, aoAbrirEtapa }: { etapaAberta:
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1.5 rounded-md border border-border p-3">
             <label className="flex items-center gap-2 text-[13px] font-medium text-foreground">
-              <Checkbox aria-label={t("regras.diasUteis")} checked={uteisAtual === true} onCheckedChange={(v) => setRascunho((r) => ({ ...r, somenteDiasUteis: v === true }))} />
+              <Checkbox
+                aria-label={t("regras.diasUteis")}
+                checked={uteisAtual === true}
+                onCheckedChange={(v) => setRascunho((r) => ({ ...r, somenteDiasUteis: estado.somenteDiasUteis !== "misto" && (v === true) === estado.somenteDiasUteis ? undefined : v === true }))}
+              />
               {t("regras.diasUteis")}
             </label>
             <p className="text-[11px] text-muted-foreground">{uteisAtual === null ? t("regras.diasUteisMisto") : t("regras.diasUteisAjuda")}</p>
+            {estado.somenteDiasUteis === "misto" && rascunho.somenteDiasUteis !== undefined && (
+              <p className="text-[11px] text-amber-700">
+                {t("regras.diasUteisVaiIgualar")}{" "}
+                <button type="button" className="underline" onClick={() => setRascunho((r) => ({ ...r, somenteDiasUteis: undefined }))}>
+                  {t("regras.manterComoEsta")}
+                </button>
+              </p>
+            )}
           </div>
           <div className="space-y-1.5 rounded-md border border-border p-3">
             <Label htmlFor="cobranca-intervalo">{t("regras.intervalo")}</Label>
@@ -618,9 +651,11 @@ export function CobrancaAutomatica({ etapaAberta, aoAbrirEtapa }: { etapaAberta:
             {ligacaoIncompleta && <p className="text-xs text-destructive">{t("ligacao.incompleta")}</p>}
             {dados.ligacoesPendentes !== null && dados.ligacoesPendentes !== undefined && ligacaoGravada && <p className="text-xs text-muted-foreground">{t("ligacao.pendentes", { n: dados.ligacoesPendentes })}</p>}
           </div>
-        ) : (
+        ) : rascunho.ligacao === null ? (
+          <p className="text-xs text-amber-700">{t("ligacao.vaiDesligar")}</p>
+        ) : estado.ligacao.tipo === "desligada" ? (
           <p className="text-xs text-muted-foreground">{t("ligacao.desligada")}</p>
-        )}
+        ) : null}
       </Secao>
 
       <Secao titulo={t("excecoes.titulo")} desc={t("excecoes.desc")}>
@@ -644,7 +679,7 @@ export function CobrancaAutomatica({ etapaAberta, aoAbrirEtapa }: { etapaAberta:
           <p className="font-medium text-destructive">{t("recusas")}</p>
           <ul className="list-disc space-y-0.5 pl-4 text-foreground">
             {recusas.map((r) => (
-              <li key={r.nome}>
+              <li key={r.id}>
                 <span className="font-medium">{r.nome}:</span> {r.motivos.join(" · ")}
               </li>
             ))}
