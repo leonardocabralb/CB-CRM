@@ -5450,7 +5450,7 @@
         "cadencia": {
           "titulo": "Cadence",
           "desc": "Each step is an automation the module creates and looks after. The time is when sending starts; collections run until 18:00 and the evening reminder until 21:00.",
-          "vazia": "No steps yet. Create the default steps to start.",
+          "vazia": "No steps yet. Create the default steps to start; the number, who signs, business days and the call request are chosen after that.",
           "linhaDoTempo": "Steps timeline",
           "lembrete": "reminder",
           "cobranca": "collection",

@@ -44,6 +44,9 @@ decisões: `docs/PLANO-integracao-asaas.md` §13.
   nasce com "Quem manda", a regra de dias úteis salva e o "Pedir ligação" das
   cobranças: o POST da régua recebe os três; sem eles, a tela voltava em
   "vários"/"misto" e a etapa ligada fugia da regra.
+- Sem etapa nenhuma, número, quem assina, dias úteis e o "Pedir ligação"
+  ficam DESABILITADOS: salvar faria zero PATCHes e diria "salvo". Escolhem-se
+  depois de criar as etapas.
 
 ### "Pedir ligação à equipe"
 
@@ -56,6 +59,9 @@ decisões: `docs/PLANO-integracao-asaas.md` §13.
   ativação recusa).
 - A "Ligação pedida" da aba Cobranças e o "N esperando ligação" da tela leem a
   etiqueta que a condição PERGUNTA e o passo PÕE nas cobranças — sem coluna.
+  Limite conhecido: a aba não lê a árvore, então uma régua montada à mão com
+  uma etiqueta perguntada num ramo e posta em outro também conta. Na forma do
+  módulo isso não acontece.
 
 ### Nome do escritório e aviso de inadimplência (1135)
 
@@ -74,7 +80,11 @@ decisões: `docs/PLANO-integracao-asaas.md` §13.
 
 - ⚠️ "Próxima (prevista)" na aba Cobranças é ESTIMATIVA
   (`proximaEtapaPrevista`): etapas ligadas, trava, dia-alvo, D13, janela e
-  intervalo. Na hora a varredura relê no Asaas — a tela diz isso.
+  intervalo. Na hora a varredura relê no Asaas — a tela diz isso. As travas
+  vêm de uma leitura própria, SEM o teto de 30 do histórico (um envio a
+  cliente com muitas parcelas passa disso); no teto dela, a previsão some.
+  Quem tem marco de cobrança no dia não tem o lembrete do DIA naquele dia (a
+  cobrança absorve, `agruparLembretes`): as cobranças são calculadas primeiro.
 - Números que falham (`envios7d`, `ligacoesPendentes`) vêm `null` e SOMEM,
   nunca 0. A prévia por caso usa `montarVariaveis` com parcelas fictícias
   (`previa-da-regua.ts`); a com cliente real é a do construtor.

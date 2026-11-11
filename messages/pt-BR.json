@@ -5443,7 +5443,7 @@
         "cadencia": {
           "titulo": "Cadência",
           "desc": "Cada etapa é uma automação que o módulo cria e cuida. O horário é de quando começa a sair; a cobrança vai até as 18:00 e o lembrete da noite até as 21:00.",
-          "vazia": "Nenhuma etapa ainda. Crie as etapas padrão para começar.",
+          "vazia": "Nenhuma etapa ainda. Crie as etapas padrão para começar; o número, quem assina, os dias úteis e o pedido de ligação se escolhem depois delas.",
           "linhaDoTempo": "Linha do tempo das etapas",
           "lembrete": "lembrete",
           "cobranca": "cobrança",

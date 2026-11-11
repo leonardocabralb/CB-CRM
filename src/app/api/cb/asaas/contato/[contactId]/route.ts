@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { cicloCompleto, leituraFresca, lerClientesDoContato, lerCobrancasDosClientes, lerConfigDoEspelho, lerEnviosDoContato } from "@/lib/asaas/espelho";
+import { cicloCompleto, leituraFresca, lerClientesDoContato, lerCobrancasDosClientes, lerConfigDoEspelho, lerEnviosDoContato, type EnvioDaRegua } from "@/lib/asaas/espelho";
 import { diaNoFuso, FUSO_PADRAO } from "@/lib/agenda/fuso";
 import { proximaEtapaPrevista } from "@/lib/asaas/proxima-etapa";
 import { GATILHOS_DA_REGUA, lerAutomacaoDaRegua, RESULTADOS_QUE_CONTAM_COMO_ENVIO, type AutomacaoDaRegua } from "@/lib/asaas/regua";
@@ -69,13 +69,27 @@ export async function GET(_request: Request, { params }: { params: Promise<{ con
     const ligadas = automacoesDaRegua.filter((a) => a.is_active);
 
     // A PRÓXIMA etapa prevista (1135) — estimativa, só com a régua ligada.
+    // As travas são lidas SEM o teto do histórico exibido (30): um envio a
+    // cliente com muitas parcelas passa disso sozinho, e a trava que ficasse
+    // de fora faria prever o que a varredura não manda (Codex, PR #499). No
+    // teto desta leitura, ou se ela falhar, a previsão some — lista cortada
+    // não afirma nada, e a aba segue com as parcelas.
     const agora = new Date();
     let proxima = null;
+    const TETO_DAS_TRAVAS = 1000;
+    let travasDoContato: EnvioDaRegua[] | null = null;
     if (config.regua_ativa === true && ligadas.length > 0) {
+      try {
+        travasDoContato = await lerEnviosDoContato(admin, ctx.accountId, contactId, TETO_DAS_TRAVAS);
+      } catch (e) {
+        console.error("[asaas/contato] travas da régua:", e instanceof Error ? e.message : e);
+      }
+    }
+    if (travasDoContato && travasDoContato.length < TETO_DAS_TRAVAS) {
       const etapasLigadas = ligadas.map((a) => lerAutomacaoDaRegua(a)).filter((a): a is AutomacaoDaRegua => a !== null);
       // a última cobrança POR CLIENTE do Asaas (os envios vêm do mais recente)
       const ultimaCobrancaPorCliente = new Map<string, string>();
-      for (const e of envios) {
+      for (const e of travasDoContato) {
         if (e.tipo !== "atraso" || !e.clienteAsaas || !RESULTADOS_QUE_CONTAM_COMO_ENVIO.has(e.resultado) || ultimaCobrancaPorCliente.has(e.clienteAsaas)) continue;
         ultimaCobrancaPorCliente.set(e.clienteAsaas, diaNoFuso(new Date(e.criadoEm), FUSO_PADRAO));
       }
@@ -83,7 +97,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ con
         parcelas,
         clientesDesligados: new Set(clientes.filter((c) => c.reguaDesligada).map((c) => c.asaasId)),
         etapasLigadas,
-        travas: envios.map((e) => ({ cobrancaId: e.cobrancaId ?? null, tipo: e.tipo, marco: e.marco, vencimento: e.vencimento, resultado: e.resultado, criadoEm: e.criadoEm })),
+        travas: travasDoContato.map((e) => ({ cobrancaId: e.cobrancaId ?? null, tipo: e.tipo, marco: e.marco, vencimento: e.vencimento, resultado: e.resultado, criadoEm: e.criadoEm })),
         reguaAtivadaEm: config.regua_ativada_em ?? null,
         intervaloDias: typeof config.regua_intervalo_dias === "number" ? config.regua_intervalo_dias : 3,
         hoje: diaNoFuso(agora, FUSO_PADRAO),

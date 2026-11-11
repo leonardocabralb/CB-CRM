@@ -103,6 +103,18 @@ describe("proximaEtapaPrevista", () => {
     expect(proximaEtapaPrevista({ ...segunda, etapasLigadas: etapas, parcelas: [parcela({ status: "OVERDUE", vencimento: "2026-11-13" })] })).toBeNull();
   });
 
+  it("cliente com marco de cobrança no dia não tem o lembrete do dia: a cobrança absorve (Codex, PR #499)", () => {
+    const cedo = { ...base, agora: new Date("2026-11-10T10:00:00Z") }; // 07:00 em Brasília
+    const etapas = [lembrete(0, "08:00"), cobranca(1), cobranca(5)];
+    const venceHoje = parcela({ id: "a", status: "PENDING", vencimento: "2026-11-10" });
+    const vencida = parcela({ id: "b", vencimento: "2026-11-05", vista_vencida_em: "2026-11-06T03:00:00Z" });
+    const travas = [{ cobrancaId: "b", tipo: "atraso" as const, marco: 1, vencimento: "2026-11-05", resultado: "enviado", criadoEm: "2026-11-06T12:00:00Z" }];
+    expect(proximaEtapaPrevista({ ...cedo, etapasLigadas: etapas, parcelas: [venceHoje, vencida], travas })).toEqual({ dia: "2026-11-10", hora: "09:00", tipo: "atraso", marco: 5 });
+    // de OUTRO cliente, o lembrete das 8h continua
+    const deOutro = { ...venceHoje, asaas_customer_id: "cus_2" };
+    expect(proximaEtapaPrevista({ ...cedo, etapasLigadas: etapas, parcelas: [deOutro, vencida], travas })).toEqual({ dia: "2026-11-10", hora: "08:00", tipo: "vence_hoje", marco: 0 });
+  });
+
   it("vencimento no sábado: o lembrete vai para a segunda", () => {
     const sabado = parcela({ status: "PENDING", vencimento: "2026-11-14" });
     expect(proximaEtapaPrevista({ ...base, etapasLigadas: [lembrete(0, "09:00")], parcelas: [sabado] })?.dia).toBe("2026-11-16");

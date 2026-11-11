@@ -75,35 +75,44 @@ export function proximaEtapaPrevista(entrada: EntradaDaProxima): ProximaEtapa | 
     if (!melhor || antes(c, melhor)) melhor = c;
   };
 
+  // As COBRANÇAS primeiro: o cliente com marco num dia não recebe o lembrete
+  // do DIA naquele dia — a cobrança absorve (`agruparLembretes`, alimentado
+  // pelo `comMarcoHoje` da varredura, que ignora a janela e já tira quem o
+  // intervalo segura). Com o lembrete às 8h e a cobrança às 9h, a previsão
+  // mostrava o lembrete que não sai (Codex, PR #499).
+  const marcoNoDia = new Set<string>();
+  for (const p of entrada.parcelas) {
+    if (entrada.clientesDesligados.has(p.asaas_customer_id)) continue;
+    if (!ehDevida(classificar(p.status, p.deleted)) || !entrouNaRegua(p, entrada.reguaAtivadaEm)) continue;
+    for (const e of cobrancas) {
+      if (travado("atraso", e.marco, p)) continue;
+      const dia = diaAlvoDoMarco(p, e.marco, { hoje: entrada.hoje, reguaAtivadaEm: entrada.reguaAtivadaEm, somenteDiasUteis: e.somenteDiasUteis, fuso: entrada.fuso });
+      if (!dia || dia < entrada.hoje) continue;
+      const ultima = entrada.ultimaCobrancaPorCliente.get(p.asaas_customer_id);
+      if (ultima && entrada.intervaloDias > 0 && dia < somarDias(ultima, entrada.intervaloDias)) continue;
+      // A parcela que não pode mais ser paga a varredura não cobra
+      // (`aindaPagavel` em `agruparPorCliente`) — Codex, PR #499.
+      if (!aindaPagavel(p, dia)) continue;
+      marcoNoDia.add(`${p.asaas_customer_id}|${dia}`);
+      if (janelaJaFechou(dia, e, entrada)) continue;
+      considerar({ dia, hora: e.horaEnvio, tipo: "atraso", marco: e.marco });
+      break;
+    }
+  }
   for (const p of entrada.parcelas) {
     if (entrada.clientesDesligados.has(p.asaas_customer_id)) continue;
     const classe = classificar(p.status, p.deleted);
     // O LEMBRETE (como `cabeNoLembrete` da varredura): a vencer, ou vencida
     // cujo lembrete foi empurrado para um dia útil depois do vencimento (a de
     // sábado sai na segunda, já OVERDUE) — Codex, PR #499.
-    if (classe === "a_vencer" || classe === "vencida") {
-      for (const e of lembretes) {
-        if (travado("vence_hoje", e.marco, p)) continue;
-        const dia = e.somenteDiasUteis && !ehDiaUtil(p.vencimento) ? proximoDiaUtil(p.vencimento) : p.vencimento;
-        if (dia < entrada.hoje || janelaJaFechou(dia, e, entrada)) continue;
-        if (classe === "vencida" && p.vencimento >= dia) continue;
-        considerar({ dia, hora: e.horaEnvio, tipo: "vence_hoje", marco: e.marco });
-      }
-    }
-    if (ehDevida(classe)) {
-      if (!entrouNaRegua(p, entrada.reguaAtivadaEm)) continue;
-      for (const e of cobrancas) {
-        if (travado("atraso", e.marco, p)) continue;
-        const dia = diaAlvoDoMarco(p, e.marco, { hoje: entrada.hoje, reguaAtivadaEm: entrada.reguaAtivadaEm, somenteDiasUteis: e.somenteDiasUteis, fuso: entrada.fuso });
-        if (!dia || dia < entrada.hoje || janelaJaFechou(dia, e, entrada)) continue;
-        const ultima = entrada.ultimaCobrancaPorCliente.get(p.asaas_customer_id);
-        if (ultima && entrada.intervaloDias > 0 && dia < somarDias(ultima, entrada.intervaloDias)) continue;
-        // A parcela que não pode mais ser paga a varredura não cobra
-        // (`aindaPagavel` em `agruparPorCliente`) — Codex, PR #499.
-        if (!aindaPagavel(p, dia)) continue;
-        considerar({ dia, hora: e.horaEnvio, tipo: "atraso", marco: e.marco });
-        break;
-      }
+    if (classe !== "a_vencer" && classe !== "vencida") continue;
+    for (const e of lembretes) {
+      if (travado("vence_hoje", e.marco, p)) continue;
+      const dia = e.somenteDiasUteis && !ehDiaUtil(p.vencimento) ? proximoDiaUtil(p.vencimento) : p.vencimento;
+      if (dia < entrada.hoje || janelaJaFechou(dia, e, entrada)) continue;
+      if (classe === "vencida" && p.vencimento >= dia) continue;
+      if (e.marco === 0 && marcoNoDia.has(`${p.asaas_customer_id}|${dia}`)) continue;
+      considerar({ dia, hora: e.horaEnvio, tipo: "vence_hoje", marco: e.marco });
     }
   }
   return melhor;

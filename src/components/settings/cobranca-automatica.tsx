@@ -136,6 +136,10 @@ export function CobrancaAutomatica({ etapaAberta, aoAbrirEtapa }: { etapaAberta:
   const ligacaoGravada: LigacaoDaRegua | null = estado.ligacao.tipo === "igual" ? estado.ligacao.config : null;
   const ligacaoAtual: LigacaoDaRegua | null = rascunho.ligacao !== undefined ? rascunho.ligacao : ligacaoGravada;
   const ligacaoLigada = ligacaoAtual !== null;
+  // Sem etapa nenhuma, número, quem assina, dias úteis e o pedido de ligação
+  // não têm onde ser gravados (salvar faria zero PATCHes e diria "salvo"):
+  // escolhem-se depois de criar as etapas (Codex, PR #499).
+  const semEtapas = estado.etapas.length === 0;
 
   const sujo =
     rascunho.canalId !== undefined ||
@@ -414,7 +418,7 @@ export function CobrancaAutomatica({ etapaAberta, aoAbrirEtapa }: { etapaAberta:
         <div className="grid gap-4 md:grid-cols-3">
           <div className="min-w-0 space-y-1.5">
             <Label>{t("quemManda.numero")}</Label>
-            <Select value={canalAtual} onValueChange={(v) => v && setRascunho((r) => ({ ...r, canalId: v }))}>
+            <Select value={canalAtual} disabled={semEtapas} onValueChange={(v) => v && setRascunho((r) => ({ ...r, canalId: v }))}>
               <SelectTrigger className="w-full" aria-label={t("quemManda.numero")}>
                 <SelectValue>{canalAtual ? nomeDaConexao(canalAtual) : estado.canal.tipo === "varios" ? t("quemManda.varios") : t("quemManda.escolher")}</SelectValue>
               </SelectTrigger>
@@ -440,6 +444,7 @@ export function CobrancaAutomatica({ etapaAberta, aoAbrirEtapa }: { etapaAberta:
             <Input
               id="cobranca-assinatura"
               value={assinaturaAtual}
+              disabled={semEtapas}
               maxLength={60}
               placeholder={estado.assinatura.tipo === "varias" ? t("quemManda.variasAssinaturas") : t("quemManda.assinaPlaceholder")}
               onChange={(e) => {
@@ -557,6 +562,7 @@ export function CobrancaAutomatica({ etapaAberta, aoAbrirEtapa }: { etapaAberta:
               <Checkbox
                 aria-label={t("regras.diasUteis")}
                 checked={uteisAtual === true}
+                disabled={semEtapas}
                 onCheckedChange={(v) => setRascunho((r) => ({ ...r, somenteDiasUteis: estado.somenteDiasUteis !== "misto" && (v === true) === estado.somenteDiasUteis ? undefined : v === true }))}
               />
               {t("regras.diasUteis")}
@@ -593,7 +599,7 @@ export function CobrancaAutomatica({ etapaAberta, aoAbrirEtapa }: { etapaAberta:
       <Secao
         titulo={t("ligacao.titulo")}
         desc={t("ligacao.desc")}
-        direita={<Switch checked={ligacaoLigada} onCheckedChange={(v) => ligarLigacao(!!v)} aria-label={t("ligacao.titulo")} />}
+        direita={<Switch checked={ligacaoLigada} disabled={semEtapas} onCheckedChange={(v) => ligarLigacao(!!v)} aria-label={t("ligacao.titulo")} />}
       >
         {estado.ligacao.tipo === "diferente" && rascunho.ligacao === undefined && <p className="text-xs text-amber-700">{t("ligacao.diferente")}</p>}
         {estado.etapas.some((e) => e.ligacaoAMao) && <p className="text-xs text-amber-700">{t("ligacao.aMao", { etapas: estado.etapas.filter((e) => e.ligacaoAMao).map((e) => rotuloDaEtapa(e, t)).join(", ") })}</p>}
