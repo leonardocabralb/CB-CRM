@@ -48,7 +48,9 @@ memória.
 09/09/2026: sem crontab do root, sem tarefa de dump, sem volume espelhado. O
 `/etc/cron.d` tem `certbot`, `docker-image-prune`, `docker-builder-prune`,
 `e2scrub_all` e `popularity-contest` — nenhum faz backup (desde 13/10/2026
-há também o `saude-whatsapp`, a sentinela da §12, que não faz backup). O que existe são os
+há também o `saude-whatsapp`, a sentinela da §12, e desde 11/11/2026 o
+`ligacoes-imagem`, a remontagem semanal do computador de ligações da §4 —
+nenhum dos dois faz backup). O que existe são os
 **dumps manuais de 09/09** em `/root/backups/` (do plano da Baileys 7), no
 mesmo disco.
 
@@ -222,11 +224,11 @@ próprio em `previdenciario/segredo.env`.
   estava e, ligado, volta à imagem anterior se a nova não responder em 2 min.
   Log em `/root/ligacoes/atualizar.log`. Rodado à mão em 11/11/2026 com a
   máquina ligada: `20261111-8` → `semanal-20261111` em 2 min 13 s, a máquina
-  respondendo. ⚠️ **O cron (`ops/vps/ligacoes/ligacoes-imagem.cron`, domingo
-  07:10 UTC, com `flock` e `timeout`) AINDA NÃO está instalado**: a cópia
-  espera em `/root/ligacoes/ligacoes-imagem.cron`, e instalá-lo (`install -m
-  644 /root/ligacoes/ligacoes-imagem.cron /etc/cron.d/ligacoes-imagem`) pede
-  o "pode" do operador.
+  respondendo. O cron `/etc/cron.d/ligacoes-imagem` (=
+  `ops/vps/ligacoes/ligacoes-imagem.cron`: domingo 07:10 UTC, com `flock` e
+  `timeout` de 2 h) foi instalado em 11/11/2026, com o "pode" do operador.
+  Atualizar o script = copiar o versionado por cima (700); desligar = apagar
+  o arquivo do `/etc/cron.d`.
 - **No CRM (4b):** cada computador é uma linha de `cb_computadores_de_ligacao`
   (fechada ao navegador): `account_id` e `channel_id` da conexão, `nome` (o
   `LIGACOES_COMPUTADOR`, ex. `previdenciario`) e `endereco`

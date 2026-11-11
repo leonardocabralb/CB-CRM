@@ -102,6 +102,11 @@ class Recusada extends Error {
 const ativaAinda = (m: MinhaLigacao | null) =>
   m !== null && m.fase !== "encerrada" && m.fase !== "falhou";
 
+/** Desligar sem painel para avisar (o provedor saiu da tela). Nunca lança. */
+function desligarSemTela(id: string): void {
+  void fetch(`/api/cb/ligacoes/${id}/desligar`, { method: "POST", keepalive: true }).catch(() => {});
+}
+
 export function LigacoesProvider({
   ativo,
   children,
@@ -290,10 +295,22 @@ export function LigacoesProvider({
     return () => window.clearInterval(laco);
   }, [ativo, precisaReler]);
 
-  // Saindo do CRM (logout, porta de entrada) com ligação: solta o microfone.
+  // O provedor desmonta quando a casca troca o app pelo spinner: o login de
+  // outra pessoa e o "Ver como" começando (Codex, #500). ⚠️ A posse cai junto
+  // — o `conectar` pendente (microfone ou oferta no ar) para no próximo
+  // `await` e solta o que pegou, em vez de seguir sem tela —, o áudio é solto
+  // e a ligação que já existe é DESLIGADA na hora (sem isso, o cliente ficaria
+  // no silêncio até a máquina notar a ponte caída).
   useEffect(
     () => () => {
+      const id = minhaIdRef.current;
+      const existe = respondidoRef.current;
+      posseRef.current = null;
+      minhaIdRef.current = null;
       soltarAudio(conexaoRef.current, microfoneRef.current);
+      conexaoRef.current = null;
+      microfoneRef.current = null;
+      if (id && existe) desligarSemTela(id);
     },
     [],
   );
@@ -358,12 +375,15 @@ export function LigacoesProvider({
         if (!r.ok || !id || typeof corpo?.resposta !== "string") {
           throw new Recusada(typeof corpo?.error === "string" ? corpo.error : null);
         }
+        // A ligação EXISTE no servidor, e esta tela já não é dela (o provedor
+        // saiu, ou ela acabou no meio do pedido): desliga, sem esperar a
+        // máquina notar a ponte que nunca vai ligar.
+        if (!vale()) return desligarSemTela(id);
         if (!idDaAtendida) {
           minhaIdRef.current = id;
           idConhecidoEmRef.current = Date.now();
           setMinha((m) => (m ? { ...m, id } : m));
         }
-        if (!vale()) return;
         respondidoRef.current = true;
         // Desligar clicado antes de a rota responder: a ligação existe agora.
         if (cancelarRef.current) {

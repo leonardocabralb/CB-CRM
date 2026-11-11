@@ -175,7 +175,10 @@ desenho: §8.12 e §8.13 do plano.
   ligar/atender confere se a ligação ainda é a mesma. Desligar antes de a rota
   responder fica pendente e é feito quando ela responde (na recebida, antes
   disso daria `ainda_tocando`). A fase só ANDA (`faseSeguinte`), e a linha que
-  OUTRA pessoa reivindicou não move o meu painel.
+  OUTRA pessoa reivindicou não move o meu painel. ⚠️ O provedor DESMONTA
+  quando a casca mostra o spinner (login, "Ver como" começando): a posse cai,
+  o pedido pendente solta o microfone e a ligação que já existe é desligada
+  (Codex, #500) — nunca uma ligação sem tela.
 - **O botão** (`decidirBotaoLigar`) aparece só onde o `channel_id` CRU da
   conversa tem computador (o mesmo número que a rota usa) e fica desligado
   com o porquê (grupo, sem telefone, papel, computador fora ou sem WhatsApp,

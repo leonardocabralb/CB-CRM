@@ -1375,16 +1375,20 @@ fechar). Sem atendimento, nada fica. Imagem `20261111-8`.
 
 **A imagem remontada toda semana (§8.7):** `ops/vps/ligacoes/atualizar-maquinas.sh`
 (INFRA-VPS §4), rodado à mão com a máquina ligada (`-8` → `semanal-20261111`,
-2 min 13 s). ⚠️ O cron ainda NÃO está instalado: o classificador de
-segurança barrou a escrita em `/etc/cron.d`, e a instalação pede o "pode" do
-operador (o comando está no INFRA-VPS §4).
+2 min 13 s); o cron de domingo foi instalado com o "pode" do operador
+(11/11/2026).
+
+**O provedor que desmonta** (Codex, #500): a casca troca o app pelo spinner
+na primeira carga do login e quando o "Ver como" começa, e o provedor
+desmonta. A desmontagem invalida a posse (o pedido pendente para e solta o
+microfone) e DESLIGA a ligação que já existe — começar o "Ver como" no meio
+de uma ligação a encerra.
 
 **Falta:**
 - **Teste ao vivo com o lead** (o "pronto quando" da 4c): a máquina ligada, a
   conversa do lead fixada na Previdenciário; feita (chamando → atendida →
   desligar pelo painel → faixa com ▶, gravação SEM os segundos perdidos) e
   recebida (o cartão toca, Atender, falar, o cliente desliga).
-- O cron da remontagem (o "pode").
 - P8 (a rede do escritório) e a medição de processador com a ponte e a
   gravação juntas — no teste ao vivo.
 - Decisão do operador: deixar a máquina LIGADA depois do teste (as ligações
