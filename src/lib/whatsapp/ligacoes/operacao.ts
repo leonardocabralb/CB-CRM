@@ -93,7 +93,12 @@ const recusa = (status: number, erro: string): Recusa => ({ ok: false, status, e
  * O interruptor. Ligar de novo o que já está ligado mantém o `ligado_em` de
  * antes (o "ligado desde"). Desligar não derruba a ligação em curso (o
  * desligar e a gravação não dependem dele); os alarmes do computador somem —
- * a sonda só olha o ligado, e o ciclo apaga a linha deles calado.
+ * a sonda só olha o ligado, e o ciclo apaga a linha deles calado. ⚠️ E apaga
+ * o toque AINDA NÃO ATENDIDO da conexão (`tocando`; o reivindicado já não é
+ * `tocando`): sem isso, a equipe seguia ouvindo o toque, com um "Atender" que
+ * o interruptor já recusa, até o cliente desistir (Codex, #506). O toque que
+ * nascer entre o desligar e esta limpeza (o `offer` que leu o computador
+ * ligado um instante antes) dura até o fim da chamada: limite aceito.
  */
 export async function trocarInterruptor(
   db: SupabaseClient,
@@ -114,7 +119,18 @@ export async function trocarInterruptor(
     return recusa(500, 'falhou');
   }
   const linha = (data ?? [])[0] as { ligado_em: string | null } | undefined;
-  if (linha) return { ok: true, ligado_em: linha.ligado_em };
+  if (linha) {
+    if (!ligado) {
+      const { error: erroDoToque } = await db
+        .from('cb_ligacoes_ao_vivo')
+        .delete()
+        .eq('account_id', accountId)
+        .eq('channel_id', canal)
+        .eq('estado', 'tocando');
+      if (erroDoToque) console.error('[ligacoes] o toque da conexão desligada ficou:', erroDoToque.message);
+    }
+    return { ok: true, ligado_em: linha.ligado_em };
+  }
   // Zero linhas: sem computador (404), ou ligar o que já estava ligado.
   const atual = await computadorDaConexao(db, accountId, canal);
   if (atual === 'falhou') return recusa(500, 'falhou');

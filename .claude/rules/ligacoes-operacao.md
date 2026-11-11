@@ -23,7 +23,9 @@ na sentinela que vigia o contêiner.
   `!== null` — a consulta que esqueceu de pedir a coluna (`undefined`)
   ligaria tudo sem erro nenhum. Consulta nova que alimenta a régua pede a
   coluna. Desligar NÃO derruba a ligação em curso: o desligar, os avisos e a
-  gravação não dependem dele.
+  gravação não dependem dele. ⚠️ Mas apaga o toque AINDA NÃO ATENDIDO da
+  conexão (`cb_ligacoes_ao_vivo`, `tocando`): sem isso a equipe seguia
+  ouvindo, com um "Atender" já recusado (Codex, #506).
 - ⚠️ **D17 — só onde já há computador.** A tela mostra a seção em toda conexão
   por QR; sem computador, "este número ainda não tem computador de ligações".
   Nenhum caminho do CRM cria contêiner (o CRM não manda no Docker do

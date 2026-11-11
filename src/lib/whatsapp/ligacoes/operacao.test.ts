@@ -19,25 +19,31 @@ const QR = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAA
 
 type Linha = Record<string, unknown>;
 
-/** A tabela num array; cada consulta guarda os filtros, e o UPDATE aplica o patch. */
-function banco(linhas: Linha[], erro: { message: string } | null = null) {
-  const consultas: { op: string; patch?: Linha; filtros: [string, string, unknown][] }[] = [];
+/**
+ * As tabelas em arrays (o computador e as linhas ao vivo); cada consulta guarda
+ * os filtros, e o UPDATE aplica o patch, o DELETE tira.
+ */
+function banco(linhas: Linha[], erro: { message: string } | null = null, aoVivo: Linha[] = []) {
+  const consultas: { tabela: string; op: string; patch?: Linha; filtros: [string, string, unknown][] }[] = [];
   const db = {
     from: (tabela: string) => {
-      expect(tabela).toBe('cb_computadores_de_ligacao');
-      const c: (typeof consultas)[number] = { op: 'select', filtros: [] };
+      expect(['cb_computadores_de_ligacao', 'cb_ligacoes_ao_vivo']).toContain(tabela);
+      const daTabela = tabela === 'cb_ligacoes_ao_vivo' ? aoVivo : linhas;
+      const c: (typeof consultas)[number] = { tabela, op: 'select', filtros: [] };
       consultas.push(c);
       const casa = (l: Linha) =>
         c.filtros.every(([tipo, coluna, valor]) => (tipo === 'eq' ? l[coluna] === valor : l[coluna] === null));
       const resultado = () => {
         if (erro) return { data: null, error: erro };
-        const achadas = linhas.filter(casa);
+        const achadas = daTabela.filter(casa);
         if (c.op === 'update') for (const l of achadas) Object.assign(l, c.patch);
+        if (c.op === 'delete') for (const l of achadas) daTabela.splice(daTabela.indexOf(l), 1);
         return { data: achadas.map((l) => ({ ...l })), error: null };
       };
       const q: Record<string, unknown> = {
         select: () => q,
         update: (patch: Linha) => ((c.op = 'update'), (c.patch = patch), q),
+        delete: () => ((c.op = 'delete'), q),
         eq: (coluna: string, valor: unknown) => (c.filtros.push(['eq', coluna, valor]), q),
         is: (coluna: string, valor: unknown) => (c.filtros.push(['is', coluna, valor]), q),
         maybeSingle: async () => {
@@ -119,6 +125,23 @@ describe('o interruptor', () => {
     ]);
     expect(await trocarInterruptor(db, CONTA, CANAL, false, '2026-11-11T16:00:00.000Z')).toEqual({ ok: true, ligado_em: null });
     expect(linhas[0].ligado_em).toBeNull();
+  });
+
+  it('⚠️ desligar tira o toque AINDA NÃO ATENDIDO da conexão; o reivindicado e o de outra conexão ficam (Codex, #506)', async () => {
+    const OUTRO = '00000000-0000-4000-8000-0000000000c2';
+    const aoVivo: Linha[] = [
+      { id: 'toca', account_id: CONTA, channel_id: CANAL, estado: 'tocando' },
+      { id: 'conectando', account_id: CONTA, channel_id: CANAL, estado: 'conectando' },
+      { id: 'outra-conexao', account_id: CONTA, channel_id: OUTRO, estado: 'tocando' },
+    ];
+    const { db } = banco([computador()], null, aoVivo);
+    expect(await trocarInterruptor(db, CONTA, CANAL, false, '2026-11-11T16:00:00.000Z')).toEqual({ ok: true, ligado_em: null });
+    expect(aoVivo.map((l) => l.id)).toEqual(['conectando', 'outra-conexao']);
+
+    // Ligar não mexe em toque nenhum.
+    const tocando: Linha[] = [{ id: 'toca', account_id: CONTA, channel_id: CANAL, estado: 'tocando' }];
+    await trocarInterruptor(banco([computador({ ligado_em: null })], null, tocando).db, CONTA, CANAL, true, '2026-11-11T16:00:00.000Z');
+    expect(tocando).toHaveLength(1);
   });
 
   it('ligar o que já está ligado mantém o "ligado desde"', async () => {
