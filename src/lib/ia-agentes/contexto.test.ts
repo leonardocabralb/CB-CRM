@@ -234,7 +234,13 @@ describe('semRotuloDaEquipe — o rótulo que o modelo imitou nunca chega ao cli
     expect(semRotuloDaEquipe(de)).toBe(para)
   })
 
-  it('no meio da frase fica (não é o rótulo imitado)', () => {
-    expect(semRotuloDaEquipe('O [Team member] disse')).toBe('O [Team member] disse')
+  it.each([
+    ['O [Team member] disse que sim', 'O disse que sim'],
+    ['**[Team member]** Oi', 'Oi'],
+    ['_[Team member]_: Oi', 'Oi'],
+    ['[Membro da equipe] Oi', 'Oi'],
+    ['Oi, tudo bem? Sem rótulo nenhum.', 'Oi, tudo bem? Sem rótulo nenhum.'],
+  ])('em qualquer forma: %j → %j', (de, para) => {
+    expect(semRotuloDaEquipe(de)).toBe(para)
   })
 })

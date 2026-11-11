@@ -1087,7 +1087,7 @@
       "desativarDica": "The AI no longer answers in this conversation until someone clicks \"Resume AI\".",
       "desativou": "AI turned off in this conversation.",
       "desativadaNaConversa": "AI turned off in this conversation",
-      "voltaAs": "Comes back at {hora} if no one on the team replies.",
+      "voltaAs": "The AI comes back from {hora} on if no one on the team replies.",
       "voltaSeEsperar": "Comes back on its own if the customer waits {minutos} min without a reply from the team.",
       "retomarAgoraDica": "Hands the conversation back to the AI now, without waiting.",
       "motivo": {

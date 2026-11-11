@@ -158,27 +158,33 @@ export async function GET(_request: Request, { params }: Contexto) {
       } catch (err) {
         return falhou('pausa da conta', err instanceof Error ? err.message : String(err))
       }
-      if (pausada && voltaAposMin > 0 && ehMotivoTemporario(pausadaPor)) {
-        const { data: espera, error: erroEspera } = await db
-          .from('cb_ia_turnos')
-          .select('executar_apos')
-          .eq('account_id', ctx.accountId)
-          .eq('conversation_id', conversationId)
-          .eq('status', 'aguardando')
-          .eq('tipo', 'resposta')
-          .eq('erro', ERRO_DA_ESPERA_DA_EQUIPE)
-          .order('executar_apos', { ascending: true })
-          .limit(1)
-        if (erroEspera) return falhou('espera da equipe', erroEspera.message)
-        const primeira = (espera ?? [])[0] as { executar_apos?: unknown } | undefined
-        voltaEm = typeof primeira?.executar_apos === 'string' ? primeira.executar_apos : null
-      }
+    }
+    // A temporária só VOLTA onde um agente atenderia (o card numa etapa com
+    // agente ligado, com a conexão, D27): no card que saiu para etapa sem
+    // agente, ou com o agente desligado, nenhum turno nasce — "volta sozinha"
+    // seria falso.
+    const pausaTemporaria =
+      pausada && voltaAposMin > 0 && ehMotivoTemporario(pausadaPor) && decisao.quem === 'agente'
+    if (pausaTemporaria) {
+      const { data: espera, error: erroEspera } = await db
+        .from('cb_ia_turnos')
+        .select('executar_apos')
+        .eq('account_id', ctx.accountId)
+        .eq('conversation_id', conversationId)
+        .eq('status', 'aguardando')
+        .eq('tipo', 'resposta')
+        .eq('erro', ERRO_DA_ESPERA_DA_EQUIPE)
+        .order('executar_apos', { ascending: true })
+        .limit(1)
+      if (erroEspera) return falhou('espera da equipe', erroEspera.message)
+      const primeira = (espera ?? [])[0] as { executar_apos?: unknown } | undefined
+      voltaEm = typeof primeira?.executar_apos === 'string' ? primeira.executar_apos : null
     }
     return NextResponse.json({
       agente: decisao.quem === 'agente' && agente ? { id: agente.id, nome: agente.nome } : null,
       pausada,
       pausadaPor,
-      pausaTemporaria: pausada && voltaAposMin > 0 && ehMotivoTemporario(pausadaPor),
+      pausaTemporaria,
       voltaAposMin,
       voltaEm,
       motivo,

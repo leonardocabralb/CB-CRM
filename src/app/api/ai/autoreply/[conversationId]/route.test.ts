@@ -90,7 +90,29 @@ vi.mock('@/lib/rate-limit', () => ({
   RATE_LIMITS: { send: {} },
 }))
 
+// O "Retomar" antecipa o turno que esperava a equipe (1138): a fila pelo
+// cliente de SERVIÇO e o disparo do turno são dublês.
+const antecipadas: Array<Record<string, unknown>> = []
+let turnosAntecipados: Array<{ id: string; executar_apos: string }> = []
+vi.mock('@/lib/ai/admin-client', () => ({
+  supabaseAdmin: () => ({
+    from: (tabela: string) => ({
+      update: (payload: Record<string, unknown>) => {
+        const filtros: Array<[string, unknown]> = []
+        antecipadas.push({ tabela, payload, filtros })
+        const cadeia = {
+          eq: (c: string, v: unknown) => (filtros.push([c, v]), cadeia),
+          select: async () => ({ data: turnosAntecipados, error: null }),
+        }
+        return cadeia
+      },
+    }),
+  }),
+}))
+vi.mock('@/lib/ia-agentes/turno', () => ({ agendarTurno: vi.fn() }))
+
 import { requireRole } from '@/lib/auth/account'
+import { agendarTurno } from '@/lib/ia-agentes/turno'
 import { POST } from './route'
 
 function chamar(corpo: unknown) {
@@ -114,6 +136,9 @@ beforeEach(() => {
   papelRecusado = false
   updates.length = 0
   filtrosOr.length = 0
+  antecipadas.length = 0
+  turnosAntecipados = []
+  vi.mocked(agendarTurno).mockReset()
   leituras.length = 0
 })
 
@@ -146,6 +171,32 @@ describe('POST /api/ai/autoreply — pausar', () => {
     linhasGravadas = []
     const res = await chamar({ paused: true })
     expect(res.status).toBe(409)
+  })
+})
+
+describe('POST /api/ai/autoreply — retomar com mensagem esperando a equipe (1138)', () => {
+  it('o turno que esperava a equipe passa a vencer AGORA e é disparado (a IA responde na hora)', async () => {
+    turnosAntecipados = [{ id: 'turno-1', executar_apos: '2026-11-11T18:00:00Z' }]
+    const res = await chamar({ paused: false })
+    expect(res.status).toBe(200)
+    expect(antecipadas).toHaveLength(1)
+    expect(antecipadas[0]).toMatchObject({ tabela: 'cb_ia_turnos', payload: expect.objectContaining({ erro: null }) })
+    expect(antecipadas[0].filtros).toEqual(
+      expect.arrayContaining([
+        ['account_id', 'conta-1'],
+        ['conversation_id', 'conv-1'],
+        ['status', 'aguardando'],
+        ['tipo', 'resposta'],
+        ['erro', 'aguardando a equipe responder'],
+      ]),
+    )
+    expect(agendarTurno).toHaveBeenCalledWith({ id: 'turno-1', executarApos: '2026-11-11T18:00:00Z' })
+  })
+
+  it('pausar e desativar não antecipam nada', async () => {
+    await chamar({ paused: true })
+    await chamar({ paused: true, permanente: true })
+    expect(antecipadas).toHaveLength(0)
   })
 })
 

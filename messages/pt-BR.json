@@ -1080,7 +1080,7 @@
       "desativarDica": "A IA não responde mais nesta conversa até alguém clicar em \"Retomar IA\".",
       "desativou": "IA desativada nesta conversa.",
       "desativadaNaConversa": "IA desativada nesta conversa",
-      "voltaAs": "Volta às {hora} se ninguém da equipe responder.",
+      "voltaAs": "A IA volta a partir de {hora} se ninguém da equipe responder.",
       "voltaSeEsperar": "Volta sozinha se o cliente esperar {minutos} min sem resposta da equipe.",
       "retomarAgoraDica": "Devolve a conversa à IA agora, sem esperar.",
       "motivo": {

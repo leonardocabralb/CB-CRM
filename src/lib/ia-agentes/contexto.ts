@@ -72,12 +72,15 @@ export function ehFalaDaEquipe(m: MensagemDoContexto): boolean {
 }
 
 /**
- * Tira o rótulo da equipe que o modelo IMITOU no começo de uma linha da
- * resposta (caixa e colchete indiferentes, com o ":" ou o travessão depois):
- * o rótulo é para o modelo, nunca para o cliente.
+ * Tira o rótulo da equipe que o modelo IMITOU, em QUALQUER ponto da resposta
+ * — no começo da linha (com o recuo), no meio da frase, em negrito ou itálico
+ * (`**[Team member]**`) e traduzido (`[Membro da equipe]`), com o ":" ou o
+ * travessão depois: o rótulo é para o modelo, nunca para o cliente.
  */
 export function semRotuloDaEquipe(texto: string): string {
-  return texto.replace(/(^|\n)[ \t]*\[\s*team\s+member\s*\][ \t]*[:\-–—]?[ \t]*/gi, '$1')
+  return texto
+    .replace(/(^|\n)[ \t]*(?=[*_]{0,2}\[\s*(?:team\s+member|membro\s+da\s+equipe)\s*\])/gi, '$1')
+    .replace(/[*_]{0,2}\[\s*(?:team\s+member|membro\s+da\s+equipe)\s*\][*_]{0,2}[ \t]*[:\-–—]?[ \t]*/gi, '')
 }
 
 /** Teto da leitura de uma imagem ou documento no pedido, em caracteres. */

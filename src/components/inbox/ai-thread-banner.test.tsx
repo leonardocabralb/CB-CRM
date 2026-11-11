@@ -11,6 +11,7 @@ import { MOTIVOS_DO_AGENTE_QUE_NAO_ATENDE } from '@/lib/ia-agentes/quem-responde
 import {
   AiThreadBanner,
   corpoDaAcao,
+  horaDaVolta,
   erroDaResposta,
   FaixaDaIa,
   faixaDaIa,
@@ -225,7 +226,7 @@ describe('FaixaDaIa — o texto, nos dois dicionários', () => {
     });
     expect(html).toContain(`IA pausada — ${banner.motivo.gente}`);
     // A hora sai no idioma de quem olha (`toLocaleTimeString(undefined, …)`): 14:32 ou 02:32 PM.
-    expect(html).toMatch(/Volta às \d\d:\d\d( [AP]M)? se ninguém da equipe responder\./);
+    expect(html).toMatch(/A IA volta a partir de \d\d:\d\d( [AP]M)? se ninguém da equipe responder\./);
     expect(html).toContain(banner.resume);
     expect(html).toContain(banner.retomarAgoraDica);
     expect(html).toContain(banner.desativar);
@@ -360,6 +361,17 @@ describe('erroDaResposta — a recusa da rota vira frase do dicionário', () => 
         expect(typeof dic.Inbox.aiBanner[c], `Inbox.aiBanner.${c}`).toBe('string');
       }
     }
+  });
+});
+
+describe('horaDaVolta — a hora diz o dia quando não é hoje (1138)', () => {
+  it('no mesmo dia em que a rota respondeu: só a hora; noutro dia: com o dia da semana', () => {
+    const volta = '2026-11-11T17:32:00Z';
+    const mesmoDia = horaDaVolta(volta, Date.parse('2026-11-11T17:20:00Z'));
+    const outroDia = horaDaVolta(volta, Date.parse('2026-11-09T17:20:00Z'));
+    expect(mesmoDia).toMatch(/^\d\d:\d\d( [AP]M)?$/);
+    expect(outroDia.length).toBeGreaterThan(mesmoDia.length);
+    expect(horaDaVolta(volta)).toBe(mesmoDia);
   });
 });
 

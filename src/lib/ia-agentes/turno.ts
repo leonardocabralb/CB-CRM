@@ -176,6 +176,7 @@ import {
 } from './quem-responde'
 import {
   ehMotivoTemporario,
+  MOTIVOS_TEMPORARIOS,
   ERRO_DA_ARMACAO_PELA_EQUIPE,
   ERRO_DA_EQUIPE_RESPONDEU,
   ERRO_DA_ESPERA_DA_EQUIPE,
@@ -336,10 +337,12 @@ export type ResultadoDaTransferencia = 'transferiu' | 'nada_mudou' | 'falhou'
  * pendente segue na caixa (o filtro padrão mostra aberta e pendente), e a IA
  * só deixa de responder a conversa ENCERRADA: "Retomar IA" funciona igual.
  *
- * ⚠️ Só se a conversa ainda NÃO está pausada (nem encerrada): o advogado que
- * responde pelo celular enquanto o modelo pensa já pausou por `'gente'`, e a
- * transferência não troca o motivo nem anota por cima. Zero linhas =
- * `nada_mudou`, e nada mais é escrito. Melhor esforço: erro vira log.
+ * ⚠️ Só se a conversa ainda NÃO está pausada, ou está na pausa TEMPORÁRIA
+ * (`gente`/`botao`, 1138), e não encerrada. A IA pediu gente: a pausa vira a
+ * permanente (P2) — por cima da temporária, senão a IA voltaria em N min e
+ * pediria de novo. A permanente (desativada, transferência, automação) não é
+ * trocada nem anotada por cima. Zero linhas = `nada_mudou`, e nada mais é
+ * escrito. Melhor esforço: erro vira log.
  */
 export async function transferirParaGente(
   db: SupabaseClient,
@@ -370,7 +373,7 @@ export async function transferirParaGente(
         })
         .eq('id', args.conversationId)
         .eq('account_id', args.accountId)
-        .eq('ai_autoreply_disabled', false)
+        .or(`ai_autoreply_disabled.eq.false,ia_pausada_por.in.(${MOTIVOS_TEMPORARIOS.join(',')})`)
         .neq('status', 'closed')
         .select('id'),
       { via: 'agente', ref: args.agenteId ?? null },
@@ -1204,16 +1207,6 @@ async function conduzir(
     return { status: 'reagendar', executarApos: new Date(abertura).toISOString(), erro: ERRO_DA_ESPERA_DO_HORARIO }
   }
 
-  // A PAUSA TEMPORÁRIA (1138): dentro do horário, a IA VOLTA — se a cliente
-  // está esperando há N min e ninguém da equipe respondeu depois do gatilho
-  // (cedo = espera mais; a equipe respondeu = descarta). Levantada ANTES de
-  // gerar: a transferência que o modelo pedir passa a valer (por cima da pausa
-  // temporária ela não gravaria nada), e a fala de gente durante a geração
-  // pausa de novo (o turno vivo) — a 2ª conferência e a reserva seguram.
-  if (primeira.sobrePausa) {
-    const naoVoltou = desfechoDaVolta(await voltarDaPausa(db, turno, primeira.sobrePausa.minutos))
-    if (naoVoltou) return naoVoltou
-  }
   andamento.abertoDesde = aberturaDeHoje(agente.horario, agora)
 
   const desde = await inicioDaRajada(db, turno, gatilho)
@@ -1272,6 +1265,19 @@ async function conduzir(
       return { status: 'reagendar', executarApos: new Date(Math.max(limite.reset, Date.now() + REAGENDAR_AUDIO_MS)).toISOString() }
     }
     return { status: 'sem_resposta', erro: 'limite de respostas por minuto da conta' }
+  }
+
+  // A PAUSA TEMPORÁRIA (1138): a IA VOLTA se a cliente está esperando há N min
+  // e ninguém da equipe respondeu depois do gatilho (cedo = espera mais; a
+  // equipe respondeu = descarta). DEPOIS do horário (fora dele, espera a
+  // abertura, P5), da chave e do teto da conta — o turno que não vai gerar
+  // não tira a pausa da equipe — e ANTES de gerar: a transferência que o
+  // modelo pedir passa a valer (por cima da temporária ela também grava, mas
+  // aqui a pausa já saiu), e a fala de gente durante a geração pausa de novo
+  // (o turno vivo) — a 2ª conferência e a reserva seguram.
+  if (primeira.sobrePausa) {
+    const naoVoltou = desfechoDaVolta(await voltarDaPausa(db, turno, primeira.sobrePausa.minutos))
+    if (naoVoltou) return naoVoltou
   }
 
   // O que o agente vê além da conversa (F3) e o que ele pode FAZER (F4, as
@@ -2079,8 +2085,9 @@ async function conduzirRetomada(
   if (!ancora || ancora.deleted_at || !ancora.gravada_em) {
     return { status: 'descartado', erro: 'a mensagem do agente sumiu ou foi apagada' }
   }
-  // A série ancorada na fala da EQUIPE (1138): o pedido diz de quem é a última.
-  const daEquipe = ancora.sender_type === 'agent'
+  // A série ancorada na fala da EQUIPE (1138): o pedido diz de quem é a
+  // última — só na 1ª tentativa; da 2ª em diante a última é o follow-up da IA.
+  const daEquipe = ancora.sender_type === 'agent' && tentativa === 1
 
   const primeira = await conferirRetomada(db, turno, ancora.gravada_em, { reprogramar: true })
   if (!primeira.ok) return primeira.desfecho

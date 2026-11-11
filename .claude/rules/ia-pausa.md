@@ -44,6 +44,14 @@ Decisões do operador de 11/11/2026 (P1–P7 de
 - O "Pausar" (rota com `{ paused: true }`) só casa sem pausa ou com a
   temporária (`.or(...)`): nunca rebaixa a permanente (0 linhas = 409). O
   "Desativar" (`permanente: true`) sobrescreve qualquer uma.
+- ⚠️⚠️ **Toda pausa PERMANENTE passa por cima da temporária, nunca o
+  contrário**: o "Desligar IA" da automação (`set_ai`) e a transferência
+  (`transferirParaGente`, que então anota e deixa pendente) casam também com
+  `gente`/`botao` — senão a IA voltaria em N min depois de pedir gente ou de
+  a automação desligá-la (revisão do PR, 11/11/2026).
+- O "Retomar IA" ANTECIPA o turno que esperava a equipe
+  (`anteciparEsperaDaEquipe`, para `now()`, e o dispara): a dica promete
+  "agora, sem esperar".
 
 ### O retorno: "a cliente esperando há N min sem resposta da equipe"
 
@@ -60,19 +68,19 @@ Decisões do operador de 11/11/2026 (P1–P7 de
   card e do agente).
 - **O turno** (`conduzir`): a 1ª conferência aceita a temporária
   (`aceitaPausaTemporaria`); depois do HORÁRIO (fora dele, espera a abertura,
-  P5) `cb_ia_voltar_da_pausa` decide: `cedo` reagenda para a volta (com a
-  marca), `equipe_respondeu` descarta, `voltou` LEVANTA a pausa e segue. ⚠️
-  Levantada ANTES de gerar, de propósito: a transferência que o modelo pedir
-  passa a valer (`transferirParaGente` não grava por cima de pausa). A 2ª
-  conferência é ESTRITA: pausa que aparece durante a geração é gente
-  respondendo (o gatilho pausa de novo porque há turno vivo).
+  P5), da chave e do teto da conta (o turno que não vai gerar não tira a
+  pausa da equipe) e ANTES de gerar, `cb_ia_voltar_da_pausa` decide: `cedo`
+  reagenda para a volta (com a marca), `equipe_respondeu` descarta, `voltou`
+  LEVANTA a pausa e segue. A 2ª conferência é ESTRITA: pausa que aparece
+  durante a geração é gente respondendo (o gatilho pausa de novo porque há
+  turno vivo).
 - **`cb_ia_voltar_da_pausa`** (INVOKER, service_role): conversa travada
   (`FOR NO KEY UPDATE`), cerca de posse do turno; "gente depois do gatilho" é
   a régua do gatilho (`agent` com `sender_id` ou celular, sem
   `ia_agente_id`, `NOT nao_saiu`). Levanta SÓ os três campos da pausa — nunca
   o teto nem o responsável. Limite aceito: pausa levantada e geração que
-  falha = a conversa fica sem pausa sem resposta (a próxima mensagem é
-  atendida na hora).
+  falha (prazo, provedor) = a conversa fica sem pausa sem resposta (a
+  próxima mensagem é atendida na hora).
 
 ### O gatilho da pausa por gente (corpo da 1138)
 
@@ -80,6 +88,10 @@ Decisões do operador de 11/11/2026 (P1–P7 de
   `gente` com `ia_pausada_em` de agora (o "Pausar" respondido é "a equipe
   respondeu"); (b) o pendente de RESPOSTA sai `a equipe respondeu` (era o
   retorno — a faixa não pode dizer "volta às 14:32" sobre isso).
+- ⚠️ (b) e (c) seguem a régua da 1050 (só mexem no que está na fila com
+  gatilho ANTERIOR a esta fala: transações concorrentes não trocam a vez) e
+  ficam num subbloco que vira WARNING — a fila da IA nunca derruba o INSERT
+  da mensagem da equipe, que já saiu no WhatsApp. A pausa fica fora dele.
 - (c) **A PRÉ-ARMAÇÃO do follow-up da equipe** (P4): com N > 0, pausa `gente`,
   mensagem que não é ligação e um card aberto numa etapa cujo agente está
   ligado, com a conexão e a retomada ligada → linha `retomada` na fila,
@@ -92,15 +104,20 @@ Decisões do operador de 11/11/2026 (P1–P7 de
 
 ### A faixa (`ai-thread-banner.tsx`) e a rota dela
 
-- `GET /api/cb/ia/conversa/[id]` devolve também `pausaTemporaria`,
-  `voltaAposMin` (lido só onde há agente ou pausa) e `voltaEm` (o pendente
-  marcado `ERRO_DA_ESPERA_DA_EQUIPE`).
+- `GET /api/cb/ia/conversa/[id]` devolve também `pausaTemporaria` (SÓ onde um
+  agente atenderia: card fora da etapa dele ou agente desligado = nenhum turno
+  nasce, nunca "volta sozinha"), `voltaAposMin` (lido só onde há agente ou
+  pausa) e `voltaEm` (o pendente marcado `ERRO_DA_ESPERA_DA_EQUIPE`). A faixa
+  pergunta de novo também quando `ia_pausada_em` muda (a equipe respondeu na
+  pausa temporária).
 - Atendendo com N > 0: [Pausar] (dica com o N) + [Desativar IA]. Temporária:
   "volta às <hora> se ninguém da equipe responder" (ou "volta sozinha se o
   cliente esperar N min"), [Retomar IA] (agora) + [Desativar IA].
   Desativada: "IA desativada nesta conversa" + [Retomar IA]. N = 0 ou
   servidor sem os campos: a faixa de antes — nunca "volta sozinha" por
-  ignorância. A hora sai por `toLocaleTimeString(undefined, …)`.
+  ignorância. "A IA volta A PARTIR DE <hora>" (fora do horário ela espera a
+  abertura), no idioma de quem olha, com o dia quando não é hoje
+  (`horaDaVolta`).
 - A aba Turnos diz "aguardando a equipe responder · a IA volta <quando>" e
   traduz `a equipe respondeu` (`ERROS_GRAVADOS_PELO_BANCO`).
 
@@ -111,5 +128,5 @@ Decisões do operador de 11/11/2026 (P1–P7 de
   `ia_agente_id`); IA, robô, automação e mensagem sem autor (API) ficam como
   antes. O TEXTO-BASE (pedaço FIXO, texto constante: o cache erra uma vez no
   deploy) diz que é a equipe, para não repetir nem contradizer e seguir o que
-  ela combinou. O rótulo imitado no começo de linha sai em `lerAcoes`
-  (`semRotuloDaEquipe`): nunca chega ao cliente.
+  ela combinou. O rótulo imitado sai em `lerAcoes` (`semRotuloDaEquipe`, em
+  qualquer ponto, em negrito e traduzido): nunca chega ao cliente.

@@ -43,7 +43,8 @@ faz, em `.claude/rules/ia-agentes.md`. ⚠️ "Retomada" aqui é o FOLLOW-UP; o
   pausa (`cb_ia_voltar_da_pausa`, logo antes da reserva; `alguem_escreveu`
   descarta): a cliente que responde a ele é respondida pela IA na hora (P7).
   O pedido ganha a linha "a última foi da equipe" (`daEquipe`, parte
-  VARIÁVEL, pela `sender_type` da âncora).
+  VARIÁVEL, pela `sender_type` da âncora) SÓ na 1ª tentativa: da 2ª em
+  diante a última fala é o follow-up da própria IA.
 - ⚠️⚠️ **Arma com o card e a etapa de AGORA** (revisão de 09/11/2026): a
   própria resposta pode ter movido o card (`mover_etapa`); armada com a etapa
   do começo do turno, ela era descartada SEMPRE no vencimento ("o card mudou

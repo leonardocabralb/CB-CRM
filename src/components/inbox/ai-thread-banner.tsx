@@ -192,13 +192,19 @@ interface AiThreadBannerProps {
   disabled: boolean;
   /** `conversations.ia_pausada_por` — por que pausou. */
   pausadaPor?: string | null;
+  /**
+   * `conversations.ia_pausada_em` — recarimbado quando a equipe responde na
+   * pausa temporária (1138): a faixa pergunta de novo, senão continuaria
+   * dizendo "volta às …" sobre o retorno que a resposta descartou.
+   */
+  pausadaEm?: string | null;
 }
 
-export function AiThreadBanner({ conversationId, iaAgenteId, disabled, pausadaPor }: AiThreadBannerProps) {
+export function AiThreadBanner({ conversationId, iaAgenteId, disabled, pausadaPor, pausadaEm }: AiThreadBannerProps) {
   const t = useTranslations("Inbox.aiBanner");
   // O estado carrega DE QUAL conversa é: a faixa não remonta ao trocar de
   // conversa, e o da anterior não pode aparecer nem por um quadro.
-  const [lido, setLido] = useState<{ conversa: string; estado: EstadoDaIa | null } | null>(null);
+  const [lido, setLido] = useState<{ conversa: string; estado: EstadoDaIa | null; em: number } | null>(null);
   const [recarga, setRecarga] = useState(0);
   const [busy, setBusy] = useState(false);
 
@@ -215,12 +221,13 @@ export function AiThreadBanner({ conversationId, iaAgenteId, disabled, pausadaPo
       } catch {
         estado = null;
       }
-      if (vivo) setLido({ conversa: conversationId, estado });
+      // `em`: quando a rota respondeu — a hora da volta diz o dia quando não é hoje.
+      if (vivo) setLido({ conversa: conversationId, estado, em: Date.now() });
     })();
     return () => {
       vivo = false;
     };
-  }, [conversationId, disabled, pausadaPor, iaAgenteId, recarga]);
+  }, [conversationId, disabled, pausadaPor, pausadaEm, iaAgenteId, recarga]);
 
   // Quem responde depende da ETAPA do card, e mover o card só muda `deals`:
   // nenhuma das props acima muda. O aviso das execuções sai quando uma tela
@@ -258,6 +265,7 @@ export function AiThreadBanner({ conversationId, iaAgenteId, disabled, pausadaPo
   return (
     <FaixaDaIa
       faixa={faixaDaIa(estado, iaAgenteId)}
+      lidoEm={lido?.em}
       busy={busy}
       aoPausar={() => void alternar("pausar")}
       aoDesativar={() => void alternar("desativar")}
@@ -287,20 +295,33 @@ function textoDoErro(t: ReturnType<typeof useTranslations>, erro: ErroDaFaixa): 
   }
 }
 
-/** "14:32", no fuso de quem olha. */
-function horaDaVolta(iso: string): string {
-  return new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+/**
+ * "14:32", no fuso e no idioma de quem olha; com o dia da semana quando não é
+ * o dia em que a rota respondeu (`lidoEm`) — com N grande, "às 09:00" seria
+ * ambíguo. Sem `lidoEm`, só a hora.
+ */
+export function horaDaVolta(iso: string, lidoEm?: number): string {
+  const volta = new Date(iso);
+  const outroDia = lidoEm !== undefined && new Date(lidoEm).toDateString() !== volta.toDateString();
+  return volta.toLocaleString(undefined, {
+    ...(outroDia ? { weekday: "short" as const } : {}),
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 /** A faixa desenhada (sem dado nem efeito) — o que os testes renderizam. */
 export function FaixaDaIa({
   faixa,
+  lidoEm,
   busy,
   aoPausar,
   aoDesativar,
   aoRetomar,
 }: {
   faixa: Faixa;
+  /** Quando a rota respondeu (o dia da hora da volta). */
+  lidoEm?: number;
   busy: boolean;
   aoPausar: () => void;
   aoDesativar: () => void;
@@ -325,7 +346,7 @@ export function FaixaDaIa({
             // Quebra linha (nunca `truncate`): no celular a hora sumiria cortada.
             <p className="mt-0.5 text-muted-foreground">
               {faixa.volta.em
-                ? t("voltaAs", { hora: horaDaVolta(faixa.volta.em) })
+                ? t("voltaAs", { hora: horaDaVolta(faixa.volta.em, lidoEm) })
                 : t("voltaSeEsperar", { minutos: faixa.volta.minutos })}
             </p>
           ) : null}

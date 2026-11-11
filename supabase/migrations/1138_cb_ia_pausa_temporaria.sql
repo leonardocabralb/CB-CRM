@@ -33,6 +33,10 @@
 --        seguinte da equipe só move a âncora (`ON CONFLICT … DO UPDATE`); a
 --        retomada da IA ou o pendente de resposta que estavam na vaga viram
 --        esta linha (a equipe respondeu).
+--     (b) e (c) seguem a régua da 1050 (só a fala MAIS NOVA que o gatilho de
+--     quem está na fila mexe nele: transações concorrentes não trocam a vez)
+--     e ficam num subbloco que vira WARNING: a fila da IA nunca derruba o
+--     INSERT da mensagem da equipe, que já saiu no WhatsApp.
 --  4. `cb_ia_voltar_da_pausa(turno, rodando_desde, minutos)`: o turno LEVANTA
 --     a pausa temporária, sob a trava da conversa e com a cerca de posse.
 --     Resposta: `voltou` | `cedo` (+ `volta_em`) | `equipe_respondeu` |
@@ -182,70 +186,92 @@ BEGIN
      WHERE cv.id = NEW.conversation_id
        AND cv.ai_autoreply_disabled
        AND cv.ia_pausada_por IN ('gente', 'botao');
-    -- (b) O retorno que esperava a equipe responder: ela respondeu.
-    UPDATE cb_ia_turnos
-       SET status = 'descartado',
-           erro = 'a equipe respondeu',
-           terminado_em = now(),
-           updated_at = now()
-     WHERE conversation_id = NEW.conversation_id
-       AND status = 'aguardando'
-       AND tipo = 'resposta';
   END IF;
 
-  -- (c) A pré-armação do follow-up depois da fala da equipe (P4).
-  IF NEW.content_type IS DISTINCT FROM 'call'
-     AND NEW.channel_id IS NOT NULL
-     AND c.status IS DISTINCT FROM 'closed'
-     AND c.contact_id IS NOT NULL THEN
-    SELECT coalesce((SELECT a.ia_volta_apos_min FROM ai_configs a
-                      WHERE a.account_id = c.account_id AND a.channel_id IS NULL
-                      LIMIT 1), 15)
-      INTO v_minutos;
-    IF v_minutos > 0
-       AND EXISTS (
-         SELECT 1 FROM conversations cv
-          WHERE cv.id = NEW.conversation_id
-            AND cv.ai_autoreply_disabled
-            AND cv.ia_pausada_por = 'gente'
-       )
-       AND EXISTS (
-         SELECT 1 FROM deals d
-           JOIN cb_ia_agente_etapas e ON e.stage_id = d.stage_id
-           JOIN cb_ia_agentes ag ON ag.id = e.ia_agente_id AND ag.account_id = d.account_id
-          WHERE d.contact_id = c.contact_id
-            AND d.account_id = c.account_id
-            AND d.status = 'open'
-            AND ag.ativo
-            AND ag.arquivado_em IS NULL
-            AND NEW.channel_id = ANY (ag.conexoes)
-            AND coalesce(ag.retomada -> 'ativa' = 'true'::jsonb, false)
-       ) THEN
-      INSERT INTO cb_ia_turnos AS t (
-        account_id, conversation_id, canal_id, mensagem_gatilho_id, mensagem_inicial_id,
-        status, executar_apos, tipo, tentativa, tentativas, erro
-      )
-      VALUES (
-        c.account_id, NEW.conversation_id, NEW.channel_id, NEW.id, NEW.id,
-        'aguardando', now() + interval '30 seconds', 'retomada', 1, 1, 'armar a partir da fala da equipe'
-      )
-      ON CONFLICT (conversation_id, canal_id) WHERE status = 'aguardando'
-      DO UPDATE SET
-        ia_agente_id        = NULL,
-        deal_id             = NULL,
-        stage_id            = NULL,
-        veio_de_passagem    = false,
-        mensagem_gatilho_id = EXCLUDED.mensagem_gatilho_id,
-        mensagem_inicial_id = EXCLUDED.mensagem_inicial_id,
-        executar_apos       = EXCLUDED.executar_apos,
-        tipo                = 'retomada',
-        tentativa           = 1,
-        tentativas          = 1,
-        erro                = EXCLUDED.erro,
-        contexto            = NULL,
-        updated_at          = now();
+  -- (b) e (c) mexem na FILA da IA: um erro aqui (trava, tempo) nunca pode
+  -- derrubar o INSERT da mensagem da equipe — ela já saiu no WhatsApp. Vira
+  -- WARNING, como os gatilhos que não podem barrar a ingestão (a pausa acima
+  -- fica: é o lado que cala a IA).
+  BEGIN
+    IF c.pausada THEN
+      -- (b) O retorno que esperava a equipe responder: ela respondeu. Só o
+      -- de mensagem do cliente ANTERIOR a esta fala (a régua da 1050): a
+      -- mensagem mais nova, gravada em paralelo, ainda espera resposta.
+      UPDATE cb_ia_turnos t
+         SET status = 'descartado',
+             erro = 'a equipe respondeu',
+             terminado_em = now(),
+             updated_at = now()
+       WHERE t.conversation_id = NEW.conversation_id
+         AND t.status = 'aguardando'
+         AND t.tipo = 'resposta'
+         AND coalesce((SELECT g.gravada_em FROM messages g WHERE g.id = t.mensagem_gatilho_id), '-infinity'::timestamptz)
+             <= NEW.gravada_em;
     END IF;
-  END IF;
+
+    -- (c) A pré-armação do follow-up depois da fala da equipe (P4).
+    IF NEW.content_type IS DISTINCT FROM 'call'
+       AND NEW.channel_id IS NOT NULL
+       AND c.status IS DISTINCT FROM 'closed'
+       AND c.contact_id IS NOT NULL THEN
+      SELECT coalesce((SELECT a.ia_volta_apos_min FROM ai_configs a
+                        WHERE a.account_id = c.account_id AND a.channel_id IS NULL
+                        LIMIT 1), 15)
+        INTO v_minutos;
+      IF v_minutos > 0
+         AND EXISTS (
+           SELECT 1 FROM conversations cv
+            WHERE cv.id = NEW.conversation_id
+              AND cv.ai_autoreply_disabled
+              AND cv.ia_pausada_por = 'gente'
+         )
+         AND EXISTS (
+           SELECT 1 FROM deals d
+             JOIN cb_ia_agente_etapas e ON e.stage_id = d.stage_id
+             JOIN cb_ia_agentes ag ON ag.id = e.ia_agente_id AND ag.account_id = d.account_id
+            WHERE d.contact_id = c.contact_id
+              AND d.account_id = c.account_id
+              AND d.status = 'open'
+              AND ag.ativo
+              AND ag.arquivado_em IS NULL
+              AND NEW.channel_id = ANY (ag.conexoes)
+              AND coalesce(ag.retomada -> 'ativa' = 'true'::jsonb, false)
+         ) THEN
+        INSERT INTO cb_ia_turnos AS t (
+          account_id, conversation_id, canal_id, mensagem_gatilho_id, mensagem_inicial_id,
+          status, executar_apos, tipo, tentativa, tentativas, erro
+        )
+        VALUES (
+          c.account_id, NEW.conversation_id, NEW.channel_id, NEW.id, NEW.id,
+          'aguardando', now() + interval '30 seconds', 'retomada', 1, 1, 'armar a partir da fala da equipe'
+        )
+        ON CONFLICT (conversation_id, canal_id) WHERE status = 'aguardando'
+        DO UPDATE SET
+          ia_agente_id        = NULL,
+          deal_id             = NULL,
+          stage_id            = NULL,
+          veio_de_passagem    = false,
+          mensagem_gatilho_id = EXCLUDED.mensagem_gatilho_id,
+          mensagem_inicial_id = EXCLUDED.mensagem_inicial_id,
+          executar_apos       = EXCLUDED.executar_apos,
+          tipo                = 'retomada',
+          tentativa           = 1,
+          tentativas          = 1,
+          erro                = EXCLUDED.erro,
+          contexto            = NULL,
+          updated_at          = now()
+        -- A régua da 1050: só a fala MAIS NOVA que o gatilho de quem ocupa a
+        -- vaga troca a âncora (ou converte o ocupante). Duas falas em
+        -- transações concorrentes, ou uma mensagem do cliente mais nova
+        -- gravada em paralelo, não perdem a vez para a mais velha.
+        WHERE coalesce((SELECT g.gravada_em FROM messages g WHERE g.id = t.mensagem_gatilho_id), '-infinity'::timestamptz)
+              <= NEW.gravada_em;
+      END IF;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'cb_pausar_ia_por_gente (1138): a fila da IA não foi atualizada para a mensagem % (%: %)',
+      NEW.id, SQLSTATE, SQLERRM;
+  END;
 
   RETURN NEW;
 END;

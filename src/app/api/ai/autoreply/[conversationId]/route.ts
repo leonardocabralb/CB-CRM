@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { ehInstagram } from '@/lib/cb-channels/transporte'
+import { supabaseAdmin } from '@/lib/ai/admin-client'
+import { anteciparEsperaDaEquipe } from '@/lib/ia-agentes/fila'
 import { MOTIVOS_TEMPORARIOS } from '@/lib/ia-agentes/pausa'
+import { agendarTurno } from '@/lib/ia-agentes/turno'
 import { canalDaIaNaConversa } from '@/lib/ia-agentes/quem-responde'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 
@@ -157,6 +160,20 @@ export async function POST(request: Request, { params }: Params) {
         { error: 'Conversation was not updated', code: 'nada_gravado' },
         { status: 409 },
       )
+    }
+
+    // "Retomar IA" com mensagem esperando a equipe (1138): a IA responde AGORA
+    // (a dica do botão promete isso), não no fim dos N min. Pelo cliente de
+    // SERVIÇO (a fila é fechada ao navegador), com a conta e a conversa já
+    // conferidas acima. Melhor esforço: sem isto, o turno roda no horário dele.
+    if (!paused) {
+      try {
+        for (const turno of await anteciparEsperaDaEquipe(supabaseAdmin(), { accountId, conversationId })) {
+          agendarTurno(turno)
+        }
+      } catch (err) {
+        console.error('[ai/autoreply] antecipar a resposta da IA falhou:', err)
+      }
     }
 
     return NextResponse.json({ success: true, paused, permanente })

@@ -339,7 +339,7 @@ ingestões), `fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron
 - ⚠️ **Falha de CONFIGURAÇÃO não transfere** (E8): chave, modelo, provedor
   fora do ar → `falhou`. Transferem o sentinela, a resposta vazia, o teto, o
   áudio que não se ouve e o envio incerto — pausa `transferencia` + pendente,
-  destino só sem responsável, anotação "IA · <agente>". Nunca por cima de pausa ou de
+  destino só sem responsável, anotação "IA · <agente>". Nunca por cima de pausa PERMANENTE ou de
   conversa encerrada (zero linhas = sem nota, `pausado_no_meio`).
 - ⚠️ **Só o turno passa `iaAgenteId`** (pino default-deny: a 972 conta `bot`
   COM `ia_agente_id` como "respondido"), e o motor na automação que o agente

@@ -62,9 +62,13 @@ function comparar(a: unknown, b: unknown): number {
   return Number(a) - Number(b)
 }
 
-/** `col.is.null` / `col.not.is.null` / `col.eq.x` — o que o motor manda em `.or()`. */
+/** `col.is.null` / `col.not.is.null` / `col.eq.x` / `col.in.(a,b)` — o que o motor manda em `.or()`. */
 function itemDoOr(item: string): (l: Linha) => boolean {
   const partes = item.split('.')
+  if (partes[1] === 'in') {
+    const lista = partes.slice(2).join('.').replace(/^\(|\)$/g, '').split(',')
+    return (l) => lista.includes(String(l[partes[0]] ?? ''))
+  }
   const nega = partes[1] === 'not'
   const bruto = partes.slice(nega ? 3 : 2).join('.')
   const valor = bruto === 'null' ? null : bruto === 'true' ? true : bruto === 'false' ? false : bruto
@@ -84,7 +88,8 @@ function filtro(metodo: string, args: unknown[]): ((l: Linha) => boolean) | null
     case 'lt': return (l) => temValor(l[c]) && comparar(l[c], v) < 0
     case 'lte': return (l) => temValor(l[c]) && comparar(l[c], v) <= 0
     case 'or': {
-      const itens = c.split(',').map(itemDoOr)
+      // Vírgula DENTRO de `in.(a,b)` não separa itens.
+      const itens = c.split(/,(?![^(]*\))/).map(itemDoOr)
       return (l) => itens.some((f) => f(l))
     }
     default: return null
@@ -1330,13 +1335,26 @@ describe('executarTurno — o sentinela transfere para gente', () => {
     expect(turno()).toMatchObject({ status: 'transferiu', erro: 'sentinela' })
   })
 
-  it('o advogado respondeu ENQUANTO o modelo pensava e o modelo pediu transferência: a pausa de gente fica', async () => {
+  it('o advogado respondeu ENQUANTO o modelo pensava e o modelo pediu transferência: a pausa TEMPORÁRIA vira a transferência (1138)', async () => {
+    // A IA pediu gente: a pausa de gente (temporária) não pode deixá-la voltar
+    // em N min e pedir de novo — vira a permanente, com a anotação (P2).
     vi.mocked(generateReply).mockImplementation(async () => {
       Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: 'gente', ia_pausada_em: haMs(1_000) })
       return { text: '', handoff: true, usage: null }
     })
     await executarTurno(TURNO)
-    expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'gente', assigned_agent_id: null })
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'transferencia' })
+    expect(notas()).toHaveLength(1)
+    expect(turno().status).toBe('transferiu')
+  })
+
+  it('a conversa DESATIVADA durante a geração e o modelo pediu transferência: a pausa permanente fica, sem anotação', async () => {
+    vi.mocked(generateReply).mockImplementation(async () => {
+      Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: 'desativada', ia_pausada_em: haMs(1_000) })
+      return { text: '', handoff: true, usage: null }
+    })
+    await executarTurno(TURNO)
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'desativada', assigned_agent_id: null })
     expect(notas()).toHaveLength(0)
     expect(turno().status).toBe('pausado_no_meio')
     expect(String(turno().erro)).toContain('não transferiu (sentinela)')
@@ -1432,8 +1450,18 @@ describe('transferirParaGente', () => {
     expect(conversa()).toMatchObject({ status: 'pending', ia_pausada_por: 'transferencia' })
   })
 
-  it.each(['gente', 'botao', 'transferencia', 'automacao'])(
-    'a conversa JÁ pausada (%s): a pausa não é trocada, ninguém é atribuído e não há anotação',
+  it.each(['gente', 'botao'])(
+    'a conversa na pausa TEMPORÁRIA (%s, 1138): a IA pediu gente — a pausa vira a transferência (permanente), anotada',
+    async (pausadaPor) => {
+      Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: pausadaPor, ia_pausada_em: haMs(60_000) })
+      await expect(transferirParaGente(banco as never, args)).resolves.toBe('transferiu')
+      expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'transferencia', status: 'pending' })
+      expect(notas()).toHaveLength(1)
+    },
+  )
+
+  it.each(['desativada', 'transferencia', 'automacao'])(
+    'a conversa JÁ pausada de vez (%s): a pausa não é trocada, ninguém é atribuído e não há anotação',
     async (pausadaPor) => {
       const antes = haMs(60_000)
       Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: pausadaPor, ia_pausada_em: antes })
@@ -1675,7 +1703,19 @@ describe('executarTurno — o envio', () => {
     expect(String(notas()[0].texto)).toContain('não dá para saber se a última resposta chegou')
   })
 
-  it('incerto com a conversa já pausada por gente: o `incerto` fica (fala do envio), sem trocar a pausa nem anotar', async () => {
+  it('incerto com a conversa já pausada de vez (desativada): o `incerto` fica (fala do envio), sem trocar a pausa nem anotar', async () => {
+    vi.mocked(engineSendText).mockImplementation(async (args) => {
+      args.antesDoProvedor?.()
+      Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: 'desativada' })
+      throw new EvolutionApiError('bad gateway', 502)
+    })
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('incerto')
+    expect(conversa().ia_pausada_por).toBe('desativada')
+    expect(notas()).toHaveLength(0)
+  })
+
+  it('incerto com a conversa na pausa TEMPORÁRIA (gente): a transferência a torna permanente e anota (1138)', async () => {
     vi.mocked(engineSendText).mockImplementation(async (args) => {
       args.antesDoProvedor?.()
       Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: 'gente' })
@@ -1683,8 +1723,8 @@ describe('executarTurno — o envio', () => {
     })
     await executarTurno(TURNO)
     expect(turno().status).toBe('incerto')
-    expect(conversa().ia_pausada_por).toBe('gente')
-    expect(notas()).toHaveLength(0)
+    expect(conversa().ia_pausada_por).toBe('transferencia')
+    expect(notas()).toHaveLength(1)
   })
 
   it('saiu e o registro falhou: respondeu, com o erro — nunca reenvia; a conversa ganha o agente', async () => {
@@ -3076,20 +3116,34 @@ describe('executarTurno — as ações (F4, D28)', () => {
     expect(conversa()).toMatchObject({ ai_autoreply_disabled: true })
   })
 
-  it('[[TRANSFERIR]] com a conversa JÁ pausada por gente: não passa por cima, sem anotação — `ja_estava`', async () => {
+  it('[[TRANSFERIR]] com a conversa JÁ pausada de vez (desativada): não passa por cima, sem anotação — `ja_estava`', async () => {
     responde('A equipe te chama.\n[[TRANSFERIR]]')
     vi.mocked(engineSendText).mockImplementation(async (args) => {
       args.antesDoProvedor?.()
       await args.aoSair?.('wamid.resposta')
-      // A equipe respondeu pelo celular logo depois do envio.
+      // Alguém desativou a IA logo depois do envio.
+      Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: 'desativada' })
+      return { whatsapp_message_id: 'wamid.resposta' }
+    })
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(conversa()).toMatchObject({ ia_pausada_por: 'desativada' })
+    expect(notas()).toHaveLength(0)
+    expect(turno().acoes).toEqual([{ ...TRANSFERIR, ok: true, detalhe: 'ja_estava' }])
+  })
+
+  it('[[TRANSFERIR]] com a equipe respondendo logo depois do envio (pausa TEMPORÁRIA): a transferência vale (1138)', async () => {
+    responde('A equipe te chama.\n[[TRANSFERIR]]')
+    vi.mocked(engineSendText).mockImplementation(async (args) => {
+      args.antesDoProvedor?.()
+      await args.aoSair?.('wamid.resposta')
       Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: 'gente' })
       return { whatsapp_message_id: 'wamid.resposta' }
     })
     await executarTurno(TURNO)
     expect(turno().status).toBe('respondeu')
-    expect(conversa()).toMatchObject({ ia_pausada_por: 'gente' })
-    expect(notas()).toHaveLength(0)
-    expect(turno().acoes).toEqual([{ ...TRANSFERIR, ok: true, detalhe: 'ja_estava' }])
+    expect(conversa()).toMatchObject({ ia_pausada_por: 'transferencia' })
+    expect(notas()).toHaveLength(1)
   })
 
   it.each<[string, () => void, string]>([
@@ -3449,11 +3503,11 @@ describe('executarTurno — marcar reunião (F5)', () => {
     ])
   })
 
-  it('⚠️ a transferência que encontra a conversa JÁ pausada por gente não passa por cima — mas a ANOTAÇÃO da falha sai', async () => {
+  it('⚠️ a transferência que encontra a conversa JÁ pausada de vez não passa por cima — mas a ANOTAÇÃO da falha sai', async () => {
     responde('Marquei!\n[[REUNIAO:1]]')
     vi.mocked(executarAcoes).mockImplementation(async () => {
-      // A equipe respondeu pelo celular entre o envio e o fim das ações.
-      Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: 'gente' })
+      // Alguém desativou a IA entre o envio e o fim das ações.
+      Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: 'desativada' })
       return {
         registros: [{ tipo: 'marcar_reuniao', alvo: { id: H1, nome: '28/09/2026 15:15' }, ok: false, erro: 'horario_indisponivel' }],
         moveu: false,
@@ -3461,7 +3515,7 @@ describe('executarTurno — marcar reunião (F5)', () => {
     })
     await executarTurno(TURNO)
     expect(turno().status).toBe('respondeu')
-    expect(conversa()).toMatchObject({ ia_pausada_por: 'gente' })
+    expect(conversa()).toMatchObject({ ia_pausada_por: 'desativada' })
     // Quem pausou precisa saber que o cliente ouviu "marquei" e a reunião não existe.
     expect(notas()).toHaveLength(1)
     expect(String(notas()[0].autor_nome)).toContain('Triagem')

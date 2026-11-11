@@ -330,6 +330,15 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
       expect(await (await chamar()).json()).toMatchObject({ pausaTemporaria: false, voltaAposMin: 15 })
     })
 
+    it('nenhum agente atenderia (desligado; card fora da etapa dele): NÃO é "temporária" — nenhum turno nasceria', async () => {
+      banco.cb_ia_turnos = [{ executar_apos: '2026-11-11T15:15:00Z' }]
+      banco.cb_ia_agentes = { ...(banco.cb_ia_agentes as object), ativo: false }
+      expect(await (await chamar()).json()).toMatchObject({ pausada: true, pausaTemporaria: false, voltaEm: null })
+      banco.cb_ia_agentes = { ...(banco.cb_ia_agentes as object), ativo: true }
+      banco.cb_ia_agente_etapas = null
+      expect(await (await chamar()).json()).toMatchObject({ pausada: true, pausaTemporaria: false, voltaEm: null })
+    })
+
     it('a leitura do N da conta que falha é 500 (nunca "não volta" por ignorância)', async () => {
       banco['ai_configs:erro'] = { message: 'timeout' }
       expect((await chamar()).status).toBe(500)

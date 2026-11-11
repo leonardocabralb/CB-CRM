@@ -160,9 +160,49 @@ export async function marcarEsperaDaEquipe(db: SupabaseClient, turnoId: string):
       .update({ erro: ERRO_DA_ESPERA_DA_EQUIPE, updated_at: new Date().toISOString() })
       .eq('id', turnoId)
       .eq('status', 'aguardando')
+      // Só a RESPOSTA: a fala da equipe gravada entre o enfileirar e esta
+      // marca pode ter convertido a linha na pré-armação do follow-up — a
+      // marca dela não se apaga.
+      .eq('tipo', 'resposta')
     if (error) console.error('[ia-agentes] marcar a espera da equipe falhou:', error.message)
   } catch (err) {
     console.error('[ia-agentes] marcar a espera da equipe falhou:', err)
+  }
+}
+
+/**
+ * O "Retomar IA" com mensagem ESPERANDO a equipe (1138): o turno marcado
+ * `ERRO_DA_ESPERA_DA_EQUIPE` passa a vencer AGORA (a dica do botão diz "agora,
+ * sem esperar") — sem isto, a IA só responderia no fim dos N min. Devolve os
+ * turnos antecipados (quem chama os dispara). Melhor esforço: falha vira log e
+ * a lista vazia (o turno ainda roda no horário dele).
+ */
+export async function anteciparEsperaDaEquipe(
+  db: SupabaseClient,
+  args: { accountId: string; conversationId: string },
+): Promise<TurnoNaFila[]> {
+  try {
+    const agora = new Date().toISOString()
+    const { data, error } = await db
+      .from('cb_ia_turnos')
+      .update({ executar_apos: agora, erro: null, updated_at: agora })
+      .eq('account_id', args.accountId)
+      .eq('conversation_id', args.conversationId)
+      .eq('status', 'aguardando')
+      .eq('tipo', 'resposta')
+      .eq('erro', ERRO_DA_ESPERA_DA_EQUIPE)
+      .select('id, executar_apos')
+    if (error) {
+      console.error('[ia-agentes] antecipar a espera da equipe falhou:', error.message)
+      return []
+    }
+    return ((data ?? []) as Array<{ id: string; executar_apos: string }>).map((t) => ({
+      id: t.id,
+      executarApos: t.executar_apos,
+    }))
+  } catch (err) {
+    console.error('[ia-agentes] antecipar a espera da equipe falhou:', err)
+    return []
   }
 }
 

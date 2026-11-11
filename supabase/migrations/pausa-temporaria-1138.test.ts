@@ -77,7 +77,20 @@ describe('1138 — a pausa temporária', () => {
     const f = corpo('cb_pausar_ia_por_gente');
     expect(f).toContain(`set ia_pausada_por = 'gente', ia_pausada_em = now() where cv.id = new.conversation_id and cv.ai_autoreply_disabled and cv.ia_pausada_por in (${lista(MOTIVOS_TEMPORARIOS)})`);
     expect(f).toContain(`erro = '${ERRO_DA_EQUIPE_RESPONDEU}'`);
-    expect(f).toContain("and status = 'aguardando' and tipo = 'resposta'");
+    expect(f).toContain("and t.status = 'aguardando' and t.tipo = 'resposta'");
+  });
+
+  it('o gatilho: o descarte e a pré-armação seguem a régua da 1050 (só a fala mais nova que o gatilho da fila)', () => {
+    const f = corpo('cb_pausar_ia_por_gente');
+    const regua = "coalesce((select g.gravada_em from messages g where g.id = t.mensagem_gatilho_id), '-infinity'::timestamptz) <= new.gravada_em";
+    expect(f.split(regua).length - 1).toBe(2);
+  });
+
+  it('o gatilho: a fila da IA nunca derruba o INSERT da mensagem da equipe (vira WARNING)', () => {
+    const f = corpo('cb_pausar_ia_por_gente');
+    expect(f).toContain('exception when others then raise warning');
+    // A pausa em si fica FORA do subbloco (é o lado que cala a IA).
+    expect(f.indexOf("set ai_autoreply_disabled = true, ia_pausada_por = 'gente'")).toBeLessThan(f.indexOf('begin if c.pausada then'));
   });
 
   it('o gatilho: a pré-armação leva a marca do TS, sem agente, e só com a pausa `gente`', () => {

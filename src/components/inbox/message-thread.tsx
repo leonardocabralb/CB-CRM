@@ -3706,6 +3706,7 @@ export function MessageThread({
         iaAgenteId={conversation.ia_agente_id ?? null}
         disabled={conversation.ai_autoreply_disabled ?? false}
         pausadaPor={conversation.ia_pausada_por ?? null}
+        pausadaEm={conversation.ia_pausada_em ?? null}
       />
       )}
 
