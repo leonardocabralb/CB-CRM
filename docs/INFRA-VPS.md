@@ -180,7 +180,10 @@ Todos apontam para `82.25.76.63` e entram pelo `websecure`.
 desde 10/11/2026, a 4a de `docs/PLANO-ligar-pelo-crm.md`):** o Chrome com o
 WhatsApp Web da conexão Previdenciario - Comercial (um aparelho conectado a
 mais nesse número) e o orquestrador do subprojeto `maquina-de-ligacoes/`.
-PARADO fora das sessões de teste até a 4c (nada o usa nem o vigia ainda).
+PARADO fora das sessões de teste até a 4c (o CRM já fala com ele desde a 4b,
+11/11/2026, mas a tela de ligar e atender é a 4c, e nada o vigia ainda).
+Desde a 4b: imagem `maquina-de-ligacoes:20261110-7`, URL do CRM
+`http://crm_crm:3000`, segredo próprio em `previdenciario/segredo.env`.
 
 - **Pastas** (`/root/ligacoes`, 700): `imagem/` (cópia do subprojeto, de onde
   a imagem é montada), `criar-maquina.sh` (= `ops/vps/ligacoes/`),
