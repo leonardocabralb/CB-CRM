@@ -51,5 +51,9 @@ export async function PUT(request: Request, { params }: Params) {
   const r = await receberGravacao({ db, computador, ligacaoId: ligacao, arquivo, corpo })
   if (r === 'falhou') return NextResponse.json({ error: 'falhou' }, { status: 500 })
   if (r === 'desconhecida') return NextResponse.json({ error: 'ligacao_desconhecida' }, { status: 404 })
+  // Nunca atendida: 2xx sem guardar, e a máquina apaga a cópia dela. Sem
+  // desfecho ainda: 409 — a máquina guarda e manda de novo depois.
+  if (r === 'descartada') return NextResponse.json({ ok: true, descartada: true })
+  if (r === 'cedo') return NextResponse.json({ error: 'ainda_sem_desfecho' }, { status: 409 })
   return NextResponse.json({ ok: true })
 }

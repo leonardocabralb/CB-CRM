@@ -579,7 +579,16 @@ describe('a gravação', () => {
 
   it('vai ao bucket PRIVADO pelo caminho da conta; o estéreo marca a ligação e a faixa', async () => {
     banco.tabelas.cb_ligacoes = [
-      { id: ID, account_id: CONTA, channel_id: CANAL, pelo_crm: true, message_id: 'faixa-1', gravacao_recebida_em: null },
+      {
+        id: ID,
+        account_id: CONTA,
+        channel_id: CANAL,
+        pelo_crm: true,
+        message_id: 'faixa-1',
+        gravacao_recebida_em: null,
+        desfecho: 'atendida',
+        atendida_pelo_crm_em: '2026-11-10T20:00:20.000Z',
+      },
     ];
     banco.tabelas.messages.push({ id: 'faixa-1', content_type: 'call', ligacao: { desfecho: 'atendida', gravacao: false } });
     expect(await receber('cliente.ogg')).toBe('ok');
@@ -592,6 +601,17 @@ describe('a gravação', () => {
     expect(enviados[1].opcoes).toEqual({ contentType: 'audio/ogg', upsert: true });
     expect(ligacoes()[0].gravacao_recebida_em).toEqual(expect.any(String));
     expect(banco.tabelas.messages.find((m) => m.id === 'faixa-1')?.ligacao).toEqual({ desfecho: 'atendida', gravacao: true });
+  });
+
+  it('⚠️ de ligação NUNCA atendida não guarda nada (Codex, #500): descartada com o desfecho, cedo sem ele', async () => {
+    banco.tabelas.cb_ligacoes = [
+      { id: ID, account_id: CONTA, channel_id: CANAL, pelo_crm: true, desfecho: 'nao_atendida', atendida_pelo_crm_em: null },
+    ];
+    expect(await receber('estereo.ogg')).toBe('descartada');
+    banco.tabelas.cb_ligacoes[0].desfecho = null;
+    expect(await receber('cliente.ogg')).toBe('cedo');
+    expect(enviados).toEqual([]);
+    expect(ligacoes()[0].gravacao_recebida_em ?? null).toBeNull();
   });
 
   it('de ligação que não é deste computador (ou não é pelo CRM): desconhecida', async () => {

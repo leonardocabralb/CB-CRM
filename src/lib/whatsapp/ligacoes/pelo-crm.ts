@@ -912,11 +912,11 @@ export async function receberGravacao(args: {
   ligacaoId: string;
   arquivo: string;
   corpo: Buffer;
-}): Promise<DesfechoDoAviso> {
+}): Promise<DesfechoDoAviso | 'descartada' | 'cedo'> {
   const { db, computador, ligacaoId, arquivo, corpo } = args;
   const { data: linha, error } = await db
     .from('cb_ligacoes')
-    .select('id, account_id')
+    .select('id, account_id, desfecho, atendida_pelo_crm_em')
     .eq('id', ligacaoId)
     .eq('account_id', computador.account_id)
     .eq('channel_id', computador.channel_id)
@@ -924,6 +924,12 @@ export async function receberGravacao(args: {
     .maybeSingle();
   if (error) return 'falhou';
   if (!linha) return 'desconhecida';
+  // ⚠️ Só ligação ATENDIDA tem conversa a guardar (Codex, #500): a máquina
+  // grava desde o pedido, e o contêiner que cai no meio do toque reenvia, ao
+  // subir, o toque e o microfone do atendente. Com o desfecho já decidido e
+  // sem atendimento, a gravação é DESCARTADA (2xx: a máquina apaga a cópia);
+  // sem desfecho ainda, é cedo (o aviso de atendimento pode estar na fila).
+  if (!linha.atendida_pelo_crm_em) return linha.desfecho ? 'descartada' : 'cedo';
   const { error: erroDoEnvio } = await db.storage
     .from(BUCKET_DAS_GRAVACOES)
     .upload(caminhoDaGravacao(computador.account_id, ligacaoId, arquivo), corpo, {
