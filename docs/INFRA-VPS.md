@@ -187,12 +187,16 @@ de ligar e atender desde a 4c, 11/11/2026; parado, o "Ligar" fica desligado
 e a recebida não toca no CRM). Desde a 4e, o CRM só o usa com o INTERRUPTOR
 "Ligações pelo CRM" ligado na tela Conexões (1137), e a sentinela (§12) vigia
 o contêiner do computador ligado.
-Desde 11/11/2026 (21:50 UTC): imagem `maquina-de-ligacoes:20261111-10` (a 4e:
-o `POST /desconectar` do Reparear, o QR vencido que se recarrega e o sinal de
-vida na hora em que o WhatsApp muda; montada à mão, abaixo, em 2 min 18 s; a
-cópia anterior do subprojeto ficou em `/root/ligacoes/imagem.anterior`), URL
-do CRM `http://crm_crm:3000`, segredo próprio em `previdenciario/segredo.env`.
-Rollback = recriar com a `20261111-9` (mesmo CRM; perde só o Reparear).
+Desde 11/11/2026 (23:29 UTC): imagem `maquina-de-ligacoes:20261111-11` (a
+etiqueta `CB_SOM` com o som medido de cada lado, contra a fala que o Gemini
+inventa sobre áudio sem voz — `.claude/rules/ligacoes-transcricao.md`; montada
+à mão, abaixo, em 8 s, e conferida DENTRO da imagem com o ffmpeg 5.1 dela
+antes da troca; a cópia anterior do subprojeto ficou em
+`/root/ligacoes/imagem.anterior`), URL do CRM `http://crm_crm:3000`, segredo
+próprio em `previdenciario/segredo.env`. Rollback = recriar com a
+`20261111-10` (a 4e: o `POST /desconectar` do Reparear, o QR vencido que se
+recarrega e o sinal de vida na hora em que o WhatsApp muda; o CRM, sem a
+etiqueta, só deixa de filtrar).
 
 - **Pastas** (`/root/ligacoes`, 700): `imagem/` (cópia do subprojeto, de onde
   a imagem é montada), `criar-maquina.sh` (= `ops/vps/ligacoes/`),

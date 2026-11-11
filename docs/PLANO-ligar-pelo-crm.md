@@ -1609,7 +1609,7 @@ Previdenciário):**
   cabeçalho e o CRM guardá-los numa coluna (migration), e a medição pelo
   tamanho dos pacotes do Opus (medido: no silêncio ele ainda gasta ~1 kB/s,
   perto da fala).
-- **Pedidos do operador na hora** (#507): o interruptor desligado era quase
+- **Pedidos do operador na hora** (#508): o interruptor desligado era quase
   invisível (o `Switch` do app inteiro passou a cinza no desligado, e o
   inativo, que nunca esmaecia, esmaece) e a ligação com o que ouvir e ler
   ganhou destaque — vira um CARTÃO no fio, com o resumo e os botões "Ouvir" e
