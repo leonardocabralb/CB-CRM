@@ -14,7 +14,7 @@ ligação de WhatsApp do que a telefônica. Vizinho deste plano:
 | 1    | Teste A: a máquina liga, com áudio de arquivo              | em curso (10/11/2026)  |
 | 2    | Teste B: o áudio no navegador do atendente                 | ✅ 10/11/2026 (falta P8) |
 | 3    | Decidir a máquina: upgrade para a KVM 4 × segunda VPS      | ✅ 10/11/2026: fica na VPS atual (D8) |
-| 4    | Ligar e atender pelo CRM: botão, toque, gravação, transcrição | desenho pronto (§8), decisões tomadas (§8.10); 4a em curso: caixa de areia medida (§8.12), plano da 4a (§8.13) |
+| 4    | Ligar e atender pelo CRM: botão, toque, gravação, transcrição | desenho pronto (§8), decisões tomadas (§8.10); ✅ 4a pronta e testada em 10/11/2026 (§8.13); 4b em curso (§8.14) |
 | 5    | Atender pelo CRM (ligação recebida)                        | incorporada à Fase 4   |
 
 ## 1. Por que uma máquina central (o que foi descartado)
@@ -587,7 +587,7 @@ de perfis (`catalogo.ts`), decisão à parte.
   antes do prazo, inclusive o resumo — a fila de arquivos de hoje só conhece
   o `chat-media`, e o bucket novo entra nela.
 
-### 8.6 Dados (migration a partir da 1133)
+### 8.6 Dados (migration a partir da 1134: a 1133 é do Asaas)
 
 - **`cb_ligacoes`** (já existe, fechada ao navegador) ganha: `direcao`
   (`recebida`|`feita`), `pelo_crm`, `atendente_id` (autoria: `ON DELETE SET
@@ -1142,6 +1142,108 @@ depois do teste ao vivo, com teste para cada um (62 testes):
 
 Apagar o contêiner de teste pede o "pode" na hora. O cron semanal entra na
 4c.
+
+### 8.14 Plano de implementação da 4b (10/11/2026)
+
+**Objetivo:** o CRM passa a ser o dono da ligação: o banco guarda a ligação
+feita e a recebida pelo CRM, o servidor fala com a máquina (no lugar da
+bancada) e grava as gravações num bucket privado. Ainda sem tela (4c): a
+prova é por chamada direta às rotas, com o lead de teste.
+
+**Autorizado pelo operador em 10/11/2026** ("pode, tudo já autorizado"): a
+migration em produção, o `docker stack deploy` do CRM com o `crm.env` (para
+entrar na `LigacoesNet`) e o merge.
+
+**A migration (`NNNN_cb_ligacoes_pelo_crm.sql`, número = maior do `main` e do
+banco + 1; a 1133 é do Asaas):**
+
+- `cb_ligacoes` (fechada ao navegador, como na 1044) ganha:
+  - `direcao` (`recebida`|`feita`, padrão `recebida`) e `pelo_crm` (bool);
+  - `atendente_id` (o login de quem ligou ou atendeu; autoria: `ON DELETE SET
+    NULL`, 1116);
+  - `atendimento_pelo_crm_desde` — a marca do "atendimento pelo CRM em curso"
+    (§8.4, passo 4), gravada na reivindicação do "Atender" e apagada na falha;
+  - `atendida_pelo_crm_em`, `duracao_seg`, `motivo_do_fim` (o motivo da
+    máquina) e `gravacao_recebida_em`.
+  - A feita usa `call_id = 'crm:<uuid>'`: a chave `(account_id, call_id)`
+    continua. Conferir na 1044 o que é `NOT NULL` (a feita não tem `offer`).
+- `cb_computadores_de_ligacao` (FECHADA: RLS sem policy, REVOKE de `anon` e
+  `authenticated`): `channel_id` (FK para `cb_channels`, `ON DELETE CASCADE`,
+  única), `account_id`, `nome` (o do contêiner), `endereco` (URL interna),
+  `whatsapp`, `ultimo_sinal_em`, `ligacao_em_curso`, `chrome`. Fora de
+  `cb_channels` de propósito (§8.6).
+- `cb_ligacoes_ao_vivo` (LEITURA por membro na forma da 1032; escrita só pelo
+  servidor; na publicação do tempo real): `id` (= `cb_ligacoes.id`),
+  `account_id`, `channel_id`, `conversation_id` e `contact_id` SEM FK (a
+  linha é passageira; FK para conversa ou contato cairia no default-deny da
+  Lixeira e da união), `direcao`, `estado` (`tocando`, `conectando`,
+  `chamando`, `em_ligacao`), `atendente_id`, `desde`, `atualizada_em`.
+- Bucket PRIVADO `ligacoes`, sem policy para o navegador: só o servidor
+  escreve e lê (URL assinada curta para ouvir).
+- Conferências no banco vazio (seção 7 do `CLAUDE.md`): as concessões
+  conferidas nas duas metades, a policy na forma da 1032 (pino), a tabela na
+  publicação e o bucket privado.
+
+**A faixa no fio (D6 e D6b: só REGISTRO):**
+
+- A feita e a recebida atendida PELO CRM viram `messages` com `content_type
+  = 'call'`, `sender_type = 'agent'`, `sender_id` NULO e `from_device` falso:
+  para a 972 e para a pausa da IA (1118) só é "gente" o `agent` COM autor ou
+  do celular — então não apaga o "em atraso" e não pausa a IA. Não reabre, não
+  sobe a conversa, não mexe nas não lidas (o código não chama nada disso).
+  Quem ligou vai em `messages.ligacao.atendente`.
+- ⚠️ A retomada da IA (`cb_ia_reservar_envio`) para quando o `agent` fala
+  depois da âncora ("equipe_respondeu"): a faixa a pararia. Pela D6 ("não
+  pausa a IA") e pela decisão de 26/09 (a ligação não para as sequências), a
+  ligação fica fora dessa conta — conferir a última definição da função antes
+  de recriá-la.
+- Os pinos de quem escreve mensagem (`ligacoes.chamadores.test.ts`,
+  `canal-da-conversa.chamadores.test.ts`) ganham o escritor novo, com o
+  motivo.
+
+**O conserto do "atendida pelo CRM vira perdida" (§8.4, passo 4):**
+`desfechoDaLigacao` não decide "perdida" enquanto `atendimento_pelo_crm_desde`
+estiver de pé (teto de 60 s); a confirmação da máquina grava
+`atendida_pelo_crm_em` e decide "atendida" com a faixa de registro; a falha
+apaga a marca e decide pela regra de hoje. Rede de segurança: o laço lento
+decide a linha parada além do teto. Testes em `desfecho.test`/`registrar.test`.
+
+**As rotas (`src/app/api/cb/ligacoes/`):**
+
+- Do atendente (login, `requireRole('agent')`, só nas conexões que o perfil
+  vê, 400/404/409 no molde de `ai/autoreply`):
+  - `POST ligar` (conversa + oferta): só de conversa existente, 1:1, com
+    telefone; a conexão tem computador conectado e livre; até 20 por hora
+    por número (D13). Cria a ligação (`feita`, `crm:<uuid>`) e a linha ao
+    vivo, pede à máquina e devolve a resposta WebRTC.
+  - `POST [id]/atender` (oferta): reivindica a linha ao vivo (`UPDATE …
+    WHERE atendente_id IS NULL RETURNING`), grava a marca do atendimento e
+    pede à máquina.
+  - `POST [id]/desligar`.
+  - `GET [id]/gravacao`: confere o acesso à conversa e redireciona para uma
+    URL assinada curta.
+- Da máquina (segredo no cabeçalho; chegam pela `LigacoesNet`):
+  - `POST eventos`: `sinal` atualiza `cb_computadores_de_ligacao`;
+    `chamando`/`atendida`/`encerrada` andam a ligação e a linha ao vivo;
+    `encerrada` grava a faixa e apaga a linha ao vivo. Cada informação é
+    gravada uma vez só ("só se vazia").
+  - `PUT gravacao/[ligacao]/[arquivo]`: guarda no bucket privado e carimba
+    `gravacao_recebida_em`.
+- O número que vai à máquina é o do JID da conversa (o nono dígito do jeito
+  que o WhatsApp o conhece), nunca o digitado.
+- `LIGACOES_SEGREDO` no `.env.local.example`, no `environment:` da stack e no
+  `crm.env` (copiado na VPS, nunca pela conversa); os pinos `env-documentado`
+  e `stack-env`.
+
+**Na VPS:** o `crm_crm` entra na `LigacoesNet` (rede externa no
+`docker-stack.yml`, deploy pelas três linhas) e a máquina é recriada com a URL
+interna do CRM. A migration (aditiva) entra ANTES do deploy.
+
+**Pronto quando:** pelas rotas (sem tela), com o lead de teste: a feita liga,
+fala, grava e vira faixa de registro no fio (sem mexer no "em atraso", nas não
+lidas nem na IA); a recebida atendida pelo CRM sai "atendida" (não mais
+"perdida"); a gravação fica no bucket privado e toca pela URL assinada; o
+sinal de vida atualiza o computador; a bancada sai de cena.
 
 ## 9. Fase 5: atender pelo CRM
 
