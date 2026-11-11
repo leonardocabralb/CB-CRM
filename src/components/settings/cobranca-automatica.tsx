@@ -696,7 +696,9 @@ export function CobrancaAutomatica({ etapaAberta, aoAbrirEtapa }: { etapaAberta:
         </div>
       )}
 
-      <div className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center gap-2 border-t border-border bg-background/95 px-1 py-3 backdrop-blur">
+      {/* Presa pelo pé do <main>, que rola com p-4/sm:p-6: com bottom-0 ela
+          parava na borda do padding, e o conteúdo aparecia embaixo dela. */}
+      <div className="sticky -bottom-4 z-10 -mx-1 flex flex-wrap items-center gap-2 border-t border-border bg-background/95 px-1 py-3 backdrop-blur sm:-bottom-6">
         <span className="min-w-0 flex-1 text-xs text-muted-foreground">{sujo ? t("naoSalvo") : t("tudoSalvo")}</span>
         <Button type="button" variant="outline" size="sm" disabled={!sujo || salvando} onClick={() => setRascunho(RASCUNHO_VAZIO)}>
           {t("descartar")}

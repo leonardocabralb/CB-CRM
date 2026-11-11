@@ -504,9 +504,11 @@ export function DetalheDoAgente({ id }: { id: string }) {
           {aba === 'uso' ? <UsoDeIa key={e.agente.id} agenteId={e.agente.id} /> : null}
           {aba === 'turnos' ? <TurnosDoAgente key={e.agente.id} agenteId={e.agente.id} /> : null}
 
-          {/* UMA barra de salvar para as abas com rascunho (10/11/2026). */}
+          {/* UMA barra de salvar para as abas com rascunho (10/11/2026). Presa
+              pelo pé do <main> (p-4/sm:p-6): com bottom-0 ela parava na borda
+              do padding, e o conteúdo aparecia embaixo dela. */}
           {temNaoSalvo ? (
-            <div className="sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center justify-between gap-2 border-t border-amber-500/40 bg-background/95 px-4 py-2.5 backdrop-blur sm:-mx-6 sm:px-6">
+            <div className="sticky -bottom-4 z-10 -mx-4 flex flex-wrap items-center justify-between gap-2 border-t border-amber-500/40 bg-background/95 px-4 py-2.5 backdrop-blur sm:-mx-6 sm:-bottom-6 sm:px-6">
               <span className="min-w-0 text-sm text-foreground">
                 {t('detalhe.salvar.naoSalvo', { abas: naoSalvoEm.join(', ') })}
               </span>
