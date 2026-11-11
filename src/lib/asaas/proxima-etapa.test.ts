@@ -80,6 +80,15 @@ describe("proximaEtapaPrevista", () => {
     expect(proximaEtapaPrevista({ ...base, etapasLigadas: etapas, parcelas: [aVencer], travas, agora: new Date("2026-11-11T00:30:00Z") })).toBeNull();
   });
 
+  it("na segunda, o lembrete da parcela de sábado ainda está por vir — a vencer OU já marcada vencida (Codex, PR #499)", () => {
+    const segunda = { ...base, hoje: "2026-11-16", agora: new Date("2026-11-16T10:00:00Z") };
+    const etapas = [lembrete(0, "09:00")];
+    expect(proximaEtapaPrevista({ ...segunda, etapasLigadas: etapas, parcelas: [parcela({ status: "PENDING", vencimento: "2026-11-14" })] })).toEqual({ dia: "2026-11-16", hora: "09:00", tipo: "vence_hoje", marco: 0 });
+    expect(proximaEtapaPrevista({ ...segunda, etapasLigadas: etapas, parcelas: [parcela({ status: "OVERDUE", vencimento: "2026-11-14" })] })?.tipo).toBe("vence_hoje");
+    // a vencida de dia útil já passado não volta a ter lembrete
+    expect(proximaEtapaPrevista({ ...segunda, etapasLigadas: etapas, parcelas: [parcela({ status: "OVERDUE", vencimento: "2026-11-13" })] })).toBeNull();
+  });
+
   it("vencimento no sábado: o lembrete vai para a segunda", () => {
     const sabado = parcela({ status: "PENDING", vencimento: "2026-11-14" });
     expect(proximaEtapaPrevista({ ...base, etapasLigadas: [lembrete(0, "09:00")], parcelas: [sabado] })?.dia).toBe("2026-11-16");

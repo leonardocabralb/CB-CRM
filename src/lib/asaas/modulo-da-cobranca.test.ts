@@ -103,6 +103,12 @@ describe("patchesDoModulo", () => {
     expect(patchesDoModulo([comRamo], { canalId: CANAL_A })).toEqual([]);
   });
 
+  it("sem \"Enviar mensagem\" no escopo de fora, o texto não vira PATCH (nada a trocar)", () => {
+    const soNoRamo = cobranca(1, { steps: [{ id: "c", step_type: "condition", step_config: { subject: "tag_presence", operand: TAG }, branches: { yes: [msg("x")], no: [] } }] });
+    expect(derivarEstado([soNoRamo]).etapas[0].texto).toBeNull();
+    expect(patchesDoModulo([soNoRamo], { etapas: { c1: { texto: "novo" } } })).toEqual([]);
+  });
+
   it("o texto troca só o PRIMEIRO \"Enviar mensagem\"", () => {
     const a = cobranca(1, { steps: [msg("um", CANAL_A, "p1"), msg("dois", CANAL_A, "p2")] });
     const [p] = patchesDoModulo([a], { etapas: { c1: { texto: "novo" } } });

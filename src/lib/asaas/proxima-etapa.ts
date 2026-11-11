@@ -70,6 +70,18 @@ export function proximaEtapaPrevista(entrada: EntradaDaProxima): ProximaEtapa | 
   for (const p of entrada.parcelas) {
     if (entrada.clientesDesligados.has(p.asaas_customer_id)) continue;
     const classe = classificar(p.status, p.deleted);
+    // O LEMBRETE (como `cabeNoLembrete` da varredura): a vencer, ou vencida
+    // cujo lembrete foi empurrado para um dia útil depois do vencimento (a de
+    // sábado sai na segunda, já OVERDUE) — Codex, PR #499.
+    if (classe === "a_vencer" || classe === "vencida") {
+      for (const e of lembretes) {
+        if (travado("vence_hoje", e.marco, p.vencimento)) continue;
+        const dia = e.somenteDiasUteis && !ehDiaUtil(p.vencimento) ? proximoDiaUtil(p.vencimento) : p.vencimento;
+        if (dia < entrada.hoje || janelaJaFechou(dia, e, entrada)) continue;
+        if (classe === "vencida" && p.vencimento >= dia) continue;
+        considerar({ dia, hora: e.horaEnvio, tipo: "vence_hoje", marco: e.marco });
+      }
+    }
     if (ehDevida(classe)) {
       if (!entrouNaRegua(p, entrada.reguaAtivadaEm)) continue;
       for (const e of cobrancas) {
@@ -79,13 +91,6 @@ export function proximaEtapaPrevista(entrada: EntradaDaProxima): ProximaEtapa | 
         if (entrada.ultimaCobrancaDia && entrada.intervaloDias > 0 && dia < somarDias(entrada.ultimaCobrancaDia, entrada.intervaloDias)) continue;
         considerar({ dia, hora: e.horaEnvio, tipo: "atraso", marco: e.marco });
         break;
-      }
-    } else if (classe === "a_vencer" && p.vencimento >= entrada.hoje) {
-      for (const e of lembretes) {
-        if (travado("vence_hoje", e.marco, p.vencimento)) continue;
-        const dia = e.somenteDiasUteis && !ehDiaUtil(p.vencimento) ? proximoDiaUtil(p.vencimento) : p.vencimento;
-        if (janelaJaFechou(dia, e, entrada)) continue;
-        considerar({ dia, hora: e.horaEnvio, tipo: "vence_hoje", marco: e.marco });
       }
     }
   }

@@ -5561,7 +5561,9 @@
             "varias": "A person with two overdue installments, the oldest 18 days ago.",
             "empresa": "A company (CNPJ) with a one-off charge: the greeting has no name, and the charge's internal description never reaches the client."
           },
-          "previaReal": "To see it with a real client, use the editor's \"Preview\" on the left."
+          "previaReal": "To see it with a real client, use the editor's \"Preview\" on the left.",
+          "semMensagemDeFora": "This step has no message outside its conditions (it was built in the builder): edit the text there.",
+          "abrirNoConstrutor": "Open in the builder"
         },
         "recarregarFalhou": "Could not reload automatic billing: the screen may not show what is saved. Reload the page."
       }

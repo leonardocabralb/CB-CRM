@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
@@ -82,6 +83,23 @@ export function TextoDaEtapa({
       <div className="space-y-3 text-sm">
         {voltar}
         <p className="text-muted-foreground">{falhou ? t("carregarFalhou") : dados ? t("texto.naoAchada") : t("carregando")}</p>
+      </div>
+    );
+  }
+
+  // Sem "Enviar mensagem" no escopo de fora (montada só nos ramos, no
+  // construtor): não há texto que esta tela saiba trocar — nunca um Salvar
+  // que finge gravar (Codex, PR #499).
+  if (etapa.texto === null) {
+    return (
+      <div className="space-y-3 text-sm">
+        {voltar}
+        <p className="text-muted-foreground">
+          {t("texto.semMensagemDeFora")}{" "}
+          <Link href={`/automations/${automacao.id}/edit`} className="font-medium text-primary underline-offset-2 hover:underline">
+            {t("texto.abrirNoConstrutor")}
+          </Link>
+        </p>
       </div>
     );
   }

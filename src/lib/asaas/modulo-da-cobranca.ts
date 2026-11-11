@@ -314,9 +314,10 @@ function trocarCanal(passos: readonly PassoDoModulo[], canalId: string): PassoDo
   }));
 }
 
-function trocarTexto(passos: readonly PassoDoModulo[], novo: string): PassoDoModulo[] {
+/** `null` quando não há "Enviar mensagem" no escopo de fora (só nos ramos): o texto se edita no construtor. */
+function trocarTexto(passos: readonly PassoDoModulo[], novo: string): PassoDoModulo[] | null {
   const i = passos.findIndex((p) => p.step_type === "send_message");
-  if (i < 0) return [...passos];
+  if (i < 0) return null;
   return passos.map((p, j) => (j === i ? { ...p, step_config: { ...p.step_config, text: novo } } : p));
 }
 
@@ -356,8 +357,13 @@ export function patchesDoModulo(automacoes: readonly AutomacaoDoModulo[], m: Mud
     let passos: PassoDoModulo[] = a.steps;
     let mudouPassos = false;
     if (daEtapa.texto !== undefined && daEtapa.texto !== e.texto) {
-      passos = trocarTexto(passos, daEtapa.texto);
-      mudouPassos = true;
+      const comTexto = trocarTexto(passos, daEtapa.texto);
+      // Sem mensagem no escopo de fora não há o que trocar: nada de PATCH que
+      // finge salvar (Codex, PR #499) — a tela manda editar no construtor.
+      if (comTexto) {
+        passos = comTexto;
+        mudouPassos = true;
+      }
     }
     if (m.ligacao !== undefined && e.tipo === "cobranca") {
       const atual = e.ligacao;
