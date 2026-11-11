@@ -1,7 +1,7 @@
 "use client";
 
 import { format } from "date-fns";
-import { PhoneIncoming, PhoneMissed, Video } from "lucide-react";
+import { PhoneIncoming, PhoneMissed, PhoneOutgoing, Video } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
@@ -16,6 +16,11 @@ import type { Message } from "@/types";
  * `created_at` da linha: a linha nasce quando o CRM decide o desfecho, alguns
  * segundos depois do fim (ver `lib/whatsapp/ligacoes/registrar.ts`).
  *
+ * A ligação pelo CRM (1134, `detalhes.pelo_crm`) é só REGISTRO (D6/D6b):
+ * neutra, com quem ligou ou atendeu e a duração — nunca vermelha, nem a feita
+ * que o cliente não atendeu (ninguém do escritório deixou de atender). A
+ * faixa completa (▶ Ouvir, transcrição) é da 4c/4d.
+ *
  * ⚠️ A cor da perdida vive no ÍCONE e na borda, nunca no texto: o par
  * `text-red-700 dark:text-red-300` resolve para o vermelho escuro nos dois
  * modos (o variant `dark:` está inerte, ver o CLAUDE.md), e ficaria ilegível
@@ -24,6 +29,8 @@ import type { Message } from "@/types";
 export function AvisoDeLigacao({ message }: { message: Message }) {
   const t = useTranslations("Inbox.ligacao");
   const detalhes = message.ligacao ?? null;
+  const peloCrm = detalhes?.pelo_crm === true;
+  const feita = peloCrm && detalhes?.direcao === "feita";
   // Sem os detalhes (linha anterior a eles, ou gravada à mão), o lado da
   // conversa responde: a perdida é do cliente, a atendida é da equipe.
   const perdida = detalhes ? detalhes.desfecho === "perdida" : message.sender_type === "customer";
@@ -32,20 +39,32 @@ export function AvisoDeLigacao({ message }: { message: Message }) {
   const inicio = Date.parse(detalhes?.inicio ?? message.created_at);
   const hora = Number.isFinite(inicio) ? format(new Date(inicio), "HH:mm") : null;
 
-  const titulo = perdida
-    ? video
-      ? t("videoPerdida")
-      : t("vozPerdida")
-    : video
-      ? t("videoAtendida")
-      : t("vozAtendida");
+  const titulo = peloCrm
+    ? feita
+      ? t("feitaPeloCrm")
+      : t("atendidaPeloCrm")
+    : perdida
+      ? video
+        ? t("videoPerdida")
+        : t("vozPerdida")
+      : video
+        ? t("videoAtendida")
+        : t("vozAtendida");
   const partes = [titulo];
+  if (peloCrm && detalhes?.atendente?.nome) partes.push(t("por", { nome: detalhes.atendente.nome }));
   if (hora) partes.push(hora);
   if (perdida && typeof detalhes?.tocou_seg === "number") {
     partes.push(t("tocou", { segundos: detalhes.tocou_seg }));
   }
+  if (peloCrm && detalhes?.desfecho === "nao_atendida") {
+    partes.push(t("naoAtendida"));
+  } else if (peloCrm && typeof detalhes?.duracao_seg === "number") {
+    const segundos = detalhes.duracao_seg % 60;
+    const minutos = Math.floor(detalhes.duracao_seg / 60);
+    partes.push(minutos > 0 ? t("duracaoMin", { minutos, segundos }) : t("duracaoSeg", { segundos }));
+  }
 
-  const Icone = video ? Video : perdida ? PhoneMissed : PhoneIncoming;
+  const Icone = video ? Video : feita ? PhoneOutgoing : perdida ? PhoneMissed : PhoneIncoming;
 
   return (
     <div className="flex justify-center py-1">

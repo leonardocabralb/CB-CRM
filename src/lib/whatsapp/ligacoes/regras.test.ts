@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { FOLGA_DO_DESFECHO_MS, desfechoDaLigacao, segundosTocando } from './desfecho';
+import {
+  FOLGA_DO_DESFECHO_MS,
+  TETO_DO_ATENDIMENTO_PELO_CRM_MS,
+  desfechoDaLigacao,
+  segundosTocando,
+} from './desfecho';
 import { ehEncerramento, lerEventoDeLigacao } from './evento';
 import { ehLid, telefoneDoCallerPn, telefoneDoJid } from './telefone';
 
@@ -119,6 +124,33 @@ describe('desfechoDaLigacao — a régua medida em 25/09/2026', () => {
     expect(segundosTocando(null, fim)).toBeNull();
     expect(segundosTocando(fim, null)).toBeNull();
     expect(segundosTocando(fim, '2026-09-25T15:49:00.000Z')).toBeNull();
+  });
+});
+
+describe('desfechoDaLigacao — o atendimento pelo CRM (1134, §8.4 passo 4)', () => {
+  // O próprio atendimento da máquina faz o WhatsApp parar de tocar nos outros
+  // aparelhos: a Evolution manda `terminate` SEM `accept`. Medido no teste D
+  // da 4a (10/11/2026): a régua de hoje dava "perdida" ~12 s depois.
+  const fim = '2026-09-25T15:49:41.000Z';
+  const passouAFolga = new Date(AGORA - FOLGA_DO_DESFECHO_MS).toISOString();
+  const base = { atendida_em: null, encerrada_em: fim, encerramento_gravado_em: passouAFolga };
+
+  it('com a marca de pé, o terminate do próprio atendimento NÃO vira perdida: quem decide é a máquina', () => {
+    const pedido = new Date(AGORA - TETO_DO_ATENDIMENTO_PELO_CRM_MS + 1).toISOString();
+    expect(desfechoDaLigacao({ ...base, atendimento_pelo_crm_desde: pedido }, AGORA)).toBeNull();
+  });
+
+  it('a máquina confirmou: esta régua não decide nunca — nem "atendida no celular"', () => {
+    const confirmada = { ...base, atendida_em: fim, atendida_pelo_crm_em: fim };
+    expect(desfechoDaLigacao(confirmada, AGORA)).toBeNull();
+  });
+
+  it('a marca vencida (o atendimento falhou e ninguém a tirou): a régua de hoje volta', () => {
+    const pedido = new Date(AGORA - TETO_DO_ATENDIMENTO_PELO_CRM_MS).toISOString();
+    expect(desfechoDaLigacao({ ...base, atendimento_pelo_crm_desde: pedido }, AGORA)).toBe('perdida');
+    expect(desfechoDaLigacao({ ...base, atendida_em: fim, atendimento_pelo_crm_desde: pedido }, AGORA)).toBe(
+      'atendida',
+    );
   });
 });
 

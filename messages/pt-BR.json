@@ -566,6 +566,12 @@
       "vozAtendida": "Ligação de voz atendida no celular",
       "videoAtendida": "Chamada de vídeo atendida no celular",
       "tocou": "tocou {segundos} s",
+      "feitaPeloCrm": "Ligação feita pelo CRM",
+      "atendidaPeloCrm": "Ligação atendida pelo CRM",
+      "por": "por {nome}",
+      "naoAtendida": "não atendida",
+      "duracaoSeg": "{segundos} s",
+      "duracaoMin": "{minutos} min {segundos} s",
       "dicaPerdida": "O cliente ligou pelo WhatsApp e ninguém atendeu. O CRM não recebe o áudio da ligação: retorne pelo celular ou responda por mensagem.",
       "previa": "📞 Ligação"
     },
