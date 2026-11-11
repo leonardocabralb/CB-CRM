@@ -204,6 +204,9 @@ export interface EnvioDaReguaNaAba {
   detalhe: string | null;
   criadoEm: string;
   finalizadoEm: string | null;
+  /** a parcela e o cliente do Asaas da trava — a "Próxima" do servidor (1135) separa por eles; a tela não usa */
+  cobrancaId?: string | null;
+  clienteAsaas?: string | null;
 }
 
 export interface RespostaDoContato {

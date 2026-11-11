@@ -15,9 +15,11 @@
 import { paraInstante } from "@/lib/agenda/fuso";
 
 import { classificar, ehDevida, type ParcelaDoEspelho } from "./inadimplencia";
-import { diaAlvoDoMarco, ehDiaUtil, entrouNaRegua, fimDaJanela, proximoDiaUtil, somarDias, type AutomacaoDaRegua } from "./regua";
+import { aindaPagavel, diaAlvoDoMarco, ehDiaUtil, entrouNaRegua, fimDaJanela, proximoDiaUtil, somarDias, type AutomacaoDaRegua } from "./regua";
 
 export interface TravaConhecida {
+  /** a parcela travada (`cb_asaas_regua_envios.cobranca_id`); sem ela, casa pelo vencimento */
+  cobrancaId?: string | null;
   tipo: "atraso" | "vence_hoje";
   marco: number;
   vencimento: string;
@@ -44,8 +46,12 @@ export interface EntradaDaProxima {
   hoje: string;
   agora: Date;
   fuso: string;
-  /** o dia (no fuso) da última COBRANÇA que conta como enviada; `null` sem nenhuma */
-  ultimaCobrancaDia: string | null;
+  /**
+   * O dia (no fuso) da última COBRANÇA que conta como enviada, POR CLIENTE do
+   * Asaas — a varredura mede o intervalo por cliente: a cobrança de A ontem
+   * não segura a de B hoje (Codex, PR #499).
+   */
+  ultimaCobrancaPorCliente: ReadonlyMap<string, string>;
 }
 
 function antes(a: ProximaEtapa, b: ProximaEtapa): boolean {
@@ -58,8 +64,10 @@ function janelaJaFechou(dia: string, e: Pick<AutomacaoDaRegua, "tipo" | "horaEnv
 }
 
 export function proximaEtapaPrevista(entrada: EntradaDaProxima): ProximaEtapa | null {
-  const travado = (tipo: TravaConhecida["tipo"], marco: number, vencimento: string) =>
-    entrada.travas.some((t) => t.tipo === tipo && t.marco === marco && t.vencimento === vencimento);
+  // A trava é da PARCELA (o UNIQUE da 998 começa pelo `cobranca_id`): duas
+  // parcelas de clientes diferentes com o mesmo vencimento não se travam.
+  const travado = (tipo: TravaConhecida["tipo"], marco: number, p: Pick<ParcelaDoEspelho, "id" | "vencimento">) =>
+    entrada.travas.some((t) => t.tipo === tipo && t.marco === marco && t.vencimento === p.vencimento && (t.cobrancaId == null || t.cobrancaId === p.id));
   const cobrancas = entrada.etapasLigadas.filter((e) => e.tipo === "atraso").sort((a, b) => a.marco - b.marco);
   const lembretes = entrada.etapasLigadas.filter((e) => e.tipo === "vence_hoje");
   let melhor: ProximaEtapa | null = null;
@@ -75,7 +83,7 @@ export function proximaEtapaPrevista(entrada: EntradaDaProxima): ProximaEtapa | 
     // sábado sai na segunda, já OVERDUE) — Codex, PR #499.
     if (classe === "a_vencer" || classe === "vencida") {
       for (const e of lembretes) {
-        if (travado("vence_hoje", e.marco, p.vencimento)) continue;
+        if (travado("vence_hoje", e.marco, p)) continue;
         const dia = e.somenteDiasUteis && !ehDiaUtil(p.vencimento) ? proximoDiaUtil(p.vencimento) : p.vencimento;
         if (dia < entrada.hoje || janelaJaFechou(dia, e, entrada)) continue;
         if (classe === "vencida" && p.vencimento >= dia) continue;
@@ -85,10 +93,14 @@ export function proximaEtapaPrevista(entrada: EntradaDaProxima): ProximaEtapa | 
     if (ehDevida(classe)) {
       if (!entrouNaRegua(p, entrada.reguaAtivadaEm)) continue;
       for (const e of cobrancas) {
-        if (travado("atraso", e.marco, p.vencimento)) continue;
+        if (travado("atraso", e.marco, p)) continue;
         const dia = diaAlvoDoMarco(p, e.marco, { hoje: entrada.hoje, reguaAtivadaEm: entrada.reguaAtivadaEm, somenteDiasUteis: e.somenteDiasUteis, fuso: entrada.fuso });
         if (!dia || dia < entrada.hoje || janelaJaFechou(dia, e, entrada)) continue;
-        if (entrada.ultimaCobrancaDia && entrada.intervaloDias > 0 && dia < somarDias(entrada.ultimaCobrancaDia, entrada.intervaloDias)) continue;
+        const ultima = entrada.ultimaCobrancaPorCliente.get(p.asaas_customer_id);
+        if (ultima && entrada.intervaloDias > 0 && dia < somarDias(ultima, entrada.intervaloDias)) continue;
+        // A parcela que não pode mais ser paga a varredura não cobra
+        // (`aindaPagavel` em `agruparPorCliente`) — Codex, PR #499.
+        if (!aindaPagavel(p, dia)) continue;
         considerar({ dia, hora: e.horaEnvio, tipo: "atraso", marco: e.marco });
         break;
       }

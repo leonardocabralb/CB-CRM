@@ -45,7 +45,7 @@ const base: EntradaDaProxima = {
   hoje: "2026-11-10",
   agora: new Date("2026-11-10T13:00:00Z"),
   fuso: FUSO,
-  ultimaCobrancaDia: null,
+  ultimaCobrancaPorCliente: new Map(),
 };
 
 describe("proximaEtapaPrevista", () => {
@@ -59,7 +59,21 @@ describe("proximaEtapaPrevista", () => {
     const p = parcela({ vencimento: "2026-11-06", vista_vencida_em: "2026-11-07T03:00:00Z" });
     const travas = [{ tipo: "atraso" as const, marco: 1, vencimento: "2026-11-06", resultado: "enviado", criadoEm: "2026-11-10T12:00:00Z" }];
     // o de 5 dias (11/11) cai dentro dos 3 dias; o de 15 (21/11, sábado) vai para segunda, 23/11
-    expect(proximaEtapaPrevista({ ...base, parcelas: [p], travas, ultimaCobrancaDia: "2026-11-10" })).toEqual({ dia: "2026-11-23", hora: "09:00", tipo: "atraso", marco: 15 });
+    expect(proximaEtapaPrevista({ ...base, parcelas: [p], travas, ultimaCobrancaPorCliente: new Map([["cus_1", "2026-11-10"]]) })).toEqual({ dia: "2026-11-23", hora: "09:00", tipo: "atraso", marco: 15 });
+  });
+
+  it("o intervalo e a trava são do cliente e da parcela: os de A não escondem a cobrança de B (Codex, PR #499)", () => {
+    const deB = parcela({ id: "pB", asaas_customer_id: "cus_2", vencimento: "2026-11-09", vista_vencida_em: "2026-11-10T03:00:00Z" });
+    const travaDeA = [{ cobrancaId: "pA", tipo: "atraso" as const, marco: 1, vencimento: "2026-11-09", resultado: "enviado", criadoEm: "2026-11-10T12:00:00Z" }];
+    expect(proximaEtapaPrevista({ ...base, parcelas: [deB], travas: travaDeA, ultimaCobrancaPorCliente: new Map([["cus_1", "2026-11-10"]]) })).toEqual({ dia: "2026-11-10", hora: "09:00", tipo: "atraso", marco: 1 });
+  });
+
+  it("parcela que não pode mais ser paga não tem próxima cobrança (como `aindaPagavel` da varredura)", () => {
+    const naoPaga = parcela({ vencimento: "2026-11-09", vista_vencida_em: "2026-11-10T03:00:00Z", pode_pagar_apos_vencimento: false });
+    expect(proximaEtapaPrevista({ ...base, parcelas: [naoPaga] })).toBeNull();
+    const registroCai = parcela({ vencimento: "2026-11-09", vista_vencida_em: "2026-11-10T03:00:00Z", dias_ate_cancelar_registro: 2 });
+    // o de 1 dia (10/11) ainda pode; o de 5 (14/11) já não — fica o de 1
+    expect(proximaEtapaPrevista({ ...base, parcelas: [registroCai] })?.marco).toBe(1);
   });
 
   it("antes da ativação (D13), cliente fora da régua e etapa desligada: nada", () => {

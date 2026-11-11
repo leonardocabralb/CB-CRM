@@ -161,13 +161,16 @@ export interface EnvioDaRegua {
   detalhe: string | null;
   criadoEm: string;
   finalizadoEm: string | null;
+  /** a parcela e o cliente do Asaas da trava (a "Próxima" separa por eles, 1135) */
+  cobrancaId: string | null;
+  clienteAsaas: string | null;
 }
 
 /** O histórico da régua para UM contato (998): os últimos `teto` registros, mais recentes primeiro. */
 export async function lerEnviosDoContato(admin: SupabaseClient, accountId: string, contactId: string, teto = 30): Promise<EnvioDaRegua[]> {
   const { data, error } = await admin
     .from("cb_asaas_regua_envios")
-    .select("id, automation_nome, tipo, marco, vencimento, resultado, detalhe, criado_em, finalizado_em")
+    .select("id, automation_nome, tipo, marco, vencimento, resultado, detalhe, criado_em, finalizado_em, cobranca_id, asaas_customer_id")
     .eq("account_id", accountId)
     .eq("contact_id", contactId)
     .order("criado_em", { ascending: false })
@@ -176,6 +179,8 @@ export async function lerEnviosDoContato(admin: SupabaseClient, accountId: strin
   return ((data ?? []) as Record<string, unknown>[]).map((l) => ({
     id: l.id as string,
     automationNome: (l.automation_nome as string | null) ?? "",
+    cobrancaId: (l.cobranca_id as string | null) ?? null,
+    clienteAsaas: (l.asaas_customer_id as string | null) ?? null,
     tipo: l.tipo === "vence_hoje" ? "vence_hoje" : "atraso",
     marco: typeof l.marco === "number" ? l.marco : 0,
     vencimento: (l.vencimento as string | null) ?? "",

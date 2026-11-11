@@ -73,18 +73,23 @@ export async function GET(_request: Request, { params }: { params: Promise<{ con
     let proxima = null;
     if (config.regua_ativa === true && ligadas.length > 0) {
       const etapasLigadas = ligadas.map((a) => lerAutomacaoDaRegua(a)).filter((a): a is AutomacaoDaRegua => a !== null);
-      const ultimaCobranca = envios.find((e) => e.tipo === "atraso" && RESULTADOS_QUE_CONTAM_COMO_ENVIO.has(e.resultado));
+      // a última cobrança POR CLIENTE do Asaas (os envios vêm do mais recente)
+      const ultimaCobrancaPorCliente = new Map<string, string>();
+      for (const e of envios) {
+        if (e.tipo !== "atraso" || !e.clienteAsaas || !RESULTADOS_QUE_CONTAM_COMO_ENVIO.has(e.resultado) || ultimaCobrancaPorCliente.has(e.clienteAsaas)) continue;
+        ultimaCobrancaPorCliente.set(e.clienteAsaas, diaNoFuso(new Date(e.criadoEm), FUSO_PADRAO));
+      }
       proxima = proximaEtapaPrevista({
         parcelas,
         clientesDesligados: new Set(clientes.filter((c) => c.reguaDesligada).map((c) => c.asaasId)),
         etapasLigadas,
-        travas: envios.map((e) => ({ tipo: e.tipo, marco: e.marco, vencimento: e.vencimento, resultado: e.resultado, criadoEm: e.criadoEm })),
+        travas: envios.map((e) => ({ cobrancaId: e.cobrancaId ?? null, tipo: e.tipo, marco: e.marco, vencimento: e.vencimento, resultado: e.resultado, criadoEm: e.criadoEm })),
         reguaAtivadaEm: config.regua_ativada_em ?? null,
         intervaloDias: typeof config.regua_intervalo_dias === "number" ? config.regua_intervalo_dias : 3,
         hoje: diaNoFuso(agora, FUSO_PADRAO),
         agora,
         fuso: FUSO_PADRAO,
-        ultimaCobrancaDia: ultimaCobranca ? diaNoFuso(new Date(ultimaCobranca.criadoEm), FUSO_PADRAO) : null,
+        ultimaCobrancaPorCliente,
       });
     }
 
