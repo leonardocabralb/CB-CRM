@@ -138,6 +138,8 @@ export function LigacoesProvider({
   const cancelarRef = useRef(false);
   /** A rota de ligar/atender já respondeu bem (antes disso, desligar espera). */
   const respondidoRef = useRef(false);
+  /** O mudo vale também para o microfone que chega depois do clique. */
+  const mudoRef = useRef(false);
   const conexaoRef = useRef<RTCPeerConnection | null>(null);
   const microfoneRef = useRef<MediaStream | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -190,7 +192,10 @@ export function LigacoesProvider({
     const nova = faseDoEstado(linha.estado);
     const agora = Date.now();
     setMinha((m) => {
-      if (!m || m.id !== linha.id || !ativaAinda(m)) return m;
+      // Pedindo o microfone, só o próprio pedido muda a fase (Codex, #500): a
+      // linha da recebida ainda TOCA, e "Conectando" mostraria o Mudo antes
+      // de existir microfone.
+      if (!m || m.id !== linha.id || !ativaAinda(m) || m.fase === "microfone") return m;
       const fase = faseSeguinte(m.fase, nova);
       if (fase === m.fase) return m;
       return {
@@ -351,6 +356,9 @@ export function LigacoesProvider({
           throw new Cancelada();
         }
         microfoneRef.current = microfone;
+        microfone.getAudioTracks().forEach((faixa) => {
+          faixa.enabled = !mudoRef.current;
+        });
         setMinha((m) => (m ? { ...m, fase: faseSeguinte(m.fase, "conectando") } : m));
         const { conexao, oferta } = await montarOferta(microfone, tocarVozDoCliente);
         if (!vale()) {
@@ -412,6 +420,7 @@ export function LigacoesProvider({
       posseRef.current = posse;
       cancelarRef.current = false;
       respondidoRef.current = false;
+      mudoRef.current = false;
       minhaIdRef.current = null;
       setMinha({
         id: null,
@@ -447,6 +456,7 @@ export function LigacoesProvider({
       posseRef.current = posse;
       cancelarRef.current = false;
       respondidoRef.current = false;
+      mudoRef.current = false;
       minhaIdRef.current = linha.id;
       idConhecidoEmRef.current = Date.now();
       setMinha({
@@ -498,6 +508,7 @@ export function LigacoesProvider({
   const alternarMudo = useCallback(() => {
     if (!minha) return;
     const mudo = !minha.mudo;
+    mudoRef.current = mudo;
     microfoneRef.current?.getAudioTracks().forEach((faixa) => {
       faixa.enabled = !mudo;
     });
