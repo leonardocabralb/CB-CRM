@@ -5506,7 +5506,8 @@
           "incompleta": "Para pedir a ligação: um limite, alguém marcado, a etiqueta e o texto.",
           "pendentes": "{n, plural, =0 {Nenhum cliente esperando ligação agora.} one {Um cliente esperando ligação agora (com a etiqueta).} other {# clientes esperando ligação agora (com a etiqueta).}}",
           "desligada": "Desligado: a régua não pede ligação a ninguém.",
-          "vaiDesligar": "Ao salvar, o pedido de ligação sai de todas as cobranças."
+          "vaiDesligar": "Ao salvar, o pedido de ligação sai de todas as cobranças.",
+          "semCobranca": "Só as cobranças pedem ligação: crie uma cobrança para configurar."
         },
         "excecoes": {
           "titulo": "Quem não recebe",

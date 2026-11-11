@@ -140,6 +140,9 @@ export function CobrancaAutomatica({ etapaAberta, aoAbrirEtapa }: { etapaAberta:
   // não têm onde ser gravados (salvar faria zero PATCHes e diria "salvo"):
   // escolhem-se depois de criar as etapas (Codex, PR #499).
   const semEtapas = estado.etapas.length === 0;
+  // O "Pedir ligação" só vai às COBRANÇAS (`patchesDoModulo`): só com
+  // lembretes, salvar também não gravaria nada.
+  const semCobranca = !estado.etapas.some((e) => e.tipo === "cobranca");
 
   const sujo =
     rascunho.canalId !== undefined ||
@@ -599,8 +602,9 @@ export function CobrancaAutomatica({ etapaAberta, aoAbrirEtapa }: { etapaAberta:
       <Secao
         titulo={t("ligacao.titulo")}
         desc={t("ligacao.desc")}
-        direita={<Switch checked={ligacaoLigada} disabled={semEtapas} onCheckedChange={(v) => ligarLigacao(!!v)} aria-label={t("ligacao.titulo")} />}
+        direita={<Switch checked={ligacaoLigada} disabled={semCobranca} onCheckedChange={(v) => ligarLigacao(!!v)} aria-label={t("ligacao.titulo")} />}
       >
+        {semCobranca && !semEtapas && <p className="text-xs text-muted-foreground">{t("ligacao.semCobranca")}</p>}
         {estado.ligacao.tipo === "diferente" && rascunho.ligacao === undefined && <p className="text-xs text-amber-700">{t("ligacao.diferente")}</p>}
         {estado.etapas.some((e) => e.ligacaoAMao) && <p className="text-xs text-amber-700">{t("ligacao.aMao", { etapas: estado.etapas.filter((e) => e.ligacaoAMao).map((e) => rotuloDaEtapa(e, t)).join(", ") })}</p>}
         {ligacaoAtual ? (

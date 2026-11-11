@@ -46,7 +46,8 @@ decisões: `docs/PLANO-integracao-asaas.md` §13.
   "vários"/"misto" e a etapa ligada fugia da regra.
 - Sem etapa nenhuma, número, quem assina, dias úteis e o "Pedir ligação"
   ficam DESABILITADOS: salvar faria zero PATCHes e diria "salvo". Escolhem-se
-  depois de criar as etapas.
+  depois de criar as etapas. O "Pedir ligação" pede alguma COBRANÇA (só com
+  lembretes, também não grava nada).
 
 ### "Pedir ligação à equipe"
 
@@ -85,6 +86,9 @@ decisões: `docs/PLANO-integracao-asaas.md` §13.
   cliente com muitas parcelas passa disso); no teto dela, a previsão some.
   Quem tem marco de cobrança no dia não tem o lembrete do DIA naquele dia (a
   cobrança absorve, `agruparLembretes`): as cobranças são calculadas primeiro.
+  Limite conhecido: dois marcos adiados para o MESMO dia útil (marcos
+  vizinhos, feriado longo) mostram o menor, e a varredura manda o maior — o
+  dia e a hora batem, só o nome da etapa difere.
 - Números que falham (`envios7d`, `ligacoesPendentes`) vêm `null` e SOMEM,
   nunca 0. A prévia por caso usa `montarVariaveis` com parcelas fictícias
   (`previa-da-regua.ts`); a com cliente real é a do construtor.
