@@ -735,6 +735,11 @@ export interface DetalhesDaLigacao {
   motivo?: string | null;
   /** A gravação chegou ao CRM (bucket privado `ligacoes`). */
   gravacao?: boolean;
+  /**
+   * O `cb_ligacoes.id` (4c): o ▶ da faixa ouve por
+   * `/api/cb/ligacoes/<ligacao_id>/gravacao`. As faixas da 4b não o têm.
+   */
+  ligacao_id?: string;
 }
 export type MessageStatus =
   'sending' | 'sent' | 'delivered' | 'read' | 'failed';

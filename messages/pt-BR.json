@@ -574,7 +574,10 @@
       "duracaoSeg": "{segundos} s",
       "duracaoMin": "{minutos} min {segundos} s",
       "dicaPerdida": "O cliente ligou pelo WhatsApp e ninguém atendeu. O CRM não recebe o áudio da ligação: retorne pelo celular ou responda por mensagem.",
-      "previa": "📞 Ligação"
+      "previa": "📞 Ligação",
+      "ouvir": "Ouvir",
+      "ouvirDica": "Ouvir a gravação da ligação",
+      "fecharGravacao": "Fechar a gravação"
     },
     "audioPlayer": {
       "tocar": "Reproduzir áudio",
@@ -8218,6 +8221,7 @@
     "poderesHint": "O papel vale na conta inteira. As telas e a área abaixo só recortam o que aparece — marcar uma área nunca dá poder de mexer nela.",
     "poderes": {
       "send-messages": "Responder clientes no WhatsApp",
+      "make-calls": "Ligar e atender pelo WhatsApp no CRM (nos números do perfil que têm computador de ligações)",
       "write-notes": "Escrever anotações internas",
       "manage-deals": "Mover negócios no funil (criar e apagar funis é do Administrador)",
       "view-reports": "Ver os relatórios do funil: lista de leads, Desempenho e Saúde",
@@ -8536,5 +8540,75 @@
     "corrigir": "Corrigir",
     "verOutrosDias": "Ver as {n} de outros dias",
     "esconderOutrosDias": "Esconder"
+  },
+  "Ligacoes": {
+    "botao": {
+      "ligar": "Ligar pelo WhatsApp",
+      "grupo": "Não dá para ligar para um grupo",
+      "sem_telefone": "Este contato não tem telefone de WhatsApp",
+      "sem_poder": "Seu perfil não liga pelo CRM",
+      "computador_fora": "O computador de ligações deste número está fora do ar",
+      "sem_whatsapp": "O WhatsApp do computador de ligações deste número está desconectado",
+      "em_outra_ligacao": "Você já está numa ligação",
+      "linha_ocupada": "Este número já está numa ligação",
+      "linha_ocupadaCom": "Este número está numa ligação com {nome}",
+      "tocando_agora": "Há uma ligação tocando neste número agora"
+    },
+    "painel": {
+      "microfone": "Permita o microfone…",
+      "conectando": "Conectando o áudio…",
+      "chamando": "Chamando…",
+      "emLigacao": "Em ligação",
+      "gravando": "Gravando",
+      "encerrada": "Encerrada",
+      "naoAtendida": "Não atendida",
+      "desligando": "Desligando…",
+      "mudo": "Silenciar o microfone",
+      "comSom": "Ligar o microfone",
+      "desligar": "Desligar",
+      "abrirConversa": "Abrir conversa",
+      "fechar": "Fechar",
+      "avisoDoFim": "A ligação encerra sozinha aos 30 minutos",
+      "duracaoSeg": "{segundos} s",
+      "duracaoMin": "{minutos} min {segundos} s",
+      "erroAoDesligar": "Não foi possível desligar. Tente de novo."
+    },
+    "recusa": {
+      "grupo": "Não dá para ligar para um grupo.",
+      "conversa_nao_encontrada": "A conversa não foi encontrada.",
+      "conversa_sem_numero": "A conversa ainda não tem um número do escritório. Fixe o número no cabeçalho e tente de novo.",
+      "sem_computador": "Este número não tem computador de ligações.",
+      "computador_fora": "O computador de ligações deste número está fora do ar.",
+      "sem_telefone": "Não achamos o telefone de WhatsApp deste contato.",
+      "tocando_agora": "Há uma ligação tocando neste número agora. Atenda ou espere ela acabar.",
+      "ocupada": "Este número já está numa ligação.",
+      "limite_por_hora": "Limite de 20 ligações por hora neste número. Espere um pouco.",
+      "ja_atendida": "Outra pessoa já atendeu esta ligação.",
+      "ja_encerrada": "Esta ligação já acabou.",
+      "nao_esta_tocando": "Esta ligação não está mais tocando.",
+      "sem_resposta_webrtc": "O computador de ligações não montou o áudio. Tente de novo.",
+      "ligacoes_nao_configuradas": "As ligações pelo CRM não estão configuradas nesta instalação.",
+      "whatsapp_desconectado": "O WhatsApp do computador de ligações está desconectado.",
+      "outra_chamada": "O computador de ligações está com outra chamada na tela.",
+      "nada_tocando": "A ligação parou de tocar antes de ser atendida.",
+      "sem_resposta": "O computador de ligações não respondeu. Tente de novo.",
+      "microfone_negado": "O navegador não deixou usar o microfone. Libere o microfone para este site e tente de novo.",
+      "microfone_indisponivel": "Nenhum microfone disponível neste computador.",
+      "audio_falhou": "Não foi possível montar o áudio da ligação.",
+      "rede": "A ligação não confirmou: o CRM não respondeu. Se ela começou, cai sozinha em alguns segundos.",
+      "desconhecida": "A ligação não saiu. Tente de novo."
+    },
+    "toque": {
+      "titulo": "Ligação no WhatsApp",
+      "celularTambem": "Tocando também no celular do escritório",
+      "atender": "Atender",
+      "silenciar": "Silenciar",
+      "silenciada": "Toque silenciado",
+      "atendidaPor": "Atendida por {nome}",
+      "atendidaPorAlguem": "Atendida por outra pessoa",
+      "numeroDesconhecido": "Número desconhecido",
+      "emOutraLigacao": "Você já está numa ligação",
+      "notificacao": "{quem} está ligando pelo {conexao}"
+    }
   }
 }

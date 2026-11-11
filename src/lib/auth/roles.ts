@@ -95,6 +95,17 @@ export function canSendMessages(role: AccountRole): boolean {
 }
 
 /**
+ * Agent+: LIGAR e ATENDER pelo computador de ligações (4c,
+ * `docs/PLANO-ligar-pelo-crm.md` §8.1: "a partir do papel de atendente, como
+ * enviar mensagem"). Par no servidor: `requireRole('agent')` nas rotas de
+ * `/api/cb/ligacoes/` (ligar, atender, desligar). Predicado PRÓPRIO, e não o
+ * `canSendMessages`, para o editor de perfis listar o poder com o nome dele.
+ */
+export function canMakeCalls(role: AccountRole): boolean {
+  return hasMinRole(role, "agent");
+}
+
+/**
  * Viewer: read-only across everything. Provided as a positive
  * predicate so UI gates read naturally (`if (canViewOnly(role))`
  * shows the "Read-only" tooltip without inverting `canSendMessages`).

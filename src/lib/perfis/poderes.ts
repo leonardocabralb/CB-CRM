@@ -20,6 +20,7 @@ import {
   canDecideDuplicates,
   canDeleteContacts,
   canEditSettings,
+  canMakeCalls,
   canManageAutomations,
   canManageMembers,
   canSendMessages,
@@ -52,6 +53,7 @@ import type { PapelBase } from "./tipos";
  */
 export type PoderId =
   | "send-messages"
+  | "make-calls"
   | "write-notes"
   | "manage-deals"
   | "view-reports"
@@ -81,6 +83,9 @@ export const PODERES: readonly {
   permite: (papel: PapelBase) => boolean;
 }[] = [
   { id: "send-messages", permite: canSendMessages },
+  // 4c (ligar pelo CRM): ligar e atender pelo computador de ligações, só nas
+  // conexões que o perfil vê — o rótulo diz isso.
+  { id: "make-calls", permite: canMakeCalls },
   { id: "write-notes", permite: canWriteNotes },
   // Mover card, mudar etapa, criar negócio: a policy de `deals` é 'agent'
   // (017). O FUNIL em si (criar, renomear, apagar etapa) é 'admin', e o

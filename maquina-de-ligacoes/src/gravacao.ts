@@ -12,9 +12,23 @@
  *
  * O envio: a máquina manda cada arquivo ao CRM, que o guarda no Storage (a
  * chave do Supabase nunca vem para cá); com o "recebido", apaga a cópia dela.
+ *
+ * ⚠️ MEDIDO em 11/11/2026 (a 4b gravou 19 s de uma ligação de 24 s): o ffmpeg
+ * aberto no "atendeu" perdia o começo (ele leva segundos para subir dentro do
+ * contêiner, e a 2ª entrada abre ~1,3 s depois da 1ª) e o SIGINT perdia os
+ * ~2 s finais, que ainda estavam a caminho. A sondagem (`-analyzeduration`) e
+ * o fragmento do PulseAudio não mudam nada. Por isso:
+ * - o ffmpeg abre no COMEÇO do pedido (ligar/atender, antes da ponte), e o que
+ *   veio antes do atendimento sai no fim por um corte (`-ss`, cópia do fluxo).
+ *   O corte usa o carimbo de início que o ffmpeg imprime de cada entrada
+ *   (`start:`, relógio de parede — o demuxer do PulseAudio carimba por ele):
+ *   o segundo do arquivo é "relógio − start" (conferido com um tom: erro de
+ *   ~0,3 s). Sem o carimbo, a gravação fica inteira;
+ * - parar espera a CAUDA antes do SIGINT;
+ * - sem atendimento, nada fica: a pasta é apagada.
  */
 import { spawn } from 'node:child_process'
-import { mkdir, readFile, readdir, rm, rmdir, stat } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rename, rm, rmdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 
 export const PASTA_DAS_GRAVACOES = '/gravacoes'
@@ -26,6 +40,80 @@ const FONTE_DO_ATENDENTE = 'entrada_mic.monitor'
 const ESPERA_DO_FFMPEG_MS = 10_000
 const TEMPO_DO_ENVIO_MS = 60_000
 const ID_DA_LIGACAO = /^[A-Za-z0-9-]{1,64}$/
+/** Os ~2 s finais que o SIGINT perdia, com folga (medido em 11/11/2026). */
+export const CAUDA_MS = 2_500
+/**
+ * O que fica de antes do atendimento: o "atendeu" da tela chega com até um
+ * tique de atraso, e o "Alô" do cliente não pode sair cortado.
+ */
+export const MARGEM_DO_CORTE_MS = 1_500
+/** Carimbo plausível de relógio de parede (depois de 2020), em ms. */
+const RELOGIO_MINIMO_MS = 1_600_000_000_000
+
+/** Uma gravação em curso. */
+export interface Gravacao {
+  /**
+   * Para e deixa os arquivos prontos para o envio. `atendidaEm` (relógio
+   * desta máquina, ms): o que veio antes dele (menos a margem) sai; nulo =
+   * ninguém atendeu, e a pasta é apagada.
+   */
+  parar(atendidaEm: number | null): Promise<void>
+}
+
+/**
+ * O início de cada entrada (ms de relógio de parede), lido da saída do ffmpeg
+ * com `-loglevel info`: `Input #1, pulse, from '…':` e, logo abaixo,
+ * `Duration: N/A, start: 1794402557.954830, bitrate: …`. Nulo = não veio.
+ */
+export function iniciosDasEntradas(linhas: readonly string[]): [number | null, number | null] {
+  const inicios: [number | null, number | null] = [null, null]
+  let entrada: number | null = null
+  for (const linha of linhas) {
+    const cabeca = /Input #(\d+),/.exec(linha)
+    if (cabeca) {
+      entrada = Number(cabeca[1])
+      continue
+    }
+    const inicio = /\bstart: (\d+(?:\.\d+)?)/.exec(linha)
+    if (!inicio || (entrada !== 0 && entrada !== 1) || inicios[entrada] !== null) continue
+    const ms = Math.round(Number(inicio[1]) * 1000)
+    if (Number.isFinite(ms) && ms > RELOGIO_MINIMO_MS) inicios[entrada] = ms
+  }
+  return inicios
+}
+
+/**
+ * Quantos segundos cortar do começo de um arquivo cuja entrada começou em
+ * `inicioMs`. Nulo = nada a cortar (menos de 0,2 s) ou sem como saber.
+ */
+export function segundosACortar(atendidaEm: number, inicioMs: number | null): number | null {
+  if (inicioMs === null) return null
+  const segundos = (atendidaEm - MARGEM_DO_CORTE_MS - inicioMs) / 1000
+  // Mais de uma hora antes do atendimento não é uma ligação: o carimbo mente.
+  if (!(segundos > 0.2) || segundos > 3600) return null
+  return Math.round(segundos * 1000) / 1000
+}
+
+export function argumentosDoCorte(origem: string, destino: string, segundos: number): string[] {
+  return ['-hide_banner', '-loglevel', 'error', '-ss', segundos.toFixed(3), '-i', origem, '-c', 'copy', '-y', destino]
+}
+
+/** Corta o começo de um arquivo no lugar; falhou, o arquivo fica inteiro. Nunca lança. */
+async function cortarInicio(caminho: string, segundos: number, registrar: (linha: string) => void): Promise<void> {
+  const provisorio = `${caminho}.corte.ogg`
+  const ok = await new Promise<boolean>((pronto) => {
+    const corte = spawn('ffmpeg', argumentosDoCorte(caminho, provisorio, segundos), { stdio: 'ignore' })
+    corte.once('error', () => pronto(false))
+    corte.once('exit', (codigo) => pronto(codigo === 0))
+  })
+  try {
+    if (ok && (await stat(provisorio)).size > 0) return await rename(provisorio, caminho)
+    registrar(`gravação: o corte de ${caminho} falhou; fica inteira`)
+  } catch (erro) {
+    registrar(`gravação: o corte de ${caminho} falhou (${erro instanceof Error ? erro.message : String(erro)}); fica inteira`)
+  }
+  await rm(provisorio, { force: true }).catch(() => {})
+}
 
 export function argumentosDoFfmpeg(pasta: string): string[] {
   // A fila de 8 quadros do padrão encheu na ligação recebida de 10/11 ("Thread
@@ -46,8 +134,11 @@ export function argumentosDoFfmpeg(pasta: string): string[] {
   const opus = (kbps: number) => ['-c:a', 'libopus', '-b:a', `${kbps}k`, '-application', 'voip']
   return [
     '-hide_banner',
+    // `info` imprime o início de cada entrada (`start:`), de onde sai o corte
+    // do que veio antes do atendimento; `-nostats` cala o progresso.
+    '-nostats',
     '-loglevel',
-    'warning',
+    'info',
     ...entrada(FONTE_DO_CLIENTE),
     ...entrada(FONTE_DO_ATENDENTE),
     '-filter_complex',
@@ -71,25 +162,57 @@ export async function comecarGravacao(
   ligacao: string,
   registrar: (linha: string) => void,
   base: string = PASTA_DAS_GRAVACOES,
-): Promise<{ parar(): Promise<void> }> {
+  esperar: (ms: number) => Promise<void> = (ms) => new Promise((pronto) => setTimeout(pronto, ms)),
+): Promise<Gravacao> {
   if (!ID_DA_LIGACAO.test(ligacao)) throw new Error('id de ligação inválido')
   const pasta = join(base, ligacao)
   await mkdir(pasta, { recursive: true })
   const ffmpeg = spawn('ffmpeg', argumentosDoFfmpeg(pasta), { stdio: ['ignore', 'ignore', 'pipe'] })
+  // Só as linhas dos inícios ficam guardadas (o resto vai ao registro).
+  const doInicio: string[] = []
+  let pedaco = ''
   ffmpeg.stderr.setEncoding('utf8')
   ffmpeg.stderr.on('data', (texto: string) => {
-    for (const linha of texto.split('\n')) if (linha.trim()) registrar(`ffmpeg: ${linha.trim()}`)
+    // A linha pode chegar partida entre dois pedaços: o resto espera o próximo.
+    const linhas = (pedaco + texto).split('\n')
+    pedaco = linhas.pop() ?? ''
+    for (const crua of linhas) {
+      const linha = crua.trim()
+      if (!linha) continue
+      if (/Input #\d+,|\bstart: /.test(linha) && doInicio.length < 20) doInicio.push(linha)
+      registrar(`ffmpeg: ${linha}`)
+    }
   })
+  const vivo = () => ffmpeg.exitCode === null && ffmpeg.signalCode === null
   const fim = new Promise<void>((pronto) => ffmpeg.once('exit', () => pronto()))
   ffmpeg.once('error', (erro) => registrar(`ffmpeg não abriu: ${erro.message}`))
   return {
-    async parar() {
-      if (ffmpeg.exitCode !== null || ffmpeg.signalCode !== null) return
-      // SIGINT: o ffmpeg fecha os arquivos direito (o SIGKILL deixaria o fim cortado).
-      ffmpeg.kill('SIGINT')
-      const teto = setTimeout(() => ffmpeg.kill('SIGKILL'), ESPERA_DO_FFMPEG_MS)
-      await fim
-      clearTimeout(teto)
+    async parar(atendidaEm) {
+      // Atendida: grava a cauda que ainda está a caminho antes de parar.
+      if (atendidaEm !== null && vivo()) await esperar(CAUDA_MS)
+      if (vivo()) {
+        // SIGINT: o ffmpeg fecha os arquivos direito (o SIGKILL deixaria o fim cortado).
+        ffmpeg.kill('SIGINT')
+        const teto = setTimeout(() => ffmpeg.kill('SIGKILL'), ESPERA_DO_FFMPEG_MS)
+        await fim
+        clearTimeout(teto)
+      }
+      if (atendidaEm === null) {
+        // Ninguém atendeu: não há conversa a guardar (só o toque e o atendente).
+        await rm(pasta, { recursive: true, force: true }).catch(() => {})
+        return
+      }
+      const inicios = iniciosDasEntradas(pedaco ? [...doInicio, pedaco] : doInicio)
+      for (const nome of ARQUIVOS_DA_GRAVACAO) {
+        // O estéreo segue a 1ª entrada (o cliente); o atendente, a 2ª.
+        const inicio = inicios[nome === 'atendente.ogg' ? 1 : 0]
+        if (inicio === null) {
+          registrar(`gravação ${ligacao}/${nome}: sem o início do ffmpeg; fica inteira`)
+          continue
+        }
+        const segundos = segundosACortar(atendidaEm, inicio)
+        if (segundos !== null) await cortarInicio(join(pasta, nome), segundos, registrar)
+      }
     },
   }
 }

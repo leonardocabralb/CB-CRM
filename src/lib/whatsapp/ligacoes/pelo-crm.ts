@@ -819,6 +819,9 @@ async function gravarFaixa(
           duracao_seg: fim.duracaoSeg,
           motivo: fim.motivo,
           gravacao: linha.gravacao_recebida_em !== null,
+          // O ▶ da faixa (4c) pede a gravação por ele
+          // (`/api/cb/ligacoes/<id>/gravacao`): a mensagem não sabe a linha.
+          ligacao_id: linha.id,
         },
       })
       .select('id')

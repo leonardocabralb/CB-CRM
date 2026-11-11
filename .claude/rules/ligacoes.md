@@ -7,6 +7,11 @@ paths:
   - "docs/PLANO-ligar-pelo-crm.md"
   - "maquina-de-ligacoes/**"
   - "ops/vps/ligacoes/**"
+  - "src/components/ligacoes/**"
+  - "src/lib/ligacoes/**"
+  - "src/hooks/use-computadores-de-ligacao*"
+  - "src/hooks/use-nomes-da-ligacao*"
+  - "src/app/api/cb/ligacoes/**"
 ---
 
 # Ligações de WhatsApp — regras
@@ -18,7 +23,7 @@ I/O), o ramo `call` da rota do webhook da Evolution, a faixa
 medições e decisões do operador: `docs/PLANO-ligacoes-do-whatsapp.md`. As
 obrigações gerais de caminho de entrada estão em `.claude/rules/ingestao.md`.
 
-## Ligar pelo CRM (4a e 4b no ar; tela na 4c)
+## Ligar pelo CRM (4a, 4b e 4c — a tela; a 4d transcreve)
 
 - ⚠️ **Solução NÃO oficial, por decisão do operador (10/11/2026):** nem a
   API de ligações da Meta nem a Wavoip. O caminho é uma máquina central com
@@ -39,7 +44,19 @@ desenho: §8.12 e §8.13 do plano.
   número. A caixa de areia exige o perfil `seccomp/chrome.json`,
   `no-new-privileges` e só `SYS_CHROOT` (medido: o Swarm não aceita perfil
   seccomp). Rede `LigacoesNet`, nunca a `CBAdvNet`; nenhuma porta publicada.
-  Tudo em `ops/vps/ligacoes/criar-maquina.sh`.
+  Tudo em `ops/vps/ligacoes/criar-maquina.sh`. A imagem é REMONTADA toda
+  semana com o Chrome do dia (`atualizar-maquinas.sh`, cron de domingo): só
+  com a linha livre, devolvendo o contêiner ao estado em que estava e
+  voltando à imagem anterior se a nova não responder.
+- ⚠️⚠️ **A gravação abre no COMEÇO do pedido** (ligar/atender, antes da
+  ponte) e o que veio antes do atendimento sai num corte (`-ss`, cópia do
+  fluxo) pelo carimbo `start:` que o ffmpeg imprime de cada entrada (relógio
+  de parede: segundo do arquivo = relógio − start). Medido em 11/11/2026:
+  aberto no "atendeu", o ffmpeg perdia o começo (segundos para subir), e o
+  SIGINT perdia os ~2 s finais — por isso `parar` espera a CAUDA. Sondagem e
+  fragmento do PulseAudio NÃO mudam nada. Sem atendimento, a pasta é
+  apagada. O "encerrada" vai ao CRM antes de a gravação fechar; a linha fica
+  ocupada até ela fechar (a cauda de uma não pode ter a voz da seguinte).
 - ⚠️⚠️ **Um perfil por contêiner, nunca dois no mesmo `/perfil`**: a trava do
   Chrome é apagada no `iniciar.sh`, e dois Chromes na mesma sessão a
   corrompem.
@@ -135,6 +152,51 @@ desenho: §8.12 e §8.13 do plano.
   recebida, o resolvido no `offer` (`cb_ligacoes_ao_vivo.telefone`). O
   recorte de conexões do perfil NÃO é conferido nas rotas, como em todo o
   projeto (`cb/conversas/abrir`): a tela da 4c mostra o botão só onde pode.
+- A faixa leva `ligacao.ligacao_id` (4c): é por ele que o ▶ ouve. As faixas da
+  4b não o têm (e as gravações delas foram apagadas).
+
+## A tela (4c: `src/components/ligacoes/`, `src/lib/ligacoes/`)
+
+- **O provedor mora na CASCA** (`dashboard-shell.tsx`, dentro da porta de
+  entrada, `ativo` só depois do "Continuar"): trocar de tela não derruba a
+  ligação. O painel, o cartão que toca e o `<audio>` da voz do cliente saem
+  dele; o "Ligar" do fio o chama pelo contexto (fora dele, o botão some).
+- ⚠️ **A oferta WebRTC se monta NO CLIQUE** (`audio-da-ligacao.ts`), com os
+  candidatos dentro dela: a de 13 min falhou na 4b (o endereço público do
+  NAT expira). A rota leva ~5 s (a ponte da máquina): o painel diz
+  "Conectando o áudio…".
+- ⚠️ **A linha ao vivo pelo tempo real, com releitura**: ao assinar, a cada
+  reconexão e a cada 20 s com ligação na tela. O DELETE traz só a chave (RLS):
+  o id apagado não volta numa releitura atrasada, e a linha que o tempo real
+  trouxe DEPOIS de a releitura sair vale mais que ela (`releituraAoVivo`) —
+  senão o toque que acabou de chegar sumia da tela. A releitura só conclui
+  "a minha acabou" se saiu depois de o id da ligação ser conhecido.
+- **Uma ligação por aba, sob trinco de POSSE** (`posseRef`): todo `await` de
+  ligar/atender confere se a ligação ainda é a mesma. Desligar antes de a rota
+  responder fica pendente e é feito quando ela responde (na recebida, antes
+  disso daria `ainda_tocando`). A fase só ANDA (`faseSeguinte`), e a linha que
+  OUTRA pessoa reivindicou não move o meu painel. ⚠️ O provedor DESMONTA
+  quando a casca mostra o spinner (login, "Ver como" começando): a posse cai,
+  o pedido pendente solta o microfone e a ligação que já existe é desligada
+  (Codex, #500) — nunca uma ligação sem tela.
+- **O botão** (`decidirBotaoLigar`) aparece só onde o `channel_id` CRU da
+  conversa tem computador (o mesmo número que a rota usa) e fica desligado
+  com o porquê (grupo, sem telefone, papel, computador fora ou sem WhatsApp,
+  já em ligação, linha ocupada "com Ana", tocando agora). ⚠️ A lista de
+  computadores (`/api/cb/ligacoes/computadores`, uma por aba, por minuto)
+  carregando ou que FALHOU = sem botão, nunca desligado afirmando "fora do
+  ar". Desligado por `aria-disabled`, para a dica do `title` aparecer.
+- **O cartão que toca**: recebida `tocando` nas conexões do perfil REAL (como
+  o aviso do navegador: o "Ver como" não cala uma ligação de verdade), papel
+  de atendente. Atender e Silenciar, NUNCA Recusar (D12). O toque é um laço
+  do Web Audio que só UMA aba toca (`navigator.locks`; a aba sem clique nem
+  entra na fila, senão seguraria a vez muda). Silenciar vale para as minhas
+  abas (localStorage). Com a aba escondida, o aviso do sistema para quem ligou
+  o aviso do navegador. Toque de mais de 3 min não toca.
+- **O poder é `make-calls`** (`canMakeCalls`, agent+, no editor de perfis);
+  o perfil não tem seção própria (decisão à parte, §8.1 do plano).
+- A faixa abre o player do fio (▶ Ouvir) pela ROTA estável
+  (`/api/cb/ligacoes/<id>/gravacao`), nunca pela URL assinada.
 
 ## O aviso CALL
 

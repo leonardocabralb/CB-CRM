@@ -28,6 +28,7 @@ import type {
   Resultado,
   ServidorIce,
 } from './tipos.js'
+import type { Gravacao } from './gravacao.js'
 
 export const TETO_DA_LIGACAO_MS = 30 * 60_000
 /** Teto contado desde o PEDIDO: se a tela de "em curso" mudar e o atendimento nunca for visto, ainda há teto. */
@@ -65,7 +66,12 @@ export interface Ponte {
 }
 
 export interface Gravador {
-  comecar(ligacao: string): Promise<{ parar(): Promise<void> }>
+  /**
+   * Abre o ffmpeg no COMEÇO do pedido (antes da ponte): ele leva segundos
+   * para subir, e aberto no "atendeu" perdia o começo da conversa
+   * (`gravacao.ts`). O que vem antes do atendimento sai no `parar`.
+   */
+  comecar(ligacao: string): Promise<Gravacao>
 }
 
 export interface Dependencias {
@@ -135,7 +141,7 @@ export class Maquina {
   private rede = 'new'
   private redeCaiuEm: number | null = null
   private semChamadaDesde: number | null = null
-  private gravacao: { parar(): Promise<void> } | null = null
+  private gravacao: Gravacao | null = null
   private versaoDoChrome = ''
   private telaSemRespostaDesde: number | null = null
   /**
@@ -180,8 +186,12 @@ export class Maquina {
     if (this.estadoDoWhatsapp !== 'conectado') return { ok: false, recusa: 'whatsapp_desconectado' }
     this.pedidoEmCurso = true
     const atual = this.nova(pedido, 'feita')
+    await this.comecarAGravar(atual)
     const resposta = await this.conectarPonte(atual, pedido)
-    if (resposta === null) return this.soltar({ ok: false, recusa: 'oferta_invalida' })
+    if (resposta === null) {
+      await this.descartarGravacao()
+      return this.soltar({ ok: false, recusa: 'oferta_invalida' })
+    }
     void this.seguir(atual, async () => {
       const discou = await this.d.whatsapp.discar(pedido.numero)
       if (discou === 'sem_whatsapp') {
@@ -223,8 +233,12 @@ export class Maquina {
       return this.soltar({ ok: false, recusa: 'outra_chamada' })
     }
     const quem = chamada.quem
+    await this.comecarAGravar(atual)
     const resposta = await this.conectarPonte(atual, pedido)
-    if (resposta === null) return this.soltar({ ok: false, recusa: 'oferta_invalida' })
+    if (resposta === null) {
+      await this.descartarGravacao()
+      return this.soltar({ ok: false, recusa: 'oferta_invalida' })
+    }
     void this.seguir(atual, async () => {
       // A ponte leva uns segundos: o cliente pode ter desistido e OUTRA pessoa
       // estar tocando. O `aceitar` relê a tela e só aceita o mesmo `quem`.
@@ -405,10 +419,33 @@ export class Maquina {
     atual.fase = 'em_ligacao'
     atual.atendidaEm = this.d.agora()
     this.d.avisar({ tipo: 'atendida', ligacao: atual.id, atendida_em: new Date(atual.atendidaEm).toISOString() })
+  }
+
+  /** A gravação abre no começo do pedido (ver `Gravador`). Nunca lança. */
+  private async comecarAGravar(atual: Atual): Promise<void> {
+    let gravacao: Gravacao
     try {
-      this.gravacao = await this.d.gravador.comecar(atual.id)
+      gravacao = await this.d.gravador.comecar(atual.id)
     } catch (erro) {
       this.d.registrar(`a gravação não começou: ${mensagem(erro)}`)
+      return
+    }
+    // Acabou enquanto o ffmpeg abria (o desligar no meio): nada a guardar.
+    if (this.atual !== atual || atual.fase === 'encerrando') {
+      await gravacao.parar(null).catch((erro: unknown) => this.d.registrar(`a gravação não fechou: ${mensagem(erro)}`))
+      return
+    }
+    this.gravacao = gravacao
+  }
+
+  /** O pedido que não virou ligação: a gravação sai sem guardar nada. */
+  private async descartarGravacao(): Promise<void> {
+    const gravacao = this.gravacao
+    this.gravacao = null
+    try {
+      await gravacao?.parar(null)
+    } catch (erro) {
+      this.d.registrar(`a gravação não fechou: ${mensagem(erro)}`)
     }
   }
 
@@ -434,24 +471,17 @@ export class Maquina {
     // A hora real do fim: quando a tela largou a chamada (sem a folga).
     const fim = this.semChamadaDesde ?? this.d.agora()
     // A linha continua OCUPADA até a limpeza acabar: uma ligação nova não
-    // pode nascer com o ffmpeg e a ponte da anterior ainda fechando.
+    // pode nascer com o ffmpeg e a ponte da anterior ainda fechando (a cauda
+    // da gravação de uma ligação teria a voz da seguinte).
     atual.fase = 'encerrando'
-    const gravacao = this.gravacao
-    this.gravacao = null
-    try {
-      await gravacao?.parar()
-    } catch (erro) {
-      this.d.registrar(`a gravação não fechou: ${mensagem(erro)}`)
-    }
     try {
       await this.d.ponte.encerrar()
     } catch (erro) {
       this.d.registrar(`a ponte não fechou: ${mensagem(erro)}`)
     }
-    this.atual = null
-    this.redeCaiuEm = null
-    this.semChamadaDesde = null
     const atendidaEm = atual.atendidaEm
+    // O fim vai ao CRM JÁ (o painel do atendente para na hora); a gravação
+    // fecha depois, com a cauda (`CAUDA_MS`), e só então sai para o envio.
     this.d.avisar({
       tipo: 'encerrada',
       ligacao: atual.id,
@@ -459,6 +489,16 @@ export class Maquina {
       atendida_em: atendidaEm === null ? null : new Date(atendidaEm).toISOString(),
       duracao_seg: atendidaEm === null ? null : Math.max(0, Math.round((fim - atendidaEm) / 1000)),
     })
+    const gravacao = this.gravacao
+    this.gravacao = null
+    try {
+      await gravacao?.parar(atendidaEm)
+    } catch (erro) {
+      this.d.registrar(`a gravação não fechou: ${mensagem(erro)}`)
+    }
+    this.atual = null
+    this.redeCaiuEm = null
+    this.semChamadaDesde = null
     this.d.aoEncerrar(atual.id)
   }
 }

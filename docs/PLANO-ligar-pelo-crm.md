@@ -14,7 +14,7 @@ ligação de WhatsApp do que a telefônica. Vizinho deste plano:
 | 1    | Teste A: a máquina liga, com áudio de arquivo              | em curso (10/11/2026)  |
 | 2    | Teste B: o áudio no navegador do atendente                 | ✅ 10/11/2026 (falta P8) |
 | 3    | Decidir a máquina: upgrade para a KVM 4 × segunda VPS      | ✅ 10/11/2026: fica na VPS atual (D8) |
-| 4    | Ligar e atender pelo CRM: botão, toque, gravação, transcrição | desenho pronto (§8), decisões tomadas (§8.10); ✅ 4a pronta e testada em 10/11/2026 (§8.13); ✅ 4b no ar e testada ao vivo em 11/11/2026 (§8.14); próxima: 4c (a tela) |
+| 4    | Ligar e atender pelo CRM: botão, toque, gravação, transcrição | desenho pronto (§8), decisões tomadas (§8.10); ✅ 4a pronta e testada em 10/11/2026 (§8.13); ✅ 4b no ar e testada ao vivo em 11/11/2026 (§8.14); 4c (a tela) feita em 11/11/2026, teste ao vivo pendente (§8.15) |
 | 5    | Atender pelo CRM (ligação recebida)                        | incorporada à Fase 4   |
 
 ## 1. Por que uma máquina central (o que foi descartado)
@@ -1322,6 +1322,79 @@ durante o teste e voltou ao Bancário - Jurídico; a máquina foi PARADA de novo
   antes, no "chamando", e cortar a gravação no atendimento) antes da 4d.
 - A rota de atender respondeu em ~5 s (a ponte do lado da máquina); a tela
   precisa mostrar "Conectando o áudio…" nesse meio-tempo.
+
+### 8.15 A 4c: a tela (11/11/2026)
+
+**Feito** (regras: `.claude/rules/ligacoes.md`, "A tela"):
+
+- **O provedor na casca** (`src/components/ligacoes/ligacoes-provider.tsx`,
+  montado em `dashboard-shell.tsx` dentro da porta de entrada): assina
+  `cb_ligacoes_ao_vivo`, faz a ligação e o atendimento com o microfone (a
+  oferta montada no clique) e desenha o painel flutuante (estado, cronômetro,
+  "Gravando", Mudo, Desligar, "Abrir conversa", o aviso dos 28 min) e o
+  cartão que toca (toque em laço numa aba só, Atender e Silenciar, "Atendida
+  por Ana", aviso do sistema com a aba escondida). Recarregar com a ligação
+  aberta pede confirmação.
+- **O botão "Ligar"** no cabeçalho do fio (`botao-ligar.tsx`), desligado com o
+  porquê; a situação dos computadores vem da rota nova
+  `GET /api/cb/ligacoes/computadores` (viewer+, só a situação: nunca endereço
+  nem nome do contêiner).
+- **A faixa com ▶ Ouvir** (`aviso-de-ligacao.tsx`): a faixa grava
+  `ligacao_id` (`pelo-crm.ts`) e o player do fio toca pela rota estável.
+- **O poder `make-calls`** (`canMakeCalls`, agent+), no `useCan` e no editor
+  de perfis ("Ligar e atender pelo WhatsApp no CRM").
+- As regras puras em `src/lib/ligacoes/ao-vivo.ts` (testadas), o áudio em
+  `audio-da-ligacao.ts`, o toque em `toque-da-ligacao.ts`.
+
+**Decidido na implementação (dentro do desenho do §8.1):**
+
+- O botão vale também no fio do painel da pauta (`conversa-em-painel.tsx`): a
+  ligação mora na casca, não na página — nada a fazer lá.
+- O Visualizador vê o botão DESLIGADO ("seu perfil não liga"), como o §8.1
+  pede; a rota dos computadores é viewer+ por isso.
+- O cartão segue o papel e o perfil REAIS (como o aviso do navegador): quem
+  simula pelo "Ver como" continua recebendo a ligação de verdade.
+- O aviso do sistema da ligação segue a chave `ativo` do aviso do navegador
+  (quem ligou o aviso de mensagem recebe o da ligação).
+- ⚠️ Limite: "Atendida no celular" NÃO aparece no cartão — o fim do toque
+  (DELETE pelo tempo real) traz só a chave, e o cliente que desiste e o
+  celular que atende ficam iguais: o cartão some. O fio diz o desfecho.
+
+**A gravação, consertada na máquina** (o achado da 4b: 24 s de ligação, 19 s
+de áudio). Medido na máquina em 11/11/2026: a sondagem do ffmpeg
+(`-analyzeduration`) e o fragmento do PulseAudio NÃO mudam nada (10 s de
+relógio → ~7,5 s de áudio em todas as variantes); a 1ª entrada começa ~0,2 s
+depois do disparo e a 2ª ~1,3 s depois dela; com um tom parado num instante
+conhecido, o segundo do arquivo é "relógio − start" (o carimbo que o ffmpeg
+imprime) com erro de ~0,3 s; e o SIGINT perde os ~2 s FINAIS. O conserto: o
+ffmpeg abre no começo do pedido (antes da ponte), o que veio antes do
+atendimento sai num corte com cópia de fluxo (margem de 1,5 s para o "Alô"),
+o `parar` espera 2,5 s de cauda, e o "encerrada" vai ao CRM antes de a
+gravação fechar (o painel para na hora; a linha segue ocupada até ela
+fechar). Sem atendimento, nada fica. Imagem `20261111-8`.
+
+**A imagem remontada toda semana (§8.7):** `ops/vps/ligacoes/atualizar-maquinas.sh`
+(INFRA-VPS §4), rodado à mão com a máquina ligada (`-8` → `semanal-20261111`,
+2 min 13 s); o cron de domingo foi instalado com o "pode" do operador
+(11/11/2026).
+
+**O provedor que desmonta** (Codex, #500): a casca troca o app pelo spinner
+na primeira carga do login e quando o "Ver como" começa, e o provedor
+desmonta. A desmontagem invalida a posse (o pedido pendente para e solta o
+microfone) e DESLIGA a ligação que já existe — começar o "Ver como" no meio
+de uma ligação a encerra.
+
+**Falta:**
+- **Teste ao vivo com o lead** (o "pronto quando" da 4c): a máquina ligada, a
+  conversa do lead fixada na Previdenciário; feita (chamando → atendida →
+  desligar pelo painel → faixa com ▶, gravação SEM os segundos perdidos) e
+  recebida (o cartão toca, Atender, falar, o cliente desliga).
+- P8 (a rede do escritório) e a medição de processador com a ponte e a
+  gravação juntas — no teste ao vivo.
+- Decisão do operador: deixar a máquina LIGADA depois do teste (as ligações
+  pelo CRM passam a valer para a equipe da Previdenciário) ou só em sessões.
+- 4d (transcrição, resumo, contexto da IA, poda aos 180 dias) e 4e (conexões,
+  Parear/Reparear, sentinela, doc).
 
 ## 9. Fase 5: atender pelo CRM
 

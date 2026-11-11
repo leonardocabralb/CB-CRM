@@ -2,7 +2,15 @@ import { mkdtemp, mkdir, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { argumentosDoFfmpeg, comecarGravacao, enviarGravacoes } from './gravacao.js'
+import {
+  MARGEM_DO_CORTE_MS,
+  argumentosDoCorte,
+  argumentosDoFfmpeg,
+  comecarGravacao,
+  enviarGravacoes,
+  iniciosDasEntradas,
+  segundosACortar,
+} from './gravacao.js'
 
 const SEGREDO = 'segredo-de-teste-com-mais-de-32-caracteres'
 const pastas: string[] = []
@@ -29,6 +37,56 @@ describe('o ffmpeg', () => {
 
   it('recusa id de ligação que sairia da pasta', async () => {
     await expect(comecarGravacao('../fora', () => {}, await base())).rejects.toThrow('inválido')
+  })
+
+  it('imprime o início de cada entrada (-loglevel info), sem o progresso', () => {
+    const args = argumentosDoFfmpeg('/gravacoes/lig-1').join(' ')
+    expect(args).toContain('-nostats -loglevel info')
+  })
+})
+
+describe('o corte do que veio antes do atendimento (medido em 11/11/2026)', () => {
+  // A saída real do ffmpeg 5 com o PulseAudio, medida na máquina.
+  const SAIDA = [
+    "Input #0, pulse, from 'voz_cliente':",
+    'Duration: N/A, start: 1794402486.189276, bitrate: 768 kb/s',
+    'Stream #0:0: Audio: pcm_s16le, 48000 Hz, mono, s16, 768 kb/s',
+    "Input #1, pulse, from 'entrada_mic.monitor':",
+    'Duration: N/A, start: 1794402487.533851, bitrate: 768 kb/s',
+  ]
+
+  it('lê o início de cada entrada, em ms de relógio de parede', () => {
+    expect(iniciosDasEntradas(SAIDA)).toEqual([1794402486189, 1794402487534])
+  })
+
+  it('carimbo ausente ou implausível (sem relógio de parede) não vale', () => {
+    expect(iniciosDasEntradas(SAIDA.slice(0, 3))).toEqual([1794402486189, null])
+    expect(iniciosDasEntradas(["Input #0, pulse, from 'x':", 'Duration: N/A, start: 0.000000, bitrate: 1 kb/s'])).toEqual([
+      null,
+      null,
+    ])
+    expect(iniciosDasEntradas(['start: 1794402486.189276'])).toEqual([null, null])
+  })
+
+  it('corta até o atendimento, deixando a margem para o "Alô"', () => {
+    const inicio = 1_794_402_486_000
+    const atendidaEm = inicio + 12_000
+    expect(segundosACortar(atendidaEm, inicio)).toBe((12_000 - MARGEM_DO_CORTE_MS) / 1000)
+  })
+
+  it('nada a cortar: atendida antes de a gravação começar, quase junto, ou sem o carimbo', () => {
+    const inicio = 1_794_402_486_000
+    expect(segundosACortar(inicio + 500, inicio)).toBeNull()
+    expect(segundosACortar(inicio + MARGEM_DO_CORTE_MS + 100, inicio)).toBeNull()
+    expect(segundosACortar(inicio + 20_000, null)).toBeNull()
+    // Mais de uma hora: o carimbo mente, a gravação fica inteira.
+    expect(segundosACortar(inicio + 2 * 3_600_000, inicio)).toBeNull()
+  })
+
+  it('o corte copia o fluxo (sem recodificar) a partir do segundo dado', () => {
+    expect(argumentosDoCorte('/g/lig-1/estereo.ogg', '/g/lig-1/estereo.ogg.corte.ogg', 10.5).join(' ')).toBe(
+      '-hide_banner -loglevel error -ss 10.500 -i /g/lig-1/estereo.ogg -c copy -y /g/lig-1/estereo.ogg.corte.ogg',
+    )
   })
 })
 

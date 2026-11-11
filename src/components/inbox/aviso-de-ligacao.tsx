@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { format } from "date-fns";
-import { PhoneIncoming, PhoneMissed, PhoneOutgoing, Video } from "lucide-react";
+import { PhoneIncoming, PhoneMissed, PhoneOutgoing, Play, Video, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { PlayerDeAudio } from "@/components/inbox/player-de-audio";
 import { cn } from "@/lib/utils";
 import type { Message } from "@/types";
 
@@ -18,8 +20,13 @@ import type { Message } from "@/types";
  *
  * A ligação pelo CRM (1134, `detalhes.pelo_crm`) é só REGISTRO (D6/D6b):
  * neutra, com quem ligou ou atendeu e a duração — nunca vermelha, nem a feita
- * que o cliente não atendeu (ninguém do escritório deixou de atender). A
- * faixa completa (▶ Ouvir, transcrição) é da 4c/4d.
+ * que o cliente não atendeu (ninguém do escritório deixou de atender).
+ *
+ * ▶ Ouvir (4c): com a gravação no CRM (`gravacao` e `ligacao_id`), o player do
+ * fio abre embaixo da faixa. O endereço é a ROTA estável
+ * (`/api/cb/ligacoes/<id>/gravacao`), que confere o acesso à conversa e
+ * redireciona para uma URL assinada curta do bucket PRIVADO — nunca a URL
+ * assinada guardada na mensagem (ela expira). A transcrição é da 4d.
  *
  * ⚠️ A cor da perdida vive no ÍCONE e na borda, nunca no texto: o par
  * `text-red-700 dark:text-red-300` resolve para o vermelho escuro nos dois
@@ -28,6 +35,7 @@ import type { Message } from "@/types";
  */
 export function AvisoDeLigacao({ message }: { message: Message }) {
   const t = useTranslations("Inbox.ligacao");
+  const [ouvindo, setOuvindo] = useState(false);
   const detalhes = message.ligacao ?? null;
   const peloCrm = detalhes?.pelo_crm === true;
   const feita = peloCrm && detalhes?.direcao === "feita";
@@ -65,9 +73,13 @@ export function AvisoDeLigacao({ message }: { message: Message }) {
   }
 
   const Icone = video ? Video : feita ? PhoneOutgoing : perdida ? PhoneMissed : PhoneIncoming;
+  const gravacao =
+    peloCrm && detalhes?.gravacao === true && typeof detalhes.ligacao_id === "string"
+      ? `/api/cb/ligacoes/${encodeURIComponent(detalhes.ligacao_id)}/gravacao`
+      : null;
 
   return (
-    <div className="flex justify-center py-1">
+    <div className="flex flex-col items-center gap-1 py-1">
       <span
         title={perdida ? t("dicaPerdida") : undefined}
         className={cn(
@@ -82,7 +94,26 @@ export function AvisoDeLigacao({ message }: { message: Message }) {
           className={cn("h-3.5 w-3.5 shrink-0", perdida && "text-red-600")}
         />
         <span>{partes.join(" · ")}</span>
+        {gravacao && (
+          <button
+            type="button"
+            onClick={() => setOuvindo((aberto) => !aberto)}
+            aria-expanded={ouvindo}
+            title={ouvindo ? t("fecharGravacao") : t("ouvirDica")}
+            className="-my-0.5 ml-0.5 inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 font-medium text-foreground hover:bg-background/70"
+          >
+            {ouvindo ? <X aria-hidden className="h-3 w-3" /> : <Play aria-hidden className="h-3 w-3" />}
+            {ouvindo ? t("fecharGravacao") : t("ouvir")}
+          </button>
+        )}
       </span>
+      {gravacao && ouvindo && (
+        // Teto como os quadros de carga da bolha (`w-64 max-w-full`): num fio
+        // estreito o player não vaza para o lado.
+        <div className="w-64 max-w-full rounded-xl bg-muted/70 px-3 py-2 text-foreground">
+          <PlayerDeAudio src={gravacao} naBolhaDaEquipe={false} />
+        </div>
+      )}
     </div>
   );
 }

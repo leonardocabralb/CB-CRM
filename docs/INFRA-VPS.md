@@ -48,7 +48,9 @@ memória.
 09/09/2026: sem crontab do root, sem tarefa de dump, sem volume espelhado. O
 `/etc/cron.d` tem `certbot`, `docker-image-prune`, `docker-builder-prune`,
 `e2scrub_all` e `popularity-contest` — nenhum faz backup (desde 13/10/2026
-há também o `saude-whatsapp`, a sentinela da §12, que não faz backup). O que existe são os
+há também o `saude-whatsapp`, a sentinela da §12, e desde 11/11/2026 o
+`ligacoes-imagem`, a remontagem semanal do computador de ligações da §4 —
+nenhum dos dois faz backup). O que existe são os
 **dumps manuais de 09/09** em `/root/backups/` (do plano da Baileys 7), no
 mesmo disco.
 
@@ -180,10 +182,13 @@ Todos apontam para `82.25.76.63` e entram pelo `websecure`.
 desde 10/11/2026, a 4a de `docs/PLANO-ligar-pelo-crm.md`):** o Chrome com o
 WhatsApp Web da conexão Previdenciario - Comercial (um aparelho conectado a
 mais nesse número) e o orquestrador do subprojeto `maquina-de-ligacoes/`.
-PARADO fora das sessões de teste até a 4c (o CRM já fala com ele desde a 4b,
-11/11/2026, mas a tela de ligar e atender é a 4c, e nada o vigia ainda).
-Desde a 4b: imagem `maquina-de-ligacoes:20261110-7`, URL do CRM
-`http://crm_crm:3000`, segredo próprio em `previdenciario/segredo.env`.
+PARADO fora das sessões de teste (o CRM fala com ele desde a 4b e tem a tela
+de ligar e atender desde a 4c, 11/11/2026; parado, o "Ligar" fica desligado
+e a recebida não toca no CRM; nada o vigia ainda — a sentinela é a 4e).
+Desde 11/11/2026: imagem `maquina-de-ligacoes:semanal-20261111` (a gravação
+que abre no começo do pedido, `.claude/rules/ligacoes.md`; montada pela
+remontagem semanal, abaixo), URL do CRM `http://crm_crm:3000`, segredo
+próprio em `previdenciario/segredo.env`.
 
 - **Pastas** (`/root/ligacoes`, 700): `imagem/` (cópia do subprojeto, de onde
   a imagem é montada), `criar-maquina.sh` (= `ops/vps/ligacoes/`),
@@ -192,8 +197,8 @@ Desde a 4b: imagem `maquina-de-ligacoes:20261110-7`, URL do CRM
   nome; nunca impresso), `previdenciario/perfil` (a SESSÃO do WhatsApp:
   protegê-la como o `postgres_data`; dono 1000) e `previdenciario/gravacoes`
   (só até o CRM confirmar o envio). O `segredo.env` compartilhado da 4a, na
-  raiz da pasta, não é mais lido por nada desde a 4b (apagá-lo pede o "pode"
-  do operador).
+  raiz da pasta, foi APAGADO em 11/11/2026, com o "pode" do operador (nada o
+  lia desde a 4b).
 - **Montar a imagem** (na própria VPS, ~2 min; só as camadas do código, ~10 s):
   copiar o subprojeto para `/root/ligacoes/imagem/` e
   `docker build -t maquina-de-ligacoes:<data> /root/ligacoes/imagem`.
@@ -210,6 +215,20 @@ Desde a 4b: imagem `maquina-de-ligacoes:20261110-7`, URL do CRM
 - **Ligar e parar:** `docker start ligacoes-previdenciario` /
   `docker stop ligacoes-previdenciario` (o `unless-stopped` respeita o stop,
   inclusive depois de reiniciar a VPS).
+- **Remontagem semanal com o Chrome do dia** (§8.7 do plano: o Chrome de uma
+  imagem não se atualiza sozinho): `/root/ligacoes/atualizar-maquinas.sh`
+  (= `ops/vps/ligacoes/`) monta `maquina-de-ligacoes:semanal-<data>` sem cache
+  e com a base nova (~2 min) e troca cada `ligacoes-*` (menos a bancada) pelo
+  `criar-maquina.sh`: só com a linha LIVRE (pergunta o `/estado` à máquina;
+  ocupada, tenta por até 1 h), devolve o contêiner ligado ou parado como
+  estava e, ligado, volta à imagem anterior se a nova não responder em 2 min.
+  Log em `/root/ligacoes/atualizar.log`. Rodado à mão em 11/11/2026 com a
+  máquina ligada: `20261111-8` → `semanal-20261111` em 2 min 13 s, a máquina
+  respondendo. O cron `/etc/cron.d/ligacoes-imagem` (=
+  `ops/vps/ligacoes/ligacoes-imagem.cron`: domingo 07:10 UTC, com `flock` e
+  `timeout` de 2 h) foi instalado em 11/11/2026, com o "pode" do operador.
+  Atualizar o script = copiar o versionado por cima (700); desligar = apagar
+  o arquivo do `/etc/cron.d`.
 - **No CRM (4b):** cada computador é uma linha de `cb_computadores_de_ligacao`
   (fechada ao navegador): `account_id` e `channel_id` da conexão, `nome` (o
   `LIGACOES_COMPUTADOR`, ex. `previdenciario`) e `endereco`
