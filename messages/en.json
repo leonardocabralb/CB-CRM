@@ -5094,6 +5094,8 @@
           "contato_ja_ligado": "this contact is already linked to another Asaas customer with a different document"
         },
         "buscar": "Search by name, phone or e-mail",
+        "soEmAtraso": "Only with overdue charges",
+        "vazioEmAtraso": "No client with overdue charges in this list.",
         "listaFalhou": "Could not read the list.",
         "anterior": "Previous",
         "proxima": "Next",

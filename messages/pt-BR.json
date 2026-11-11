@@ -5087,6 +5087,8 @@
           "contato_ja_ligado": "esta ficha já está ligada a outro cliente do Asaas, de outro documento"
         },
         "buscar": "Buscar por nome, telefone ou e-mail",
+        "soEmAtraso": "Só com cobrança em atraso",
+        "vazioEmAtraso": "Nenhum cliente com cobrança em atraso nesta lista.",
         "listaFalhou": "Não consegui ler a lista.",
         "anterior": "Anterior",
         "proxima": "Próxima",

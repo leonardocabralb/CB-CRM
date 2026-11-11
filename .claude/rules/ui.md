@@ -82,6 +82,12 @@ diálogo aberto.
   355 px, e uma URL sem espaços acendia barra horizontal na conversa inteira.
   O `break-words` não salva sem teto (a palavra sempre "cabe"). O
   `max-w-full` mora NA BOLHA (`message-bubble.tsx`).
+- ⚠️ **Barra `sticky` no pé da página: `-bottom-4 sm:-bottom-6`, nunca
+  `bottom-0`.** Quem rola é o `<main>` do painel (`dashboard-shell.tsx`,
+  `p-4 sm:p-6`), e o `sticky` para na borda do PADDING: com `bottom-0` sobra
+  uma faixa por onde o conteúdo aparece embaixo da barra ao rolar. O deslocamento
+  negativo igual ao padding a cola no pé da janela (barras de salvar da
+  "Cobrança automática" e do agente de IA).
 - ⚠️ **Autosize de `<textarea>`: some a borda.** `scrollHeight` não inclui a
   borda, mas `style.height` sob `border-box` inclui: `height = scrollHeight`
   acende a barra com UMA linha. Use `el.offsetHeight - el.clientHeight`

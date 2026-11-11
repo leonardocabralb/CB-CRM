@@ -83,7 +83,10 @@ o CRM só lê. O lado do MOTOR da régua (gatilhos `asaas_*` que casam só pelo
 - Toda leitura do banco PAGINA. As listas do cartão são montadas em memória
   por `listas.ts` (puro) e paginadas na rota; a situação do cliente
   (`ligado`/`confirmar`/`sem_ficha`/`ignorado`) é DERIVADA da linha, nunca
-  coluna própria.
+  coluna própria. Recorte novo (busca, `faixa`, `atraso=1` — o "Só com
+  cobrança em atraso" de Ligados e Sem cobrança automática) entra na ROTA,
+  antes de `paginar`: no navegador, a página sairia pela metade e o total
+  errado.
 
 ### Ciclo de sincronização
 

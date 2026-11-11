@@ -13,7 +13,10 @@ import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit
  * Lê o espelho inteiro em service role (as tabelas são fechadas ao
  * navegador) e devolve a página pedida. O CPF/CNPJ sai MASCARADO, e só daqui
  * (D3). A busca vale nas listas de clientes; a de inadimplentes tem o
- * recorte por faixa de dias (`faixa=ate_5|de_6_a_30|mais_de_30`).
+ * recorte por faixa de dias (`faixa=ate_5|de_6_a_30|mais_de_30`). `atraso=1`
+ * deixa só quem tem parcela vencida (o "Só com cobrança em atraso" da tela
+ * "Cobrança automática") — recortado AQUI, antes de paginar: filtrar a página
+ * no navegador mostraria páginas pela metade e o total errado.
  */
 export async function GET(request: Request) {
   try {
@@ -27,13 +30,14 @@ export async function GET(request: Request) {
     const pagina = Number(url.searchParams.get("pagina") ?? "1");
     const busca = (url.searchParams.get("busca") ?? "").slice(0, 80);
     const faixa = url.searchParams.get("faixa") ?? "";
+    const soEmAtraso = url.searchParams.get("atraso") === "1";
 
     const espelho = await lerEspelho(supabaseAdmin(), ctx.accountId);
     if (lista === "inadimplentes") {
       const itens: ItemInadimplente[] = espelho.listas.inadimplentes.filter((i) => faixa === "" || i.faixa === faixa);
       return NextResponse.json({ conectado: espelho.conectado, leituraFresca: espelho.leituraFresca, ...paginar(itens, pagina, POR_PAGINA) });
     }
-    const itens: ItemDaLista[] = espelho.listas[lista].filter((i) => casaComABusca(i, busca));
+    const itens: ItemDaLista[] = espelho.listas[lista].filter((i) => casaComABusca(i, busca) && (!soEmAtraso || i.divida !== null));
     return NextResponse.json({ conectado: espelho.conectado, leituraFresca: espelho.leituraFresca, ...paginar(itens, pagina, POR_PAGINA) });
   } catch (err) {
     return toErrorResponse(err);
