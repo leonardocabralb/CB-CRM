@@ -53,4 +53,18 @@ describe('MessageBubble — resposta do agente de IA', () => {
     expect(html).toContain(ptBR.Inbox.bubble.aiBadge);
     expect(html).not.toContain('IA ·');
   });
+
+  // A automação que o agente EXECUTA grava `ia_agente_id` sem `ai_generated`:
+  // fala em nome do agente, então leva só o selo dele, nunca "Robô" junto.
+  it('automação executada pelo agente: só "IA · <nome>", sem o selo "Robô"', () => {
+    const html = desenhar(mensagem({ ia_agente_id: 'ag-1', ai_generated: false }));
+    expect(html).toContain('IA · Triagem');
+    expect(html).not.toContain(`>${ptBR.Inbox.bubble.botBadge}<`);
+  });
+
+  it('automação comum (sem agente): o selo "Robô" continua', () => {
+    const html = desenhar(mensagem({ ia_agente_id: null, ai_generated: false }));
+    expect(html).toContain(ptBR.Inbox.bubble.botBadge);
+    expect(html).not.toContain('IA ·');
+  });
 });

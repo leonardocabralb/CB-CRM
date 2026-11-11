@@ -1203,8 +1203,13 @@ export function MessageBubble({
               Sem interruptor, de propósito (P1.5): a identificação interna
               de robô existe mesmo com a assinatura desligada. E é excludente
               com o selo de IA acima — os dois juntos seriam ruído, e
-              `ai_generated` é a informação mais específica. */}
-          {message.sender_type === "bot" && !message.ai_generated && (
+              `ai_generated` é a informação mais específica.
+              ⚠️ NOSSO (11/11/2026): a automação que o AGENTE executa (o
+              vídeo e o link do Trabalhista) grava `ia_agente_id` SEM
+              `ai_generated` (`automations/meta-send.ts`,
+              `flows/meta-send.ts`) — a bolha levava "IA · <nome>" E "Robô".
+              Quem tem `ia_agente_id` fala em nome do agente: só o selo dele. */}
+          {message.sender_type === "bot" && !message.ai_generated && !message.ia_agente_id && (
             <span
               className="inline-flex items-center gap-0.5 rounded-full bg-primary-foreground/20 px-1.5 py-px text-[9px] font-semibold uppercase leading-none tracking-wide text-primary-foreground"
               title={t("botBadgeTitle")}
