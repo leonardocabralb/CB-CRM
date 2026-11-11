@@ -7,6 +7,11 @@ set -e
 
 mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
 rm -f /tmp/.X99-lock /tmp/.X11-unix/X99
+# ⚠️ O `docker stop` deixa o `pid` e o soquete do PulseAudio na camada do
+# contêiner, e no `docker start` seguinte (ou depois de um reinício da VPS) o
+# PulseAudio recusa subir ("Daemon startup failed"): o contêiner entrava em
+# laço de reinício (medido em 11/11/2026).
+rm -rf "$XDG_RUNTIME_DIR/pulse"
 # A trava do perfil leva o nome do contêiner: recriado, o Chrome acharia o
 # perfil "em uso noutro computador" e não abriria. Apagá-la desarma a proteção
 # do Chrome contra DOIS processos no mesmo perfil: UM perfil por contêiner,

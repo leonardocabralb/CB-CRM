@@ -185,10 +185,10 @@ mais nesse número) e o orquestrador do subprojeto `maquina-de-ligacoes/`.
 PARADO fora das sessões de teste (o CRM fala com ele desde a 4b e tem a tela
 de ligar e atender desde a 4c, 11/11/2026; parado, o "Ligar" fica desligado
 e a recebida não toca no CRM; nada o vigia ainda — a sentinela é a 4e).
-Desde 11/11/2026: imagem `maquina-de-ligacoes:semanal-20261111` (a gravação
-que abre no começo do pedido, `.claude/rules/ligacoes.md`; montada pela
-remontagem semanal, abaixo), URL do CRM `http://crm_crm:3000`, segredo
-próprio em `previdenciario/segredo.env`.
+Desde 11/11/2026 (18:07 UTC): imagem `maquina-de-ligacoes:20261111-9` (a
+gravação que abre no começo do pedido e o `iniciar.sh` que limpa a pasta do
+PulseAudio, `.claude/rules/ligacoes.md`; montada à mão, abaixo), URL do CRM
+`http://crm_crm:3000`, segredo próprio em `previdenciario/segredo.env`.
 
 - **Pastas** (`/root/ligacoes`, 700): `imagem/` (cópia do subprojeto, de onde
   a imagem é montada), `criar-maquina.sh` (= `ops/vps/ligacoes/`),
@@ -201,7 +201,9 @@ próprio em `previdenciario/segredo.env`.
   lia desde a 4b).
 - **Montar a imagem** (na própria VPS, ~2 min; só as camadas do código, ~10 s):
   copiar o subprojeto para `/root/ligacoes/imagem/` e
-  `docker build -t maquina-de-ligacoes:<data> /root/ligacoes/imagem`.
+  `docker build -t maquina-de-ligacoes:<data> /root/ligacoes/imagem`. O `tar`
+  do Mac leva arquivos `._*` (metadados) sem `COPYFILE_DISABLE=1`: os que já
+  estão lá são inofensivos (o TypeScript ignora nome começado por ponto).
 - **Criar** (nasce parado): `sh /root/ligacoes/criar-maquina.sh previdenciario
   maquina-de-ligacoes:<data> http://crm_crm:3000` (exige o `LIGACOES_SEGREDO`
   no `/root/crm.env`; deriva e grava o segredo da máquina). O script tem o `docker create`
@@ -214,7 +216,10 @@ próprio em `previdenciario/segredo.env`.
   fica na pasta).
 - **Ligar e parar:** `docker start ligacoes-previdenciario` /
   `docker stop ligacoes-previdenciario` (o `unless-stopped` respeita o stop,
-  inclusive depois de reiniciar a VPS).
+  inclusive depois de reiniciar a VPS). ⚠️ Imagem anterior à `20261111-9` não
+  voltava do stop (laço de reinício: "Daemon startup failed" do PulseAudio);
+  a saída era recriar o contêiner. Conferir depois de ligar:
+  `docker inspect -f '{{.RestartCount}}' ligacoes-previdenciario` = 0.
 - **Remontagem semanal com o Chrome do dia** (§8.7 do plano: o Chrome de uma
   imagem não se atualiza sozinho): `/root/ligacoes/atualizar-maquinas.sh`
   (= `ops/vps/ligacoes/`) monta `maquina-de-ligacoes:semanal-<data>` sem cache

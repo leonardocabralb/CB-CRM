@@ -60,6 +60,12 @@ desenho: §8.12 e §8.13 do plano.
 - ⚠️⚠️ **Um perfil por contêiner, nunca dois no mesmo `/perfil`**: a trava do
   Chrome é apagada no `iniciar.sh`, e dois Chromes na mesma sessão a
   corrompem.
+- ⚠️ **O `iniciar.sh` limpa o que o `docker stop` deixa na camada do
+  contêiner:** as travas da tela e a pasta do PulseAudio
+  (`$XDG_RUNTIME_DIR/pulse`, com o `pid` e o soquete). Sem isso, o `start`
+  seguinte (ou um reinício da VPS) entrava em laço de reinício ("Daemon
+  startup failed", medido em 11/11/2026). Arquivo novo que sobreviva ao stop
+  e trave a subida entra na mesma limpeza.
 - ⚠️⚠️ **Discar só pelo DISCADOR** (aba Ligações → "Ligar para um telefone"):
   abrir a conversa manda ao cliente a confirmação de leitura. O número entra
   INTEIRO de uma vez (`insertText`), depois de o resultado anterior sumir:
