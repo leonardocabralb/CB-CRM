@@ -207,6 +207,9 @@ export async function GET(_request: Request, { params }: Contexto) {
       if (erroVivos) return falhou('próximo passo', erroVivos.message)
       proximo = proximoPassoDaIa((vivos ?? []) as TurnoVivo[], {
         atravessaRetomada: !pausada || pausadaPor === 'gente',
+        // O dono de agora: o turno de outro (card movido para a etapa de
+        // outro agente) é descartado pela conferência do motor.
+        dono: { agenteId: decisao.agenteId, dealId: decisao.dealId, stageId: decisao.stageId },
       })
     }
     return NextResponse.json({

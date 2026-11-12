@@ -351,10 +351,29 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
 
   describe('o PRÓXIMO PASSO da IA (pedido do operador, 12/11/2026)', () => {
     const turnosVivos = () => consultas.filter((c) => c.tabela === 'cb_ia_turnos')
+    // O dono da decisão de agora (o card d1 na etapa e1 do agente ag-1).
+    const DONO = { ia_agente_id: 'ag-1', deal_id: 'd1', stage_id: 'e1' }
+
+    it('⚠️ o follow-up armado na etapa ANTERIOR (outro agente) não é o próximo passo — Codex, #515', async () => {
+      banco.cb_ia_turnos = [
+        {
+          tipo: 'retomada',
+          status: 'aguardando',
+          executar_apos: '2026-11-12T18:00:00Z',
+          tentativa: 1,
+          tentativas: 3,
+          erro: null,
+          ia_agente_id: 'ag-velho',
+          deal_id: 'd1',
+          stage_id: 'e-velha',
+        },
+      ]
+      expect((await (await chamar()).json()).proximo).toBeNull()
+    })
 
     it('follow-up agendado: a tentativa, de quantas, e a hora — lido na conta, só os vivos', async () => {
       banco.cb_ia_turnos = [
-        { tipo: 'retomada', status: 'aguardando', executar_apos: '2026-11-12T18:00:00Z', tentativa: 2, tentativas: 5, erro: null },
+        { tipo: 'retomada', status: 'aguardando', executar_apos: '2026-11-12T18:00:00Z', tentativa: 2, tentativas: 5, erro: null, ...DONO },
       ]
       expect((await (await chamar()).json()).proximo).toEqual({
         tipo: 'retomada',
@@ -369,7 +388,7 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
     })
 
     it('turno rodando: "agora"; resposta na fila fora do horário: com a marca', async () => {
-      banco.cb_ia_turnos = [{ tipo: 'resposta', status: 'rodando', executar_apos: '2026-11-12T18:00:00Z', erro: null }]
+      banco.cb_ia_turnos = [{ tipo: 'resposta', status: 'rodando', executar_apos: '2026-11-12T18:00:00Z', erro: null, ...DONO }]
       expect((await (await chamar()).json()).proximo).toEqual({ tipo: 'agora' })
       banco.cb_ia_turnos = [
         {
@@ -377,6 +396,7 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
           status: 'aguardando',
           executar_apos: '2026-11-13T11:00:00Z',
           erro: 'fora do horário do agente: responde quando o horário abrir',
+          ...DONO,
         },
       ]
       expect((await (await chamar()).json()).proximo).toEqual({
@@ -388,7 +408,7 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
 
     it('⚠️ ninguém atende (card antigo, encerrada): nem lê a fila', async () => {
       banco.cb_ia_turnos = [
-        { tipo: 'retomada', status: 'aguardando', executar_apos: '2026-11-12T18:00:00Z', tentativa: 1, tentativas: 3, erro: null },
+        { tipo: 'retomada', status: 'aguardando', executar_apos: '2026-11-12T18:00:00Z', tentativa: 1, tentativas: 3, erro: null, ...DONO },
       ]
       banco.conversations = { ...(banco.conversations as object), status: 'closed' }
       expect((await (await chamar()).json()).proximo).toBeNull()
@@ -398,7 +418,7 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
     it('⚠️ pausa PERMANENTE: nada (o follow-up armado seria descartado no vencimento)', async () => {
       banco.ai_configs = { ia_volta_apos_min: 15 }
       banco.cb_ia_turnos = [
-        { tipo: 'retomada', status: 'aguardando', executar_apos: '2026-11-12T18:00:00Z', tentativa: 1, tentativas: 3, erro: null },
+        { tipo: 'retomada', status: 'aguardando', executar_apos: '2026-11-12T18:00:00Z', tentativa: 1, tentativas: 3, erro: null, ...DONO },
       ]
       for (const motivo of ['transferencia', 'desativada', 'automacao']) {
         banco.conversations = { ...(banco.conversations as object), ai_autoreply_disabled: true, ia_pausada_por: motivo }
@@ -409,7 +429,7 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
     it('pausa temporária: o follow-up atravessa só a pausa `gente`, nunca o "Pausar" (`botao`)', async () => {
       banco.ai_configs = { ia_volta_apos_min: 15 }
       banco.cb_ia_turnos = [
-        { tipo: 'retomada', status: 'aguardando', executar_apos: '2026-11-12T18:00:00Z', tentativa: 1, tentativas: 3, erro: null },
+        { tipo: 'retomada', status: 'aguardando', executar_apos: '2026-11-12T18:00:00Z', tentativa: 1, tentativas: 3, erro: null, ...DONO },
       ]
       banco.conversations = { ...(banco.conversations as object), ai_autoreply_disabled: true, ia_pausada_por: 'gente' }
       expect((await (await chamar()).json()).proximo).toMatchObject({ tipo: 'retomada', tentativa: 1 })

@@ -123,7 +123,9 @@ agente errar em silêncio.
 - ⚠️ **Só o que vai acontecer**: a rota lê a fila só com agente atendendo E a
   IA ativa ou na pausa que volta, e o follow-up só onde ele atravessa a pausa
   (sem pausa, ou `gente` com N > 0 — `ia-retomada.md`): o armado sob outra
-  pausa é descartado no vencimento. Ficam de fora a resposta que espera a
+  pausa é descartado no vencimento. E só a linha do DONO de agora (agente,
+  card e etapa da decisão): a de outro (card movido para a etapa de outro
+  agente) a conferência do motor descarta (Codex, #515). Ficam de fora a resposta que espera a
   EQUIPE (a linha da pausa já diz "volta a partir de"); a PRÉ-ARMAÇÃO não
   resolvida (30 s; a hora dela não é a do follow-up) sai como `agendando`:
   sem linha, só para a faixa perguntar de novo quando ela resolver — a

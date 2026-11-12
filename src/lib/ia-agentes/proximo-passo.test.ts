@@ -16,11 +16,15 @@ function turno(p: Partial<TurnoVivo>): TurnoVivo {
     tentativa: null,
     tentativas: null,
     erro: null,
+    ia_agente_id: 'ag-1',
+    deal_id: 'd1',
+    stage_id: 'e1',
     ...p,
   }
 }
 const retomada = (p: Partial<TurnoVivo> = {}) => turno({ tipo: 'retomada', tentativa: 2, tentativas: 5, ...p })
-const ATIVA = { atravessaRetomada: true }
+const DONO = { agenteId: 'ag-1', dealId: 'd1', stageId: 'e1' }
+const ATIVA = { atravessaRetomada: true, dono: DONO }
 
 describe('proximoPassoDaIa', () => {
   it('nada na fila: nulo', () => {
@@ -62,15 +66,38 @@ describe('proximoPassoDaIa', () => {
   })
 
   it('⚠️ a pré-armação do follow-up da equipe, ainda não resolvida: `agendando` (só a releitura; a hora dela não é a do follow-up) — Codex, #515', () => {
-    const armacao = retomada({ tentativa: 1, tentativas: 1, erro: ERRO_DA_ARMACAO_PELA_EQUIPE })
+    // A pré-armação nasce SEM dono (a 1138 não grava agente, card nem etapa).
+    const armacao = retomada({
+      tentativa: 1,
+      tentativas: 1,
+      erro: ERRO_DA_ARMACAO_PELA_EQUIPE,
+      ia_agente_id: null,
+      deal_id: null,
+      stage_id: null,
+    })
     expect(proximoPassoDaIa([armacao], ATIVA)).toEqual({ tipo: 'agendando', em: '2026-11-12T18:00:00Z' })
     // O follow-up já resolvido vem antes; e a pausa que ele não atravessa cala os dois.
     expect(proximoPassoDaIa([armacao, retomada({ executar_apos: '2026-11-13T12:00:00Z' })], ATIVA)).toMatchObject({ tipo: 'retomada' })
-    expect(proximoPassoDaIa([armacao], { atravessaRetomada: false })).toBeNull()
+    expect(proximoPassoDaIa([armacao], { atravessaRetomada: false, dono: DONO })).toBeNull()
   })
 
   it('⚠️ pausa que o follow-up não atravessa: nenhum follow-up (seria descartado no vencimento)', () => {
-    expect(proximoPassoDaIa([retomada()], { atravessaRetomada: false })).toBeNull()
+    expect(proximoPassoDaIa([retomada()], { atravessaRetomada: false, dono: DONO })).toBeNull()
+  })
+
+  it('⚠️ linha de OUTRO dono (card movido para a etapa de outro agente): ignorada — a conferência do motor a descarta (Codex, #515)', () => {
+    const outraEtapa = { ia_agente_id: 'ag-2', stage_id: 'e2' }
+    expect(proximoPassoDaIa([retomada(outraEtapa)], ATIVA)).toBeNull()
+    expect(proximoPassoDaIa([turno(outraEtapa)], ATIVA)).toBeNull()
+    expect(proximoPassoDaIa([turno({ ...outraEtapa, status: 'rodando' })], ATIVA)).toBeNull()
+    // Outro card do mesmo agente e etapa também.
+    expect(proximoPassoDaIa([retomada({ deal_id: 'd9' })], ATIVA)).toBeNull()
+    // A do dono de agora vence a velha.
+    expect(
+      proximoPassoDaIa([retomada({ ...outraEtapa, executar_apos: '2026-11-12T17:00:00Z' }), retomada()], ATIVA),
+    ).toMatchObject({ tipo: 'retomada', em: '2026-11-12T18:00:00Z' })
+    // Marca de pré-armação com dono já gravado não é pré-armação: vale a régua do dono.
+    expect(proximoPassoDaIa([retomada({ ...outraEtapa, erro: ERRO_DA_ARMACAO_PELA_EQUIPE })], ATIVA)).toBeNull()
   })
 
   it('linha estranha (sem hora, tentativa ilegível ou maior que o total): ignorada, nunca inventada', () => {
