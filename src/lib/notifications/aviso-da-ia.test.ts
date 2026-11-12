@@ -142,9 +142,17 @@ describe("pinos da montagem", () => {
     expect(hook).toMatch(/avisosParaReabrir\(\(data \?\? \[\]\) as Notification\[\], lidos\)\) mostrar\(aviso, false\)/);
     // O UPDATE guarda o lido ANTES de fechar, e `mostrar` o recusa.
     expect(hook).toMatch(/lidos\.add\(aviso\.id\);\s*if \(abertas\.has\(aviso\.id\)\) fechar\(aviso\.id\);/);
-    expect(hook).toMatch(/const mostrar = \(aviso: Notification, comSom: boolean\) => \{\s*if \(lidos\.has\(aviso\.id\)\) return;/);
+    expect(hook).toMatch(
+      /const mostrar = \(aviso: Notification, comSom: boolean\) => \{\s*if \(lidos\.has\(aviso\.id\) \|\| dispensadas\.has\(aviso\.id\)\) return;/,
+    );
     // O que chega pelo tempo real é novo: toca.
     expect(hook).toMatch(/mostrar\(aviso, true\)/);
+    // ⚠️ A consulta só roda com o canal JÁ inscrito (Codex, #511): antes, um
+    // INSERT no vão entre a consulta e a entrada no canal se perdia.
+    expect(hook).toMatch(/\.subscribe\(\(status\) => \{\s*if \(status === "SUBSCRIBED"\) void reabrirNaoLidos\(\);\s*\}\);/);
+    expect(hook.match(/reabrirNaoLidos\(\)/g)).toHaveLength(1);
+    // A releitura da reconexão não reabre o que a pessoa fechou no X.
+    expect(hook).toMatch(/if \(lidos\.has\(aviso\.id\) \|\| dispensadas\.has\(aviso\.id\)\) return;/);
   });
 
   it("o pop-up do sistema confere a caixinha ANTES de exibir", () => {
