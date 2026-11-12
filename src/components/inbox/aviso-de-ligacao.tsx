@@ -50,10 +50,17 @@ import type { Message } from "@/types";
  * assinada guardada na mensagem (ela expira).
  *
  * A transcrição (4d), também só com `ligacao_id`: "Transcrevendo…" enquanto
- * roda (`falhou` ainda vai repetir), o resumo (D11) embaixo da pílula e "Ver
+ * roda (`falhou` ainda vai repetir), o resumo (D11) no cartão e "Ver
  * transcrição" ao lado do ▶, que abre o diálogo e SÓ ENTÃO pergunta à rota (o
  * diálogo mora em `cb_ligacoes`, fechada ao navegador). Passados os 180 dias
  * (`expirada`), saem o ▶ e o diálogo; fica o resumo.
+ *
+ * O CARTÃO (pedido do operador, 11/11/2026): a ligação pelo CRM que tem o
+ * que ouvir ou ler (gravação, transcrição, resumo ou a situação dela) sai
+ * num cartão com o ícone na cor do tema, o resumo no corpo e "Ouvir" e "Ver
+ * transcrição" como botões de verdade — na pílula, eles se perdiam entre os
+ * avisos do sistema. O resto (as ligações do celular, a não atendida, as da
+ * 4b) continua pílula: não há o que abrir.
  *
  * ⚠️ A cor da perdida vive no ÍCONE e na borda, nunca no texto: o par
  * `text-red-700 dark:text-red-300` resolve para o vermelho escuro nos dois
@@ -122,69 +129,86 @@ export function AvisoDeLigacao({ message }: { message: Message }) {
       : transcricao === "recusada"
         ? t("semTranscricao")
         : null;
+  const transcrevendo = !expirada && (transcricao === "transcrevendo" || transcricao === "falhou");
+
+  if (ligacaoId && (gravacao || verTranscricao || situacaoDaTranscricao || resumo)) {
+    return (
+      <div className="flex justify-center py-1.5">
+        {/* `min-w-0` + `break-words`: o resumo vem da IA e pode trazer palavra
+            sem espaço; `max-w-md` segura o cartão no fio largo, e no estreito
+            (305 px com o painel aberto) ele ocupa a largura toda. */}
+        <div className="w-full min-w-0 max-w-md rounded-2xl border border-primary/25 bg-card px-3.5 py-3 text-left text-card-foreground shadow-sm">
+          <div className="flex items-start gap-3">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <Icone aria-hidden className="size-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium leading-tight">{titulo}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{partes.slice(1).join(" · ")}</p>
+            </div>
+          </div>
+          {resumo && (
+            <p className="mt-2.5 break-words text-[13px] leading-relaxed">
+              <span className="font-medium">{t("resumo")}:</span> {resumo}
+            </p>
+          )}
+          {situacaoDaTranscricao && (
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+              {transcrevendo && <Loader2 aria-hidden className="size-3.5 animate-spin" />}
+              {situacaoDaTranscricao}
+            </p>
+          )}
+          {(gravacao || verTranscricao) && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {gravacao && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={ouvindo ? "outline" : "default"}
+                  onClick={() => setOuvindo((aberto) => !aberto)}
+                  aria-expanded={ouvindo}
+                  title={ouvindo ? t("fecharGravacao") : t("ouvirDica")}
+                >
+                  {ouvindo ? <X aria-hidden /> : <Play aria-hidden />}
+                  {ouvindo ? t("fecharGravacao") : t("ouvir")}
+                </Button>
+              )}
+              {verTranscricao && (
+                <VerTranscricao
+                  ligacaoId={ligacaoId}
+                  atendente={detalhes?.atendente?.nome || null}
+                  descricao={texto}
+                />
+              )}
+            </div>
+          )}
+          {gravacao && ouvindo && (
+            <div className="mt-2.5 rounded-xl bg-muted/70 px-3 py-2 text-foreground">
+              <PlayerDeAudio src={gravacao} naBolhaDaEquipe={false} />
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center gap-1 py-1">
-      {/* `flex-wrap` com o ícone e o texto num bloco e os botões noutro: no fio
-          estreito (305 px com o painel aberto), os botões descem para uma
-          linha própria em vez de espremer o texto numa coluna de 3 palavras. */}
       <span
         title={perdida ? t("dicaPerdida") : undefined}
         className={cn(
-          "inline-flex max-w-[85%] flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5 rounded-full border px-3 py-1 text-center text-[11px] leading-snug",
+          "inline-flex max-w-[85%] items-center justify-center gap-1.5 rounded-full border px-3 py-1 text-center text-[11px] leading-snug",
           perdida
             ? "border-red-500/40 bg-red-500/10 text-foreground"
             : "border-transparent bg-muted/70 text-muted-foreground",
         )}
       >
-        <span className="inline-flex items-center gap-1.5">
-          <Icone
-            aria-hidden
-            className={cn("h-3.5 w-3.5 shrink-0", perdida && "text-red-600")}
-          />
-          <span>{texto}</span>
-        </span>
-        {(gravacao || verTranscricao) && (
-          <span className="inline-flex shrink-0 items-center">
-            {gravacao && (
-              <button
-                type="button"
-                onClick={() => setOuvindo((aberto) => !aberto)}
-                aria-expanded={ouvindo}
-                title={ouvindo ? t("fecharGravacao") : t("ouvirDica")}
-                className="-my-0.5 ml-0.5 inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 font-medium text-foreground hover:bg-background/70"
-              >
-                {ouvindo ? <X aria-hidden className="h-3 w-3" /> : <Play aria-hidden className="h-3 w-3" />}
-                {ouvindo ? t("fecharGravacao") : t("ouvir")}
-              </button>
-            )}
-            {verTranscricao && ligacaoId && (
-              <VerTranscricao
-                ligacaoId={ligacaoId}
-                atendente={detalhes?.atendente?.nome || null}
-                descricao={texto}
-              />
-            )}
-          </span>
-        )}
+        <Icone
+          aria-hidden
+          className={cn("h-3.5 w-3.5 shrink-0", perdida && "text-red-600")}
+        />
+        <span>{texto}</span>
       </span>
-      {situacaoDaTranscricao && (
-        <p className="max-w-[85%] text-center text-[11px] leading-snug text-muted-foreground">
-          {situacaoDaTranscricao}
-        </p>
-      )}
-      {resumo && (
-        <p className="max-w-[min(85%,28rem)] text-balance break-words text-center text-[11px] leading-snug text-muted-foreground">
-          <span className="font-medium">{t("resumo")}:</span> {resumo}
-        </p>
-      )}
-      {gravacao && ouvindo && (
-        // Teto como os quadros de carga da bolha (`w-64 max-w-full`): num fio
-        // estreito o player não vaza para o lado.
-        <div className="w-64 max-w-full rounded-xl bg-muted/70 px-3 py-2 text-foreground">
-          <PlayerDeAudio src={gravacao} naBolhaDaEquipe={false} />
-        </div>
-      )}
     </div>
   );
 }
@@ -261,8 +285,8 @@ function VerTranscricao({
         if (abrir) setPedido((n) => n + 1);
       }}
     >
-      <DialogTrigger className="-my-0.5 ml-0.5 inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 font-medium text-foreground hover:bg-background/70">
-        <FileText aria-hidden className="h-3 w-3" />
+      <DialogTrigger render={<Button type="button" size="sm" variant="outline" />}>
+        <FileText aria-hidden />
         {t("verTranscricao")}
       </DialogTrigger>
       {/* ⚠️ O diálogo só tem TETO (`max-h`), e a raiz do `ScrollArea` também é

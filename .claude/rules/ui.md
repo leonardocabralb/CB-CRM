@@ -31,6 +31,15 @@ compositor no celular, em `.claude/rules/inbox-conversa.md`.
   vai como FUNÇÃO em `<SelectValue>` — é o que `channel-select.tsx` faz para
   mostrar só o nome do canal.
 
+### `switch.tsx`: desligado visível e inativo por `data-[disabled]`
+
+- **A raiz do `Switch` do base-ui é um `<span>`** com `data-disabled`, nunca
+  um `<button>`: o `disabled:` do Tailwind não casa (o inativo saía igual ao
+  ativo). Estado do primitivo do base-ui se escreve por `data-[…]`.
+- O desligado é `bg-muted-foreground/45` com o polegar BRANCO nos dois modos:
+  o `bg-muted` sumia sobre o cartão (relato do operador, 11/11/2026). Num
+  merge, fica o nosso arquivo.
+
 ### `Dialog` e `Sheet` falam pelo dicionário
 
 O "Fechar" do X (texto para leitor de tela) sai de `UiPrimitives.close` por

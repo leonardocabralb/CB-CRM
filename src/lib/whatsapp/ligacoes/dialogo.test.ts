@@ -8,8 +8,71 @@ import {
   limparResumo,
   relogio,
   segundosDe,
+  soComSom,
+  somDaGravacao,
   TETO_DO_RESUMO,
 } from './dialogo';
+
+/** Um começo de Ogg fictício com o cabeçalho OpusTags e as etiquetas dadas (o que a máquina grava). */
+function ogg(etiquetas: string[], quantas = etiquetas.length): Uint8Array {
+  const texto = (s: string) => [...new TextEncoder().encode(s)];
+  const u32 = (n: number) => [n & 255, (n >> 8) & 255, (n >> 16) & 255, (n >>> 24) & 255];
+  const bytes = [...texto('OggS'), 0, 2, ...texto('OpusHead'), 1, 1, ...texto('OggS'), 0, 0];
+  bytes.push(...texto('OpusTags'), ...u32(4), ...texto('Lavf'), ...u32(quantas));
+  for (const e of etiquetas) bytes.push(...u32(texto(e).length), ...texto(e));
+  bytes.push(...texto('OggS'), 0, 0, 7, 7, 7);
+  return new Uint8Array(bytes);
+}
+
+describe('somDaGravacao (a etiqueta CB_SOM da máquina)', () => {
+  it('lê os trechos com som do cabeçalho do Opus', () => {
+    expect(somDaGravacao(ogg(['encoder=Lavc59 libopus', 'CB_SOM=0.6-1.1,2.3-26.9']))).toEqual([
+      [0.6, 1.1],
+      [2.3, 26.9],
+    ]);
+    // A chave sai em qualquer caixa (o ffmpeg a grava como recebeu).
+    expect(somDaGravacao(ogg(['cb_som=0.0-3.0']))).toEqual([[0, 3]]);
+  });
+
+  it('"nenhum" = o lado todo em silêncio', () => {
+    expect(somDaGravacao(ogg(['CB_SOM=nenhum']))).toEqual([]);
+  });
+
+  it('sem a medição: nulo (máquina antiga, arquivo estranho, etiqueta fora da forma)', () => {
+    expect(somDaGravacao(new TextEncoder().encode('CLIENTE'))).toBeNull();
+    expect(somDaGravacao(ogg(['encoder=Lavc59 libopus']))).toBeNull();
+    expect(somDaGravacao(ogg(['CB_SOM=']))).toBeNull();
+    expect(somDaGravacao(ogg(['CB_SOM=3.0-1.0']))).toBeNull();
+    expect(somDaGravacao(ogg(['CB_SOM=0.0-1.0;2-3']))).toBeNull();
+    // O número de etiquetas promete mais do que o arquivo tem: nulo, sem lançar.
+    expect(somDaGravacao(ogg(['encoder=x'], 5))).toBeNull();
+    expect(somDaGravacao(ogg(['CB_SOM=0.0-1.0']).subarray(0, 40))).toBeNull();
+  });
+});
+
+describe('soComSom (o Gemini inventa fala sobre áudio sem voz, 11/11/2026)', () => {
+  const trechos = [
+    { inicio: 2, texto: 'Alô.' },
+    { inicio: 8, texto: 'Um monólogo que ninguém disse.' },
+    { inicio: 30, texto: 'Até logo.' },
+  ];
+
+  it('fica só o trecho que começa perto de som medido', () => {
+    expect(soComSom(trechos, [[2.3, 3.1], [29.5, 31]])).toEqual([trechos[0], trechos[2]]);
+  });
+
+  it('a folga cobre o horário em segundos inteiros do provedor (2 s antes, 3 s depois)', () => {
+    expect(soComSom([{ inicio: 5, texto: 'a' }], [[7.9, 8.2]])).toHaveLength(1);
+    expect(soComSom([{ inicio: 5, texto: 'a' }], [[2.5, 3.2]])).toHaveLength(1);
+    expect(soComSom([{ inicio: 5, texto: 'a' }], [[8.1, 9]])).toHaveLength(0);
+    expect(soComSom([{ inicio: 5, texto: 'a' }], [[1, 2.9]])).toHaveLength(0);
+  });
+
+  it('o lado todo em silêncio fica sem trecho; sem a medição, tudo fica', () => {
+    expect(soComSom(trechos, [])).toEqual([]);
+    expect(soComSom(trechos, null)).toEqual(trechos);
+  });
+});
 
 describe('segundosDe', () => {
   it('lê MM:SS, M:SS, H:MM:SS, fração e número', () => {
