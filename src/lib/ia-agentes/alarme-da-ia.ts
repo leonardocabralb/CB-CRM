@@ -181,13 +181,14 @@ async function marcadosDoProvedor(db: SupabaseClient, accountId: string, provedo
   return [...new Set(ids)]
 }
 
+/** Grava o aviso para quem recebe (F3). Devolve os ids gravados. */
 async function gravarAviso(
   db: SupabaseClient,
   accountId: string,
   provedor: string,
   tipo: 'ia_falhou' | 'ia_voltou',
   textos: { titulo: string; corpo: string },
-): Promise<void> {
+): Promise<string[]> {
   const [membros, marcados] = await Promise.all([
     lerMembrosAtivos(db, accountId),
     marcadosDoProvedor(db, accountId, provedor),
@@ -195,9 +196,9 @@ async function gravarAviso(
   const destinatarios = quemAvisarDoAlarme(membros, marcados)
   if (destinatarios.length === 0) {
     console.warn('[ia-agentes] alarme da IA sem destinatário:', accountId, provedor)
-    return
+    return []
   }
-  const { error } = await db.from('notifications').insert(
+  const { data, error } = await db.from('notifications').insert(
     destinatarios.map((userId) => ({
       account_id: accountId,
       user_id: userId,
@@ -208,8 +209,48 @@ async function gravarAviso(
       title: textos.titulo,
       body: textos.corpo,
     })),
-  )
+  ).select('id')
   if (error) throw new Error(`gravação do aviso: ${error.message}`)
+  return ((data ?? []) as Array<{ id: string }>).map((l) => l.id)
+}
+
+/**
+ * ⚠️ A corrida com o "voltou" (Codex, #512): entre a decisão do banco e a
+ * gravação do alarme, a geração boa de OUTRO turno pode fechar o episódio e
+ * aposentar os alarmes dele — o nosso, gravado depois, ficaria vermelho e não
+ * lido com a IA de pé, e nada mais o aposentaria. Por isso, DEPOIS de gravar,
+ * relê o episódio: fechado (ou já outro) = os avisos que este turno acabou de
+ * gravar saem como lidos. Um dos dois lados sempre vê o do outro: o alarme
+ * grava e depois lê; o "voltou" fecha e depois aposenta. Só os ids gravados
+ * aqui — o alarme de um episódio NOVO não é tocado.
+ */
+async function conferirSeAindaParada(
+  db: SupabaseClient,
+  args: { accountId: string; provedor: string },
+  desde: Date,
+  ids: string[],
+): Promise<void> {
+  if (ids.length === 0) return
+  const { data, error } = await db
+    .from('cb_ia_alarmes')
+    .select('desde, normalizou_em')
+    .eq('account_id', args.accountId)
+    .eq('provedor', args.provedor)
+    .maybeSingle()
+  if (error) {
+    console.warn('[ia-agentes] episódio do alarme não relido:', error.message)
+    return
+  }
+  const ep = data as { desde?: unknown; normalizou_em?: unknown } | null
+  const aindaAberto =
+    !!ep && ep.normalizou_em == null && typeof ep.desde === 'string' && Date.parse(ep.desde) === desde.getTime()
+  if (aindaAberto) return
+  const { error: erroLido } = await db
+    .from('notifications')
+    .update({ read_at: new Date().toISOString() })
+    .in('id', ids)
+    .is('read_at', null)
+  if (erroLido) console.warn('[ia-agentes] alarme da IA que voltou não marcado como lido:', erroLido.message)
 }
 
 /**
@@ -246,7 +287,8 @@ export async function registrarFalhaDaIa(
     if (r.acao === 'continua') {
       await aposentarAlarmes(db, args.accountId, desde, titulosDoAlarme(t, args.provedor), agora)
     }
-    await gravarAviso(db, args.accountId, args.provedor, 'ia_falhou', textos)
+    const ids = await gravarAviso(db, args.accountId, args.provedor, 'ia_falhou', textos)
+    await conferirSeAindaParada(db, args, desde, ids)
   } catch (err) {
     console.error('[ia-agentes] alarme da IA falhou:', args.accountId, err instanceof Error ? err.message : err)
   }

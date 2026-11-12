@@ -225,10 +225,15 @@ fora terminavam `falhou` (E8) sem ninguém saber. `alarme-da-ia.ts`.
   os `ia_falhou` desde `desde` com o TÍTULO do provedor, `titulosDoAlarme`):
   o aviso não guarda o provedor. Sem isso, a caixinha vermelha (D6 da 1139)
   empilharia um lembrete a cada 6 h na abertura do CRM.
+- ⚠️ **Depois de gravar, o alarme RELÊ o episódio** (`conferirSeAindaParada`,
+  Codex #512): o "voltou" de outro turno pode fechar entre a decisão e a
+  gravação; fechado (ou já outro), os ids que ESTE turno gravou saem lidos.
+  O alarme grava→lê e o "voltou" fecha→aposenta: um sempre vê o outro.
 - **A tela**: `ia_falhou` abre a caixinha VERMELHA (`tomDaCaixinha`), o
   clique leva a `/inbox?ver=em-atraso` (`rotaDoAviso`) e dispara
-  `EVENTO_VER_EM_ATRASO` para a caixa de entrada já montada; `ia_voltou` é só
-  sino. Sem conversa nem contato (`clienteDoAviso` null).
+  `EVENTO_VER_EM_ATRASO` para a caixa de entrada já montada (no celular, a
+  página tira a conversa aberta, senão a lista fica escondida); `ia_voltou` é
+  só sino. Sem conversa nem contato (`clienteDoAviso` null).
 - Melhor esforço (log, nunca muda o desfecho); o Playground não chama
   (`sandbox-sem-efeito.test.ts`). Pino da migration:
   `supabase/migrations/alarme-da-ia-1140.test.ts` (a paridade do CHECK do

@@ -205,6 +205,23 @@ describe("pinos da montagem", () => {
     expect(hook).toMatch(/if \(lidos\.has\(aviso\.id\) \|\| dispensadas\.has\(aviso\.id\)\) return;/);
   });
 
+  it("1140: o alarme clicado com a caixa de entrada montada acende \"Em atraso\" e, no CELULAR, tira a conversa aberta da frente da lista (Codex, #512)", () => {
+    expect(ler("components/inbox/conversation-list.tsx")).toMatch(
+      /window\.addEventListener\(EVENTO_VER_EM_ATRASO, aoPedir\);/,
+    );
+    const pagina = ler("app/(dashboard)/inbox/page.tsx");
+    const ouvinte = pagina.slice(pagina.indexOf("const aoVerEmAtraso"), pagina.indexOf("window.removeEventListener(EVENTO_VER_EM_ATRASO"));
+    expect(pagina).toMatch(/if \(ehDesktop\) return;\s*const aoVerEmAtraso/);
+    expect(ouvinte).toMatch(/limparConversaAberta\(\);/);
+    // A caixinha e o pop-up disparam o sinal só para o alarme.
+    expect(ler("hooks/use-aviso-da-ia-na-tela.tsx")).toMatch(
+      /if \(ehAlarmeDaIa\(aviso\.type\)\) window\.dispatchEvent\(new CustomEvent\(EVENTO_VER_EM_ATRASO\)\);/,
+    );
+    expect(ler("hooks/use-avisos-do-sino-no-navegador.ts")).toMatch(
+      /if \(ehAlarmeDaIa\(aviso\.type\)\) window\.dispatchEvent\(new CustomEvent\(EVENTO_VER_EM_ATRASO\)\);/,
+    );
+  });
+
   it("o pop-up do sistema confere a caixinha ANTES de exibir", () => {
     const hook = ler("hooks/use-avisos-do-sino-no-navegador.ts");
     const cala = hook.indexOf("popUpDoSistemaCalaPelaCaixinha(aviso.type, abaEmFoco())");

@@ -181,6 +181,8 @@ function bancoFalso(opcoes: {
   fechado?: { desde: string; falhas: number } | null
   marcados?: string[][]
   erroNoInsert?: boolean
+  /** O episódio relido DEPOIS de gravar o alarme (padrão: o mesmo, aberto). */
+  episodioDepois?: { desde: string; normalizou_em: string | null } | null
 }) {
   const chamadas: Chamada[] = []
   const rpcs: Array<{ nome: string; args: unknown }> = []
@@ -202,8 +204,14 @@ function bancoFalso(opcoes: {
     if (c.tabela === 'cb_ia_alarmes' && c.op === 'update') {
       return { data: opcoes.fechado ? [opcoes.fechado] : [], error: null }
     }
+    if (c.tabela === 'cb_ia_alarmes' && c.op === 'select') {
+      const daRpc = (opcoes.rpc?.data ?? {}) as { desde?: string }
+      const ep = opcoes.episodioDepois === undefined ? { desde: daRpc.desde, normalizou_em: null } : opcoes.episodioDepois
+      return { data: ep, error: null }
+    }
     if (c.tabela === 'notifications' && c.op === 'insert') {
-      return { data: null, error: opcoes.erroNoInsert ? { message: 'violates check constraint' } : null }
+      if (opcoes.erroNoInsert) return { data: null, error: { message: 'violates check constraint' } }
+      return { data: (c.valores as object[]).map((_, i) => ({ id: `aviso-${i + 1}` })), error: null }
     }
     return { data: null, error: null }
   }
@@ -223,6 +231,7 @@ function bancoFalso(opcoes: {
         is: (k: string, v: unknown) => (c.filtros.push(['is', k, v]), q),
         in: (k: string, v: unknown) => (c.filtros.push(['in', k, v]), q),
         gte: (k: string, v: unknown) => (c.filtros.push(['gte', k, v]), q),
+        maybeSingle: () => q,
         then: (ok: (r: unknown) => unknown, falha: (e: unknown) => unknown) =>
           Promise.resolve(responder(c)).then(ok, falha),
       }
@@ -307,6 +316,41 @@ describe('registrarFalhaDaIa — abre, lembra ou só conta', () => {
     const avisos = inseridos(chamadas) as Array<Record<string, unknown>>
     expect(avisos[0]).toMatchObject({ type: 'ia_falhou', title: 'A IA continua parada (Anthropic)' })
     expect(avisos[0].body).toMatch(/9 respostas não saíram\.$/)
+  })
+
+  it('⚠️ a corrida com o "voltou" (Codex, #512): o episódio FECHOU entre a decisão e a gravação — os avisos que este turno gravou saem como lidos', async () => {
+    const { db, chamadas } = bancoFalso({
+      rpc: { data: { acao: 'abriu', desde: '2026-11-12T13:05:00.123456+00:00', falhas: 1 } },
+      episodioDepois: { desde: '2026-11-12T13:05:00.123456+00:00', normalizou_em: '2026-11-12T13:05:01+00:00' },
+    })
+    await registrarFalhaDaIa(db, ARGS)
+    const releu = chamadas.findIndex((c) => c.tabela === 'cb_ia_alarmes' && c.op === 'select')
+    const gravou = chamadas.findIndex((c) => c.tabela === 'notifications' && c.op === 'insert')
+    // Relê DEPOIS de gravar (um dos dois lados sempre vê o do outro).
+    expect(releu).toBeGreaterThan(gravou)
+    const [aposentar] = aposentadorias(chamadas)
+    // Só os ids que ESTE turno gravou — o alarme de um episódio novo não é tocado.
+    expect(aposentar.filtros).toEqual([
+      ['in', 'id', ['aviso-1', 'aviso-2']],
+      ['is', 'read_at', null],
+    ])
+  })
+
+  it('o episódio já é OUTRO (fechou e reabriu): os avisos deste turno saem como lidos; o aberto e igual, não', async () => {
+    const outro = bancoFalso({
+      rpc: { data: { acao: 'abriu', desde: '2026-11-12T13:05:00Z', falhas: 1 } },
+      episodioDepois: { desde: '2026-11-12T13:09:00Z', normalizou_em: null },
+    })
+    await registrarFalhaDaIa(outro.db, ARGS)
+    expect(aposentadorias(outro.chamadas)).toHaveLength(1)
+    // O mesmo, aberto (o caso comum): nada a aposentar. Microssegundos do
+    // banco contra o milissegundo do JS: o mesmo instante.
+    const mesmo = bancoFalso({
+      rpc: { data: { acao: 'abriu', desde: '2026-11-12T13:05:00.123456+00:00', falhas: 1 } },
+      episodioDepois: { desde: '2026-11-12T13:05:00.123456+00:00', normalizou_em: null },
+    })
+    await registrarFalhaDaIa(mesmo.db, ARGS)
+    expect(aposentadorias(mesmo.chamadas)).toEqual([])
   })
 
   it('nunca lança: o RPC que falha (a 1140 sem aplicar) e a gravação recusada viram log', async () => {
