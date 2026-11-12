@@ -1125,7 +1125,21 @@
         "fora_da_conexao": "the conversation comes in through a connection the agent does not serve",
         "card_antigo": "the deal was already in the stage before the agent was turned on there"
       },
-      "naoAtendeDica": "It only answers deals that enter the stage after it is turned on: this conversation stays with the team."
+      "naoAtendeDica": "It only answers deals that enter the stage after it is turned on: this conversation stays with the team.",
+      "proximo": {
+        "nada": "No follow-up scheduled: replies when the customer writes.",
+        "agora": "Replying now…",
+        "respostaJa": "Replying in a moment.",
+        "resposta": "Replies from {hora}.",
+        "respostaForaDoHorario": "Outside the agent's hours: replies from {hora}.",
+        "followUp": "Next follow-up ({tentativa} of {tentativas}) from {hora} · {contagem}",
+        "followUpVencido": "Next follow-up ({tentativa} of {tentativas}) any moment now",
+        "followUpNaPausa": "If the customer doesn't reply, the AI sends a follow-up from {hora} · {contagem}",
+        "followUpNaPausaVencido": "If the customer doesn't reply, the AI sends a follow-up any moment now",
+        "contagemMinutos": "in {minutos} min",
+        "contagemHoras": "in {horas} h{minutos, plural, =0 {} other { # min}}",
+        "contagemDias": "in {dias} d{horas, plural, =0 {} other { # h}}"
+      }
     },
     "mediaViewer": {
       "open": "Open image",
