@@ -177,6 +177,12 @@ qualquer uma é pergunta ao operador.
   para toda passagem (ligação não é mais urgente), e a caixinha VOLTA ao
   abrir o CRM enquanto o aviso não é lido (últimas 24 h)
   (`ia-agentes-turno.md`).
+- A IA que PARA de responder (créditos, chave, modelo, provedor fora) AVISA
+  (12/11/2026; 1140): um alarme por problema, no sino e numa caixinha
+  vermelha, com lembrete a cada 6 h enquanto durar e o aviso de que voltou;
+  a IA NÃO é pausada (o alarme leva às conversas "Em atraso"); recebem o
+  dono, os admins e os marcados dos agentes daquele provedor
+  (`ia-agentes-turno.md`).
 - Agente de IA fora do horário: a mensagem espera e ele responde quando o
   horário abrir, se ninguém da equipe respondeu antes; o padrão da Anthropic
   é o Haiku 5.5, e o seletor mostra os modelos da chave (25/10/2026).

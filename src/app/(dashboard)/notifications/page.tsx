@@ -15,12 +15,14 @@ import {
 import { LinhaDoCliente } from "@/components/notifications/linha-do-cliente";
 import { NotaApagadaNoAviso } from "@/components/notifications/nota-apagada-no-aviso";
 import { useNotasDosAvisos } from "@/hooks/use-notas-dos-avisos";
+import { ehAlarmeDaIa } from "@/lib/notifications/aviso-da-ia";
 import { notaDoAviso } from "@/lib/notifications/nota-do-aviso";
 import { rotaDoAviso } from "@/lib/notifications/rota-do-aviso";
 import {
   AtSign,
   Bell,
   Bot,
+  BotOff,
   CheckCheck,
   ListTodo,
   Loader2,
@@ -53,6 +55,10 @@ const TYPE_ICON: Record<Notification["type"], typeof Bell> = {
   // NOSSO (1139): um agente de IA passou a conversa para a equipe. Leva à
   // conversa, como a menção.
   ia_transferiu: Bot,
+  // NOSSO (1140): o alarme quando a IA para de responder, e a volta dela.
+  // Levam às clientes "Em atraso" (`rotaDoAviso`).
+  ia_falhou: BotOff,
+  ia_voltou: Bot,
 };
 
 export default function NotificationsPage() {
@@ -324,8 +330,10 @@ export default function NotificationsPage() {
                         className={cn(
                           "mt-0.5 text-xs text-muted-foreground",
                           // O aviso de saúde não abre nada ao clicar: o
-                          // diagnóstico inteiro tem de caber aqui.
-                          n.type === "whatsapp_alert" ? "line-clamp-3" : "truncate",
+                          // diagnóstico inteiro tem de caber aqui. O alarme da
+                          // IA (1140) também: o conserto ("recarregue no
+                          // painel do provedor") só está no corpo.
+                          n.type === "whatsapp_alert" || ehAlarmeDaIa(n.type) ? "line-clamp-3" : "truncate",
                         )}
                       >
                         {texto.corpo}

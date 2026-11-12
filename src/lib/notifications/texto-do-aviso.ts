@@ -43,14 +43,16 @@ export interface ClienteDoAviso {
  * O cliente a mostrar na linha do aviso (pedido do operador, 28/10/2026: "em
  * qual cliente foi feita aquela modificação"). `null` quando não há o que
  * dizer: o aviso de atribuição já traz o contato no corpo, o da IA que passou
- * a conversa (1139) já o traz no TÍTULO, o de saúde do WhatsApp não é de
- * cliente, e o aviso sem ficha nem grupo legível não ganha nome inventado.
+ * a conversa (1139) já o traz no TÍTULO, o de saúde do WhatsApp e o alarme
+ * da IA (1140) não são de cliente, e o aviso sem ficha nem grupo legível não ganha nome inventado.
  */
 export function clienteDoAviso(aviso: AvisoComContato): ClienteDoAviso | null {
   if (
     aviso.type === "conversation_assigned" ||
     aviso.type === "whatsapp_alert" ||
-    aviso.type === "ia_transferiu"
+    aviso.type === "ia_transferiu" ||
+    aviso.type === "ia_falhou" ||
+    aviso.type === "ia_voltou"
   ) {
     return null;
   }

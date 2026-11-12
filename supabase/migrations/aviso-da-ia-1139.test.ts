@@ -4,7 +4,6 @@ import path from 'node:path';
 
 import { COLUNAS_DO_AGENTE, LIMITES } from '@/lib/ia-agentes/agente';
 import { TIPO_DO_AVISO_DA_IA } from '@/lib/notifications/aviso-da-ia';
-import type { NotificationType } from '@/types';
 
 // ============================================================
 // Pinos da 1139 (o aviso quando a IA passa a conversa para a equipe). A prova
@@ -41,18 +40,7 @@ describe('1139 — notifications.type ganha ia_transferiu', () => {
     ]);
   });
 
-  it('a lista do CHECK é a MESMA do tipo TS (tipo novo sem migration não compila aqui)', () => {
-    // Record exaustivo: um `NotificationType` novo sem entrada reprova o typecheck.
-    const doTs: Record<NotificationType, true> = {
-      conversation_assigned: true,
-      note_mention: true,
-      note_reply: true,
-      task_assigned: true,
-      task_reply: true,
-      whatsapp_alert: true,
-      ia_transferiu: true,
-    };
-    expect(new Set(tiposDoCheck(codigo))).toEqual(new Set(Object.keys(doTs)));
+  it('o tipo é o que o app grava (a paridade com o tipo TS mudou para o pino da 1140, a mais nova)', () => {
     expect(tiposDoCheck(codigo)).toContain(TIPO_DO_AVISO_DA_IA);
   });
 

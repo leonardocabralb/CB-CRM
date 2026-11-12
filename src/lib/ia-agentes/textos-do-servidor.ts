@@ -170,6 +170,19 @@ export async function avisoDaTarefa(agente: string): Promise<string> {
 }
 
 /**
+ * O tradutor do alarme da IA (1140, `alarme-da-ia.ts`), no idioma da
+ * instalação. As chaves de motivo e de provedor são MONTADAS: o teste deste
+ * arquivo as cobra nos dois dicionários.
+ */
+export async function tradutorDoAlarme(): Promise<(chave: string, valores?: Record<string, string | number>) => string> {
+  const { locale, messages } = await dicionario()
+  return createTranslator({ locale, messages, namespace: 'IaAgentes.alarme' }) as unknown as (
+    chave: string,
+    valores?: Record<string, string | number>,
+  ) => string
+}
+
+/**
  * O título do aviso no sino quando o agente passa a conversa para a equipe
  * (1139, decisão D2 do operador): "IA passou <cliente> para a equipe". Sem
  * nome nem identidade legível, o rótulo neutro — nunca um id.

@@ -7,16 +7,19 @@ import { toast } from "sonner";
 import { CaixinhaDaIa } from "@/components/notifications/caixinha-da-ia";
 import { useAuth } from "@/hooks/use-auth";
 import { avisoPossivelNoAparelho, usePreferenciaDeAviso } from "@/hooks/use-browser-notifications";
-import { EVENTO_ABRIR_CONVERSA, EVENTO_CONVERSA_ABERTA } from "@/lib/inbox/url";
+import { EVENTO_ABRIR_CONVERSA, EVENTO_CONVERSA_ABERTA, EVENTO_VER_EM_ATRASO } from "@/lib/inbox/url";
 import {
   abaEmFoco,
   avisosParaReabrir,
   caixinhaTocaOSom,
   caixinhasDaConversa,
   desdeDaReabertura,
+  ehAlarmeDaIa,
   idDaCaixinha,
+  temCaixinha,
   TETO_NA_REABERTURA,
-  TIPO_DO_AVISO_DA_IA,
+  TIPOS_COM_CAIXINHA,
+  tomDaCaixinha,
 } from "@/lib/notifications/aviso-da-ia";
 import { silencioDoSino } from "@/lib/notifications/aviso-do-sino";
 import { getNotificationPermission, viewedConversationFromLocation } from "@/lib/notifications/browser-notify";
@@ -54,6 +57,10 @@ function conversaAVista(): string | null {
  * Ao montar (abrir o CRM, recarregar), voltam as dos avisos ainda NÃO lidos
  * das últimas 24 h (D6 do operador, 12/11/2026), sem som — não são novos. O X
  * vale só naquela página: recarregada, a caixinha volta até o aviso ser lido.
+ *
+ * 1140 (F1): o ALARME de que a IA parou (`ia_falhou`) usa a mesma caixinha,
+ * VERMELHA, e o clique leva às conversas "Em atraso" (sem conversa própria).
+ * Ela some quando a IA volta: o servidor marca o alarme como lido.
  */
 export function useAvisoDaIaNaTela(): void {
   const { user, profile, perfilDeAcesso } = useAuth();
@@ -120,6 +127,9 @@ export function useAvisoDaIaNaTela(): void {
       if (aviso.conversation_id) {
         window.dispatchEvent(new CustomEvent(EVENTO_ABRIR_CONVERSA, { detail: aviso.conversation_id }));
       }
+      // 1140: o alarme da IA leva às clientes "Em atraso"; com a caixa de
+      // entrada já montada, o `?ver=` não a remonta — este sinal acende o chip.
+      if (ehAlarmeDaIa(aviso.type)) window.dispatchEvent(new CustomEvent(EVENTO_VER_EM_ATRASO));
     };
 
     const mostrar = (aviso: Notification, comSom: boolean) => {
@@ -146,6 +156,7 @@ export function useAvisoDaIaNaTela(): void {
       toast.custom(
         () => (
           <CaixinhaDaIa
+            tom={tomDaCaixinha(aviso.type)}
             titulo={aviso.title}
             corpo={aviso.body?.trim() ? aviso.body : null}
             onAbrir={() => abrir(aviso)}
@@ -172,7 +183,7 @@ export function useAvisoDaIaNaTela(): void {
         .from("notifications")
         .select("*")
         .eq("user_id", userId)
-        .eq("type", TIPO_DO_AVISO_DA_IA)
+        .in("type", [...TIPOS_COM_CAIXINHA])
         .is("read_at", null)
         .gte("created_at", desdeDaReabertura(Date.now()))
         .order("created_at", { ascending: false })
@@ -192,7 +203,7 @@ export function useAvisoDaIaNaTela(): void {
         { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
         (payload) => {
           const aviso = payload.new as Notification;
-          if (aviso.type !== TIPO_DO_AVISO_DA_IA) return;
+          if (!temCaixinha(aviso.type)) return;
           mostrar(aviso, true);
         },
       )
@@ -204,7 +215,7 @@ export function useAvisoDaIaNaTela(): void {
           // sai — e o id fica guardado, para a consulta da abertura ainda no
           // ar não a reabrir com a foto de antes da leitura.
           const aviso = payload.new as Notification;
-          if (!aviso.read_at || aviso.type !== TIPO_DO_AVISO_DA_IA) return;
+          if (!aviso.read_at || !temCaixinha(aviso.type)) return;
           lidos.add(aviso.id);
           if (abertas.has(aviso.id)) fechar(aviso.id);
         },
@@ -221,7 +232,6 @@ export function useAvisoDaIaNaTela(): void {
       for (const avisoId of caixinhasDaConversa(abertas, conversaId)) fechar(avisoId);
     };
     window.addEventListener(EVENTO_CONVERSA_ABERTA, aoAbrirConversa);
-
 
     return () => {
       cancelado = true;

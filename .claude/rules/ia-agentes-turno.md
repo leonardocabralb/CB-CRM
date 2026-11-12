@@ -12,6 +12,8 @@ paths:
   - "src/lib/ia-agentes/aviso-da-transferencia*"
   - "src/hooks/use-aviso-da-ia-na-tela*"
   - "supabase/migrations/1139_cb_aviso_da_ia_que_passa.sql"
+  - "src/lib/ia-agentes/alarme-da-ia*"
+  - "supabase/migrations/1140_cb_alarme_da_ia.sql"
 ---
 
 # Turno do agente: ação prometida, passagem com ações, horário, encerrar
@@ -180,7 +182,7 @@ agentes não avisa.
   em memória (`campos`; o registro guarda o campo, não o valor) — o
   `ja_estava` conta. Sem campo, o texto da anotação.
 - **A caixinha dentro do CRM** (`useAvisoDaIaNaTela`, no
-  `BrowserNotificationsListener`): só `ia_transferiu`, sem prazo, sem
+  `BrowserNotificationsListener`): `ia_transferiu` (e o alarme `ia_falhou`, 1140, em vermelho), sem prazo, sem
   depender da permissão do navegador (vale no celular); cala como o pop-up
   do sino (`silencioDoSino`). Some ao clicar (marca lido e abre a conversa),
   no X, quando o aviso é lido por outro caminho (UPDATE do realtime) e quando
@@ -200,3 +202,34 @@ agentes não avisa.
 - **Limites aceitos**: com "Transferir para" e sem responsável, o destino
   recebe também o "Conversa atribuída" da 0027; o resumo da porta do Meu dia
   não conta o tipo novo (o bloco de notificações mostra).
+
+### O ALARME quando a IA para de responder (1140)
+
+Pergunta do operador (12/11/2026), F1–F3 em
+`docs/PLANO-alarme-quando-a-ia-para.md`: créditos, chave, modelo ou provedor
+fora terminavam `falhou` (E8) sem ninguém saber. `alarme-da-ia.ts`.
+
+- ⚠️⚠️ **UM episódio por (conta, PROVEDOR)** (`cb_ia_alarmes`, fechada ao
+  navegador): a chave e os créditos são do provedor. "Abre / lembra (6 h) /
+  só conta" decide `cb_ia_registrar_falha` SOB TRAVA — nunca decidir em TS
+  (duas falhas juntas abririam dois avisos; provado com duas sessões).
+- **Quem chama é o `encerrar` do turno e da retomada**: `falhou` com
+  `andamento.falhaDaIa` (sem chave, ilegível, só da base e o `catch` da
+  geração, com `motivoDaFalhaDaIa`) registra; `andamento.gerou` fecha
+  (`registrarIaVoltou`, UPDATE só no aberto). A leitura da chave que FALHA
+  (rede) não é da IA: sem alarme. A 1ª passageira reagenda, sem alarme.
+- ⚠️ **O motivo lê o TEXTO antes do status**: o 429 sem crédito
+  (`insufficient_quota`, "billing") não é "limite por minuto". O Gemini
+  escreve "quota" também no limite por minuto: o texto diz "créditos ou cota".
+- **O lembrete e o "voltou" aposentam os alarmes do episódio** (marcam lidos
+  os `ia_falhou` desde `desde` com o TÍTULO do provedor, `titulosDoAlarme`):
+  o aviso não guarda o provedor. Sem isso, a caixinha vermelha (D6 da 1139)
+  empilharia um lembrete a cada 6 h na abertura do CRM.
+- **A tela**: `ia_falhou` abre a caixinha VERMELHA (`tomDaCaixinha`), o
+  clique leva a `/inbox?ver=em-atraso` (`rotaDoAviso`) e dispara
+  `EVENTO_VER_EM_ATRASO` para a caixa de entrada já montada; `ia_voltou` é só
+  sino. Sem conversa nem contato (`clienteDoAviso` null).
+- Melhor esforço (log, nunca muda o desfecho); o Playground não chama
+  (`sandbox-sem-efeito.test.ts`). Pino da migration:
+  `supabase/migrations/alarme-da-ia-1140.test.ts` (a paridade do CHECK do
+  sino com `NotificationType` mora no pino da migration MAIS NOVA).

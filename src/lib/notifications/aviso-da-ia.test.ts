@@ -12,9 +12,14 @@ import {
   desdeDaReabertura,
   idDaCaixinha,
   JANELA_DA_REABERTURA_MS,
+  ehAlarmeDaIa,
   popUpDoSistemaCalaPelaCaixinha,
+  temCaixinha,
   TETO_NA_REABERTURA,
+  TIPO_DO_ALARME_DA_IA,
   TIPO_DO_AVISO_DA_IA,
+  TIPOS_COM_CAIXINHA,
+  tomDaCaixinha,
 } from "./aviso-da-ia";
 import { popUpDoSino, silencioDoSino } from "./aviso-do-sino";
 import { rotaDoAviso } from "./rota-do-aviso";
@@ -47,6 +52,49 @@ describe("o link do aviso da IA", () => {
 
   it("a caixinha tem id próprio por aviso (não se confunde com os outros toasts)", () => {
     expect(idDaCaixinha("aviso-1")).toBe("ia:aviso-1");
+  });
+});
+
+describe("o ALARME de que a IA parou (1140, F1–F2)", () => {
+  const ALARME: Notification = {
+    id: "alarme-1",
+    account_id: "conta-1",
+    user_id: "ana",
+    type: TIPO_DO_ALARME_DA_IA,
+    title: "A IA parou de responder (Anthropic)",
+    body: "Créditos ou cota de Anthropic esgotados…",
+    created_at: "2026-11-12T13:05:00Z",
+  };
+
+  it("abre a caixinha VERMELHA; o \"voltou\" fica só no sino; a passagem segue âmbar", () => {
+    expect(TIPOS_COM_CAIXINHA).toEqual(["ia_transferiu", "ia_falhou"]);
+    expect(temCaixinha("ia_falhou")).toBe(true);
+    expect(temCaixinha("ia_voltou")).toBe(false);
+    expect(temCaixinha("note_mention")).toBe(false);
+    expect(tomDaCaixinha("ia_falhou")).toBe("falha");
+    expect(tomDaCaixinha("ia_transferiu")).toBe("aviso");
+  });
+
+  it("sem conversa própria, leva às conversas \"Em atraso\" (F2) — no sino, no Meu dia, no pop-up e na caixinha", () => {
+    expect(ehAlarmeDaIa("ia_falhou")).toBe(true);
+    expect(ehAlarmeDaIa("ia_voltou")).toBe(true);
+    expect(ehAlarmeDaIa("ia_transferiu")).toBe(false);
+    expect(rotaDoAviso(ALARME)).toBe("/inbox?ver=em-atraso");
+    expect(rotaDoAviso({ ...ALARME, type: "ia_voltou" }, "notificacoes")).toBe("/inbox?ver=em-atraso&de=notificacoes");
+    expect(rotaDoAviso(ALARME, "meu-dia")).toBe("/inbox?ver=em-atraso&de=meu-dia");
+    const popUp = popUpDoSino(ALARME, { titulo: ALARME.title, corpo: ALARME.body ?? null }, true);
+    expect(popUp).toMatchObject({ rota: "/inbox?ver=em-atraso", conversaId: null, tag: "sino:alarme-1" });
+  });
+
+  it("com a aba em foco, a caixinha basta: o pop-up do sistema cala; o \"voltou\" (sem caixinha) não cala", () => {
+    expect(popUpDoSistemaCalaPelaCaixinha("ia_falhou", true)).toBe(true);
+    expect(popUpDoSistemaCalaPelaCaixinha("ia_falhou", false)).toBe(false);
+    expect(popUpDoSistemaCalaPelaCaixinha("ia_voltou", true)).toBe(false);
+  });
+
+  it("nenhuma conversa aberta o cala (ele não tem conversa)", () => {
+    const base = { userId: "ana", podeVerCaixa: true, agoraMs: Date.now() };
+    expect(silencioDoSino({ ...base, aviso: ALARME, vistos: new Map(), conversaAVista: "conv-9" })).toBeNull();
   });
 });
 
@@ -125,7 +173,9 @@ describe("pinos da montagem", () => {
 
   it("o ouvinte da caixinha só abre para o tipo da IA, sem prazo, e fecha quando o aviso é lido por outro caminho", () => {
     const hook = ler("hooks/use-aviso-da-ia-na-tela.tsx");
-    expect(hook).toMatch(/if \(aviso\.type !== TIPO_DO_AVISO_DA_IA\) return;/);
+    // Os dois tipos com caixinha (1139 e 1140), no INSERT e no UPDATE.
+    expect(hook).toMatch(/if \(!temCaixinha\(aviso\.type\)\) return;/);
+    expect(hook).toMatch(/if \(!aviso\.read_at \|\| !temCaixinha\(aviso\.type\)\) return;/);
     expect(hook).toMatch(/duration: Infinity/);
     expect(hook).toMatch(/event: "UPDATE"/);
     expect(hook).toMatch(/window\.addEventListener\(EVENTO_CONVERSA_ABERTA, aoAbrirConversa\);/);
@@ -135,7 +185,7 @@ describe("pinos da montagem", () => {
     const hook = ler("hooks/use-aviso-da-ia-na-tela.tsx");
     const consulta = hook.slice(hook.indexOf('.from("notifications")\n        .select("*")'));
     expect(consulta).toMatch(/\.eq\("user_id", userId\)/);
-    expect(consulta).toMatch(/\.eq\("type", TIPO_DO_AVISO_DA_IA\)/);
+    expect(consulta).toMatch(/\.in\("type", \[\.\.\.TIPOS_COM_CAIXINHA\]\)/);
     expect(consulta).toMatch(/\.is\("read_at", null\)/);
     expect(consulta).toMatch(/\.gte\("created_at", desdeDaReabertura\(Date\.now\(\)\)\)/);
     expect(consulta).toMatch(/\.limit\(TETO_NA_REABERTURA\)/);

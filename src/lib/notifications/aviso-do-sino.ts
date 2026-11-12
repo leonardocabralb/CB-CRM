@@ -98,7 +98,7 @@ export interface PopUpDoSino {
  * os avisos nossos já gravam título e corpo prontos.
  */
 export function popUpDoSino(
-  aviso: Pick<Notification, "id" | "conversation_id" | "task_id" | "note_id">,
+  aviso: Pick<Notification, "id" | "conversation_id" | "task_id" | "note_id"> & Partial<Pick<Notification, "type">>,
   texto: TextoDoAviso,
   mostrarTexto: boolean,
 ): PopUpDoSino {

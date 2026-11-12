@@ -13,10 +13,14 @@ import { CaixinhaDaIa } from './caixinha-da-ia';
 // irmão (botão dentro de botão é HTML inválido), que só fecha.
 // ============================================================
 
-function desenhar(corpo: string | null, mensagens: AbstractIntlMessages = ptBR as unknown as AbstractIntlMessages) {
+function desenhar(
+  corpo: string | null,
+  mensagens: AbstractIntlMessages = ptBR as unknown as AbstractIntlMessages,
+  tom?: 'aviso' | 'falha',
+) {
   return renderToStaticMarkup(
     <NextIntlClientProvider locale="pt-BR" messages={mensagens}>
-      <CaixinhaDaIa titulo="IA passou Fulana para a equipe" corpo={corpo} onAbrir={() => {}} onFechar={() => {}} />
+      <CaixinhaDaIa tom={tom} titulo="IA passou Fulana para a equipe" corpo={corpo} onAbrir={() => {}} onFechar={() => {}} />
     </NextIntlClientProvider>,
   );
 }
@@ -54,5 +58,19 @@ describe('CaixinhaDaIa', () => {
     const html = desenhar('x', en as unknown as AbstractIntlMessages);
     expect(html).toContain('Open the conversation');
     expect(html).toContain('aria-label="Dismiss the notice"');
+    expect(desenhar('x', en as unknown as AbstractIntlMessages, 'falha')).toContain('See the overdue conversations');
+  });
+
+  it('1140 (F1): o ALARME de que a IA parou é VERMELHO e convida às conversas em atraso — nada de âmbar', () => {
+    const html = desenhar('Gemini recusou a chave: troque-a em Integrações.', undefined, 'falha');
+    expect(html).toContain('border-2 border-red-500');
+    expect(html).toContain('bg-red-500/10');
+    expect(html).toContain('bg-red-600 text-white');
+    // O texto vermelho é o -600: passa nos dois temas (o `dark:` está inerte).
+    expect(html).toContain('text-red-600');
+    expect(html).toContain('Ver as conversas em atraso');
+    expect(html).not.toContain('Abrir a conversa');
+    expect(html).not.toMatch(/\b(bg|border|text)-amber-/);
+    expect(html.match(/<button/g)).toHaveLength(2);
   });
 });

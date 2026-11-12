@@ -207,6 +207,13 @@ vi.mock('./executar-acoes', async (original) => ({
   ...(await original<typeof import('./executar-acoes')>()),
   executarAcoes: vi.fn(async () => ({ registros: [], moveu: false, campos: [] })),
 }))
+// O ALARME (1140): a gravação tem teste próprio (`alarme-da-ia.test.ts`); aqui,
+// QUANDO o turno o chama.
+vi.mock('./alarme-da-ia', async (original) => ({
+  ...(await original<typeof import('./alarme-da-ia')>()),
+  registrarFalhaDaIa: vi.fn(async () => {}),
+  registrarIaVoltou: vi.fn(async () => {}),
+}))
 vi.mock('next/server', async (original) => ({
   ...(await original<typeof import('next/server')>()),
   after: vi.fn(),
@@ -237,6 +244,7 @@ import { MetaApiError } from '@/lib/whatsapp/meta-api'
 
 import { lerLinhaDoAgente } from './agente'
 import { lerAgendaDoAgente } from './agenda'
+import { registrarFalhaDaIa, registrarIaVoltou } from './alarme-da-ia'
 import { NOTA_DA_RESPOSTA_CRUZADA } from './contexto'
 import { executarAcoes } from './executar-acoes'
 import { opcoesDoAgente } from './ferramentas'
@@ -581,6 +589,8 @@ beforeEach(() => {
   vi.mocked(opcoesDoAgente).mockReset().mockResolvedValue({})
   vi.mocked(lerAgendaDoAgente).mockReset().mockResolvedValue(null)
   vi.mocked(executarAcoes).mockReset().mockResolvedValue({ registros: [], moveu: false, campos: [] })
+  vi.mocked(registrarFalhaDaIa).mockClear()
+  vi.mocked(registrarIaVoltou).mockClear()
 })
 
 /** O envio falha DEPOIS de chamar o provedor (o erro vem dele). */
@@ -1650,6 +1660,93 @@ describe('executarTurno — falha de configuração termina `falhou` sem transfe
     vi.mocked(generateReply).mockRejectedValue(new AiError('model not found', { code: 'provider_error', status: 502, upstreamStatus: 404 }))
     await executarTurno(TURNO)
     expect(turno()).toMatchObject({ status: 'falhou' })
+  })
+})
+
+// ------------------------------------------------------------
+// O ALARME quando a IA para de responder (1140, F1–F3)
+// ------------------------------------------------------------
+
+describe('executarTurno — o alarme quando a IA para (1140)', () => {
+  const PROVEDOR = { accountId: CONTA, provedor: 'gemini' }
+
+  it('créditos esgotados: `falhou` (a E8 segue: nada pausa) e o alarme é registrado com o motivo e o PROVEDOR', async () => {
+    vi.mocked(generateReply).mockRejectedValue(
+      new AiError('Gemini rate limit reached: You exceeded your current quota, please check your plan and billing details.', {
+        code: 'rate_limited',
+        status: 502,
+        upstreamStatus: 429,
+      }),
+    )
+    // A 1ª é passageira (429): repete; o alarme só vem quando o turno TERMINA `falhou`.
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'aguardando', erro: ERRO_DA_REPETICAO })
+    expect(registrarFalhaDaIa).not.toHaveBeenCalled()
+    turno().executar_apos = new Date(Date.now() - 1_000).toISOString()
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'falhou' })
+    expect(registrarFalhaDaIa).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(registrarFalhaDaIa).mock.calls[0][1]).toEqual({ ...PROVEDOR, motivo: 'creditos' })
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: false, ia_pausada_por: null })
+    expect(registrarIaVoltou).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['sem chave', () => vi.mocked(lerChave).mockResolvedValue({ chave: null, ilegivel: false }), 'sem_chave'],
+    ['chave que não decifra', () => vi.mocked(lerChave).mockResolvedValue({ chave: null, ilegivel: true }), 'sem_chave'],
+    [
+      'chave só da base',
+      () => vi.mocked(lerChave).mockResolvedValue({ chave: 'sk-so-da-base', ilegivel: false, soDaBase: true }),
+      'sem_chave',
+    ],
+    [
+      'chave recusada',
+      () => vi.mocked(generateReply).mockRejectedValue(new AiError('x', { code: 'invalid_key', status: 401, upstreamStatus: 401 })),
+      'chave_recusada',
+    ],
+    [
+      'modelo que sumiu',
+      () =>
+        vi.mocked(generateReply).mockRejectedValue(
+          new AiError('model not found', { code: 'provider_error', status: 502, upstreamStatus: 404 }),
+        ),
+      'modelo',
+    ],
+  ])('%s: o alarme na hora', async (_, preparar, motivo) => {
+    preparar()
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'falhou' })
+    expect(registrarFalhaDaIa).toHaveBeenCalledWith(expect.anything(), { ...PROVEDOR, motivo })
+  })
+
+  it('⚠️ a leitura da chave que FALHOU (rede, banco) não é problema da IA: sem alarme', async () => {
+    vi.mocked(lerChave).mockRejectedValue(new Error('rede'))
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'falhou', erro: 'leitura da chave falhou' })
+    expect(registrarFalhaDaIa).not.toHaveBeenCalled()
+  })
+
+  it('a geração que deu certo FECHA o episódio daquele provedor (o "voltou")', async () => {
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'respondeu' })
+    expect(registrarIaVoltou).toHaveBeenCalledWith(expect.anything(), PROVEDOR)
+    expect(registrarFalhaDaIa).not.toHaveBeenCalled()
+  })
+
+  it('o envio que falha DEPOIS de gerar não é a IA parada: o provedor gerou, o episódio fecha', async () => {
+    envioFalhaNoProvedor(new MetaApiError('recusado', { httpStatus: 400 }))
+    await executarTurno(TURNO)
+    expect(turno().status).not.toBe('respondeu')
+    expect(registrarFalhaDaIa).not.toHaveBeenCalled()
+    expect(registrarIaVoltou).toHaveBeenCalledWith(expect.anything(), PROVEDOR)
+  })
+
+  it('descartado antes de gerar (nada se soube do provedor): nem alarme nem "voltou"', async () => {
+    conversa().status = 'closed'
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'descartado', erro: 'encerrada' })
+    expect(registrarFalhaDaIa).not.toHaveBeenCalled()
+    expect(registrarIaVoltou).not.toHaveBeenCalled()
   })
 })
 
@@ -4281,11 +4378,16 @@ describe('a RETOMADA (1056)', () => {
       expect(turno(RETOMADA).status).toBe('falhou')
     })
 
-    it('falha de CONFIGURAÇÃO (chave recusada) não repete: `falhou`', async () => {
+    it('falha de CONFIGURAÇÃO (chave recusada) não repete: `falhou` — e abre o alarme (1140)', async () => {
       comRetomadaPendente()
       vi.mocked(generateReply).mockRejectedValue(new AiError('chave', { code: 'invalid_key', status: 401, upstreamStatus: 401 }))
       await executarTurno(RETOMADA)
       expect(turno(RETOMADA).status).toBe('falhou')
+      expect(registrarFalhaDaIa).toHaveBeenCalledWith(expect.anything(), {
+        accountId: CONTA,
+        provedor: 'gemini',
+        motivo: 'chave_recusada',
+      })
     })
   })
 

@@ -107,7 +107,7 @@ export function corpoDoAvisoDaTransferencia(campos: readonly CampoPreenchido[], 
 const COLUNAS_DO_PERFIL = 'id, account_id, nome, papel_base, telas, secoes_config, channel_ids, pipeline_ids, sistema'
 
 /** Os membros ATIVOS da conta, com o perfil real de cada um. Lança na falha. */
-async function lerMembrosAtivos(db: SupabaseClient, accountId: string): Promise<MembroAvisavel[]> {
+export async function lerMembrosAtivos(db: SupabaseClient, accountId: string): Promise<MembroAvisavel[]> {
   const [perfis, membros] = await Promise.all([
     db.from('cb_perfis_de_acesso').select(COLUNAS_DO_PERFIL).eq('account_id', accountId),
     db.from('profiles').select('user_id, account_role, perfil_id').eq('account_id', accountId).is('suspenso_em', null),

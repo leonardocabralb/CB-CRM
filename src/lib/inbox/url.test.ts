@@ -86,12 +86,12 @@ describe("recorte do Meu dia (`conexao` + `ver`)", () => {
     expect(urlDoInbox({ conexao: CANAL })).toBe(`/inbox?conexao=${CANAL}`);
   });
 
-  it("⚠️ é porta de ENTRADA: c e etapa vencem, e `ver` sem conexão não sai", () => {
+  it("⚠️ é porta de ENTRADA: c e etapa vencem a conexão e o `ver`", () => {
     expect(urlDoInbox({ c: "cv1", conexao: CANAL, ver: "nao-lidas" })).toBe(
       "/inbox?c=cv1",
     );
     expect(urlDoInbox({ etapa: "s1", conexao: CANAL })).toBe("/inbox?etapa=s1");
-    expect(urlDoInbox({ ver: "nao-lidas" })).toBe("/inbox");
+    expect(urlDoInbox({ etapa: "s1", ver: "em-atraso" })).toBe("/inbox?etapa=s1");
   });
 
   it("recorteDaUrl é PARSE: conexão sem forma de id não semeia; ver estranho é ignorado", () => {
@@ -102,8 +102,17 @@ describe("recorte do Meu dia (`conexao` + `ver`)", () => {
     expect(recorteDaUrl(CANAL, "tudo")).toEqual({ conexao: CANAL, ver: null });
     expect(recorteDaUrl(CANAL, null)).toEqual({ conexao: CANAL, ver: null });
     expect(recorteDaUrl("bancario", "nao-lidas")).toBeNull();
-    expect(recorteDaUrl(null, "nao-lidas")).toBeNull();
     expect(recorteDaUrl("", null)).toBeNull();
+    expect(recorteDaUrl(null, "tudo")).toBeNull();
+  });
+
+  it("1140: `?ver=` SEM conexão acende só o chip (o alarme da IA leva às clientes em atraso de todas as conexões)", () => {
+    expect(recorteDaUrl(null, "em-atraso")).toEqual({ conexao: null, ver: "em-atraso" });
+    expect(recorteDaUrl("", "nao-lidas")).toEqual({ conexao: null, ver: "nao-lidas" });
+    expect(urlDoInbox({ ver: "em-atraso" })).toBe("/inbox?ver=em-atraso");
+    expect(urlDoInbox({ ver: "em-atraso", de: "notificacoes" })).toBe("/inbox?ver=em-atraso&de=notificacoes");
+    // A conversa e a etapa continuam vencendo.
+    expect(urlDoInbox({ c: "cv1", ver: "em-atraso" })).toBe("/inbox?c=cv1");
   });
 });
 

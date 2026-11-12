@@ -7406,6 +7406,32 @@
         "marcar_reuniao": "{agente} booked the meeting for {alvo}."
       }
     },
+    "alarme": {
+      "provedor": {
+        "openai": "OpenAI",
+        "anthropic": "Anthropic",
+        "gemini": "Gemini"
+      },
+      "titulo": {
+        "abriu": "AI stopped replying ({provedor})",
+        "continua": "AI is still down ({provedor})",
+        "voltou": "AI is replying again ({provedor})"
+      },
+      "motivo": {
+        "creditos": "{provedor} credits or quota exhausted (or spending limit reached): check the balance in the provider dashboard.",
+        "chave_recusada": "{provedor} rejected the key: replace it in Integrations.",
+        "sem_chave": "No {provedor} key that can reply: add one in Integrations.",
+        "modelo": "The chosen model no longer exists at {provedor}: pick another one on the agent screen.",
+        "limite_por_minuto": "{provedor} refused: too many requests per minute.",
+        "fora_do_ar": "{provedor} did not answer in time or is down.",
+        "cortada": "The {provedor} reply was cut off by the length limit.",
+        "outro": "{provedor} returned an error."
+      },
+      "corpo": {
+        "desde": "Down since {desde} · {falhas, plural, one {# reply not sent} other {# replies not sent}}.",
+        "voltou": "Down from {desde} to {agora} · {falhas, plural, one {# reply not sent} other {# replies not sent}}. Check the overdue conversations."
+      }
+    },
     "retomada": {
       "explicacao": "When the agent asks something and the customer doesn't answer, it gets back to the customer on a cadence. The message is written by the model, from the conversation, and goes out through the same connection.",
       "ligar": "Follow up when the customer doesn't answer",
@@ -7642,6 +7668,7 @@
   },
   "AvisoDaIaNaTela": {
     "abrir": "Open the conversation",
+    "verEmAtraso": "See the overdue conversations",
     "fechar": "Dismiss the notice"
   },
   "SignupPage": {

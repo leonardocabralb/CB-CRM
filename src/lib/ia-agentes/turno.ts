@@ -161,6 +161,7 @@ import {
   RESERVA_DO_ENVIO_MS,
   type TurnoNaFila,
 } from './fila'
+import { motivoDaFalhaDaIa, registrarFalhaDaIa, registrarIaVoltou, type MotivoDaFalhaDaIa } from './alarme-da-ia'
 import { avisarDaTransferencia } from './aviso-da-transferencia'
 import { anotarNaConversa, executarAcoes, type CampoPreenchido } from './executar-acoes'
 import { opcoesDoAgente } from './ferramentas'
@@ -1151,6 +1152,14 @@ interface Andamento {
    */
   camposPreenchidos: CampoPreenchido[]
   /**
+   * A IA não respondeu por um problema DELA (1140): sem chave, a chave ou os
+   * créditos recusados, modelo fora, provedor fora do ar. Abre (ou lembra) o
+   * alarme quando o turno termina `falhou`.
+   */
+  falhaDaIa: MotivoDaFalhaDaIa | null
+  /** O provedor GEROU nesta rodada: fecha o alarme aberto daquele provedor (1140). */
+  gerou: boolean
+  /**
    * A resposta que saiu pediu a EQUIPE (o `[[TRANSFERIR]]`, a equipe
    * prometida, a reunião pedida e não marcada): não se arma retomada — a
    * conversa foi para gente.
@@ -1249,15 +1258,24 @@ async function conduzir(
   let apiKey: string | null
   try {
     const lida = await lerChave(turno.account_id, agente.provedor)
-    if (lida.ilegivel) return { status: 'falhou', erro: 'a chave do provedor não decifra' }
+    if (lida.ilegivel) {
+      andamento.falhaDaIa = 'sem_chave'
+      return { status: 'falhou', erro: 'a chave do provedor não decifra' }
+    }
     // A chave da OpenAI que é SÓ da base de conhecimento (1047) não gera
     // resposta: é falta de chave, como o Playground diz (`provedor_so_da_base`).
-    if (lida.soDaBase) return { status: 'falhou', erro: 'a chave da OpenAI é só da base de conhecimento' }
+    if (lida.soDaBase) {
+      andamento.falhaDaIa = 'sem_chave'
+      return { status: 'falhou', erro: 'a chave da OpenAI é só da base de conhecimento' }
+    }
     apiKey = lida.chave
   } catch {
     return { status: 'falhou', erro: 'leitura da chave falhou' }
   }
-  if (!apiKey) return { status: 'falhou', erro: `sem chave do provedor ${agente.provedor}` }
+  if (!apiKey) {
+    andamento.falhaDaIa = 'sem_chave'
+    return { status: 'falhou', erro: `sem chave do provedor ${agente.provedor}` }
+  }
 
   const opcoes = await agentesParaPassar(turno, agente)
 
@@ -1398,6 +1416,7 @@ async function conduzir(
     texto = r.text
     handoff = r.handoff
     andamento.usage = r.usage
+    andamento.gerou = true
   } catch (err) {
     // Toda falha da geração termina aqui, sem enviar nada e sem transferir
     // (E8) — inclusive a resposta CORTADA pelo teto de tokens
@@ -1411,6 +1430,8 @@ async function conduzir(
         erro: ERRO_DA_REPETICAO,
       }
     }
+    // 1140: o motivo vai ao alarme (créditos, chave, modelo, fora do ar…).
+    andamento.falhaDaIa = motivoDaFalhaDaIa(err)
     return {
       status: 'falhou',
       erro: err instanceof AiError ? mensagemSeguraDeAiError(err) : 'erro inesperado ao gerar',
@@ -2134,15 +2155,24 @@ async function conduzirRetomada(
   let apiKey: string | null
   try {
     const lida = await lerChave(turno.account_id, agente.provedor)
-    if (lida.ilegivel) return { status: 'falhou', erro: 'a chave do provedor não decifra' }
+    if (lida.ilegivel) {
+      andamento.falhaDaIa = 'sem_chave'
+      return { status: 'falhou', erro: 'a chave do provedor não decifra' }
+    }
     // A chave da OpenAI que é SÓ da base de conhecimento (1047) não gera
     // resposta: é falta de chave, como o Playground diz (`provedor_so_da_base`).
-    if (lida.soDaBase) return { status: 'falhou', erro: 'a chave da OpenAI é só da base de conhecimento' }
+    if (lida.soDaBase) {
+      andamento.falhaDaIa = 'sem_chave'
+      return { status: 'falhou', erro: 'a chave da OpenAI é só da base de conhecimento' }
+    }
     apiKey = lida.chave
   } catch {
     return { status: 'falhou', erro: 'leitura da chave falhou' }
   }
-  if (!apiKey) return { status: 'falhou', erro: `sem chave do provedor ${agente.provedor}` }
+  if (!apiKey) {
+    andamento.falhaDaIa = 'sem_chave'
+    return { status: 'falhou', erro: `sem chave do provedor ${agente.provedor}` }
+  }
 
   if (PRAZO_DO_TURNO_MS - (Date.now() - inicio) - RESERVA_DO_ENVIO_MS - PRAZO_DO_EMBEDDING_MS < 3_000) {
     return { status: 'falhou', erro: 'o prazo do turno acabou antes de gerar' }
@@ -2207,6 +2237,7 @@ async function conduzirRetomada(
     texto = r.text
     handoff = r.handoff
     andamento.usage = r.usage
+    andamento.gerou = true
   } catch (err) {
     // A falha PASSAGEIRA tenta UMA vez mais, como no turno de resposta (revisão
     // de 09/11/2026): sem isto um 429 ou um 5xx acabava a série inteira — o
@@ -2218,6 +2249,8 @@ async function conduzirRetomada(
         erro: ERRO_DA_REPETICAO,
       }
     }
+    // 1140: o motivo vai ao alarme (créditos, chave, modelo, fora do ar…).
+    andamento.falhaDaIa = motivoDaFalhaDaIa(err)
     return {
       status: 'falhou',
       erro: err instanceof AiError ? mensagemSeguraDeAiError(err) : 'erro inesperado ao gerar',
@@ -2497,6 +2530,21 @@ async function encerrar(
   })
   if (!escreveu) return
 
+  // 1140: o ALARME quando a IA para de responder (decisões F1–F3 do operador)
+  // — e o "voltou" quando ela gera de novo. Por PROVEDOR: a chave e os
+  // créditos são dele. Não muda o desfecho (a E8 segue: nada pausa).
+  if (andamento.agente) {
+    if (desfecho.status === 'falhou' && andamento.falhaDaIa) {
+      await registrarFalhaDaIa(db, {
+        accountId: turno.account_id,
+        provedor: andamento.agente.provedor,
+        motivo: andamento.falhaDaIa,
+      })
+    } else if (andamento.gerou) {
+      await registrarIaVoltou(db, { accountId: turno.account_id, provedor: andamento.agente.provedor })
+    }
+  }
+
   // A resposta (ou a retomada) SAIU: arma a próxima tentativa da série.
   if (desfecho.status === 'respondeu') await armarRetomada(db, turno, desfecho.mensagemEnviadaId, andamento)
   // A retomada nunca transfere para gente por conta própria — nem no envio
@@ -2571,6 +2619,8 @@ export async function executarTurno(turnoId: string): Promise<void> {
     semLeitor: new Set(),
     acoes: null,
     camposPreenchidos: [],
+    falhaDaIa: null,
+    gerou: false,
     pediuEquipe: false,
     abertoDesde: null,
     cancelarDigitando: new AbortController(),
