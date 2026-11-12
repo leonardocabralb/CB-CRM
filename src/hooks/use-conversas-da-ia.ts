@@ -5,9 +5,10 @@
 // (`GET /api/cb/ia/conversas`): quem a IA atende agora e o que ela passou
 // para a equipe.
 //
-// Lê SÓ com o filtro ligado (a régua roda no servidor sobre a conta inteira:
-// ninguém paga por ela sem pedir) e relê a cada minuto com a aba visível — a
-// IA entra e sai das conversas sem evento na tela. A pausa da linha, que
+// Lê com `ativa` (a lista passa SEMPRE `true` desde o símbolo ✨ da linha,
+// 12/11/2026: a régua roda no servidor sobre a conta inteira, medida em 259
+// conversas ativas e ~12 consultas por leitura) e relê a cada minuto com a aba
+// visível — a IA entra e sai das conversas sem evento na tela. A pausa da linha, que
 // chega pelo tempo real, decide na hora o que dá (`casaComAIa`).
 //
 // ⚠️ `conjuntos` nulo = "não sei" (primeira leitura no ar, ou falhou): o

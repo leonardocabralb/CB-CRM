@@ -305,6 +305,7 @@
       "resultCount": "{count} de {total}",
       "novaConversa": "Nova conversa",
       "automacaoRodando": "{n, plural, one {# automação agendada para este cliente} other {# automações agendadas para este cliente}}",
+      "iaAtendendo": "A IA atende esta conversa",
       "searchPlaceholderInMessages": "Buscar por nome, número ou mensagem...",
       "searchInsideMessages": "Buscar também dentro das mensagens",
       "previaNaoSuportada": "Mensagem não suportada",
