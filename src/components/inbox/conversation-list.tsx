@@ -253,9 +253,13 @@ export function ConversationList({
   // o `?ver=` só semeia na montagem. Acende "Em atraso" sem os outros
   // recortes, na aba das abertas — o mesmo que o `?ver=` semeia: a pessoa
   // precisa ver TODAS as clientes que a IA deixou sem resposta, e a encerrada
-  // não fica em atraso.
+  // não fica em atraso. A busca digitada sai junto (Codex, #512): ela recorta
+  // por cima do filtro, e a lista "Em atraso" sairia vazia ou de um cliente só.
   useEffect(() => {
-    const aoPedir = () => setFiltros({ ...FILTROS_VAZIOS, emAtraso: true });
+    const aoPedir = () => {
+      setFiltros({ ...FILTROS_VAZIOS, emAtraso: true });
+      setSearch("");
+    };
     window.addEventListener(EVENTO_VER_EM_ATRASO, aoPedir);
     return () => window.removeEventListener(EVENTO_VER_EM_ATRASO, aoPedir);
   }, []);

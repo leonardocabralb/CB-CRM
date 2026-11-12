@@ -74,6 +74,13 @@ WhatsApp, não da IA.
   também quem espera a equipe.
 - Créditos que acabam numa conta sem agente ligado não avisam (só o turno
   registra). Radar, transcrição e rascunho não alimentam o alarme.
+- Corridas de milissegundos entre a falha de um turno e o sucesso de outro
+  (provedor oscilando): o alarme relê o episódio depois de gravar, e a
+  limpeza relê depois de marcar e devolve a "não lido" o aviso de um episódio
+  novo. Resta: nesse caso, a caixinha vermelha já fechada na tela aberta só
+  volta ao recarregar (o sino mostra o aviso). Fechar de vez exige levar a
+  gravação dos avisos para dentro do banco, sob a mesma trava (migration
+  nova) — decisão do operador se medir o caso.
 
 ## Estado
 

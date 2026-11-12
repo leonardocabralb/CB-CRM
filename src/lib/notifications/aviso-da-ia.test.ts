@@ -206,8 +206,11 @@ describe("pinos da montagem", () => {
   });
 
   it("1140: o alarme clicado com a caixa de entrada montada acende \"Em atraso\" e, no CELULAR, tira a conversa aberta da frente da lista (Codex, #512)", () => {
-    expect(ler("components/inbox/conversation-list.tsx")).toMatch(
-      /window\.addEventListener\(EVENTO_VER_EM_ATRASO, aoPedir\);/,
+    const lista = ler("components/inbox/conversation-list.tsx");
+    expect(lista).toMatch(/window\.addEventListener\(EVENTO_VER_EM_ATRASO, aoPedir\);/);
+    // O mesmo resultado do `?ver=` vindo de outra tela: só o chip, e a busca limpa.
+    expect(lista).toMatch(
+      /const aoPedir = \(\) => \{\s*setFiltros\(\{ \.\.\.FILTROS_VAZIOS, emAtraso: true \}\);\s*setSearch\(""\);\s*\};/,
     );
     const pagina = ler("app/(dashboard)/inbox/page.tsx");
     const ouvinte = pagina.slice(pagina.indexOf("const aoVerEmAtraso"), pagina.indexOf("window.removeEventListener(EVENTO_VER_EM_ATRASO"));
