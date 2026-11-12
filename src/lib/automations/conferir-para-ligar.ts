@@ -21,9 +21,11 @@
 // ============================================================
 
 import type { CustomField } from '@/types'
+import { TETO_DA_LEITURA_DO_ACERVO } from '@/lib/acervo/filtro'
 import { opcoesDoCampo } from '@/lib/contacts/campo-opcoes'
 import type { CampoParaCondicao } from './condicao-por-campo'
 import {
+  validateAcervoForActivation,
   validateAsaasReguaForActivation,
   validateAtlasSituacaoForActivation,
   validateChannelScopeForActivation,
@@ -55,12 +57,18 @@ export interface ConferenciaParaLigar {
    * como a rota faz quando a leitura dela falha.
    */
   campos: ReadonlyMap<string, CampoParaCondicao> | null
+  /**
+   * Os ids dos itens do ACERVO desta conta (`acervoParaConferir`); `null` =
+   * não carregou — a conferência do "Enviar arquivo" do acervo é pulada, como
+   * a rota faz quando a leitura dela falha.
+   */
+  acervo: ReadonlySet<string> | null
 }
 
 /**
  * As pendências que impedem ligar, na MESMA ordem das rotas (gatilho, passos,
- * régua do Asaas, gatilho do Atlas, canal, condição por campo) — a ordem é a das linhas do
- * painel e do toast.
+ * régua do Asaas, gatilho do Atlas, canal, condição por campo, item do acervo)
+ * — a ordem é a das linhas do painel e do toast.
  */
 export function conferirParaLigar(a: ConferenciaParaLigar): ValidationIssue[] {
   const escopo = a.channelIds && a.channelIds.length > 0 ? a.channelIds : null
@@ -71,7 +79,29 @@ export function conferirParaLigar(a: ConferenciaParaLigar): ValidationIssue[] {
     ...validateAtlasSituacaoForActivation(a.triggerType, a.steps),
     ...(a.canais ? validateChannelScopeForActivation(a.steps, escopo, a.canais) : []),
     ...validateCustomFieldConditionsForActivation(a.steps, a.campos),
+    ...validateAcervoForActivation(a.steps, a.acervo),
   ]
+}
+
+/**
+ * Os ids que `validateAcervoForActivation` espera, a partir da lista que a
+ * tela leu — só os da CONTA (`contaId`; a leitura sob RLS traz o acervo de
+ * toda conta da pessoa) — somados aos itens escolhidos AGORA no seletor (que
+ * leu o acervo na hora: a lista da tela pode ser de antes de o item existir).
+ *
+ * ⚠️ Falha ABERTA, como `camposParaConferir`: `null` sem conta conhecida, com
+ * a lista ainda não carregada (ou falhando) e com a lista no teto da leitura
+ * (pode ter vindo cortada) — "apagado" sobre item que só não chegou à tela
+ * barraria uma automação que a rota aceita. Quem decide é a rota.
+ */
+export function acervoParaConferir(
+  itens: ReadonlyArray<{ id: string; account_id: string }> | null,
+  contaId: string | null,
+  escolhidosAgora: Iterable<string> = [],
+): Set<string> | null {
+  if (!contaId || !itens) return null
+  if (itens.length >= TETO_DA_LEITURA_DO_ACERVO) return null
+  return new Set([...itens.filter((i) => i.account_id === contaId).map((i) => i.id), ...escolhidosAgora])
 }
 
 /** O `max_rows` do PostgREST deste projeto (medido: 1000). */

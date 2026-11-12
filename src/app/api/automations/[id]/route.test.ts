@@ -13,13 +13,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // ============================================================
 
 type Linha = Record<string, unknown>
-type Tabela = 'automations' | 'automation_steps'
+type Tabela = 'automations' | 'automation_steps' | 'cb_media_library'
 
 const h = vi.hoisted(() => ({
   papel: 'admin',
   conta: 'acc-1',
   quem: 'u-ricardo',
   erroDeLeitura: null as { message: string } | null,
+  /** A leitura do acervo (09/11/2026) que falha: a conferência é pulada. */
+  erroNoAcervo: null as { message: string } | null,
   /** Encena a automação apagada ENTRE a leitura e o UPDATE do PATCH. */
   apagarDepoisDaLeitura: false,
   /** Encena o DELETE concorrente entre o UPDATE e a troca dos passos. */
@@ -31,6 +33,7 @@ const h = vi.hoisted(() => ({
   db: {
     automations: [] as Record<string, unknown>[],
     automation_steps: [] as Record<string, unknown>[],
+    cb_media_library: [] as Record<string, unknown>[],
   },
 }))
 
@@ -38,10 +41,14 @@ vi.mock('@/lib/automations/admin-client', () => ({
   supabaseAdmin: () => ({
     from: (tabela: Tabela) => {
       const filtros: [string, unknown][] = []
+      const filtrosIn: [string, unknown[]][] = []
       let op: 'select' | 'update' | 'delete' | 'insert' = 'select'
       let payload: unknown = null
       let devolve = false
-      const casam = () => h.db[tabela].filter((r) => filtros.every(([k, v]) => r[k] === v))
+      const casam = () =>
+        h.db[tabela].filter(
+          (r) => filtros.every(([k, v]) => r[k] === v) && filtrosIn.every(([k, vs]) => vs.includes(r[k])),
+        )
       const b: Record<string, unknown> = {
         select: () => {
           if (op !== 'select') devolve = true
@@ -49,6 +56,10 @@ vi.mock('@/lib/automations/admin-client', () => ({
         },
         eq: (k: string, v: unknown) => {
           filtros.push([k, v])
+          return b
+        },
+        in: (k: string, vs: unknown[]) => {
+          filtrosIn.push([k, vs])
           return b
         },
         order: () => b,
@@ -80,6 +91,8 @@ vi.mock('@/lib/automations/admin-client', () => ({
             r = { data: devolve ? alvo.map((x) => ({ id: x.id })) : null, error: null }
           } else if (op === 'insert') {
             h.db[tabela].push(...((Array.isArray(payload) ? payload : [payload]) as Linha[]))
+          } else if (tabela === 'cb_media_library' && h.erroNoAcervo) {
+            r = { data: null, error: h.erroNoAcervo }
           } else {
             r = { data: casam(), error: null }
           }
@@ -125,12 +138,15 @@ const params = (id: string) => ({ params: Promise.resolve({ id }) })
 const corpo = (body: unknown) =>
   new Request('http://x/api/automations/auto-1', { method: 'PATCH', body: JSON.stringify(body) })
 const automacao = (id: string) => h.db.automations.find((a) => a.id === id)
+const ITEM_DA_CONTA = '00000000-0000-4000-8000-0000000000a1'
+const ITEM_DE_OUTRA_CONTA = '00000000-0000-4000-8000-0000000000a2'
 
 beforeEach(() => {
   h.papel = 'admin'
   h.conta = 'acc-1'
   h.quem = 'u-ricardo'
   h.erroDeLeitura = null
+  h.erroNoAcervo = null
   h.apagarDepoisDaLeitura = false
   h.apagarNaTrocaDosPassos = false
   h.erroNaTrocaDosPassos = null
@@ -163,6 +179,10 @@ beforeEach(() => {
       is_active: false,
       assinatura_personalizada: null,
     },
+  ]
+  h.db.cb_media_library = [
+    { id: ITEM_DA_CONTA, account_id: 'acc-1' },
+    { id: ITEM_DE_OUTRA_CONTA, account_id: 'acc-2' },
   ]
   h.db.automation_steps = [
     {
@@ -393,6 +413,39 @@ describe('upstream #587 — o piso nosso e a escrita pela conta', () => {
     ]
     expect((await PATCH(corpo({ steps: passos }), params('auto-1'))).status).toBe(200)
     expect(replaceSteps).toHaveBeenCalledWith('auto-1', passos)
+  })
+})
+
+// O "Enviar arquivo" do ACERVO (09/11/2026): ligar confere se o item ainda
+// existe NA CONTA, como a ativação do robô (`referencias-do-robo.ts`).
+describe('PATCH ligando — o item do acervo do "Enviar arquivo" ainda existe', () => {
+  const ligarCom = (acervo_id: string) =>
+    corpo({
+      is_active: true,
+      steps: [{ step_type: 'send_media', step_config: { kind: 'video', url: '', acervo_id } }],
+    })
+
+  it('item da conta: liga', async () => {
+    expect((await PATCH(ligarCom(ITEM_DA_CONTA), params('auto-1'))).status).toBe(200)
+    expect(automacao('auto-1')?.is_active).toBe(true)
+  })
+
+  it('item apagado: 400 com o código que a tela traduz, e a automação continua desligada', async () => {
+    const res = await PATCH(ligarCom('00000000-0000-4000-8000-0000000000ff'), params('auto-1'))
+    expect(res.status).toBe(400)
+    const { issues } = (await res.json()) as { issues: { path: string; codigo?: string }[] }
+    expect(issues).toEqual([expect.objectContaining({ path: 'steps[0].acervo_id', codigo: 'midia_do_acervo_apagada' })])
+    expect(automacao('auto-1')?.is_active).toBe(false)
+    expect(replaceSteps).not.toHaveBeenCalled()
+  })
+
+  it('item de OUTRA conta conta como apagado (a leitura é cercada pela conta)', async () => {
+    expect((await PATCH(ligarCom(ITEM_DE_OUTRA_CONTA), params('auto-1'))).status).toBe(400)
+  })
+
+  it('leitura do acervo que falha: a conferência é pulada (o motor é a guarda), nunca "apagado"', async () => {
+    h.erroNoAcervo = { message: 'timeout' }
+    expect((await PATCH(ligarCom('00000000-0000-4000-8000-0000000000ff'), params('auto-1'))).status).toBe(200)
   })
 })
 

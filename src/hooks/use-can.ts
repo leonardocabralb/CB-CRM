@@ -7,6 +7,7 @@ import {
   canDeleteContacts,
   canEditSettings,
   canManageAutomations,
+  canMakeCalls,
   canManageMembers,
   canSendMessages,
   canTransferOwnership,
@@ -35,7 +36,9 @@ export type CanAction =
   /** Apagar contato — destrutivo: leva conversa e mensagens junto. */
   | "delete-contacts"
   /** Decidir uma possível duplicata (1088): "não é duplicata" ou "ligadas". */
-  | "decide-duplicates";
+  | "decide-duplicates"
+  /** Ligar e atender pelo computador de ligações (4c). */
+  | "make-calls";
 
 /**
  * Inline alternative to `<RequireRole>` for places that need a
@@ -77,6 +80,8 @@ export function useCan(action: CanAction): boolean {
       return canDeleteContacts(accountRole);
     case "decide-duplicates":
       return canDecideDuplicates(accountRole);
+    case "make-calls":
+      return canMakeCalls(accountRole);
     default: {
       // Exhaustiveness check — adding a new `CanAction` without a
       // case here fails the typecheck because TS narrows `action`

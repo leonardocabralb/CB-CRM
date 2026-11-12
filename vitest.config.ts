@@ -15,12 +15,16 @@ export default defineConfig({
     // `.github/**` entrou pelos pinos do portão do deploy: o `pipeline.yml`
     // publica em produção e seus dois modos de falha são invisíveis para
     // qualquer teste de código — só ler o YAML os alcança.
+    // `maquina-de-ligacoes/**` é o subprojeto do computador de ligações
+    // (`package.json` próprio): os testes dele rodam aqui, no `verificar`,
+    // sem passo novo no CI.
     include: [
       "src/**/*.test.ts",
       "src/**/*.test.tsx",
       "scripts/**/*.test.ts",
       "supabase/**/*.test.ts",
       ".github/**/*.test.ts",
+      "maquina-de-ligacoes/src/**/*.test.ts",
     ],
     // Dummy secrets — encryption.ts / webhook-signature.ts read these
     // at module load. Tests never hit a real Meta/Supabase service, so

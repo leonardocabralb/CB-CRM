@@ -323,6 +323,17 @@ export interface ConversationNote {
   anexos: AnexoDaNota[];
   /** Quando foi editada pela última vez (Fase 3). NULL = nunca. */
   editada_em: string | null;
+  /**
+   * Lixeira de anotações (1132): quando foi APAGADA. NULL = viva. Apagar
+   * marca (pela rota), e a anotação vai para a lixeira da aba Notas por 90
+   * dias. Opcional no tipo: a linha que o tempo real ou o app antigo trazem
+   * pode vir sem a coluna — ausente conta como viva (`estaApagada`).
+   */
+  apagada_em?: string | null;
+  /** O login de quem apagou (SET NULL quando ele some). */
+  apagada_por?: string | null;
+  /** O nome de quem apagou, congelado na hora (como `autor_nome`). */
+  apagada_por_nome?: string | null;
   created_at: string;
 }
 
@@ -699,16 +710,47 @@ export type ContentType =
    */
   | 'contact';
 
-/** Os detalhes de uma ligação (`messages.ligacao`, 1044). */
+/** Os detalhes de uma ligação (`messages.ligacao`, 1044; pelo CRM, 1134). */
 export interface DetalhesDaLigacao {
-  desfecho: 'perdida' | 'atendida';
+  /** `nao_atendida`: a ligação FEITA pelo CRM que o cliente não atendeu. */
+  desfecho: 'perdida' | 'atendida' | 'nao_atendida';
   video: boolean;
-  /** Quando começou a tocar (relógio do WhatsApp). */
+  /** Quando começou a tocar (relógio do WhatsApp; na feita pelo CRM, a discagem). */
   inicio: string | null;
-  /** Quando parou de tocar (perdida) ou foi atendida. */
+  /** Quando parou de tocar (perdida) ou foi atendida; pelo CRM, quando acabou. */
   fim: string | null;
   tocou_seg: number | null;
   encerramento: 'terminate' | 'timeout' | 'reject' | null;
+  /**
+   * Ligação pelo computador de ligações (1134): a faixa é só REGISTRO (D6/D6b)
+   * — não reabre, não mexe nas não lidas nem no "em atraso", não pausa a IA.
+   */
+  pelo_crm?: boolean;
+  direcao?: 'feita' | 'recebida';
+  /** Quem ligou ou atendeu pelo CRM, com o nome da hora da ligação. */
+  atendente?: { id: string; nome: string | null } | null;
+  atendida_em?: string | null;
+  duracao_seg?: number | null;
+  /** O motivo do fim que a máquina contou (`MOTIVOS_DO_FIM`). */
+  motivo?: string | null;
+  /** A gravação chegou ao CRM (bucket privado `ligacoes`). */
+  gravacao?: boolean;
+  /**
+   * O `cb_ligacoes.id` (4c): o ▶ da faixa ouve por
+   * `/api/cb/ligacoes/<ligacao_id>/gravacao`. As faixas da 4b não o têm.
+   */
+  ligacao_id?: string;
+  /**
+   * A transcrição (4d): `transcrevendo` e `falhou` (que ainda vai repetir)
+   * = "Transcrevendo…"; `pronta` = o resumo e "Ver transcrição"; `recusada`
+   * = sem transcrição. O diálogo mora em `cb_ligacoes` (rota
+   * `/api/cb/ligacoes/<ligacao_id>/transcricao`).
+   */
+  transcricao?: 'transcrevendo' | 'pronta' | 'falhou' | 'recusada' | null;
+  /** O resumo da ligação (D11: 2–3 linhas). Fica depois dos 180 dias. */
+  resumo?: string | null;
+  /** Passados os 180 dias, saíram a gravação e a transcrição; fica o resumo. */
+  expirada?: boolean;
 }
 export type MessageStatus =
   'sending' | 'sent' | 'delivered' | 'read' | 'failed';
@@ -1797,7 +1839,15 @@ export type ConditionSubject =
    * `value`. Lê `contact_custom_values` na hora do passo. Regra em
    * `src/lib/automations/condicao-por-campo.ts`.
    */
-  | 'custom_field';
+  | 'custom_field'
+  /**
+   * NOSSO (10/11/2026) — SÓ na régua do Asaas: o cliente tem pelo menos
+   * `cobranca_parcelas` vencidas OU a mais antiga com pelo menos
+   * `cobranca_dias` de atraso? Lê as `vars` que a varredura passa
+   * (`automations/situacao-da-cobranca.ts`); noutro gatilho responde "não" e a
+   * ativação recusa.
+   */
+  | 'asaas_situacao';
 
 /** Operadores da condição por campo personalizado (`subject: 'custom_field'`). */
 export type OperadorDoCampo = 'equals' | 'contains' | 'empty' | 'not_empty';
@@ -1821,6 +1871,10 @@ export interface ConditionStepConfig {
    * escritório (só o booleano `true` liga). Ausente = todos os dias.
    */
   somente_seg_a_sex?: boolean;
+  /** Só na "Situação da cobrança": a partir de quantas parcelas vencidas (1–99). Ausente = não olha. */
+  cobranca_parcelas?: number;
+  /** Só na "Situação da cobrança": a partir de quantos dias de atraso da mais antiga (1–365). Ausente = não olha. */
+  cobranca_dias?: number;
 }
 
 export interface SendWebhookStepConfig {
@@ -1925,11 +1979,27 @@ export interface RunFlowStepConfig {
  * ⚠️ **NÃO há coleta de lixo do arquivo.** O mesmo objeto serve toda execução
  * da automação, para sempre. Apagar no envio (como a agendada faz) deixaria a
  * automação quebrada a partir do segundo disparo.
+ *
+ * NOSSO (09/11/2026): o arquivo também pode vir do ACERVO de mídias
+ * (`acervo_id`), pela cópia congelada do item — `src/lib/automations/midia-do-passo.ts`.
  */
 export interface SendMediaStepConfig {
+  /** Com `acervo_id`, é a foto do tipo do item na hora da escolha: o motor usa o do item. */
   kind: 'image' | 'video' | 'document' | 'audio';
-  /** URL pública que o WhatsApp busca no momento do envio. */
+  /**
+   * URL pública que o WhatsApp busca no momento do envio.
+   *
+   * Com `acervo_id`, guarda a URL do item só para a tela mostrar o arquivo: o
+   * motor NÃO a usa — ele copia o item a cada envio.
+   */
   url: string;
+  /**
+   * Item do acervo (`cb_media_library.id`) — o mesmo nome do nó "Enviar mídia"
+   * do robô. Presente VENCE `url`: o motor manda a cópia congelada do item
+   * (`copiaCongeladaDoAcervo`, uma por item), e a mensagem aponta para ela.
+   * Ausente = o arquivo subido no passo.
+   */
+  acervo_id?: string | null;
   /**
    * Legenda sob a mídia.
    *

@@ -299,10 +299,13 @@ export function ContactDetailView({
     // Desde a 918 a anotação vive em `cb_conversation_notes`, chaveada pela
     // CONVERSA. A coluna `contact_id` é desnormalizada exatamente para esta
     // tela, que fica fora do inbox e não tem conversa aberta à mão.
+    // Só as VIVAS: a apagada (1132) fica na lixeira da aba Notas do inbox;
+    // esta ficha só mostra (A6).
     const { data } = await supabase
       .from('cb_conversation_notes')
       .select('*')
       .eq('contact_id', contactId)
+      .is('apagada_em', null)
       .order('created_at', { ascending: false });
 
     if (contatoAlvoRef.current !== alvo) return;
@@ -539,27 +542,32 @@ export function ContactDetailView({
   }
 
   /**
-   * ⚠️ A política de exclusão MUDOU com a 918, e o silêncio é a armadilha.
+   * Apagar = mandar para a LIXEIRA (1132): a rota `DELETE /api/cb/notes/[id]`
+   * marca, e a anotação fica 90 dias na lixeira da aba Notas do inbox (de
+   * onde o autor ou admin restaura). A régua é a da 918, "autor OU admin",
+   * agora conferida pela rota.
    *
-   * Na `contact_notes` qualquer `agent` apagava qualquer anotação. Na tabela
-   * nova a policy é "autor OU admin" — e RLS que barra DELETE não devolve
-   * erro: devolve **0 linhas**, que aqui pareceria sucesso. Por isso o
-   * `count`: sem ele a anotação sumia da tela, continuava no banco e voltava
-   * no próximo carregamento, sem nada explicando.
+   * ⚠️ Separa "proibido" (403) de "falhou" de propósito: são frases
+   * diferentes, e só a falha merece tentar de novo. A rede que cai PODE ter
+   * apagado: relê a lista, nunca afirma "não apagou".
    */
   async function deleteNote(noteId: string) {
-    const { error, count } = await supabase
-      .from('cb_conversation_notes')
-      .delete({ count: 'exact' })
-      .eq('id', noteId);
+    let status = 0;
+    try {
+      const res = await fetch(`/api/cb/notes/${noteId}`, { method: 'DELETE' });
+      status = res.status;
+    } catch {
+      status = 0;
+    }
 
-    if (error) {
-      toast.error(t('toastNoteDeleteFailed'));
-    } else if (!count) {
-      toast.error(t('toastNoteDeleteForbidden'));
-    } else {
+    if (status >= 200 && status < 300) {
       setNotes((prev) => prev.filter((n) => n.id !== noteId));
       toast.success(t('toastNoteDeleted'));
+    } else if (status === 403) {
+      toast.error(t('toastNoteDeleteForbidden'));
+    } else {
+      toast.error(t('toastNoteDeleteFailed'));
+      if (status === 0 || status === 404) void fetchNotes();
     }
   }
 

@@ -86,6 +86,10 @@ qualquer uma é pergunta ao operador.
   anexos de todo tipo, vários, sem transcrição nem aba Arquivos; só o autor
   edita, sem prazo, com marca "editada" (23/10/2026); o clique no aviso de
   menção ou resposta abre a conversa NO TRECHO da anotação (27/10/2026).
+- Anotação apagada vai para a LIXEIRA da aba Notas (ícone discreto): todos
+  da conta veem, o autor ou admin restaura, 90 dias e sai de vez; o aviso de
+  menção/resposta diz "apagada" com o texto inteiro, quem e quando
+  (10/11/2026).
 - Avisos (sino e Meu dia): cada um diz o cliente (ou o grupo); a conversa
   aberta por eles tem a faixa de volta à tela de origem; os avisos antigos
   sem a anotação ficam como estão, sem religação (28/10/2026).
@@ -151,6 +155,19 @@ qualquer uma é pergunta ao operador.
   não zera (1130, `ia.md`); (3) a resposta que move o card para a etapa de
   OUTRO agente (ou sem agente) não arma retomada; para outra etapa do mesmo,
   arma com ela (`ia-retomada.md`).
+- A automação que o agente de IA executa fala EM NOME dele e não para a
+  retomada dele; o disparo por evento nunca leva a marca (09/11/2026: no
+  Trabalhista, o vídeo e o link da assinatura saem por automação, com o link
+  por ÚLTIMO, e os follow-ups da IA seguem depois; `ia-retomada.md`).
+- Pausa da IA (11/11/2026, revisa a D26; 1138): "Pausar" e a pausa por
+  gente são TEMPORÁRIAS — a IA volta sozinha quando o cliente escreve e
+  ninguém da equipe responde em N min (configuração da CONTA, padrão 15, 0 =
+  como antes, vale para todo agente); "Desativar IA", a transferência pedida
+  pela IA e a automação seguem até "Retomar IA"; mover o card não retoma; a
+  IA também faz follow-up da fala da EQUIPE, com a cadência do agente, e o
+  follow-up que sai devolve a conversa à IA; os N min contam no relógio (fora
+  do horário, espera a abertura); a fala da equipe chega ao modelo rotulada,
+  sem o nome (`ia-pausa.md`).
 - Agente de IA fora do horário: a mensagem espera e ele responde quando o
   horário abrir, se ninguém da equipe respondeu antes; o padrão da Anthropic
   é o Haiku 5.5, e o seletor mostra os modelos da chave (25/10/2026).
@@ -162,6 +179,20 @@ qualquer uma é pergunta ao operador.
   grade; as antigas não mudam (18/09/2026).
 - Asaas: o CRM cria a ficha, com nome fixado; ligar a régua não é
   retroativo.
+- Régua do Asaas (10/11/2026): a cobrança não abre conversa encerrada nem
+  marca lida (a ficha sem conversa ganha uma ENCERRADA); a descrição da
+  cobrança NUNCA vai ao cliente; marcos 1, 5, 15 e 30 dias; cliente com 2
+  parcelas vencidas ou mais, ou 15 dias de atraso ou mais, gera UMA anotação
+  marcando quem liga, até ela tirar a etiqueta. No dia do vencimento, DOIS
+  lembretes: o do dia e o da noite (até as 21:00, assinado "Mensagem
+  automática") — a D12 ("nada depois das 18h") vale só para o resto
+  (`integracoes-asaas.md`, 1133).
+- Cobrança automática do Asaas como MÓDULO (11/11/2026): tela própria em
+  Integrações › Asaas que configura a régua inteira; as etapas continuam
+  automações e o construtor só AVISA (não trava); "Pedir ligação" numa frase;
+  nome do escritório próprio da régua; o aviso de inadimplência (ícone,
+  faixa, filtro) pode ser desligado no cartão — a aba Cobranças fica
+  (`cobranca-automatica.md`, 1135).
 - Atlas: vincular/desvincular à mão só admin; a faixa acende também com
   suspenso e inativo; a linha do Atlas aparece a todos (sem recorte de
   perfil); o Atlas "ativo" NÃO apaga a linha do funil (30/09/2026).
@@ -212,3 +243,26 @@ qualquer uma é pergunta ao operador.
   os 4 ÚLTIMOS caracteres da chave guardada, quando e por quem foi gravada,
   "Testar agora" e "Trocar chave" sem desconectar — antes nenhuma rota
   devolvia a chave, nem mascarada (`credencial-das-integracoes.md`, 1127).
+- Acervo no robô e nas automações (09/11/2026): UMA cópia congelada por
+  item (`acervo/enviados/<item>/`), feita no primeiro envio e reaproveitada
+  em todos — nunca uma por envio; ela nunca é apagada, e apagar o item tira
+  só o original. O compositor segue com uma cópia por envio (`midia.md`).
+- Ligar pelo CRM (10/11/2026): solução NÃO oficial (nem a API de ligações da
+  Meta nem a Wavoip), por uma máquina central com WhatsApp Web, um Chrome por
+  número; a extensão do Chrome por atendente foi descartada; a máquina fica
+  na VPS atual, com upgrade só se der problema (`ligacoes.md`). Na Fase 4: a
+  ligação FEITA pelo CRM e a RECEBIDA atendida pelo CRM são só registro no
+  fio (não reabrem, não mexem nas não lidas nem no "em atraso", não pausam a
+  IA, não param sequências; a atendida no celular segue como hoje); grava
+  TODA ligação pelo CRM, sem aviso falado, em Opus estéreo (um lado por
+  canal); aos 180 dias saem o áudio e a transcrição e fica só o resumo;
+  transcrição automática com resumo, DENTRO do contexto da IA; sem
+  "Recusar" (só "Silenciar"); toca para quem o perfil vê a conexão; ligar só
+  de conversa existente, até 20 por hora por número, e a máquina encerra
+  sozinha aos 30 min (`docs/PLANO-ligar-pelo-crm.md`, §8.10).
+- Ligações pelo CRM como interruptor (11/11/2026): ligadas ou desligadas por
+  conexão, na tela Conexões; ligado, o estado do computador, o QR e os
+  alarmes no sino e no botão das conexões; desligado, tudo some, inclusive o
+  botão Ligar e o toque. Só onde já há computador de ligações: criar um para
+  outro número é operação no servidor. A 4d e a 4e se publicam JUNTAS, com
+  o teste ao vivo logo depois (`ligacoes-operacao.md`; plano §8.17).

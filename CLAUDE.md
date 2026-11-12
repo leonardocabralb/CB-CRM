@@ -101,6 +101,9 @@ Supabase (Postgres + Auth + Storage + RLS) · Meta Cloud API · Evolution API.
   dicionário pela metade, escolhido por `NEXT_PUBLIC_APP_LOCALE`, entrega
   chave crua na tela.
 - `mcp-server/` — subprojeto com `package.json` próprio: `npm` dentro dele.
+- `maquina-de-ligacoes/` — o computador de ligações (Chrome + WhatsApp Web na
+  VPS), subprojeto com `package.json` próprio; os testes rodam no `vitest` da
+  raiz. Regras: `.claude/rules/ligacoes.md`.
 - `docs/` — ENTREGUES a quem instala: `README`, `INSTALACAO`, `ATUALIZAR`,
   `docker`, `public-api`, `mcp`, `webhooks`, `multi-waba`, `conexao-meta`,
   `skill-ler-cliente/`. INTERNOS (nossa operação, não viajam): `PLANO-*`, `HANDOFF-*`, `INFRA-VPS`,
@@ -139,8 +142,9 @@ Supabase (Postgres + Auth + Storage + RLS) · Meta Cloud API · Evolution API.
 ## 5. Toolchain e CI
 
 - **Uma major de Node, no `.nvmrc` (22).** O CI lê `node-version-file`; o
-  `ARG NODE_VERSION` do `Dockerfile` é o único número duplicado (mudou um,
-  muda o outro); `engines` `>=22.12.0` na raiz e no `mcp-server/`;
+  `ARG NODE_VERSION` do `Dockerfile` e o do `maquina-de-ligacoes/Dockerfile`
+  são os únicos números duplicados (mudou um, mudam todos); `engines`
+  `>=22.12.0` na raiz, no `mcp-server/` e no `maquina-de-ligacoes/`;
   `packageManager: npm@10.9.9` acompanha a major. Teste de Intl, fuso ou
   colação só vale na major do CI: `nvm use` antes de tudo.
 - **Um workflow só:** `.github/workflows/pipeline.yml` — verificar →
@@ -339,8 +343,9 @@ Volta para `main` por PR no CB-CRM.
   Não divergir do `ssrf.ts` do original.
 - Webhook de provedor: só credencial inválida (assinatura, token da URL)
   vale 4xx (4xx repetido faz o provedor desativar a entrega); o resto responde 200 com log e trabalha em
-  `after()`. Sem assinatura, o corpo é AVISO: o dado é relido na API com a
-  nossa credencial.
+  `after()`. Exceção: leitura que FALHA antes da resposta, na Evolution, é
+  503 — ela reentrega, e o 200 perdia a mensagem (`ingestao.md`). Sem
+  assinatura, o corpo é AVISO: o dado é relido na API com a nossa credencial.
 - Trabalho reivindicado (claim): `UPDATE … RETURNING` cercado; toda escrita
   posterior leva a cerca de posse (o carimbo do próprio claim); teto de
   processamento menor que o recolhimento; cron com rodízio carimba a
@@ -486,7 +491,14 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   ficha do cliente (1117).
 - `.claude/rules/ligacoes.md` — ligação de WhatsApp vira faixa no fio (1044):
   aviso CALL, desfecho com folga, quem ligou, o que não roda, quem lê
-  `content_type`.
+  `content_type`; ligar pelo CRM: a máquina, a faixa de registro, a marca
+  do atendimento (1134) e a tela (botão, painel, toque, ▶).
+- `.claude/rules/ligacoes-transcricao.md` — a ligação pelo CRM transcrita
+  (1136): os dois lados com horário, o resumo, a nota no contexto da IA, a
+  poda aos 180 dias e a Lixeira das gravações.
+- `.claude/rules/ligacoes-operacao.md` — ligações pelo CRM na tela Conexões
+  (1137): o interruptor por conexão, o QR e o Reparear do computador, os
+  alarmes dele e a sentinela do contêiner.
 - `.claude/rules/whatsapp-envio.md` — núcleo de envio, entrega incerta,
   modelos da Meta por WABA, `resolveTemplateRow`, escopo da conversa.
 - `.claude/rules/canais.md` — peças de UI de canal, escopo vazio = todos,
@@ -520,7 +532,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   conversa: interrompidas na aba, o que não rodou, texto do motor traduzido.
 - `.claude/rules/automacoes-passos.md` — valores do "Enviar modelo", tarefa
   pelo responsável, condições da janela de 24h e da hora do dia, "Aguardar
-  até estar dentro do horário", "Não repetir por N horas" do gatilho.
+  até estar dentro do horário", "Não repetir por N horas" do gatilho,
+  "Enviar arquivo" do acervo.
 - `.claude/rules/automacoes-abas.md` — as abas da tela de Automações (1055),
   criadas por cada conta; "Geral" é `area_id` nulo.
 - `.claude/rules/automacoes-variaveis.md` — botão "Inserir campo", editor
@@ -545,6 +558,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   telefone em três fontes, cadeado, cancelamento e lembretes.
 - `.claude/rules/integracoes-asaas.md` — espelho de cobranças, vínculo,
   ficha criada pelo CRM, cadeado do ciclo, webhook, régua.
+- `.claude/rules/cobranca-automatica.md` — a tela da régua (1135): fachada
+  sobre as automações, "Pedir ligação", aviso desligável.
 - `.claude/rules/integracoes-zapsign.md` — assinatura move o card: webhook
   pelo cabeçalho, releitura, casamento sem criar contato, cadeado do disparo.
 - `.claude/rules/integracoes-atlas.md` — chave por conta, "Criar cliente",
@@ -563,6 +578,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   (1131), por agente.
 - `.claude/rules/ia-retomada.md` — a retomada do agente quando o cliente não
   responde (1056): a fila, a cadência, o que a para e os lembretes.
+- `.claude/rules/ia-pausa.md` — a pausa temporária da IA (1138): N da conta,
+  Pausar × Desativar, o retorno, o follow-up da equipe, a fala rotulada.
 - `.claude/rules/ia-tela-do-agente.md` — modelo pela chave, quem lê a mídia,
   avisos antes de salvar, "não atende" na faixa, custo por faixa (1108).
 - `.claude/rules/ia-agentes-turno.md` — ação prometida retida, passagem com

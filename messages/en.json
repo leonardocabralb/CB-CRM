@@ -310,7 +310,8 @@
       "searchInsideMessages": "Also search inside messages",
       "previaNaoSuportada": "Unsupported message",
       "rascunho": "Draft:",
-      "rascunhoAnexos": "{n, plural, =1 {1 attachment} other {# attachments}}"
+      "rascunhoAnexos": "{n, plural, =1 {1 attachment} other {# attachments}}",
+      "delinquentAlertOff": "The delinquency notice is off under Integrations › Asaas: the filter has no effect."
     },
     "messageThread": {
       "unknownAuthor": "Unknown",
@@ -573,8 +574,29 @@
       "vozAtendida": "Voice call answered on the phone",
       "videoAtendida": "Video call answered on the phone",
       "tocou": "rang for {segundos}s",
+      "feitaPeloCrm": "Call made from the CRM",
+      "atendidaPeloCrm": "Call answered in the CRM",
+      "por": "by {nome}",
+      "naoAtendida": "not answered",
+      "duracaoSeg": "{segundos}s",
+      "duracaoMin": "{minutos} min {segundos}s",
       "dicaPerdida": "The customer called on WhatsApp and nobody answered. The CRM does not carry call audio: call back from the phone or reply by message.",
-      "previa": "📞 Call"
+      "previa": "📞 Call",
+      "ouvir": "Listen",
+      "ouvirDica": "Listen to the call recording",
+      "fecharGravacao": "Close the recording",
+      "transcrevendo": "Transcribing…",
+      "semTranscricao": "No transcript",
+      "gravacaoExpirada": "Recording expired (180 days)",
+      "resumo": "Summary",
+      "verTranscricao": "View transcript",
+      "tituloDaTranscricao": "Call transcript",
+      "cliente": "Customer",
+      "atendente": "Agent",
+      "carregandoTranscricao": "Loading the transcript…",
+      "falhaDaTranscricao": "Couldn't load the transcript",
+      "tentarDeNovo": "Try again",
+      "semFala": "No speech in the recording"
     },
     "audioPlayer": {
       "tocar": "Play audio",
@@ -920,6 +942,7 @@
         "erroTrocar": "Could not change automatic billing for this customer.",
         "desligadaNaConta": "Automatic billing is OFF for the account (Settings → Integrations → Asaas): there is an active automation, but nothing goes out until the switch is on.",
         "lembrete": "due-date reminder",
+        "lembreteNoite": "night reminder",
         "marco": "{dias} day(s) overdue",
         "resultado": {
           "reservado": "in progress ({quando})",
@@ -931,7 +954,13 @@
           "sem_automacao": "the automation was disabled before it went out ({quando})",
           "incerto": "no recorded outcome ({quando}) — may have gone out; never resent",
           "na_fila": "queued by the engine ({quando}) — the connection refused the send; it will be retried within minutes"
-        }
+        },
+        "proxima": "Next (estimated)",
+        "proximaQuando": "{dia}, from {hora}",
+        "proximaDica": "Estimate: Asaas is read again at send time — paid before, nothing goes out.",
+        "ligacaoPedida": "Call requested",
+        "ligacaoPedidaDesde": "Tag \"{etiqueta}\" on the contact since {quando}: the schedule won't ask again until someone removes it.",
+        "configurar": "Set up automatic billing"
       }
     },
     "execucoes": {
@@ -1052,6 +1081,7 @@
         "tarefaCriada": "task created: {tarefa}",
         "conexaoCaiu": "the WhatsApp connection dropped during the send",
         "semWhatsApp": "number {numero} is not on WhatsApp: nothing was sent",
+        "arquivoDoAcervoApagado": "the media library file picked in this step was deleted — pick another file in the step",
         "tentativa": "refused: retry scheduled {segundos} s later (attempt {n} of {de})",
         "desistiu": "gave up after {n} attempts",
         "naoRepetiu": "didn't try again: the run had already been interrupted"
@@ -1064,9 +1094,18 @@
       "pausadaComMotivo": "AI paused — {motivo}",
       "retomarDica": "The AI only answers in this conversation again through this button.",
       "pausou": "AI paused in this conversation.",
+      "pausarDica": "Pauses while you lead. The AI comes back on its own if the customer waits {minutos} min without a reply from the team.",
+      "desativar": "Turn off AI",
+      "desativarDica": "The AI no longer answers in this conversation until someone clicks \"Resume AI\".",
+      "desativou": "AI turned off in this conversation.",
+      "desativadaNaConversa": "AI turned off in this conversation",
+      "voltaAs": "The AI comes back from {hora} on if no one on the team replies.",
+      "voltaSeEsperar": "Comes back on its own if the customer waits {minutos} min without a reply from the team.",
+      "retomarAgoraDica": "Hands the conversation back to the AI now, without waiting.",
       "motivo": {
         "gente": "someone on the team replied",
         "botao": "paused by someone on the team",
+        "desativada": "turned off by someone on the team",
         "transferencia": "the AI handed the conversation to a person",
         "automacao": "turned off by an automation"
       },
@@ -1181,7 +1220,24 @@
       "ampliarAnexo": "Enlarge {nome}",
       "edit": "Edit",
       "editada": "edited {quando}",
-      "editadaEm": "Edited on {quando}"
+      "editadaEm": "Edited on {quando}",
+      "restoreFailed": "Could not restore the note.",
+      "movedToTrash": "Note deleted. It stays in the Notes tab trash for 90 days.",
+      "undoDelete": "Undo",
+      "lixeira": {
+        "abrir": "Deleted notes",
+        "titulo": "Deleted notes",
+        "voltar": "Back to notes",
+        "explica": "They stay here for {dias} days after being deleted. The author, or an admin, can restore them.",
+        "vazia": "No notes deleted in the last {dias} days.",
+        "carregando": "Loading…",
+        "erro": "Could not load the deleted notes.",
+        "apagadaPor": "Deleted by {nome} on {quando}",
+        "apagadaEm": "Deleted on {quando}",
+        "vence": "{dias, plural, =0 {leaves the trash today} one {leaves the trash in # day} other {leaves the trash in # days}}",
+        "restaurar": "Restore",
+        "restaurando": "Restoring…"
+      }
     },
     "scheduled": {
       "sectionTitle": "Scheduled",
@@ -1445,7 +1501,7 @@
       "toastNoteAddFailed": "Failed to add note",
       "toastNoteAdded": "Note added",
       "toastNoteDeleteFailed": "Failed to delete note",
-      "toastNoteDeleted": "Note deleted",
+      "toastNoteDeleted": "Note deleted. It stays in the conversation's Notes tab trash for 90 days.",
       "toastTemplateSent": "Template \"{name}\" sent",
       "toastTemplateFailed": "Failed to send template: {reason}",
       "toastNoteNeedsConversation": "This contact has no conversation yet, so there is nowhere to attach the note. Send a message first.",
@@ -2547,7 +2603,8 @@
           "semPermissao": "Your profile can't change the tabs.",
           "falhou": "Couldn't save. Try again.",
           "mover": "Couldn't move the automation. Try again."
-        }
+        },
+        "cobranca": "Automatic billing"
       }
     },
     "edit": {
@@ -2833,7 +2890,8 @@
           "channel": "Channel",
           "deal_stage": "Deal is in stage",
           "deal_status": "Deal is",
-          "meta_window_open": "Meta 24h window is open"
+          "meta_window_open": "Meta 24h window is open",
+          "asaas_situacao": "Billing status (Asaas)"
         },
         "operandLabel": "Operand",
         "horaDoDiaInicio": "Start",
@@ -2846,6 +2904,16 @@
         "horaDoDiaIncompleta": "Pick the start and the end — without both, the condition always answers No.",
         "horaDoDiaSegASex": "Monday to Friday only",
         "horaDoDiaSegASexHelp": "Saturday and Sunday answer No (holidays aren't checked). In a window that crosses midnight, the early morning counts for the day the window started: Saturday's is Friday night.",
+        "cobrancaParcelasLabel": "Overdue installments: from",
+        "cobrancaParcelasAjuda": "How many overdue installments the client has, across all of their charges (2 = two or more). Leave blank to ignore.",
+        "cobrancaDiasLabel": "Days overdue of the oldest: from",
+        "cobrancaDiasAjuda": "Calendar days since the oldest installment was due (15 = day 15 itself counts). Leave blank to ignore.",
+        "cobrancaAjuda": "Answers Yes when EITHER limit is reached. The status is the one the collection sequence just checked on Asaas for this message. Only works in the overdue charges of the collection sequence — the due-date reminder has no overdue installment.",
+        "cobrancaSemLimite": "Fill in at least one of the two — with neither, the condition always answers No.",
+        "cobrancaLimiteInvalido": "Use whole numbers: 1 to 99 installments and 1 to 365 days. Outside that, the limit does not count.",
+        "cobrancaResumoParcelas": "{n, plural, one {# installment or more} other {# installments or more}}",
+        "cobrancaResumoDias": "{n, plural, one {# day overdue or more} other {# days overdue or more}}",
+        "cobrancaResumoOu": " or ",
         "mensagemContemLabel": "Text the message contains",
         "negocioAberto": "Open",
         "escolhaStatus": "Pick a status",
@@ -2989,7 +3057,7 @@
         "aiLabel": "AI on this conversation",
         "aiOn": "Turn on",
         "aiOff": "Turn off",
-        "aiResetWarning": "Turning it on only undoes a pause made by an automation. If someone on the team replied, or the AI itself handed the conversation to a person, it stays paused until someone clicks \"Resume AI\" in the conversation.",
+        "aiResetWarning": "Turning it on only undoes a pause made by an automation. The pause from someone on the team replying comes back on its own if the customer waits without a reply (the time is set in AI agents → \"When the team replies\"); the AI handing the conversation to a person and \"Turn off AI\" last until someone clicks \"Resume AI\" in the conversation.",
         "inactiveSuffix": "(off)",
         "selfSuffix": "(this one)"
       },
@@ -3007,7 +3075,14 @@
         "nomeLabel": "Filename shown to the recipient",
         "nomeHelp": "Documents only — WhatsApp ignores it for the other types.",
         "legendaLabel": "Caption (optional)",
-        "audioSemLegenda": "Audio has no caption. WhatsApp voice notes carry no text — anything written here would show in the thread for your team and never reach the client."
+        "audioSemLegenda": "Audio has no caption. WhatsApp voice notes carry no text — anything written here would show in the thread for your team and never reach the client.",
+        "escolherDoAcervo": "Pick from the library",
+        "doAcervo": "from the library",
+        "abrirDoAcervo": "Open the library file",
+        "tirarArquivo": "Remove the file",
+        "itemApagado": "This file was deleted from the media library — pick another one, or the automation will fail at this step.",
+        "tipoSegueOAcervo": "The step type changed to {tipo}, the type of the file picked from the library.",
+        "audioNaoOgg": "This audio isn't .ogg: over the official number it reaches the customer as an audio FILE, not a voice note. To send it as a voice note, convert it to .ogg (Opus) and upload it to the library again."
       },
       "tarefa": {
         "tituloLabel": "Task title",
@@ -3143,6 +3218,8 @@
         "diasAjuda": "Calendar days after the due date. Each milestone is its own automation: 1, 5, 30… The message lists every overdue instalment of the customer, not only the one crossing this milestone.",
         "horaLabel": "Send from",
         "horaAjuda": "Between 08:00 and 17:00. The message goes out between this time and 18:00 on the milestone day; scheduler down until 18:00 = milestone missed that day.",
+        "horaAjudaLembrete": "Before 18:00 it is the DAY reminder: it goes out between this time and 18:00. From 18:00 on it becomes the NIGHT reminder, until 21:00 (e.g. 20:00, signed as \"Mensagem automática\").",
+        "horaAjudaNoite": "NIGHT reminder: it goes out between this time and 21:00, only to whoever has not yet paid what is due today (the CRM checks Asaas first). Use \"Sign as\" = \"Mensagem automática\".",
         "diasUteisLabel": "Business days only",
         "diasUteisAjuda": "Saturday, Sunday and fixed-date national holidays push the message to the next business day.",
         "conexaoAviso": "This automation's message needs the connection chosen on the step (fails closed: never goes out through the default number). No 'Wait': each milestone is its own automation.",
@@ -3188,6 +3265,7 @@
           "midia_tipo_invalido": "Choose the file type: image, video, document or audio.",
           "audio_com_legenda": "Remove the caption: voice notes carry no text, so it would not reach the customer.",
           "legenda_longa": "Shorten the caption to at most 1024 characters.",
+          "midia_do_acervo_apagada": "The chosen file was deleted from the media library — pick another one.",
           "mensagem_sem_texto": "Write the message text.",
           "interativa_invalida": "Review the buttons or the list in this step: the notice inside the step says what is missing.",
           "modelo_nao_escolhido": "Choose the template to send.",
@@ -3221,6 +3299,10 @@
           "condicao_sem_conexao": "Choose the connection the condition checks.",
           "condicao_horario_invalido": "Choose the start and end times of the condition (different from each other).",
           "condicao_dias_uteis_invalido": "Tick or untick the “Monday to Friday only” option of the condition again.",
+          "condicao_cobranca_sem_limite": "Fill in at least one billing status limit (installments or days overdue).",
+          "condicao_cobranca_limite_invalido": "Billing status limits are whole numbers: 1 to 99 installments and 1 to 365 days.",
+          "condicao_cobranca_fora_da_regua": "The “Billing status” condition only works in the Asaas collection sequence: change the criterion.",
+          "condicao_cobranca_no_lembrete": "The due-date reminder has no overdue installment: “Billing status” would always answer No. Use it in the overdue charges.",
           "webhook_sem_endereco": "Write the webhook address (URL).",
           "webhook_endereco_invalido": "Fix the webhook address: it must start with http:// or https://.",
           "numero_sem_telefone": "Write the phone number that receives the message.",
@@ -3256,6 +3338,7 @@
           "gatilho_webhook_invalido": "Choose the webhook that triggers the automation again.",
           "gatilho_dias_de_atraso_invalido": "Choose how many days overdue the collection message goes out (1 to 365).",
           "gatilho_hora_de_envio_invalida": "Choose a send time between 08:00 and 17:00.",
+          "gatilho_hora_do_lembrete_invalida": "Choose the reminder time between 08:00 and 17:00 (day reminder) or between 18:00 and 20:30 (night reminder).",
           "gatilho_dias_uteis_invalido": "Tick or untick the “Business days only” option again.",
           "gatilho_status_invalidos": "Choose the trigger statuses again: won, lost or open.",
           "gatilho_atlas_sem_situacao": "Check at least one Atlas Gestor status in the trigger.",
@@ -3373,25 +3456,37 @@
         }
       },
       "evento": {
+        "saudacao": {
+          "rotulo": "Greeting",
+          "legenda": "“Olá, Maria!” with the first name; for a company (CNPJ) or a client without a name, just “Olá!”."
+        },
         "cliente_nome": {
           "rotulo": "Customer name in Asaas",
           "legenda": "The full name, as it is in Asaas."
         },
         "cliente_primeiro_nome": {
           "rotulo": "Customer first name",
-          "legenda": "Only the first name, capitalized."
+          "legenda": "Just the first name, capitalized (even when Asaas has it in all caps); a company (CNPJ) is kept as is."
         },
         "escritorio_nome": {
           "rotulo": "Office name",
-          "legenda": "The account name."
+          "legenda": "The automatic signature name (Settings → Signature); without it, the account name."
+        },
+        "cobranca_situacao": {
+          "rotulo": "Status in one sentence",
+          "legenda": "To follow “Vi aqui que…”: the single installment with value and due date, or how many are open, the total and when the oldest was due (in Portuguese)."
+        },
+        "cobranca_links": {
+          "rotulo": "Payment link(s)",
+          "legenda": "With ONE charge to pay, just its link; with more than one (including one due today), the list with one link per line — the same text works for both cases."
         },
         "cobranca_detalhe": {
           "rotulo": "Open installments",
-          "legenda": "Every overdue installment, one per line, with amount, due date and payment link. In the reminder, only the one due today."
+          "legenda": "Every overdue installment, one per line, with value, due date and the link on the line below. In the reminder, only the one due today. Never the charge description."
         },
         "cobranca_parcelas": {
           "rotulo": "Installment numbers",
-          "legenda": "Which installments are open (2/12, 3/12…)."
+          "legenda": "Which installments are open (2/12, 3/12…); a one-off charge shows as “cobrança”."
         },
         "cobranca_valor": {
           "rotulo": "Open amount",
@@ -3403,7 +3498,11 @@
         },
         "cobranca_quantidade": {
           "rotulo": "Number of installments",
-          "legenda": "How many installments are open."
+          "legenda": "How many installments the message lists (the overdue ones; in the reminder, the ones due today)."
+        },
+        "vencidas_quantidade": {
+          "rotulo": "Overdue count",
+          "legenda": "How many overdue installments the client has; 0 in the due-date reminder."
         },
         "dias_de_atraso": {
           "rotulo": "Days overdue (the milestone)",
@@ -3576,6 +3675,12 @@
     "anotacaoGravada": {
       "autor": "Automation \"{nome}\"",
       "semNome": "unnamed member"
+    },
+    "regua": {
+      "selo": "Billing schedule",
+      "editarNaRegua": "Edit in the schedule",
+      "aviso": "This automation is a step of Asaas automatic billing. Days, time, text, number and signature are changed there, so the schedule stays consistent — you can here too, but the billing screen is the place.",
+      "abrir": "Open Automatic billing"
     }
   },
   "Flows": {
@@ -4739,7 +4844,94 @@
         "radar": "Service Radar",
         "transcricao": "Voice transcription",
         "leitura": "Reading images and documents (AI agents)",
-        "rag": "Knowledge base (RAG)"
+        "rag": "Knowledge base (RAG)",
+        "erroGravar": "Could not save.",
+        "ligado": "On",
+        "desligado": "Off",
+        "ligar": "Turn on",
+        "desligar": "Turn off",
+        "onde": "Where: {onde}",
+        "passos": {
+          "titulo": "Getting started",
+          "feitos": "{feitos} of {total} done",
+          "situacao": {
+            "feito": "Done",
+            "falta": "To do",
+            "nao_sei": "Checking"
+          },
+          "conectar": {
+            "titulo": "Connect the key",
+            "desc": "The Asaas API key, read and webhooks only."
+          },
+          "webhook": {
+            "titulo": "Instant notice",
+            "desc": "The webhook the CRM creates by itself."
+          },
+          "primeira_leitura": {
+            "titulo": "First read",
+            "desc": "{n, plural, =0 {No client read yet.} one {One client read.} other {# clients read.}}"
+          },
+          "vinculos": {
+            "titulo": "Review the links",
+            "desc": "{n, plural, =0 {Nothing to confirm.} one {One client to confirm.} other {# clients to confirm.}}"
+          },
+          "cobranca": {
+            "titulo": "Turn billing on",
+            "desc": "Cadence, texts and who sends."
+          }
+        },
+        "funcoes": {
+          "titulo": "What the integration does",
+          "fonte": "Asaas is the source; the CRM only reads.",
+          "vinculo": {
+            "titulo": "Link to contacts",
+            "desc": "Links each Asaas client to a contact by phone, CPF or e-mail. When unsure, it goes to review.",
+            "onde": "here, under \"See the lists\"",
+            "status": "{ligados} linked · {confirmar} to confirm",
+            "acao": "Review"
+          },
+          "aviso": {
+            "titulo": "Delinquency notice",
+            "desc": "Icon in the conversation list, banner above the message box and the \"Delinquent\" filter. The conversation's Billing tab always stays.",
+            "onde": "Inbox",
+            "statusLigado": "On · {n, plural, =0 {nobody owing} one {# owing} other {# owing}}",
+            "confirmarDesligar": "Turn off the delinquency notice? The icon, the banner and the \"Delinquent\" filter disappear for the whole team. The Billing tab stays.",
+            "ligado": "Delinquency notice turned on.",
+            "desligado": "Delinquency notice turned off."
+          },
+          "filtro": {
+            "titulo": "\"Delinquent\" filter",
+            "desc": "Separates in the inbox the conversations of clients with an overdue installment.",
+            "onde": "Inbox › filter settings",
+            "status": "Available",
+            "semAviso": "Gone while the notice is off",
+            "acao": "Open the inbox"
+          },
+          "excecao": {
+            "titulo": "Clients who don't get billed",
+            "desc": "Anyone here never gets a reminder or an automatic collection.",
+            "onde": "the bell on the Billing tab and the Automatic billing screen",
+            "status": "{n, plural, =0 {Nobody} one {# client} other {# clients}}",
+            "acao": "See the list"
+          },
+          "cobranca": {
+            "titulo": "Automatic billing",
+            "desc": "Due-date reminder and overdue collection over WhatsApp, with the cadence, texts and signature.",
+            "onde": "its own screen, Automatic billing",
+            "statusLigada": "On · {ligadas} of {total} steps",
+            "statusDesligada": "Off",
+            "acao": "Set up"
+          }
+        },
+        "resumo": {
+          "titulo": "Automatic billing",
+          "etapas": "{ligadas} of {total} steps on",
+          "excecoes": "{n, plural, =0 {nobody left out} one {# client left out} other {# clients left out}}",
+          "repetido": "There are repeated steps: check the billing screen.",
+          "configurar": "Set up automatic billing",
+          "ligada": "On",
+          "desligada": "Off"
+        }
       },
       "origem": {
         "agente": "inherited from the agent",
@@ -4926,6 +5118,8 @@
           "contato_ja_ligado": "this contact is already linked to another Asaas customer with a different document"
         },
         "buscar": "Search by name, phone or e-mail",
+        "soEmAtraso": "Only with overdue charges",
+        "vazioEmAtraso": "No client with overdue charges in this list.",
         "listaFalhou": "Could not read the list.",
         "anterior": "Previous",
         "proxima": "Next",
@@ -4991,7 +5185,7 @@
         },
         "regua": {
           "titulo": "Automatic billing",
-          "desc": "With the switch on, the CRM sends the due-date reminder and the overdue notices by WhatsApp, through the automations of the Asaas triggers — one message per customer listing every overdue installment. Turning it on is not retroactive: only what falls due from now on enters.",
+          "desc": "With the switch on, the CRM sends the due-date reminders (the day one and, if set, the night one, until 21:00) and the overdue notices by WhatsApp, through the automations of the Asaas triggers — one message per customer listing every overdue installment. Turning it on is not retroactive: only what falls due from now on enters.",
           "estadoLigada": "On",
           "estadoDesligada": "Off",
           "automacoes": "{ligadas} of {total} billing automations active",
@@ -4999,7 +5193,7 @@
           "ligadasMasDesligada": "an automation is active, but nothing goes out until the switch is on",
           "ligadaSemAutomacao": "no active automation, nothing goes out — activate one under Automations",
           "marcoRepetido": "Two or more active automations share the same milestone ({marcos} days): only one of them sends, the other stays locked.",
-          "lembreteRepetido": "More than one due-date reminder is active: only one of them sends.",
+          "lembreteRepetido": "More than one due-date reminder is on in the same shift (day or night): only one of them sends.",
           "excecoes": "{n} customer(s) marked to skip automatic billing (\"No automatic billing\" list).",
           "intervaloLabel": "Minimum interval between notices (days)",
           "intervaloGravar": "Save",
@@ -5220,6 +5414,185 @@
         "banco": "Could not save right now — try again.",
         "modelo_em_uso_recusado": "The new key cannot reach the model {modelo}, which is in use — and the current key can. Nothing was changed: change the model first, or use a key with access to it.",
         "transcricao_recusada": "The new key cannot reach the audio transcription model ({modelo}), which is fixed in the system. Nothing was saved: use a Google key with access to it."
+      },
+      "cobranca": {
+        "conexaoApagada": "(deleted connection)",
+        "erroDesconhecido": "Could not save.",
+        "erroDeRede": "No answer from the server.",
+        "configuracaoGeral": "Office name and interval",
+        "erroGravar": "Could not save. Try again.",
+        "salvo": "Automatic billing saved.",
+        "salvoComRecusas": "{n, plural, one {One step was not saved} other {# steps were not saved}} — see why below.",
+        "confirmarLigar": "Turn on automatic billing? It is NOT retroactive: only what falls due (or reaches a milestone) from now on counts. Messages go out through the steps that are on.",
+        "ligada": "Automatic billing turned on.",
+        "desligada": "Automatic billing turned off.",
+        "erroCriar": "Could not create the step.",
+        "padraoCriada": "{n, plural, =0 {No step was missing} one {One step created (off)} other {# steps created (off)}}.",
+        "padraoSemConexao": "No QR Code WhatsApp connected: pick the number under \"Who sends\" before turning it on.",
+        "diasInvalidos": "Days overdue: a number from 1 to 365.",
+        "etapaJaExiste": "The {dias, plural, one {# day} other {# days}} collection already exists.",
+        "etapaCriada": "{dias, plural, one {# day} other {# days}} collection created, off.",
+        "etiquetaPadrao": "Call to collect",
+        "voltar": "Integrations › Asaas",
+        "carregarFalhou": "Could not read automatic billing.",
+        "tentarDeNovo": "Try again",
+        "carregando": "Loading…",
+        "naoConectado": "Connect Asaas under Integrations to set up automatic billing.",
+        "titulo": "Automatic billing",
+        "estadoLigada": "On",
+        "estadoDesligada": "Off",
+        "interruptor": "Turn on",
+        "desc": "Due-date reminder and overdue collection, over WhatsApp. Asaas stays the source: before each send the CRM checks again whether the installment was paid. One message per client, with every open installment, without reopening the conversation or touching unread counts.",
+        "ativadaEm": "Turned on at {quando}: only what fell due after that counts.",
+        "ligadaSemEtapa": "On, but no step is on: nothing goes out.",
+        "etapasLigadasMasDesligada": "Some steps are on, but automatic billing is off: nothing goes out.",
+        "semNome": "(no name)",
+        "recusas": "Not saved:",
+        "naoSalvo": "There are unsaved changes.",
+        "tudoSalvo": "All saved. The steps are automations the module looks after — the automation builder opens them too.",
+        "descartar": "Discard",
+        "salvar": "Save",
+        "quemManda": {
+          "titulo": "Who sends",
+          "desc": "Applies to every step.",
+          "numero": "Sending number",
+          "varios": "Several numbers",
+          "escolher": "Pick a number",
+          "desconectada": "disconnected",
+          "conexoesFalharam": "Could not read the connections.",
+          "semConexao": "No QR Code WhatsApp in this account.",
+          "numeroAjuda": "Every message goes out through it. QR Code WhatsApp only; disconnected, nothing goes out.",
+          "variosAviso": "Steps use different numbers today ({nomes}). Pick one for all.",
+          "envioSemConexao": "Some step has no number: it won't turn on until you pick one.",
+          "assina": "Signed by",
+          "variasAssinaturas": "Different signatures — type one for all",
+          "assinaPlaceholder": "No name (uses the account signature)",
+          "assinaAjuda": "Goes at the top of each message. The evening reminder signs \"Automatic message\" (in its own text).",
+          "assinaturaDesligada": "Signatures are off for the account (Settings › Signature): messages go out without a name.",
+          "escritorio": "Office name",
+          "escritorioPlaceholder": "The account name",
+          "escritorioAjuda": "Fills the \"Office name\" field of the texts. Blank means \"{padrao}\" (the automatic signature name)."
+        },
+        "cadencia": {
+          "titulo": "Cadence",
+          "desc": "Each step is an automation the module creates and looks after. The time is when sending starts; collections run until 18:00 and the evening reminder until 21:00.",
+          "vazia": "No steps yet. Create the default steps to start; the number, who signs, business days and the call request are chosen after that.",
+          "linhaDoTempo": "Steps timeline",
+          "lembrete": "reminder",
+          "cobranca": "collection",
+          "etapa": "Step",
+          "quando": "When",
+          "horario": "From",
+          "texto": "Text",
+          "ligada": "On",
+          "mensagemAutomatica": "Automatic message",
+          "horaDaCobranca": "Between 08:00 and 17:00.",
+          "horaDaNoite": "Between 18:00 and 20:30.",
+          "horaDoDia": "Between 08:00 and 17:00.",
+          "semTexto": "(no message)",
+          "editarTexto": "Edit text",
+          "ligarEtapa": "Turn on step {etapa}",
+          "marcoRepetido": "More than one collection with the same days ({marcos}): only one collects.",
+          "lembreteRepetido": "More than one reminder in the same shift: only one goes out.",
+          "diasPlaceholder": "Days",
+          "adicionar": "Add collection",
+          "criarPadrao": "Create the missing default steps",
+          "salveAntes": "Save your changes before creating a step.",
+          "adicionarAjuda": "Starts off, with the default text, and the number and signature from here.",
+          "quandoNoite": "On the due date, if still open",
+          "quandoDia": "On the due date",
+          "quandoCobranca": "{dias, plural, one {# day} other {# days}} overdue"
+        },
+        "regras": {
+          "titulo": "Rules",
+          "diasUteis": "Business days only",
+          "diasUteisMisto": "Each step is set differently today. Check or uncheck for all.",
+          "diasUteisAjuda": "Saturday, Sunday and national holidays push the message to the next business day.",
+          "intervalo": "Minimum interval between collections",
+          "dias": "days",
+          "intervaloAjuda": "A collection sent less than this ago holds the next one. The due-date reminder doesn't count.",
+          "umaPorDia": "One message a day",
+          "umaPorDiaAjuda": "If a collection goes out to the client that day, the morning reminder doesn't: the collection already mentions today's installment. The evening one only goes if it is still open.",
+          "naoRetroativa": "Nothing goes out late",
+          "naoRetroativaAjuda": "Turning it on doesn't fire what already passed: only what falls due or reaches a milestone from then on.",
+          "diasUteisVaiIgualar": "On save, it applies to every step.",
+          "manterComoEsta": "Keep each as it is"
+        },
+        "ligacao": {
+          "titulo": "Ask the team to call",
+          "desc": "An internal note on the conversation tagging who calls to arrange payment, plus a tag. Once per client, until someone removes the tag. Nothing is sent to the client.",
+          "diferente": "Today only some collections ask for the call, or ask in different ways (edited in the builder). Nothing changes in them until you turn it on here (makes all the same) or turn it on and off (removes it from all).",
+          "aMao": "There is a hand-built \"Billing status\" condition in {etapas}: it stays. Remove it in the builder if this one is enough.",
+          "quando": "When the client has",
+          "parcelas": "Overdue installments",
+          "parcelasOu": "overdue installments or more, or",
+          "dias": "Days overdue",
+          "diasOuMais": "days overdue or more (leave blank what doesn't apply).",
+          "marcar": "Tag in the note",
+          "etiqueta": "Tag",
+          "etiquetaApagada": "(deleted tag)",
+          "escolherEtiqueta": "Pick the tag",
+          "etiquetasFalharam": "Could not read the tags.",
+          "etiquetaAjuda": "Added with the note. While it is on the contact, the schedule won't ask again. Create tags under Fields and tags.",
+          "texto": "Note text",
+          "textoAjuda": "The billing fields are those of the message just sent.",
+          "incompleta": "To ask for the call: a threshold, someone tagged, the tag and the text.",
+          "pendentes": "{n, plural, =0 {No client waiting for a call right now.} one {One client waiting for a call right now (with the tag).} other {# clients waiting for a call right now (with the tag).}}",
+          "desligada": "Off: the schedule asks nobody to call.",
+          "vaiDesligar": "On save, the call request is removed from every collection.",
+          "semCobranca": "Only collection steps request a call: create one to set this up."
+        },
+        "excecoes": {
+          "titulo": "Who doesn't receive it",
+          "desc": "Clients on the \"No automatic billing\" list never get a reminder or a collection. To add someone, use the bell on the \"Linked\" tab (or on the conversation's Billing tab)."
+        },
+        "semana": {
+          "titulo": "Last 7 days",
+          "numeros": "{lembretes, plural, one {# reminder} other {# reminders}} · {cobrancas, plural, one {# collection} other {# collections}} · {falhas, plural, =0 {no failures} one {# not sent} other {# not sent}}",
+          "falhou": "Could not count the sends.",
+          "verAutomacoes": "See the automations"
+        },
+        "etapa": {
+          "lembreteNoite": "Reminder · evening",
+          "lembreteDia": "Reminder · day",
+          "cobranca": "Collection · {dias, plural, one {# day} other {# days}}",
+          "venceNoite": "Due · evening",
+          "venceDia": "Due · morning",
+          "dias": "{dias, plural, one {# day} other {# days}}"
+        },
+        "texto": {
+          "voltar": "Automatic billing",
+          "naoAchada": "This step no longer exists.",
+          "salvo": "Text saved.",
+          "titulo": "Step text",
+          "restaurar": "Restore the default text",
+          "desc": "The same editor as the builder (fields in purple). The preview shows the cases that matter without finding a client in each situation.",
+          "etapas": "Steps",
+          "salveAntes": "Save or discard before switching steps.",
+          "mensagem": "Message text",
+          "assina": "Signed by",
+          "semAssinatura": "No name (the account signature)",
+          "assinaNoite": "This step only. Default is \"Automatic message\".",
+          "assinaComum": "Comes from \"Who sends\".",
+          "enviarPor": "Send through",
+          "semConexao": "No number",
+          "enviarPorAjuda": "Comes from \"Who sends\".",
+          "previa": "Preview with",
+          "caso": {
+            "uma": "One installment",
+            "varias": "Several installments",
+            "empresa": "Company (CNPJ)"
+          },
+          "legenda": {
+            "uma": "A person (CPF) with one installment overdue since yesterday.",
+            "varias": "A person with two overdue installments, the oldest 18 days ago.",
+            "empresa": "A company (CNPJ) with a one-off charge: the greeting has no name, and the charge's internal description never reaches the client."
+          },
+          "previaReal": "To see it with a real client, use the editor's \"Preview\" on the left.",
+          "semMensagemDeFora": "This step has no message outside its conditions (it was built in the builder): edit the text there.",
+          "abrirNoConstrutor": "Open in the builder"
+        },
+        "recarregarFalhou": "Could not reload automatic billing: the screen may not show what is saved. Reload the page."
       }
     },
     "groups": {
@@ -5499,7 +5872,46 @@
       "groupsResyncWarning": "After saving, click Resync on this connection. Without it, messages arrive but join/leave notices don't.",
       "radarLabel": "Service Radar on this number",
       "radarHint": "AI analyzes this number's conversations (last 7 days): score, urgencies, dissatisfaction and unanswered requests. Off by default.",
-      "radarPrivacyWarning": "When enabled, this number's conversation content is sent to the account's configured AI provider (your own key). Use the provider's paid tier and confirm the firm's confidentiality policy."
+      "radarPrivacyWarning": "When enabled, this number's conversation content is sent to the account's configured AI provider (your own key). Use the provider's paid tier and confirm the firm's confidentiality policy.",
+      "ligacoes": {
+        "titulo": "CRM calls",
+        "interruptor": "CRM calls on {label}",
+        "carregando": "Checking CRM calls…",
+        "falhaDaLista": "Could not check CRM calls right now.",
+        "tentarDeNovo": "Try again",
+        "semComputador": "This number does not have a call computer yet. One is installed on the server.",
+        "desligadas": "Off: the Call button and the ringing of incoming calls don't show for the team.",
+        "situacao": {
+          "pronto": "Ready to make and answer calls.",
+          "emLigacao": "On a call now.",
+          "qr": "The call computer's WhatsApp is asking for the QR code.",
+          "carregando": "The call computer's WhatsApp is loading.",
+          "fora": "Offline: the call computer has sent no signal for {tempo}.",
+          "foraSemSinal": "Offline: the call computer has not sent a signal yet."
+        },
+        "conectado": "Connected. Calls will be back in a moment.",
+        "qrAlt": "QR code to connect the calls of {label}",
+        "qrInstrucao": "On this number's phone, open WhatsApp → Linked devices → Link a device, and point the camera at the code. It refreshes on its own.",
+        "qrEsperando": "Waiting for the code from the call computer…",
+        "qrFalhou": "Could not reach the call computer right now. Retrying…",
+        "reparear": "Re-pair",
+        "reparearDica": "Disconnects the call computer's WhatsApp to scan a new QR code",
+        "reparearTitulo": "Re-pair the calls of {label}?",
+        "reparearDescricao": "The call computer logs out of this number's WhatsApp and shows a new QR code. Until someone scans it with this number's phone, no one can call through the CRM and incoming calls don't ring in it (the phone still rings). Messages are not affected.",
+        "reparearConfirmar": "Log out and show the QR code",
+        "ligou": "CRM calls turned on for {label}",
+        "desligou": "CRM calls turned off for {label}",
+        "conectou": "Calls of {label} connected to WhatsApp",
+        "erro": {
+          "emLigacao": "There is a call in progress on this number: try again when it ends.",
+          "jaPedeQr": "The call computer is already asking for the QR code.",
+          "desligado": "Calls are turned off for this number.",
+          "semResposta": "The call computer did not respond.",
+          "naoDesconectou": "The call computer could not log out of WhatsApp; the session is still up.",
+          "semComputador": "This number does not have a call computer.",
+          "falhou": "That didn't work. Try again."
+        }
+      }
     },
     "profile": {
       "fullNamePlaceholder": "Ada Lovelace",
@@ -5748,7 +6160,7 @@
     },
     "acervo": {
       "title": "Media library",
-      "description": "Files the office keeps ready — contracts, images, audio — for the team to send from inside a conversation instead of hunting on their computer. Senders use the paperclip in the message box → “From library”.",
+      "description": "Files the office keeps ready — contracts, images, audio — for the team to send from inside a conversation instead of hunting on their computer. Senders use the paperclip in the message box → “From library”. Robots (“Send media”) and automations (“Send file”) also send files from here, through a copy kept apart: what was already sent does not change or disappear if the item is removed.",
       "add": "Add file",
       "empty": "No files in the library yet. Add the first one for the team to use in conversations.",
       "uncategorized": "General",
@@ -5762,7 +6174,7 @@
       "cancel": "Cancel",
       "save": "Save",
       "titleRequired": "Give the item a name.",
-      "confirmDelete": "Remove “{titulo}” from the library? Messages already sent with this file are unchanged — the team just can't send it again.",
+      "confirmDelete": "Remove “{titulo}” from the library? Messages already sent with this file are unchanged — the team can't send it again, and a robot or automation that sends it fails at that step until someone picks another file.",
       "addedToast": "File added to the library.",
       "uploadError": "Could not add the file.",
       "unsupportedType": "WhatsApp doesn't accept this file type.",
@@ -6241,6 +6653,19 @@
     "abaUso": "Usage and cost",
     "tentarDeNovo": "Try again",
     "cancelar": "Cancel",
+    "pausaDaConta": {
+      "titulo": "When the team replies",
+      "explicacao": "When someone on the team replies (through the CRM or the phone) or clicks \"Pause\", the AI pauses in that conversation. It comes back on its own if the customer writes and no one on the team replies within the time below, and it also follows up with a customer who didn't answer the team, with the agent's follow-ups. \"Turn off AI\" and handing the conversation to the team last until someone clicks \"Resume AI\". Applies to every agent.",
+      "campo": "The AI comes back after",
+      "minutos": "minutes without a reply from the team",
+      "salvar": "Save",
+      "salva": "Saved: the AI comes back after {minutos} min without a reply from the team.",
+      "salvaDesligada": "Saved: the AI only comes back with \"Resume AI\".",
+      "agora": "Now: the AI comes back after {minutos} min without a reply from the team, within each agent's hours.",
+      "agoraDesligada": "Now: off — the pause lasts until someone clicks \"Resume AI\", and the AI doesn't follow up on the team's messages.",
+      "dica": "Use 0 to turn it off. Outside the agent's hours, the AI replies when the hours open, if no one on the team has replied.",
+      "falhou": "Couldn't load this setting."
+    },
     "lista": {
       "explicacao": "Each agent answers the customers whose deal is in the pipeline stages marked on it. Create, test in the Playground and follow each one's usage and turns.",
       "novo": "New agent",
@@ -6261,13 +6686,28 @@
       "partida": "Starting point",
       "emBranco": "Blank",
       "emBrancoDica": "No instructions or rules.",
-      "criar": "Create agent"
+      "criar": "Create agent",
+      "passos": "Steps",
+      "passo1": "What it is for",
+      "passo2": "Name and model",
+      "trazNada": "You write the instructions and rules.",
+      "traz": "Comes with instructions and {n, plural, one {# rule} other {# rules}}",
+      "regrasQueVem": "Rules that come with it",
+      "tudoMuda": "All of this can be changed later, in Configuration.",
+      "nomeDica": "Shows in the list, in the conversation banner (\"AI · name\") and to the agents that hand conversations to it.",
+      "outroModelo": "Another model…",
+      "depois": "After creating it",
+      "depois1": "Write the instructions and rules (Configuration).",
+      "depois2": "Choose what it sees about the customer (Access) and what it can do in the CRM (Tools).",
+      "depois3": "Test it in the Playground.",
+      "depois4": "Select the connections and stages where it works, and turn it on.",
+      "continuar": "Continue",
+      "voltar": "Back"
     },
     "campo": {
       "nome": "Name",
       "nomeExemplo": "e.g. Triage",
       "ativo": "On",
-      "ativoDica": "When on, it answers the customers whose deal is in the stages selected under \"Where it works\".",
       "descricao": "Description",
       "descricaoDica": "One sentence about what this agent does. It's what another agent reads to decide whether to hand the conversation over.",
       "instrucoes": "Instructions",
@@ -6301,8 +6741,8 @@
       "podePassarParaDica": "The other agents this one can hand the conversation to. When handing over, it still saves the field, the tag and the task from the same reply; the deal goes to the chosen agent's stage, and that agent then replies to the same customer message — or only to the next one, if an automation listens to the destination stage (the automation speaks first).",
       "passarSemEtapa": "(no stage: the handover goes to the team)",
       "semOutrosAgentes": "There are no other agents in the account.",
-      "ativoLigando": "Once saved as on, the agent only handles cards that ENTER the stages from now on. Cards already there stay with the team.",
-      "ativoDesligando": "Once saved, the agent stops replying. If it is turned back on later, it only handles cards that ENTER the stages from then on: cards already there stay with the team.",
+      "ativoLigando": "Once on, the agent only handles cards that ENTER the stages from now on. Cards already there stay with the team.",
+      "ativoDesligando": "Once off, the agent stops replying. If it is turned back on later, it only handles cards that ENTER the stages from then on: cards already there stay with the team.",
       "conduzFechamento": "Handles the closing",
       "conduzFechamentoDica": "Off (the default), the agent never talks about fees or invites the customer to hire the office. On, it presents the fees and conditions written in the instructions, the rules or the knowledge base, answers objections and sends the contract link written there; the hiring only counts once the contract is signed.",
       "conduzFechamentoLigando": "Once saved as on, this agent presents the fees and conditions exactly as written in the instructions, the rules or the knowledge base, and invites the customer to sign through the contract link. Write the amounts, the conditions and the link there. Still forbidden: promising results, amounts or deadlines; negotiating or giving a discount that is not written; closing or confirming a deal and saying the contract is signed or closed (a customer who says they signed hears that the signature will be confirmed); claiming to be a lawyer or a person from the team.",
@@ -6315,13 +6755,43 @@
       "horarioDica": "Outside these hours the agent does not reply right away: the message waits in the queue and it replies when the hours open, unless someone on the team has replied first. On the official Meta connection, only if the 24-hour window is still open by then; otherwise the message stays with the team."
     },
     "config": {
-      "modelo": "Provider and model",
-      "transferencia": "Limit and handover",
-      "salvar": "Save",
       "salvo": "Agent saved.",
       "arquivar": "Archive agent",
       "arquivarConfirma": "Archive this agent? It leaves the list and is turned off; past usage keeps its name.",
-      "arquivado": "Agent archived."
+      "arquivado": "Agent archived.",
+      "faltaNomeOuModelo": "Name the agent and pick a model before saving.",
+      "indice": "Configuration sections",
+      "secao": {
+        "identidade": {
+          "titulo": "Identity",
+          "porque": "How the agent shows up to the team, in the conversation banner and to the other agents that hand conversations to it."
+        },
+        "comoFala": {
+          "titulo": "How it talks",
+          "porque": "What changes the replies the most: who it is, the goal, the tone and what it never does. After changing it, test in the Playground.",
+          "semInstrucoes": "With no instructions, the agent answers with the system rules only."
+        },
+        "modelo": {
+          "titulo": "Model",
+          "porque": "Who writes the replies. The customer's audio, images and documents are read by the account key, not by this model."
+        },
+        "ondeAtua": {
+          "titulo": "Where it works",
+          "porque": "The connections and pipeline stages where it answers. Without both, it answers no one.",
+          "semConexao": "No connection selected: the agent answers no one."
+        },
+        "quando": {
+          "titulo": "When it answers"
+        },
+        "limites": {
+          "titulo": "Limits and handoff",
+          "porque": "How many replies it gives, who gets the conversation when it hands off and which agents it can pass the customer to."
+        },
+        "arquivar": {
+          "titulo": "Archive the agent",
+          "porque": "It leaves the list and stops answering. The usage history stays."
+        }
+      }
     },
     "ondeAtua": {
       "titulo": "Where it works",
@@ -6346,7 +6816,43 @@
       "playground": "Playground",
       "uso": "Usage",
       "turnos": "Turns",
-      "retomada": "Follow-ups"
+      "retomada": "Follow-ups",
+      "prontidao": {
+        "pronto": "Ready to answer",
+        "falta": "{n, plural, one {# item missing to answer} other {# items missing to answer}}",
+        "instrucoes": "Instructions written",
+        "semInstrucoes": "No instructions",
+        "semChave": "No {provedor} key",
+        "conexoes": "{n, plural, one {# connection} other {# connections}}",
+        "semConexao": "No connection selected",
+        "etapas": "{n, plural, one {# stage} other {# stages}}",
+        "semEtapa": "No stage selected"
+      },
+      "ligar": {
+        "rotulo": "Answers customers",
+        "estadoLigado": "On",
+        "estadoDesligado": "Off",
+        "tituloLigar": "Turn the agent on?",
+        "tituloDesligar": "Turn the agent off?",
+        "aindaFalta": "Still missing: {itens}. Turned on like this, it answers no one.",
+        "configuracaoNaoSalva": "The Configuration tab has unsaved changes: turning on does not save them.",
+        "confirmarLigar": "Turn on",
+        "confirmarDesligar": "Turn off",
+        "ligado": "Agent turned on.",
+        "desligado": "Agent turned off."
+      },
+      "salvar": {
+        "naoSalvo": "Unsaved changes: {abas}",
+        "naoSalvoNaAba": "Unsaved change",
+        "descartar": "Discard",
+        "salvar": "Save changes"
+      },
+      "sair": {
+        "titulo": "Leave without saving?",
+        "texto": "There are unsaved changes in {abas}. If you leave now, they are lost.",
+        "ficar": "Keep editing",
+        "sair": "Leave without saving"
+      }
     },
     "acesso": {
       "explicacao": "What this agent can see about the customer besides the conversation. This is customer data sent to the AI provider with every reply: tick only what its job needs. With nothing ticked, it sees only the conversation.",
@@ -6374,9 +6880,10 @@
         "nenhum": "This account has no custom fields.",
         "nenhumNaBusca": "No field with that name.",
         "marcados": "{n, plural, =0 {None ticked} one {# ticked} other {# ticked}}",
-        "limite": "At most {max} fields per agent. Untick one to tick another."
+        "limite": "At most {max} fields per agent. Untick one to tick another.",
+        "escolher": "Choose fields ({n} of {total})",
+        "recolher": "Collapse the list"
       },
-      "salvar": "Save access",
       "salvo": "Access saved."
     },
     "base": {
@@ -6387,7 +6894,6 @@
       "vazia": "The account has no documents in the knowledge base yet. Create them in Manage documents.",
       "atualizado": "Updated {data}",
       "marcados": "{n, plural, =0 {No document ticked: the agent replies without a knowledge base.} one {# document ticked} other {# documents ticked}}",
-      "salvar": "Save knowledge base",
       "salvo": "Knowledge base saved.",
       "teto": "That is the maximum per agent ({n} documents): unmark one to mark another."
     },
@@ -6401,7 +6907,6 @@
       "limite": "At most {max} per agent. Untick one to tick another.",
       "nenhumNaBusca": "Nothing with that name.",
       "recusado": "Refused when saving.",
-      "salvar": "Save tools",
       "salvo": "Tools saved.",
       "tipoDesconhecido": "Other ({tipo})",
       "transferir": "Hand over to the team",
@@ -6494,14 +6999,15 @@
         "emailLiberado": "E-mail field ticked in “Fill in a field”. Save to apply."
       },
       "instrucoesPedem": "The instructions ask for “{ferramenta}”, but the tool is turned off: the agent cannot do it.",
-      "instrucoesTrecho": "Excerpt: “{trecho}”"
+      "instrucoesTrecho": "Excerpt: “{trecho}”",
+      "escolher": "Choose ({n} of {total})",
+      "recolher": "Collapse the list"
     },
     "playground": {
       "explicacao": "Chat as if you were the customer. The test uses what's on screen — the unsaved changes in Settings, Access, Tools and Follow-up — or what's saved, your choice; the Knowledge base is always the saved one. Same model as production; the spend counts as testing. Actions are only simulated here.",
       "naoSalvo": "There are unsaved changes in {abas}; this test uses what is SAVED.",
       "recomecar": "Start over",
       "vazio": "Send a message to see how this agent would answer.",
-      "transferiria": "Here the agent would hand over to a person",
       "passaria": "Here the agent would hand the conversation to {agente}. In production, the deal goes to that agent's stage and it answers this same message — if an automation listens to the destination stage, the automation speaks first and the agent only answers the customer's next message.",
       "tokens": "{n} tokens",
       "pensando": "Thinking…",
@@ -6516,12 +7022,8 @@
       "contatoFalhou": "The search failed. Type again to retry.",
       "contatoMais": "Showing the first {count}. Keep typing to narrow it down.",
       "limparContato": "Remove the customer",
-      "viu": "The agent saw: {itens} · {trechos}",
       "conversa": "the conversation",
       "trechos": "{n, plural, =0 {no knowledge-base excerpt} one {# knowledge-base excerpt} other {# knowledge-base excerpts}}",
-      "acoesSimuladas": "Actions (simulated): {itens}",
-      "acoesRecusadas": "Refused: {itens}",
-      "recusada": "{tipo} ({motivo})",
       "linkInventado": "The agent made up a link: in production this reply would be held back and the conversation would go to a person.",
       "reuniaoPrometida": "The agent said it booked the meeting without booking it: in production this reply would be held back and the conversation would go to a person.",
       "pedidoVazado": "The agent revealed part of its internal instructions: in production this reply would be held back and the conversation would go to a person.",
@@ -6561,7 +7063,6 @@
       },
       "retomadaParadaDesconhecida": "The follow-ups would stop without sending anything.",
       "acaoPrometida": "The agent said it did something in the system (task, field, tag, stage…) without doing it: in production this reply would be held back and the conversation would go to a person.",
-      "acoesAntesDaPassagem": "Before handing over (simulated): {itens}",
       "testar": "Test:",
       "testarSalvo": "Saved",
       "testarRascunho": "Draft (what's on screen)",
@@ -6591,7 +7092,69 @@
       "verPedidoDica": "Each new reply comes with the text sent to the model (rules, instructions, customer data, knowledge base and actions), to check why it answered that way.",
       "pedidoEnviado": "Request sent to the model",
       "retomadaDesligada": "Follow-up is off in this version of the agent: in production, nothing would be sent.",
-      "limiteDeTestes": "Per-minute test limit reached. Try again in {s} s."
+      "limiteDeTestes": "Per-minute test limit reached. Try again in {s} s.",
+      "efeitoTitulo": "What would have happened in the CRM (simulated)",
+      "efeitoAntesDaPassagem": "Before handing the conversation over (simulated)",
+      "efeitoNenhum": "No CRM action in this reply.",
+      "efeito": {
+        "mover_etapa": "Card moved to",
+        "etiquetar": "Tag added",
+        "tirar_etiqueta": "Tag removed",
+        "preencher_campo": "Field filled",
+        "criar_tarefa": "Task created for",
+        "executar_automacao": "Automation run",
+        "marcar_reuniao": "Meeting booked for"
+      },
+      "efeitoTransferir": "Would hand the conversation to the team",
+      "efeitoDesconhecido": "Action \"{tipo}\"",
+      "efeitoReuniaoNome": "under the name {valor}",
+      "efeitoRetida": "Reply held back: the conversation would go to the team",
+      "efeitoEquipeDetalhe": "The conversation becomes Pending and the AI is paused until someone clicks \"Resume AI\".",
+      "efeitoPassagem": "Would hand the conversation to the agent",
+      "efeitoPassagemDetalhe": "The card moves to its stage and it answers this same message — if an automation listens to the destination stage, the automation speaks first.",
+      "efeitoNaoFaria": "Would not do: {tipo}",
+      "destinoFila": "Unassigned queue (anyone can take it)",
+      "destinoMembro": "Owner: {nome}",
+      "destinoCarregando": "Owner set on the agent",
+      "destinoDesconhecido": "Owner set on the agent (not on the team, or not loaded)",
+      "bastidores": {
+        "titulo": "Behind the scenes",
+        "raciocinio": "How the model reasoned (provider summary, usually in English: the language of the internal rules)",
+        "raciocinioVazio": "The model returned no reasoning for this reply (sometimes it answers directly, without thinking first).",
+        "raciocinioIndisponivel": "This model does not return its reasoning. Claude family 5 models (Sonnet, Haiku, Opus) and Gemini 2.5 and later do.",
+        "raciocinioDesconhecido": "No reasoning for this reply.",
+        "respostaCrua": "What the model wrote (with the action markers)",
+        "viu": "What the agent saw",
+        "pedidoAbrir": "Show the exact text ({n} characters)",
+        "pedidoDica": "Check \"Show the prompt sent to the model\", above, to see the exact text in the next replies."
+      },
+      "lead": {
+        "titulo": "The lead after this conversation",
+        "subtitulo": "Everything the agent would have done in the CRM. Simulated: nothing was saved.",
+        "vazio": "Talk to the agent to see here what it would do with the lead: stage, tags, fields, tasks and who it would hand the conversation to.",
+        "semMudanca": "So far the agent only talked: no change in the CRM.",
+        "nada": "None",
+        "resposta": "reply {n}",
+        "etapa": "Card stage",
+        "etapaIgual": "Unchanged",
+        "etapaDoAgente": "Would go to the stage of the agent {agente}",
+        "etiquetas": "Tags",
+        "aplicada": "Added",
+        "retirada": "Removed",
+        "campos": "Fields filled ({n})",
+        "tarefas": "Tasks",
+        "tarefaPara": "for {nome}",
+        "automacoes": "Automations run",
+        "reuniao": "Meeting",
+        "atendimento": "Handling",
+        "continuaComOAgente": "Stays with this agent",
+        "passouParaAEquipe": "Handed to the team · {destino}",
+        "passouParaAEquipeDetalhe": "In production the AI would be paused from here on, until someone clicks \"Resume AI\".",
+        "retidaDetalhe": "In production the reply would not go out: it would be held back and the conversation would go to the team.",
+        "passouParaOAgente": "Handed to the agent {agente}",
+        "passouParaOAgenteDetalhe": "In production, from here on that agent answers."
+      },
+      "efeitoEquipeDetalhePessoa": "Goes to this person only if the conversation has no owner yet. The conversation becomes Pending and the AI is paused until someone clicks \"Resume AI\"."
     },
     "uso": {
       "explicacao": "Last {dias} days. Amounts in R$ are an ESTIMATE from each model's list price and today's exchange rate.",
@@ -6693,6 +7256,7 @@
       "retomada": "Follow-up {k}/{n}",
       "prevista": "due {quando}",
       "esperaOHorario": "waiting for the agent's hours · opens {quando}",
+      "esperaAEquipe": "waiting for the team to reply · the AI comes back {quando}",
       "semConversa": "No conversation (deleted or in the Trash)",
       "conteudoRemovido": "Content removed on {quando} ({por, select, prazo {{dias}-day limit} exclusao {record deleted for good} other {—}}): the outcome and the actions remain, without the customer's text.",
       "erroDoBanco": {
@@ -6700,7 +7264,8 @@
         "conversaEncerrada": "the conversation was closed",
         "conexaoApagada": "the connection was deleted",
         "fichasUnidas": "the records were merged",
-        "clienteEscreveu": "the customer wrote before the follow-up"
+        "clienteEscreveu": "the customer wrote before the follow-up",
+        "equipeRespondeu": "the team replied before the AI came back"
       }
     },
     "dia": {
@@ -6741,6 +7306,7 @@
       "sem_mensagens": "Write a message to test.",
       "sem_configuracao": "Add a provider's key in Integrations first.",
       "cotacao_invalida": "Enter the exchange rate as a number, for example 5.60.",
+      "minutos_invalidos": "Enter the minutes as a whole number from 0 to 1440.",
       "documento_invalido": "One of the ticked documents no longer exists in the knowledge base. Reload the page and try again.",
       "contato_nao_encontrado": "This customer was not found in this account. Choose another.",
       "etapa_de_resultado": "A won or lost stage cannot be enabled: the AI does not close deals.",
@@ -6835,9 +7401,8 @@
     "retomada": {
       "explicacao": "When the agent asks something and the customer doesn't answer, it gets back to the customer on a cadence. The message is written by the model, from the conversation, and goes out through the same connection.",
       "ligar": "Follow up when the customer doesn't answer",
-      "ligarDica": "Only for the agent's last reply left unanswered — never after a message from an automation, the bot or the team.",
+      "ligarDica": "Only for the agent's last reply left unanswered — never after a message from the bot, the team or an automation (except one the agent itself ran in that reply, which speaks on its behalf).",
       "cadencia": "Cadence",
-      "cadenciaDica": "Each attempt goes out this long after the agent's last unanswered reply. If one is delayed (outside the window, near a meeting reminder), the following ones keep their spacing — and never go out less than 30 min after the previous one. From 1 to {max} attempts, 10 min to 7 days each.",
       "tentativa": "Attempt {n}",
       "remover": "Remove {tempo}",
       "novoIntervalo": "Time",
@@ -6863,9 +7428,25 @@
       "janelaInvalida": "The start must be before the end.",
       "inicio": "Window start",
       "fim": "Window end",
-      "paradas": "Follow-ups stop on their own when the customer answers, when someone from the team writes or pauses the AI, when the conversation is closed, when the deal leaves the agent's stage and near the customer's meeting: never within 30 min of a meeting reminder, and never in the 90 min before it. On an official Meta connection, also when the 24-hour window closes. If nothing is pending, the agent ends the follow-ups without sending anything — and they never hand the conversation to the team. Each follow-up counts toward the agent's reply limit.",
-      "salvar": "Save follow-ups",
-      "salvo": "Follow-ups saved."
+      "paradas": "Follow-ups stop on their own when the customer answers, when someone from the team writes (with \"When the team replies\" on, the series starts again from the team's message) or pauses the AI, when the conversation is closed, when the deal leaves the agent's stage and near the customer's meeting: never within 30 min of a meeting reminder, and never in the 90 min before it. On an official Meta connection, also when the 24-hour window closes. If nothing is pending, the agent ends the follow-ups without sending anything — and they never hand the conversation to the team. Each follow-up counts toward the agent's reply limit.",
+      "salvo": "Follow-ups saved.",
+      "tentativas": "{n, plural, one {# attempt} other {# attempts}} (up to {max})",
+      "tentativasDica": "Counted from the agent's last reply that got no answer. If one is delayed (outside the window, near a meeting reminder), the next ones keep their spacing — and never go out less than 30 min after the previous one.",
+      "linhaInicio": "Agent's reply",
+      "depoisDaResposta": "{tempo} after the agent's reply",
+      "novaTentativa": "New attempt:",
+      "depoisDaRespostaCurto": "after the reply",
+      "limitesDaCadencia": "Each attempt: 10 min to 7 days after the reply.",
+      "ultimaEm": "The last one goes out {tempo} after the reply.",
+      "paraQuando": "Stops on its own when",
+      "para": {
+        "cliente": "the customer replies",
+        "equipe": "the team writes (restarts from it) or pauses the AI",
+        "encerrada": "the conversation is closed",
+        "etapa": "the card leaves the agent's stage",
+        "reuniao": "the customer's meeting is close"
+      },
+      "paradasDetalhe": "See all the rules"
     },
     "modeloDaChave": {
       "carregando": "Loading the models for this key…",
@@ -7044,6 +7625,11 @@
         "corpoSemAutor": "The conversation with {contato} was assigned to you",
         "contatoSemNome": "a contact"
       }
+    },
+    "notaApagada": {
+      "apagada": "Note deleted",
+      "apagadaPor": "Note deleted by {nome} on {quando}",
+      "apagadaEm": "Note deleted on {quando}"
     }
   },
   "SignupPage": {
@@ -7103,6 +7689,14 @@
     "neverChecked": "not checked yet",
     "deliveryLag": "Delivering {tempo} behind",
     "lagMeasured": "measured {tempo} ago",
+    "ligacoes": {
+      "pronto": "CRM calls: ready",
+      "emLigacao": "CRM calls: on a call",
+      "qr": "CRM calls: asking for the QR code (Settings → Connections)",
+      "carregando": "CRM calls: loading",
+      "fora": "CRM calls: offline · last signal {tempo} ago",
+      "foraSemSinal": "CRM calls: offline"
+    },
     "alarme": {
       "foraDoAr": "{canal} offline",
       "semRecibo": "{canal} without delivery confirmation since {quando}",
@@ -7113,6 +7707,8 @@
       "naoGravadas": "{canal} with messages that did not reach the CRM since {quando}",
       "falhas": "{canal} with delivery failures since {quando}",
       "quedas": "{canal} dropping repeatedly since {quando}",
+      "ligacoesFora": "{canal}: CRM calls offline since {quando}",
+      "ligacoesQr": "{canal}: CRM calls asking for the QR code since {quando}",
       "naFicha": {
         "semRecibo": "No delivery confirmation since {quando}. Do not resend: the customer would get it twice.",
         "atrasada": "Receiving with a delay since {quando}: recent replies may not have arrived yet.",
@@ -7132,6 +7728,14 @@
       "titulo": "Connection receiving with a delay: {canal}",
       "corpo": "The last message measured took about {tempo} to reach the CRM ({quando}). Recent customer replies may not have arrived yet.",
       "semMedida": "Messages from this number have been reaching the CRM late since {desde}."
+    },
+    "computadorFora": {
+      "titulo": "CRM calls offline: {canal}",
+      "corpo": "The call computer for this number has sent no signal since {desde}. Meanwhile no one can call through the CRM, and incoming calls don't ring in the CRM (the phone still rings)."
+    },
+    "computadorQr": {
+      "titulo": "CRM calls disconnected from WhatsApp: {canal}",
+      "corpo": "The call computer for this number has been asking for the QR code since {desde}. To fix it: Settings → Connections → CRM calls, then scan the QR code with this number's phone."
     },
     "tempo": {
       "minutos": "{minutos} min",
@@ -7719,6 +8323,7 @@
     "poderesHint": "The role applies account-wide. The screens and scope below only narrow what is shown — checking an area never grants the right to change it.",
     "poderes": {
       "send-messages": "Reply to customers on WhatsApp",
+      "make-calls": "Make and answer WhatsApp calls in the CRM (on the profile's numbers that have a calling computer)",
       "write-notes": "Write internal notes",
       "manage-deals": "Move deals across the pipeline (creating and deleting pipelines is admin-only)",
       "view-reports": "See the pipeline reports: lead list, Performance and Health",
@@ -8037,5 +8642,75 @@
     "corrigir": "Correct",
     "verOutrosDias": "See the {n} from other days",
     "esconderOutrosDias": "Hide"
+  },
+  "Ligacoes": {
+    "botao": {
+      "ligar": "Call on WhatsApp",
+      "grupo": "Groups can't be called",
+      "sem_telefone": "This contact has no WhatsApp phone",
+      "sem_poder": "Your profile can't make calls in the CRM",
+      "computador_fora": "This number's calling computer is offline",
+      "sem_whatsapp": "WhatsApp on this number's calling computer is disconnected",
+      "em_outra_ligacao": "You're already on a call",
+      "linha_ocupada": "This number is already on a call",
+      "linha_ocupadaCom": "This number is on a call with {nome}",
+      "tocando_agora": "A call is ringing on this number right now"
+    },
+    "painel": {
+      "microfone": "Allow the microphone…",
+      "conectando": "Connecting audio…",
+      "chamando": "Calling…",
+      "emLigacao": "On call",
+      "gravando": "Recording",
+      "encerrada": "Ended",
+      "naoAtendida": "Not answered",
+      "desligando": "Hanging up…",
+      "mudo": "Mute the microphone",
+      "comSom": "Unmute the microphone",
+      "desligar": "Hang up",
+      "abrirConversa": "Open conversation",
+      "fechar": "Close",
+      "avisoDoFim": "The call ends on its own at 30 minutes",
+      "duracaoSeg": "{segundos}s",
+      "duracaoMin": "{minutos} min {segundos}s",
+      "erroAoDesligar": "Couldn't hang up. Try again."
+    },
+    "recusa": {
+      "grupo": "Groups can't be called.",
+      "conversa_nao_encontrada": "Conversation not found.",
+      "conversa_sem_numero": "This conversation has no office number yet. Pin the number in the header and try again.",
+      "sem_computador": "This number has no calling computer.",
+      "computador_fora": "This number's calling computer is offline.",
+      "sem_telefone": "We couldn't find this contact's WhatsApp phone.",
+      "tocando_agora": "A call is ringing on this number right now. Answer it or wait for it to end.",
+      "ocupada": "This number is already on a call.",
+      "limite_por_hora": "Limit of 20 calls per hour on this number. Wait a little.",
+      "ja_atendida": "Someone else already answered this call.",
+      "ja_encerrada": "This call has already ended.",
+      "nao_esta_tocando": "This call is no longer ringing.",
+      "sem_resposta_webrtc": "The calling computer didn't set up the audio. Try again.",
+      "ligacoes_nao_configuradas": "CRM calls are not configured on this installation.",
+      "whatsapp_desconectado": "WhatsApp on the calling computer is disconnected.",
+      "outra_chamada": "The calling computer has another call on screen.",
+      "nada_tocando": "The call stopped ringing before it was answered.",
+      "sem_resposta": "The calling computer didn't respond. Try again.",
+      "microfone_negado": "The browser didn't allow the microphone. Allow the microphone for this site and try again.",
+      "microfone_indisponivel": "No microphone available on this computer.",
+      "audio_falhou": "Couldn't set up the call audio.",
+      "rede": "The call wasn't confirmed: the CRM didn't respond. If it started, it drops on its own in a few seconds.",
+      "desconhecida": "The call didn't go through. Try again."
+    },
+    "toque": {
+      "titulo": "WhatsApp call",
+      "celularTambem": "Also ringing on the office phone",
+      "atender": "Answer",
+      "silenciar": "Silence",
+      "silenciada": "Ring silenced",
+      "atendidaPor": "Answered by {nome}",
+      "atendidaPorAlguem": "Answered by someone else",
+      "numeroDesconhecido": "Unknown number",
+      "emOutraLigacao": "You're already on a call",
+      "notificacao": "{quem} is calling on {conexao}"
+    }
   }
 }

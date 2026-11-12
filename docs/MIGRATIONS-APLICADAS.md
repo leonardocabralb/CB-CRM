@@ -1988,3 +1988,123 @@ nome da época em que foram aplicadas.
   migrations + `verify-schema.sql`, aplicada duas vezes). Conferida: a coluna
   em `text[]`, NOT NULL, padrão `'{}'`; o CHECK de até 10; os 25 agentes com a
   lista vazia; `service_role` grava, `anon` não lê a tabela.
+
+- **1132_cb_lixeira_de_anotacoes** — `apagada_em`, `apagada_por` (FK para
+  `auth.users`, `ON DELETE SET NULL`) e `apagada_por_nome` em
+  `cb_conversation_notes`, o CHECK `cb_conversation_notes_apagada_sem_fixar_ck`
+  (apagada nunca fixada) e o índice parcial `cb_conversation_notes_apagada_idx`:
+  apagar anotação passa a MARCAR a linha (a lixeira da aba Notas, 90 dias), e
+  o aviso de menção/resposta diz "Anotação apagada". PR #491.
+
+  ADITIVA, aplicada ANTES do deploy (o app de antes não lê as colunas).
+  Autorização do operador em 10/11/2026 ("pode", depois do CI verde no commit
+  final), aplicada em 10/11/2026 (histórico `20261110170600`) pela Management
+  API, com o arquivo idêntico ao do commit `1b119161` (sha256 `114e07d3…`),
+  cujo replay do CI ("Apply to a clean database") passou. Também o replay
+  LOCAL completo (255 migrations + `verify-schema.sql`, aplicada duas vezes) e
+  6 cenários com dado fictício. Conferida: as três colunas nos tipos certos, o
+  CHECK, o índice, `authenticated` lê e não escreve a marca; das 1190
+  anotações, nenhuma marcada. Teste de ponta a ponta no preview (lead de
+  teste): apagar marca e desafixa, a lixeira mostra, restaurar e "Desfazer"
+  desmarcam.
+
+- **1133_cb_asaas_lembrete_da_noite** — o CHECK `cb_asaas_regua_envios_marco_ck`
+  passa a aceitar `marco` 0 ou 1 no `vence_hoje` (antes só 0): o lembrete da
+  NOITE da régua do Asaas tem a sua trava (0 = do dia, 1 = da noite), e o do
+  dia já enviado não barra o da noite pelo UNIQUE. PR #494.
+
+  ADITIVA, aplicada ANTES do deploy (o app novo grava `marco = 1`).
+  Autorização do operador em 10/11/2026 ("Pode aplicar", depois do CI verde no
+  commit `90e00a22`), aplicada em 10/11/2026 (histórico `20261110235844`) pela
+  Management API, com o arquivo idêntico ao do commit (sha256 `1445c72c…`), cujo
+  replay do CI ("Apply to a clean database") passou. Também o replay LOCAL
+  completo (256 migrations + `verify-schema.sql`, aplicada duas vezes) e 4
+  cenários (dia e noite da mesma cobrança aceitos; noite repetida recusada
+  pelo UNIQUE; `marco` 2 no lembrete e 0 no atraso recusados pelo CHECK).
+  Conferida: o CHECK novo, o UNIQUE intacto, o comentário da coluna; a única
+  trava existente (`marco = 0`) segue válida.
+
+- **1134_cb_ligacoes_pelo_crm** — ligar e atender pelo CRM (a 4b de
+  `docs/PLANO-ligar-pelo-crm.md`): `cb_ligacoes` ganha a direção, `pelo_crm`,
+  o atendente (SET NULL), a marca do atendimento pelo CRM, o fim que a máquina
+  conta e a gravação, e o desfecho `nao_atendida`; `cb_computadores_de_ligacao`
+  (fechada); `cb_ligacoes_ao_vivo` (leitura 1032, tempo real, uma ligação por
+  número além das que tocam); o bucket privado `ligacoes`; e a reserva do envio
+  da IA (corpo vigente da 1130, md5 conferido contra a produção) sem contar a
+  faixa de registro como "a equipe respondeu". PR #497.
+
+  ADITIVA, aplicada ANTES do deploy (o código novo grava as colunas e as
+  tabelas). Autorização do operador em 10/11/2026 ("pode, tudo já autorizado",
+  sobre a migration em produção, o stack deploy e o merge da 4b), aplicada em
+  10/11/2026 às 22:59 BRT (histórico `20261111015917`) pela Management API, com
+  o arquivo idêntico ao do commit `c51aa5d1` (sha256 `f74b5076…`), cujo replay
+  do CI ("Apply to a clean database") passou. Antes: o replay LOCAL completo
+  (257 migrations + `verify-schema.sql`, aplicada duas vezes) e os cenários com
+  dado (`cenarios-1134`: a reserva chamada, a faixa sem efeito na espera e na
+  pausa da IA, a trava de uma por número, a RLS, os CHECKs, a conexão apagada
+  levando o computador), mais um mutante sem a cerca nova, reprovado pela
+  conferência. Conferida na produção: as 8 colunas, o CHECK, a RLS das duas
+  tabelas (o navegador lê a ao vivo e não o computador), a publicação, o bucket
+  privado (10 MB, `audio/ogg`) e a cerca na reserva; nenhuma linha antiga
+  mudou.
+
+- **1135_cb_asaas_modulo_da_cobranca** — o módulo "Cobrança automática" do
+  Asaas: `regua_escritorio_nome` (nulo; CHECK de 1 a 120 caracteres) e
+  `aviso_inadimplencia_ativo` (NOT NULL DEFAULT true) em `cb_asaas_config`.
+  Aplicada em 11/11/2026 pela Management API, com a autorização do operador,
+  ANTES do deploy (aditiva: o app novo lê as duas por nome). ⚠️ Registrada no
+  histórico como `1134_cb_asaas_modulo_da_cobranca` (20261111120022): a
+  `1134_cb_ligacoes_pelo_crm` entrou no `main` minutos antes e o arquivo foi
+  renumerado para 1135. Replay completo local (257 migrations) e reaplicação
+  idempotente conferidos. Conferida na produção: as duas colunas, o default
+  e nenhuma conta com o aviso desligado.
+
+- **1136_cb_ligacoes_transcricao** — a 4d do ligar pelo CRM: as colunas da
+  transcrição em `cb_ligacoes` (diálogo, estado, tentativas, cerca, resumo,
+  `gravacao_expirada_em`), `cb_ligacao_sincronizar_faixa` (a faixa reflete a
+  ligação, sob trava), o bucket `ligacoes` na fila de arquivos a apagar
+  (`cb_reivindicar_arquivos_a_apagar` com guarda por bucket) e a exclusão
+  definitiva da Lixeira (`cb_lixeira_purgar_um` = a da 1110 + a limpeza das
+  gravações, `cb_ligacoes_sem_gravacao`). PR #504.
+
+  ADITIVA, aplicada ANTES do deploy. Autorização do operador em 11/11/2026
+  ("Pode publicar", a publicação da 4d e da 4e juntas, D18); a primeira
+  tentativa, sem esse pedido, foi barrada pelo modo automático. Aplicada em
+  11/11/2026 às 18:39 BRT pela Management API (histórico `20261111213909`),
+  com o arquivo idêntico ao do commit `0483a37d` (sha256 `6bd50747…`), cujo
+  replay do CI passou. Antes: o replay local do zero e, com conta fictícia,
+  aplicada duas vezes (a conferência CHAMA a marca da faixa, a limpeza, a
+  reivindicação como `service_role` e a exclusão sem e com o pedido). Conferida
+  na produção: as 8 colunas, as duas funções (sem EXECUTE para anon e
+  authenticated), o CHECK do bucket, a exclusão levando as gravações; nenhuma
+  linha antiga mudou.
+
+- **1137_cb_ligacoes_interruptor** — a 4e: `cb_computadores_de_ligacao.ligado_em`
+  (o interruptor das ligações pelo CRM por conexão, D16; nasce desligado) e os
+  tipos `computador_fora`/`computador_qr` no CHECK de `cb_alarmes_de_conexao`.
+  PR #506.
+
+  ADITIVA, aplicada ANTES do deploy, com a mesma autorização, em 11/11/2026 às
+  18:39 BRT (histórico `20261111213931`), com o arquivo idêntico ao do commit
+  `479ea4d8` (sha256 `cd754471…`), cujo replay do CI passou. Antes: o replay
+  local do zero e, com dado fictício, aplicada duas vezes (o tipo inventado
+  recusado). Conferida na produção: a coluna anulável, o computador da
+  Previdenciário DESLIGADO (o operador liga na tela) e os quatro tipos.
+
+- **1138_cb_ia_pausa_temporaria** — a pausa TEMPORÁRIA da IA (revisa a D26;
+  P1–P7 do operador de 11/11/2026): `ai_configs.ia_volta_apos_min` (padrão
+  15; 0 = como antes), o motivo `desativada` no CHECK de
+  `conversations.ia_pausada_por`, o gatilho da pausa por gente recriado (a
+  temporária respondida vira `gente`, o retorno descartado, a pré-armação do
+  follow-up da equipe; régua da 1050 e WARNING) e `cb_ia_voltar_da_pausa`.
+  PR #507.
+
+  ADITIVA, aplicada ANTES do deploy com o "pode gravar" explícito do operador
+  ("aplicar a migration 1138 no banco de PRODUÇÃO"), em 11/11/2026 às 20:26
+  BRT (histórico `20261111232650`), com o arquivo idêntico ao do commit
+  `658e19f7` (sha256 `feec786f…`), cujo replay do CI passou e que o Codex
+  revisou sem achados. Antes: o replay local do zero e 7 cenários com dado
+  fictício. Conferida na produção: a coluna com 15 na conta, o CHECK com os
+  cinco motivos, a função fechada a anon/authenticated e aberta ao
+  service_role, o gatilho novo ligado, nenhuma pré-armação (agentes
+  desligados).

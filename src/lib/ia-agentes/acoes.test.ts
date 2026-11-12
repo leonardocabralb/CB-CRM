@@ -1103,6 +1103,17 @@ describe('a régua da D5 nas automações', () => {
     expect(motivoDoPasso(passo('add_tag'), REGUA)).toBeNull()
   })
 
+  it('"Enviar arquivo" fica DENTRO da D5, do upload ou do ACERVO (09/11/2026: o vídeo das gestantes depois do ZapSign)', () => {
+    const acervo = { kind: 'video', url: '', acervo_id: '00000000-0000-4000-8000-0000000000a1' }
+    expect(motivoDoPasso(passo('send_media', acervo), REGUA)).toBeNull()
+    expect(motivoDoPasso(passo('send_media', { kind: 'document', url: 'https://x/a.pdf' }), REGUA)).toBeNull()
+    // A automação inteira que o agente executa: mensagem e o vídeo do acervo.
+    const passos = new Map<string, PassoDaAutomacao[]>([
+      ['gestante', [passo('send_message', { text: 'Segue o vídeo' }), passo('send_media', acervo)]],
+    ])
+    expect(motivoForaDaD5('gestante', passos, REGUA)).toBeNull()
+  })
+
   it('atravessa `run_automation`, com trava de ciclo', () => {
     const passos = new Map<string, PassoDaAutomacao[]>([
       ['a', [passo('add_tag'), passo('run_automation', { automation_id: 'b' })]],
@@ -1389,5 +1400,12 @@ describe('marcar reunião (F5)', () => {
     expect(reuniaoNaoMarcada([falhou, outra])).toBe('sem_email')
     expect(reuniaoNaoMarcada([ok, { ...registroDaRecusa({ tipo: 'marcar_reuniao', n: 2, motivo: 'teto' }) }])).toBeNull()
     expect(reuniaoNaoMarcada([registroDaRecusa({ tipo: 'marcar_reuniao', n: 9, motivo: 'fora_da_lista' })])).toBe('fora_da_lista')
+  })
+})
+
+describe('lerAcoes — o rótulo da equipe imitado pelo modelo sai (1138)', () => {
+  it('no começo da resposta e de uma linha', () => {
+    expect(lerAcoes('[Team member] Oi! Recebi seu holerite.').texto).toBe('Oi! Recebi seu holerite.')
+    expect(lerAcoes('Oi!\n[Team member] Segue o próximo passo. [[TRANSFERIR]]').texto).toBe('Oi!\nSegue o próximo passo.')
   })
 })

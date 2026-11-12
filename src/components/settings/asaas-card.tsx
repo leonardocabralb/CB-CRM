@@ -16,7 +16,7 @@ import { formatCurrency } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 
 import { AsaasListas } from "./asaas-listas";
-import { AsaasRegua } from "./asaas-regua";
+import { OQueAIntegracaoFaz, PrimeirosPassos, ResumoDaCobranca } from "./asaas-modulo";
 import { CredencialDaIntegracao } from "./credencial-da-integracao";
 import { SettingsChip } from "./settings-chip";
 
@@ -60,6 +60,8 @@ interface Resposta {
   podeCriarDaqui: boolean;
   /** o bloco "Cobrança automática" (998) */
   regua: ReguaDoCartao;
+  /** o aviso de inadimplência da caixa (1135); ausente (rota anterior) = ligado */
+  avisoAtivo?: boolean;
 }
 
 const MOTIVOS: MotivoDoVinculo[] = [
@@ -374,6 +376,8 @@ export function AsaasCard() {
             </>
           ) : (
             <>
+              {dados && <PrimeirosPassos cartao={cartao} resumo={resumo && !falhou ? resumo : null} regua={dados.regua} />}
+
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="min-w-0 text-muted-foreground">
                   {cartao.chaveNome ? t("asaas.chaveRotulada", { nome: cartao.chaveNome }) : t("asaas.semNome")}
@@ -435,7 +439,17 @@ export function AsaasCard() {
                 />
               )}
 
-              {dados && <AsaasRegua regua={dados.regua} semCobranca={resumo && !falhou ? resumo.semCobranca : null} aoMudar={() => void carregar()} />}
+              {dados && (
+                <OQueAIntegracaoFaz
+                  resumo={resumo && !falhou ? resumo : null}
+                  regua={dados.regua}
+                  avisoAtivo={dados.avisoAtivo !== false}
+                  aoMudar={() => void carregar()}
+                  aoVerListas={() => setMostrarListas(true)}
+                />
+              )}
+
+              {dados && <ResumoDaCobranca regua={dados.regua} semCobranca={resumo && !falhou ? resumo.semCobranca : null} />}
 
               {resumo && !falhou && (
                 <div className="rounded-md border border-border bg-muted/30 p-3 text-xs">

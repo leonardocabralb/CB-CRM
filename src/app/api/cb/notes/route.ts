@@ -255,12 +255,15 @@ export async function POST(request: Request) {
   // Como `mencoesOk`: `false` só quando havia a quem avisar e algo falhou.
   let respostaOk = true
   if (respostaDe) {
+    // Viva: a que está na LIXEIRA (1132) não se responde — some da tela de
+    // quem escreve, e a resposta citaria uma anotação que ninguém vê.
     const { data: respondida, error: erroRespondida } = await supabase
       .from('cb_conversation_notes')
       .select('id')
       .eq('id', respostaDe)
       .eq('conversation_id', conversa.id)
       .eq('account_id', accountId)
+      .is('apagada_em', null)
       .maybeSingle()
     if (erroRespondida) {
       return NextResponse.json({ error: erroRespondida.message }, { status: 500 })
@@ -274,7 +277,10 @@ export async function POST(request: Request) {
     // páginas por CHAVE (`id`): o PostgREST corta em 1000 sem avisar, e a
     // respondida (recente, na tela) ficaria fora — ninguém seria avisado e a
     // resposta diria que avisou (Codex, #369). Por chave, e não por posição,
-    // porque a conversa recebe anotação enquanto se lê.
+    // porque a conversa recebe anotação enquanto se lê. ⚠️ Aqui SEM o filtro
+    // de `apagada_em` (1132), de propósito: é a ESTRUTURA do fio de respostas
+    // — uma resposta apagada no meio continua ligando a de baixo à de cima, e
+    // quem a escreveu participou da conversa.
     let depoisDe: string | null = null
     for (;;) {
       let pagina = supabase

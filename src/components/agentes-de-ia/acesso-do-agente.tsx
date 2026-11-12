@@ -13,12 +13,16 @@
 // ⚠️ O catálogo de campos carrega à parte (`custom_fields`, sob RLS): enquanto
 // carrega a lista é esqueleto, e a carga que falha diz que falhou — nunca "a
 // conta não tem campos", que é a lista vazia virando afirmação (CLAUDE.md).
+//
+// 10/11/2026: os blocos viram cartões, e a lista dos campos (dezenas) fica
+// recolhida atrás de "Escolher campos", com os marcados à vista. O Salvar é
+// o da barra do detalhe (`registrarSalvar`).
 // ============================================================
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { RefreshCw, Search } from 'lucide-react';
+import { ChevronDown, RefreshCw, Search } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -29,7 +33,8 @@ import { semAcento } from '@/lib/inbox/busca-em-mensagens';
 import { createClient } from '@/lib/supabase/client';
 import { acessoMudou, acessoParaSalvar, type RascunhoDaAba } from './rascunho';
 import { rotuloDoBloco, textoDoCodigo } from './textos';
-import { CAIXAS_DO_ACESSO, type AcessoDoAgente as Acesso, type IaAgente } from './tipos';
+import { cn } from '@/lib/utils';
+import { CAIXAS_DO_ACESSO, type AcessoDoAgente as Acesso, type IaAgente, type SalvarDaAba } from './tipos';
 
 interface Campo {
   id: string;
@@ -49,6 +54,7 @@ export function AcessoDoAgente({
   aoSalvar,
   aoMudarNaoSalvo,
   aoMudarRascunho,
+  registrarSalvar,
 }: {
   agente: IaAgente;
   aoSalvar: (novo: IaAgente) => void;
@@ -56,6 +62,8 @@ export function AcessoDoAgente({
   aoMudarNaoSalvo?: (naoSalvo: boolean) => void;
   /** Avisa o detalhe do que o Salvar mandaria agora: é o RASCUNHO que o Playground testa (DC4). */
   aoMudarRascunho?: (rascunho: RascunhoDaAba | null) => void;
+  /** Entrega ao detalhe o Salvar desta aba (a barra de salvar o chama). */
+  registrarSalvar?: (salvar: SalvarDaAba | null) => void;
 }) {
   const t = useTranslations('IaAgentes');
   const [rascunho, setRascunho] = useState<Acesso>(() => ({
@@ -64,7 +72,8 @@ export function AcessoDoAgente({
   }));
   const [carga, setCarga] = useState<Carga>({ fase: 'carregando' });
   const [busca, setBusca] = useState('');
-  const [salvando, setSalvando] = useState(false);
+  // A lista dos campos começa recolhida quando já há campos marcados.
+  const [listaAberta, setListaAberta] = useState(() => agente.acesso.campos.length === 0);
 
   // ⚠️ Recortado pela conta ATIVA: a RLS deixa ler os campos de TODA conta de
   // que a pessoa é membro (a mesma lição do "Onde atua", Codex #309).
@@ -132,9 +141,9 @@ export function AcessoDoAgente({
     }));
   }
 
-  async function salvar() {
-    if (!naoSalvo) return;
-    setSalvando(true);
+  /** O Salvar desta aba (a barra do detalhe o chama): `true` = gravou ou não havia o que gravar. */
+  async function salvar(): Promise<boolean> {
+    if (!naoSalvo) return true;
     try {
       const res = await fetch(`/api/cb/ia/agentes/${agente.id}`, {
         method: 'PATCH',
@@ -144,27 +153,42 @@ export function AcessoDoAgente({
       const corpo = (await res.json().catch(() => ({}))) as { agente?: IaAgente; code?: string; error?: string };
       if (!res.ok || !corpo.agente) {
         toast.error(textoDoCodigo(t, corpo.code, corpo.error));
-        return;
+        return false;
       }
       toast.success(t('acesso.salvo'));
       // O rascunho passa a ser o que o servidor gravou (sem os campos órfãos).
       setRascunho({ ...corpo.agente.acesso, campos: [...corpo.agente.acesso.campos] });
       aoSalvar(corpo.agente);
+      return true;
     } catch {
       toast.error(t('erro.generico'));
-    } finally {
-      setSalvando(false);
+      return false;
     }
   }
+  // A barra de salvar do detalhe chama o Salvar MAIS RECENTE (o do último render).
+  useEffect(() => {
+    registrarSalvar?.(salvar);
+  });
+  useEffect(() => () => registrarSalvar?.(null), [registrarSalvar]);
+
+  // Os nomes dos campos marcados (à vista com a lista recolhida).
+  const nomesMarcados =
+    carga.fase === 'pronto' ? carga.campos.filter((c) => rascunho.campos.includes(c.id)).map((c) => c.field_name) : [];
 
   return (
     <div className="space-y-6">
       <p className="text-sm text-muted-foreground">{t('acesso.explicacao')}</p>
       {nadaMarcado ? <p className="text-xs text-muted-foreground">{t('acesso.soAConversa')}</p> : null}
 
-      <section className="space-y-3">
+      <section className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {CAIXAS_DO_ACESSO.map((c) => (
-          <label key={c} className="flex items-start gap-3 rounded-md border border-border p-3">
+          <label
+            key={c}
+            className={cn(
+              'flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors',
+              rascunho[c] ? 'border-primary/50 bg-primary/5' : 'border-border hover:border-primary/30',
+            )}
+          >
             <Checkbox
               className="mt-0.5"
               checked={rascunho[c]}
@@ -178,14 +202,30 @@ export function AcessoDoAgente({
         ))}
       </section>
 
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="text-sm font-semibold text-foreground">{rotuloDoBloco(t, 'campos')}</h3>
+      <section className="space-y-3 rounded-lg border border-border p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-foreground">{rotuloDoBloco(t, 'campos')}</h3>
+            <p className="text-xs text-muted-foreground">{t('acesso.campos.dica')}</p>
+          </div>
           {carga.fase === 'pronto' && carga.campos.length > 0 ? (
-            <span className="text-xs text-muted-foreground">{t('acesso.campos.marcados', { n: marcados })}</span>
+            <Button variant="outline" size="sm" onClick={() => setListaAberta((v) => !v)} aria-expanded={listaAberta}>
+              {listaAberta
+                ? t('acesso.campos.recolher')
+                : t('acesso.campos.escolher', { n: marcados, total: carga.campos.length })}
+              <ChevronDown className={cn('size-4 transition-transform', listaAberta && 'rotate-180')} />
+            </Button>
           ) : null}
         </div>
-        <p className="text-xs text-muted-foreground">{t('acesso.campos.dica')}</p>
+        {nomesMarcados.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {nomesMarcados.map((n) => (
+              <span key={n} className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-xs text-foreground">
+                {n}
+              </span>
+            ))}
+          </div>
+        ) : null}
 
         {carga.fase === 'carregando' ? (
           <div className="h-24 animate-pulse rounded-md bg-muted/40" />
@@ -205,7 +245,7 @@ export function AcessoDoAgente({
           </div>
         ) : carga.campos.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('acesso.campos.nenhum')}</p>
-        ) : (
+        ) : !listaAberta ? null : (
           <div className="space-y-2">
             {carga.campos.length > CAMPOS_PARA_BUSCAR ? (
               <div className="relative sm:max-w-xs">
@@ -249,12 +289,6 @@ export function AcessoDoAgente({
           </div>
         )}
       </section>
-
-      <div className="flex justify-end border-t border-border pt-4">
-        <Button onClick={() => void salvar()} disabled={salvando || !naoSalvo}>
-          {t('acesso.salvar')}
-        </Button>
-      </div>
     </div>
   );
 }

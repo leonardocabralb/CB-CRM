@@ -25,6 +25,26 @@ faz, em `.claude/rules/ia-agentes.md`. ⚠️ "Retomada" aqui é o FOLLOW-UP; o
   escreveu. Robô, automação e gente não armam. Conversa ENCERRADA durante o
   turno (a automação que o agente executou) não arma: `armarRetomada` relê a
   conversa (1109, `ia-agentes-turno.md`).
+- ⚠️⚠️ **A fala da EQUIPE também arma (1138, P4 e P7 do operador,
+  11/11/2026)**, com a cadência do agente da etapa, contada DELA: a equipe
+  pediu o holerite e a cliente sumiu → a IA cobra. Quem arma é o gatilho da
+  pausa por gente (a única porta de toda fala de gente): uma linha de
+  PRÉ-ARMAÇÃO (`ERRO_DA_ARMACAO_PELA_EQUIPE`, sem agente/card/etapa; só com N
+  > 0 na conta, pausa `gente` e um agente ligado com a conexão e a retomada —
+  `ia-pausa.md`). `conduzirRetomada` a RESOLVE (`resolverArmacaoDaEquipe`:
+  `lerQuemAtende` + `quemResponde` atravessando a pausa `gente`, a retomada
+  ligada, ninguém depois da âncora) e grava agente, card, etapa, `tentativa
+  = 1`, `tentativas` = a cadência — no MESMO objeto do turno (o `encerrar` e o
+  `armarRetomada` da seguinte o leem) — e segue como toda retomada (a
+  conferência a reagenda para o vencimento). Nada aplicável = `descartado`.
+- ⚠️ **A retomada atravessa SÓ a pausa `gente`** (com N > 0;
+  `minutosDaPausaDaRetomada`): o "Pausar" sem resposta, o "Desativar", a
+  transferência e a automação param a série. O follow-up que SAI levanta a
+  pausa (`cb_ia_voltar_da_pausa`, logo antes da reserva; `alguem_escreveu`
+  descarta): a cliente que responde a ele é respondida pela IA na hora (P7).
+  O pedido ganha a linha "a última foi da equipe" (`daEquipe`, parte
+  VARIÁVEL, pela `sender_type` da âncora) SÓ na 1ª tentativa: da 2ª em
+  diante a última fala é o follow-up da própria IA.
 - ⚠️⚠️ **Arma com o card e a etapa de AGORA** (revisão de 09/11/2026): a
   própria resposta pode ter movido o card (`mover_etapa`); armada com a etapa
   do começo do turno, ela era descartada SEMPRE no vencimento ("o card mudou
@@ -55,6 +75,18 @@ faz, em `.claude/rules/ia-agentes.md`. ⚠️ "Retomada" aqui é o FOLLOW-UP; o
   ⚠️ A tentativa que NÃO saiu (`nao_saiu`) não para nada: nem a do robô
   (1080) nem a da equipe (1118, `agent` com `sender_id`) — o cliente não a
   recebeu. Os dois lados filtram (`retomada-fatos.ts` e a reserva).
+- ⚠️⚠️ **A automação que o PRÓPRIO agente executa fala em nome dele**
+  (09/11/2026, o vídeo e o link da assinatura do Trabalhista): o turno passa
+  `iaAgenteId` a `runAutomationById` (`executar-acoes.ts`), e o texto e a
+  mídia dela saem com `messages.ia_agente_id` — não param a série
+  (`robo_falou`, no TS e na reserva). Antes, resposta + automação matava a
+  retomada já na 1ª tentativa. A marca só entra pelo argumento, atravessa o
+  "Acionar automação" e a retentativa, e o disparo por evento a descarta (a
+  cascata da etiqueta): `automacoes-passos.md`, pino
+  `envio.chamadores.test.ts`. Na 1ª tentativa `proximaRetomada` IGNORA a
+  "anterior" (seria a fala da automação: o piso de 30 min empurrava o 1º
+  toque). As mensagens dela CONTAM no teto (são do agente). Limite: botões,
+  lista e modelo da automação saem SEM a marca (param a série).
 - **Ao rodar, tudo é reconferido**: card, agente, retomada ligada, quem
   escreveu, e o vencimento — fora da janela ou a menos de 30 min de um
   LEMBRETE = volta à fila; a 90 min da reunião, cadência no fim ou janela de

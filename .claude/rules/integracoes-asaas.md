@@ -83,7 +83,10 @@ o CRM só lê. O lado do MOTOR da régua (gatilhos `asaas_*` que casam só pelo
 - Toda leitura do banco PAGINA. As listas do cartão são montadas em memória
   por `listas.ts` (puro) e paginadas na rota; a situação do cliente
   (`ligado`/`confirmar`/`sem_ficha`/`ignorado`) é DERIVADA da linha, nunca
-  coluna própria.
+  coluna própria. Recorte novo (busca, `faixa`, `atraso=1` — o "Só com
+  cobrança em atraso" de Ligados e Sem cobrança automática) entra na ROTA,
+  antes de `paginar`: no navegador, a página sairia pela metade e o total
+  errado.
 
 ### Ciclo de sincronização
 
@@ -230,8 +233,8 @@ o CRM só lê. O lado do MOTOR da régua (gatilhos `asaas_*` que casam só pelo
 
 - ⚠️⚠️ **SÓ DISPARA PELA VARREDURA** (`regua.ts` puro; `varrer-regua.ts` no
   cron, depois do sync e do webhook). A varredura reconfirma cada parcela no
-  Asaas ANTES da trava, cria a conversa da ficha que não tem (dono durável,
-  canal do passo, sem pino), passa `{ automation_id, conversation_id,
+  Asaas ANTES da trava, cria a conversa da ficha que não tem (ENCERRADA — a
+  cobrança não abre conversa —, dono durável, canal do passo, sem pino), passa `{ automation_id, conversation_id,
   channel_id, vars }` e mede o desfecho no `automation_logs` DEPOIS — por isso
   grupos do mesmo contato saem em SEQUÊNCIA, e o log de um disparo nunca
   responde por outra trava (`logsConsumidos`).
@@ -260,6 +263,23 @@ o CRM só lê. O lado do MOTOR da régua (gatilhos `asaas_*` que casam só pelo
 - A mensagem sai pelo caminho do ROBÔ: não reabre encerrada, não zera
   `aguardando_desde`, não mexe em não lidas (D16). Pino default-deny
   `regua.chamadores.test.ts`.
+- ⚠️⚠️ **A DESCRIÇÃO da cobrança NUNCA vai ao cliente** (10/11/2026): a equipe
+  anota nela ("pediu para pagar após…", "recriada em nome de…"). As linhas e
+  `cobranca_parcelas` dizem "Parcela 3 de 12" ou "Cobrança"
+  (`rotuloParaOCliente`); `rotuloDaParcela`, com a descrição, é só da tela.
+- **O texto humano** (pedido do operador, 10/11/2026): `saudacao` ("Olá,
+  Maria!"; CNPJ e sem nome, "Olá!"), `cobranca_situacao` (a frase, com
+  concordância), `cobranca_links` (o link sozinho com UMA cobrança; a lista com várias — um texto só para os dois casos), datas faladas
+  (`quandoVence`: "venceu ontem", "na sexta-feira (07/11)"), link na linha de
+  baixo, "(com juros e multa)" só com juros. O tipo de pessoa vem do
+  `cpf_cnpj` (`tipoDePessoa`); o documento não entra nas `vars`. Pessoa em
+  CAIXA ALTA ganha a inicial maiúscula; empresa fica como está.
+- `escritorio_nome`: `regua_escritorio_nome` (1135), senão
+  `assinatura_nome_automatica`, senão `accounts.name` (`nomeDoEscritorio`). A
+  prévia do construtor ainda usa o da conta; a da tela "Cobrança automática",
+  não. A tela inteira (fachada sobre estas automações): `cobranca-automatica.md`.
+- A régua padrão cria os marcos 1, 5, 15 e 30. A "Situação da cobrança"
+  (anotação para quem liga) é condição do motor: `automacoes-passos.md`.
 - ⚠️⚠️ **A trava é do MARCO, e é UM INSERT com várias linhas**
   (`cb_asaas_regua_envios`, UNIQUE `(cobranca_id, tipo, marco, vencimento)`):
   23505 em qualquer parcela recusa o GRUPO. Por isso `agruparPorCliente` põe
@@ -291,7 +311,16 @@ o CRM só lê. O lado do MOTOR da régua (gatilhos `asaas_*` que casam só pelo
   o dia útil; a janela vai de `hora_envio` às 18:00. Lembrete e marco no mesmo
   dia = UMA mensagem (`{{vars.vence_hoje_detalhe}}`; o lembrete é travado como
   absorvido). A negativada entra.
-- ⚠️ O interruptor é `PUT /api/cb/asaas/regua/interruptor`, NÃO o PUT da
+- ⚠️ **DOIS lembretes no dia do vencimento** (D12 revista, 10/11/2026; 1133):
+  o turno sai da hora (`turnoDaHora`) — antes das 18:00 o do DIA (janela até
+  18:00, trava `marco = 0`), de 18:00 a 20:30 o da NOITE (janela até 21:00,
+  `fimDaJanela`, trava `marco = 1`). `semLembreteTravado` pergunta POR TURNO:
+  sem isso o do dia barraria o da noite pelo UNIQUE. Só o do dia cede a vez à
+  cobrança do marco (a trava `absorvida` é `marco = 0`); o da noite lembra quem
+  ainda não pagou o que vence hoje. Um lembrete por turno (o de menor id); o
+  cartão avisa dois no MESMO turno. A cobrança de atraso segue até as 18:00.
+- ⚠️ O interruptor é `PUT /api/cb/asaas/regua/interruptor` (que grava
+  também o nome do escritório e o aviso de inadimplência, 1135), NÃO o PUT da
   config: confere ROWCOUNT, e SÓ a transição desligado → ligado carimba
   `regua_ativada_em` (UPDATE cercado em `regua_ativa = false`) — um PUT
   repetido empurraria a fronteira da D13 para a frente.

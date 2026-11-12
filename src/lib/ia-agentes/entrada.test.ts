@@ -162,6 +162,7 @@ import { supabaseAdmin } from '@/lib/ai/admin-client'
 
 import { aoChegarMensagemDoCliente, type MensagemDoCliente } from './entrada'
 import { ESPERA_DA_RAJADA_MS } from './fila'
+import { ERRO_DA_ESPERA_DA_EQUIPE } from './pausa'
 import { agendarTurno } from './turno'
 
 // ------------------------------------------------------------
@@ -508,7 +509,10 @@ describe('aoChegarMensagemDoCliente — o agente da etapa do card', () => {
   })
 
   it.each<[string, Linha]>([
-    ['pausada (gente respondeu, o botão, a transferência)', { ai_autoreply_disabled: true }],
+    ['pausada sem motivo (a pausa antiga)', { ai_autoreply_disabled: true }],
+    ['pausada pela transferência (permanente)', { ai_autoreply_disabled: true, ia_pausada_por: 'transferencia' }],
+    ['desativada (permanente)', { ai_autoreply_disabled: true, ia_pausada_por: 'desativada' }],
+    ['pausada por automação (permanente)', { ai_autoreply_disabled: true, ia_pausada_por: 'automacao' }],
     ['ENCERRADA (uma automação a fechou sem falar)', { status: 'closed' }],
     ['de grupo (lida do banco)', { group_id: 'grupo-1' }],
     ['sem contato', { contact_id: null }],
@@ -544,5 +548,78 @@ describe('aoChegarMensagemDoCliente — o agente da etapa do card', () => {
     banco.rpcs.cb_ia_enfileirar_turno = () => ({ data: null, error: { message: 'lock timeout' } })
     await aoChegarMensagemDoCliente(msg())
     expect(agendarTurno).not.toHaveBeenCalled()
+  })
+})
+
+// ------------------------------------------------------------
+// A pausa TEMPORÁRIA (1138): a mensagem enfileira para quando a cliente
+// estiver esperando há N min, e a espera fica marcada na linha
+// ------------------------------------------------------------
+
+describe('aoChegarMensagemDoCliente — a pausa TEMPORÁRIA (1138)', () => {
+  const MIN = 60_000
+  const espera = () => banco.rpcChamadas.find((c) => c.nome === 'cb_ia_enfileirar_turno')?.args.p_espera_ms as number
+  const marcou = () =>
+    banco.chamadas.some(
+      (c) => c.tabela === 'cb_ia_turnos' && c.op === 'update' && (c.valores as Linha).erro === ERRO_DA_ESPERA_DA_EQUIPE,
+    )
+
+  function pausada(motivo: string, esperaHaMin: number, pausadaHaMin = esperaHaMin + 1): void {
+    Object.assign(banco.tabelas.conversations[0], {
+      ai_autoreply_disabled: true,
+      ia_pausada_por: motivo,
+      ia_pausada_em: haMin(pausadaHaMin),
+      aguardando_desde: haMin(esperaHaMin),
+    })
+  }
+
+  it.each(['gente', 'botao'])('pausa %s: enfileira para a cliente esperando há 15 min, e marca a espera da equipe', async (motivo) => {
+    pausada(motivo, 2)
+    await aoChegarMensagemDoCliente(msg())
+    expect(enfileirou()).toBe(true)
+    expect(espera()).toBeGreaterThan(12.9 * MIN)
+    expect(espera()).toBeLessThanOrEqual(13 * MIN)
+    expect(marcou()).toBe(true)
+  })
+
+  it('a cliente que já espera há mais de 15 min: a rajada de sempre', async () => {
+    pausada('gente', 30)
+    await aoChegarMensagemDoCliente(msg())
+    expect(espera()).toBe(ESPERA_DA_RAJADA_MS)
+  })
+
+  it('o "Pausar" apertado depois da mensagem: conta da pausa', async () => {
+    pausada('botao', 30, 5)
+    await aoChegarMensagemDoCliente(msg())
+    expect(espera()).toBeGreaterThan(9.9 * MIN)
+    expect(espera()).toBeLessThanOrEqual(10 * MIN)
+  })
+
+  it('o N da conta vale (30 min)', async () => {
+    banco.tabelas.ai_configs = [{ account_id: CONTA, channel_id: null, ia_volta_apos_min: 30 }]
+    pausada('gente', 2)
+    await aoChegarMensagemDoCliente(msg())
+    expect(espera()).toBeGreaterThan(27.9 * MIN)
+  })
+
+  it('N = 0 na conta: como antes, não enfileira', async () => {
+    banco.tabelas.ai_configs = [{ account_id: CONTA, channel_id: null, ia_volta_apos_min: 0 }]
+    pausada('gente', 2)
+    await aoChegarMensagemDoCliente(msg())
+    expect(enfileirou()).toBe(false)
+  })
+
+  it('a leitura da configuração que FALHA: não enfileira (fica pausada) e não lança', async () => {
+    banco.falhas.push({ tabela: 'ai_configs', op: 'select', erro: { message: 'timeout' } })
+    pausada('gente', 2)
+    await expect(aoChegarMensagemDoCliente(msg())).resolves.toBeUndefined()
+    expect(enfileirou()).toBe(false)
+  })
+
+  it('sem pausa: a rajada, e nada de marca nem leitura da configuração', async () => {
+    await aoChegarMensagemDoCliente(msg())
+    expect(espera()).toBe(ESPERA_DA_RAJADA_MS)
+    expect(marcou()).toBe(false)
+    expect(tabelasLidas()).not.toContain('ai_configs')
   })
 })

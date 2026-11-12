@@ -4,6 +4,8 @@ import { supabaseAdmin } from '@/lib/automations/admin-client';
 import { createClient } from '@/lib/supabase/server';
 import { canWriteNotes, isAccountRole } from '@/lib/auth/roles';
 import { MAX_MARCADOS, MAX_TEXTO_DA_ANOTACAO } from '@/lib/notes/anotacao-da-automacao';
+import { estaApagada } from '@/lib/notes/lixeira';
+import { mudarNaLixeira } from '@/lib/notes/lixeira-no-servidor';
 import {
   MAX_ANEXOS_DA_NOTA,
   conferirAnexo,
@@ -29,6 +31,11 @@ import { lerArquivoDoAnexo } from '@/lib/notes/arquivo-do-anexo';
  *   como duas fixadas.
  * - `PUT` — EDITAR (Fase 3 da anotação com anexos; D7 e A2–A5 do operador):
  *   texto e anexos, só pelo AUTOR. Ver o cabeçalho do `PUT`.
+ * - `DELETE` — APAGAR = mandar para a LIXEIRA (1132): marca, não apaga. Ver o
+ *   cabeçalho do `DELETE`; a volta é `POST /api/cb/notes/[id]/restaurar`.
+ *
+ * A apagada (na lixeira) não se fixa nem se edita: as leituras e os UPDATEs
+ * do PATCH e do PUT levam `apagada_em IS NULL`.
  */
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -82,11 +89,13 @@ export async function PATCH(
   }
 
   // Lida com o cliente DO USUÁRIO, sob RLS — é o que prova que a nota é de
-  // uma conta que ele enxerga, antes de o service-role escrever.
+  // uma conta que ele enxerga, antes de o service-role escrever. A APAGADA
+  // (1132, na lixeira) não se fixa: conta como sumida.
   const { data: nota, error: notaErr } = await supabase
     .from('cb_conversation_notes')
     .select('id, contact_id')
     .eq('id', id)
+    .is('apagada_em', null)
     .maybeSingle();
   if (notaErr) {
     // Erro de banco não vira "não encontrado" (regra do projeto).
@@ -124,10 +133,14 @@ export async function PATCH(
     }
   }
 
+  // A cerca `apagada_em IS NULL` também aqui: apagada entre a leitura e o
+  // carimbo, a fixação não pode ressuscitá-la na faixa do topo (o CHECK da
+  // 1132 recusaria, mas como 500).
   const { data: atual, error: erroFixa } = await admin
     .from('cb_conversation_notes')
     .update({ fixada_em: fixada ? new Date().toISOString() : null })
     .eq('id', id)
+    .is('apagada_em', null)
     .select('*')
     .single();
   if (erroFixa) {
@@ -140,7 +153,8 @@ export async function PATCH(
       );
     }
     // PGRST116 = o `.single()` casou 0 linhas: a nota foi APAGADA entre a
-    // leitura sob RLS e este update (DELETE é direto do navegador). Não é
+    // leitura sob RLS e este update (marcada pela lixeira, 1132, ou apagada
+    // de vez pelo vencimento). Não é
     // defeito do servidor — mas a limpeza da fixada anterior JÁ commitou
     // (dois UPDATEs sem transação), então o cliente fica sem fixada e
     // refaz o pin se quiser. 409 honesto, sem log de erro falso.
@@ -184,8 +198,9 @@ async function porQueNaoVeio(
     console.error('[PUT /api/cb/notes] relendo a nota:', error.message);
     return NextResponse.json({ error: 'Failed to load note' }, { status: 500 });
   }
+  // Na lixeira (1132) é SUMIDA para quem edita: a caixa fecha com "apagada".
   return NextResponse.json(
-    data ? { error: 'NOTE_CHANGED', note: data } : { error: 'NOTE_GONE' },
+    data && !estaApagada(data) ? { error: 'NOTE_CHANGED', note: data } : { error: 'NOTE_GONE' },
     { status: 409 }
   );
 }
@@ -311,12 +326,14 @@ export async function PUT(
             .slice(0, MAX_MARCADOS)
         : [];
 
-  // A nota, sob RLS, NA VERSÃO que a pessoa editou.
+  // A nota, sob RLS, NA VERSÃO que a pessoa editou — e viva: a apagada (na
+  // lixeira, 1132) não se edita.
   const leitura = supabase
     .from('cb_conversation_notes')
     .select('*')
     .eq('id', id)
-    .eq('account_id', accountId);
+    .eq('account_id', accountId)
+    .is('apagada_em', null);
   const { data: nota, error: erroNota } = await (versao === null
     ? leitura.is('editada_em', null)
     : leitura.eq('editada_em', versao)
@@ -431,7 +448,8 @@ export async function PUT(
     })
     .eq('id', id)
     .eq('account_id', accountId)
-    .eq('author_user_id', user.id);
+    .eq('author_user_id', user.id)
+    .is('apagada_em', null);
   const { data: atualizada, error: erroEscrita } = await (versao === null
     ? escrita.is('editada_em', null)
     : escrita.eq('editada_em', versao)
@@ -472,4 +490,20 @@ export async function PUT(
   }
 
   return NextResponse.json({ note: atualizada, mudou: true, mencoesNotificadas: mencoesOk });
+}
+
+/**
+ * APAGAR = mandar para a LIXEIRA (1132; decisões do operador, 10/11/2026).
+ * Marca `apagada_em`/`apagada_por`/`apagada_por_nome` e desafixa; a anotação
+ * some das telas e fica na lixeira da aba Notas por 90 dias, de onde o autor
+ * ou admin/dono a restaura. Antes ia DIRETO do navegador (DELETE sob a RLS
+ * "autor OU admin"); a mesma régua agora mora em `mudarNaLixeira`, junto com
+ * a volta.
+ */
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  return mudarNaLixeira(id, 'apagar');
 }

@@ -78,6 +78,7 @@ import { ehEvolution, ehInstagram, ehMeta, ehWhatsApp } from '@/lib/cb-channels/
 import { InstagramGlyph } from '@/components/channels/instagram-glyph';
 import { formatChannelPhone, identidadeDoCanal } from '@/lib/cb-channels/display';
 import { ListaDeDependencias, useDependenciasDaConexao } from './dependencias-da-conexao';
+import { LigacoesDaConexao, useLigacoesDasConexoes } from './ligacoes-da-conexao';
 import {
   AVISO_DE_VENCIMENTO_DIAS,
   CAMINHO_DO_WEBHOOK,
@@ -264,6 +265,8 @@ export function CbChannelsPanel() {
   /** Conta as aberturas do "Remover": cada uma relê o que depende da conexão. */
   const [aberturaDoRemover, setAberturaDoRemover] = useState(0);
   const dependencias = useDependenciasDaConexao(confirmDelete?.id ?? null, aberturaDoRemover);
+  // 4e: as ligações pelo CRM de cada conexão por QR (só o admin as vê).
+  const ligacoes = useLigacoesDasConexoes();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   /** Sucessor escolhido quando o canal a remover é o padrão. */
   const [successorId, setSuccessorId] = useState('');
@@ -1344,6 +1347,16 @@ export function CbChannelsPanel() {
                     </Button>
                   </div>
                 </RequireRole>
+                {/* 4e: o interruptor, o estado e o QR do computador de
+                    ligações (`ligacoes-da-conexao.tsx`; só o admin). */}
+                {ehEvolution(channel) && (
+                  <LigacoesDaConexao
+                    channelId={channel.id}
+                    label={channel.label}
+                    lista={ligacoes.lista}
+                    recarregar={ligacoes.recarregar}
+                  />
+                )}
               </CardContent>
             </Card>
           ))}

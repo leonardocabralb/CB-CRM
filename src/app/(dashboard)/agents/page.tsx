@@ -7,6 +7,7 @@ import { Bot } from 'lucide-react';
 import { RequireRole } from '@/components/auth/require-role';
 import { SubAbas } from '@/components/settings/sub-abas';
 import { ListaDeAgentes } from '@/components/agentes-de-ia/lista-de-agentes';
+import { PausaDaConta } from '@/components/agentes-de-ia/pausa-da-conta';
 import { UsoDeIa } from '@/components/agentes-de-ia/uso-de-ia';
 import { useAuth } from '@/hooks/use-auth';
 
@@ -53,7 +54,15 @@ export default function AgentsPage() {
               { id: 'uso', rotulo: t('abaUso') },
             ]}
           />
-          {vista === 'agentes' ? <ListaDeAgentes /> : <UsoDeIa />}
+          {vista === 'agentes' ? (
+            <>
+              <ListaDeAgentes />
+              {/* A pausa temporária é da CONTA (1138): vale para todo agente. */}
+              <PausaDaConta />
+            </>
+          ) : (
+            <UsoDeIa />
+          )}
         </div>
       </RequireRole>
     </div>

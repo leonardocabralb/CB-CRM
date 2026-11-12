@@ -97,6 +97,7 @@ vi.mock('@/lib/ai/generate', () => ({
 }))
 
 import { generateReply } from '@/lib/ai/generate'
+import { AiError } from '@/lib/ai/types'
 import { logAiUsage } from '@/lib/ai/usage'
 import { lerChave } from '@/lib/ia-chaves/repo'
 import { lerOQueOAgenteVe } from '@/lib/ia-agentes/acesso'
@@ -844,5 +845,47 @@ describe('POST /api/cb/ia/agentes/[id]/playground — a retomada do RASCUNHO (DC
   it('a instrução do rascunho também chega ao pedido da retomada', async () => {
     await simular({ rascunho: { instrucoes: 'INSTRUCAO DO RASCUNHO NA RETOMADA' } })
     expect(vi.mocked(generateReply).mock.calls[0][0].systemPrompt).toContain('INSTRUCAO DO RASCUNHO NA RETOMADA')
+  })
+})
+
+describe('POST /api/cb/ia/agentes/[id]/playground — os bastidores (10/11/2026)', () => {
+  it('pede o raciocínio e devolve o resumo e a resposta crua, com os marcadores', async () => {
+    vi.mocked(generateReply).mockResolvedValueOnce({
+      text: 'Anotado. [[CAMPO:1=200 mil]]',
+      handoff: false,
+      usage: null,
+      raciocinio: 'O cliente disse o valor.',
+    })
+    const corpo = await (await enviar()).json()
+    expect(vi.mocked(generateReply).mock.calls[0][0].mostrarRaciocinio).toBe(true)
+    expect(corpo.raciocinio).toBe('O cliente disse o valor.')
+    expect(corpo.respostaCrua).toBe('Anotado. [[CAMPO:1=200 mil]]')
+    expect(corpo.reply).not.toContain('[[')
+  })
+
+  it('sem o resumo, `raciocinio` é nulo (nunca texto inventado)', async () => {
+    const corpo = await (await enviar()).json()
+    expect(corpo.raciocinio).toBeNull()
+    expect(corpo.respostaCrua).toBe('Olá!')
+  })
+
+  it('o provedor recusou o pedido do raciocínio (400): o teste segue SEM ele', async () => {
+    vi.mocked(generateReply).mockRejectedValueOnce(
+      new AiError('Anthropic API error (400): thinking', { code: 'provider_error', status: 502, upstreamStatus: 400 }),
+    )
+    const res = await enviar()
+    expect(res.status).toBe(200)
+    expect(vi.mocked(generateReply)).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(generateReply).mock.calls[1][0].mostrarRaciocinio).toBeUndefined()
+    expect((await res.json()).raciocinio).toBeNull()
+  })
+
+  it('outra falha do provedor não se repete', async () => {
+    vi.mocked(generateReply).mockRejectedValueOnce(
+      new AiError('Anthropic API error (500)', { code: 'provider_error', status: 502, upstreamStatus: 500 }),
+    )
+    const res = await enviar()
+    expect(res.status).toBe(502)
+    expect(vi.mocked(generateReply)).toHaveBeenCalledTimes(1)
   })
 })

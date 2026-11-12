@@ -87,14 +87,17 @@ export function criarBanco(tabelas: Record<string, Linha[]> = {}): Banco {
       const v = ler(l, c);
       return v === undefined && c in padrao ? padrao[c] : v;
     };
-    let op: 'select' | 'insert' | 'update' | 'upsert' = 'select';
+    let op: 'select' | 'insert' | 'update' | 'upsert' | 'delete' = 'select';
     let payload: Linha = {};
     let opcoes: { onConflict?: string; ignoreDuplicates?: boolean } = {};
     let ordem: { col: string; asc: boolean } | null = null;
     let limite = Infinity;
     let devolve = false;
+    /** `{ count: 'exact' }`: a contagem junto; com `head: true`, só ela. */
+    let contar = false;
+    let cabeca = false;
 
-    const executar = (): { data: Linha[] | null; error: unknown } => {
+    const executar = (): { data: Linha[] | null; error: unknown; count?: number } => {
       const falha = banco.falhas[tabela];
       if (falha) return { data: null, error: falha };
       const linhas = (banco.tabelas[tabela] ??= []);
@@ -119,6 +122,11 @@ export function criarBanco(tabelas: Record<string, Linha[]> = {}): Banco {
       }
 
       let alvo = linhas.filter((l) => filtros.every((f) => f(l)));
+      if (op === 'delete') {
+        banco.escritas.push({ tabela, op, payload: {} });
+        banco.tabelas[tabela] = linhas.filter((l) => !alvo.includes(l));
+        return { data: devolve ? alvo.map((l) => ({ ...l })) : null, error: null };
+      }
       if (op === 'update') {
         banco.escritas.push({ tabela, op, payload: { ...payload } });
         for (const l of alvo) Object.assign(l, payload);
@@ -131,21 +139,28 @@ export function criarBanco(tabelas: Record<string, Linha[]> = {}): Banco {
           return (x < y ? -1 : x > y ? 1 : 0) * (asc ? 1 : -1);
         });
       }
-      return { data: alvo.slice(0, limite).map((l) => ({ ...l })), error: null };
+      const linhas2 = cabeca ? null : alvo.slice(0, limite).map((l) => ({ ...l }));
+      return contar ? { data: linhas2, error: null, count: alvo.length } : { data: linhas2, error: null };
     };
 
     const q = {
-      select: () => {
+      select: (_colunas?: string, o?: { count?: string; head?: boolean }) => {
         if (op !== 'select') devolve = true;
+        else {
+          contar = Boolean(o?.count);
+          cabeca = o?.head === true;
+        }
         return q;
       },
       insert: (p: Linha) => ((op = 'insert'), (payload = p), q),
       update: (p: Linha) => ((op = 'update'), (payload = p), q),
       upsert: (p: Linha, o: typeof opcoes = {}) => ((op = 'upsert'), (payload = p), (opcoes = o), q),
+      delete: () => ((op = 'delete'), q),
       eq: (c: string, v: unknown) => (filtros.push((l) => valor(l, c) === v), q),
       is: (c: string, v: unknown) => (filtros.push((l) => (valor(l, c) ?? null) === v), q),
       gt: (c: string, v: string) => (filtros.push((l) => String(valor(l, c)) > v), q),
       gte: (c: string, v: string) => (filtros.push((l) => String(valor(l, c)) >= v), q),
+      lt: (c: string, v: string) => (filtros.push((l) => String(valor(l, c)) < v), q),
       neq: (c: string, v: unknown) => (filtros.push((l) => valor(l, c) !== v), q),
       in: (c: string, vs: unknown[]) => (filtros.push((l) => vs.includes(valor(l, c))), q),
       /** Só a forma `.not(col, 'is', null)` (nomes do grupo). */

@@ -294,6 +294,10 @@ async function executarAutomacao(db: SupabaseClient, ctx: ContextoDasAcoes, acao
     context: contexto,
     triggerType: alvo.trigger_type,
     rotuloDoDisparo: `ia:${ctx.agente.nome}`,
+    // A automação fala EM NOME do agente (`messages.ia_agente_id`): ele já
+    // respondeu neste turno, e o vídeo e o link que ela manda depois não
+    // param a retomada dele como "robô falou" (09/11/2026).
+    iaAgenteId: ctx.agente.id,
   })
   if (!r.ok) return falha('recusado', r.detail)
   return feita()

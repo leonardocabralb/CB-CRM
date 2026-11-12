@@ -46,6 +46,8 @@ export const CODIGOS_CONHECIDOS = [
   'sem_mensagens',
   'sem_configuracao',
   'cotacao_invalida',
+  // A pausa temporária da conta (1138, `PUT /api/cb/ia/pausa`).
+  'minutos_invalidos',
   'documento_invalido',
   'contato_nao_encontrado',
   // As recusas do Salvar das Ferramentas (F4): o PATCH devolve também `itens`.
@@ -186,6 +188,9 @@ export const ERROS_GRAVADOS_PELO_BANCO = {
   'conexão apagada': 'turnos.erroDoBanco.conexaoApagada',
   'fichas unidas': 'turnos.erroDoBanco.fichasUnidas',
   'o cliente escreveu antes da retomada': 'turnos.erroDoBanco.clienteEscreveu',
+  // A pausa temporária (1138): o gatilho da pausa por gente descarta o retorno
+  // que esperava a equipe (`ERRO_DA_EQUIPE_RESPONDEU`, que o turno também grava).
+  'a equipe respondeu': 'turnos.erroDoBanco.equipeRespondeu',
 } as const;
 
 export function textoDoErroDoTurno(t: ReturnType<typeof useTranslations>, erro: string): string {
@@ -243,6 +248,19 @@ export function fraseDaAcao(
   const comValor = (ACOES_COM_VALOR as ReadonlySet<string>).has(tipo) || (ACOES_COM_VALOR_OPCIONAL as ReadonlySet<string>).has(tipo);
   if (valor && comValor) return t(`playground.acaoComValor.${tipo}`, { nome, valor });
   return t(`playground.acao.${tipo}`, { nome });
+}
+
+/**
+ * O título do CARTÃO de uma ação aceita no Playground (10/11/2026): o efeito
+ * no CRM, no passado — "Campo preenchido", "Card movido para", "Etiqueta
+ * aplicada". `IaAgentes.playground.efeito.<tipo>`, chave MONTADA cobrada em
+ * `textos.test.ts`; o "responda e passe" e o tipo desconhecido têm a dele.
+ */
+export function efeitoDaAcao(t: ReturnType<typeof useTranslations>, tipo: string): string {
+  if (tipo === ACAO_TRANSFERIR) return t('playground.efeitoTransferir');
+  return (TIPOS_DE_ACAO as readonly string[]).includes(tipo)
+    ? t(`playground.efeito.${tipo}`)
+    : t('playground.efeitoDesconhecido', { tipo });
 }
 
 /**
@@ -434,3 +452,17 @@ export function textoDaParadaDaRetomada(t: ReturnType<typeof useTranslations>, p
     ? t(`playground.retomadaParada.${parada}`)
     : t('playground.retomadaParadaDesconhecida');
 }
+
+/**
+ * Quando a retomada para sozinha, em chips na aba Retomada (10/11/2026): o
+ * resumo à vista — o texto inteiro (`retomada.paradas`) fica ao abrir.
+ * `IaAgentes.retomada.para.<p>`, chave MONTADA cobrada em `textos.test.ts`.
+ */
+export const PARADAS_A_VISTA = ['cliente', 'equipe', 'encerrada', 'etapa', 'reuniao'] as const;
+
+/**
+ * As seções da Configuração, na ordem da página (10/11/2026): o índice ao
+ * lado leva a cada uma. `IaAgentes.config.secao.<s>.titulo`, chave MONTADA
+ * cobrada em `textos.test.ts`.
+ */
+export const SECOES_DA_CONFIGURACAO = ['identidade', 'comoFala', 'modelo', 'ondeAtua', 'quando', 'limites', 'arquivar'] as const;

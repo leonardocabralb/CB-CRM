@@ -6,6 +6,10 @@ paths:
   - "src/components/agentes-de-ia/provedor-e-modelo*"
   - "src/components/agentes-de-ia/configuracao-do-agente.tsx"
   - "src/components/agentes-de-ia/novo-agente-dialog.tsx"
+  - "src/components/agentes-de-ia/detalhe-do-agente.tsx"
+  - "src/components/agentes-de-ia/acesso-do-agente.tsx"
+  - "src/components/agentes-de-ia/retomada-do-agente.tsx"
+  - "src/components/agentes-de-ia/base-do-agente.tsx"
   - "src/components/agentes-de-ia/ferramentas*"
   - "src/components/agentes-de-ia/instrucoes-x-ferramentas*"
   - "src/lib/integracoes/montar*"
@@ -41,7 +45,9 @@ agente errar em silêncio.
   `rate_limited`/`timeout`/…); o log passa por `semSegredo`. Chave SÓ no
   cabeçalho; a página seguinte se monta sobre a URL FIXA do provedor
   (`after_id`/`pageToken`), `redirect: 'error'`, 8 s para todas as páginas.
-- **Recortes de texto** (puros, testados): Gemini só com `generateContent`;
+- **Recortes de texto** (puros, testados): Gemini só com `generateContent`,
+  fora os que não conversam (música Lyria, robótica, computer use, deep
+  research, Antigravity — a lista da chave real, 10/11/2026);
   OpenAI só `gpt-*`/`o<n>*`/`chatgpt-*`, fora áudio, imagem, embedding e o
   que não passa pelo `/v1/chat/completions` do adapter (`instruct`, `codex`,
   `deep-research`, `-pro`); Anthropic, tudo.
@@ -70,8 +76,13 @@ agente errar em silêncio.
 
 ### Avisos ANTES de salvar
 
-- **D27**: mudar "Ligado" (inclusive a 1ª vez) mostra em âmbar que só os cards
-  que ENTRAREM nas etapas depois disso serão atendidos. A regra não mudou.
+- **D27**: ligar ou desligar (inclusive a 1ª vez) pede confirmação com o aviso
+  de que só os cards que ENTRAREM nas etapas depois disso serão atendidos. A
+  regra não mudou. ⚠️ Desde 10/11/2026 o "Ligado" é o interruptor do
+  CABEÇALHO ("Atende clientes", `detalhe-do-agente.tsx`) e grava NA HORA
+  (`PATCH { ativo }`) depois da confirmação; a Configuração manda sempre
+  `ativo: agente.ativo` — com o interruptor nela também, o rascunho guardaria
+  o "Ligado" antigo e o Salvar o desfaria (pino em `provedor-e-modelo.test.ts`).
 - ⚠️ **Instruções × ferramentas** (`ferramentasPedidasDesligadas`): as
   instruções E as regras pedem ação de ferramenta desligada (medido: "Criei o
   lembrete…" sem tarefa). Heurística CONSERVADORA de propósito — alarme falso
@@ -137,3 +148,34 @@ agente errar em silêncio.
   provedor no custo: `ia-cache-do-pedido.md`): modelo com corte DIFERENTE exige migration
   nova. A rota pagina pelas SEIS chaves e exige a 1108 aplicada ANTES do
   deploy (ordenar por coluna ausente é erro do PostgREST).
+
+### A tela de montar o agente (10/11/2026, pedido do operador)
+
+- **O cabeçalho diz o que falta para atender** (do agente SALVO): instruções,
+  chave do provedor (leitura das chaves que falha não acusa nada), ao menos
+  uma conexão e uma etapa. Cada falta leva à aba.
+- ⚠️ **UMA barra de salvar** para Configuração, Acesso, Base, Ferramentas e
+  Retomada: cada aba entrega o Salvar dela (`registrarSalvar`, o do último
+  render) e devolve `true`/`false`; a barra chama os das abas com alteração,
+  um por vez, e para na primeira que falha (mostrando a aba). É o MESMO PATCH
+  de cada aba — nenhum corpo combinado. "Descartar" remonta as abas
+  (`geracao` na `key`; a do Playground continua só o id). Aba nova com
+  rascunho entra em `ABAS_COM_RASCUNHO` e registra o Salvar, senão a barra
+  não a salva.
+- **Sair com alteração não salva pergunta antes**: o clique num link interno
+  é segurado (captura no `document`) e "Sair sem salvar" navega; fechar ou
+  recarregar, o aviso do navegador. Limite aceito: voltar pelo histórico não
+  é segurado.
+- **Configuração em seções** (`SECOES_DA_CONFIGURACAO`, com índice ao lado no
+  desktop): Identidade, Como fala, Modelo, Onde atua, Quando responde, Limites
+  e passagem, Arquivar. A falta de conexão é dita na seção; a de etapa, pela
+  lista de etapas (`OndeAtua`) — uma vez só.
+- **Acesso e Ferramentas em cartões**; as listas longas (campos, etiquetas)
+  ficam recolhidas atrás de "Escolher (n de m)", com os marcados à vista.
+  Ligar uma ferramenta, ou não ter nada marcado, deixa a lista aberta — fechar
+  sozinha ao marcar o 1º item impedia marcar mais (achado no teste).
+- **Retomada como lista numerada** ("Tentativa 2 · 1 h depois da resposta do
+  agente") com a linha do tempo, "Nova tentativa" e quando para em chips
+  (`PARADAS_A_VISTA`; o texto inteiro ao abrir). A cadência continua a mesma
+  (`acrescentarIntervalo`: 1 a 8 tentativas, 10 min a 7 dias, contadas da
+  resposta do agente).

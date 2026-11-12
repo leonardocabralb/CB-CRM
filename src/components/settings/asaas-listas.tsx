@@ -45,24 +45,34 @@ interface Props {
   versao: number;
   /** o vínculo mudou por aqui: o cartão relê o resumo */
   aoMudar: () => void;
+  /** só estas abas (a tela "Cobrança automática" mostra a lista de exceção e os ligados, 1135); ausente = todas */
+  listas?: readonly NomeDaLista[];
+  /** a aba que abre primeiro; ausente = a primeira de `listas` */
+  listaInicial?: NomeDaLista;
 }
 
 const FAIXAS: Faixa[] = ["", "ate_5", "de_6_a_30", "mais_de_30"];
 
-export function AsaasListas({ resumo, versao, aoMudar }: Props) {
+export function AsaasListas({ resumo, versao, aoMudar, listas = NOMES_DAS_LISTAS, listaInicial }: Props) {
   const t = useTranslations("Settings.integracoes");
-  const [lista, setLista] = useState<NomeDaLista>("confirmar");
+  const [lista, setLista] = useState<NomeDaLista>(listaInicial ?? listas[0] ?? "confirmar");
   const [pagina, setPagina] = useState(1);
   const [digitado, setDigitado] = useState("");
   const [busca, setBusca] = useState("");
   const [faixa, setFaixa] = useState<Faixa>("");
+  const [soEmAtraso, setSoEmAtraso] = useState(false);
   const [recarga, setRecarga] = useState(0);
   const [estado, setEstado] = useState<Estado>({ chave: "", pagina: null, falhou: false });
   /** id do cliente cujo seletor de contato está aberto */
   const [escolhendo, setEscolhendo] = useState<string | null>(null);
   const [agindo, setAgindo] = useState<string | null>(null);
 
-  const chave = `${lista}|${pagina}|${busca}|${faixa}|${versao}|${recarga}`;
+  // "Só com cobrança em atraso": nas listas de quem RECEBE ou não a cobrança
+  // automática, para decidir quem fica de fora. O recorte é da rota, antes
+  // de paginar (`atraso=1`).
+  const comFiltroDeAtraso = lista === "ligados" || lista === "sem_cobranca";
+  const atraso = comFiltroDeAtraso && soEmAtraso;
+  const chave = `${lista}|${pagina}|${busca}|${faixa}|${atraso}|${versao}|${recarga}`;
 
   // A busca espera a digitação parar — cada tecla seria uma leitura do espelho inteiro.
   useEffect(() => {
@@ -78,6 +88,7 @@ export function AsaasListas({ resumo, versao, aoMudar }: Props) {
     const params = new URLSearchParams({ lista, pagina: String(pagina) });
     if (busca) params.set("busca", busca);
     if (lista === "inadimplentes" && faixa) params.set("faixa", faixa);
+    if (atraso) params.set("atraso", "1");
     void fetch(`/api/cb/asaas/clientes?${params.toString()}`)
       .then(async (res) => {
         if (!res.ok) throw new Error(String(res.status));
@@ -92,7 +103,7 @@ export function AsaasListas({ resumo, versao, aoMudar }: Props) {
     return () => {
       vivo = false;
     };
-  }, [chave, lista, pagina, busca, faixa]);
+  }, [chave, lista, pagina, busca, faixa, atraso]);
 
   const carregando = estado.chave !== chave;
 
@@ -182,7 +193,7 @@ export function AsaasListas({ resumo, versao, aoMudar }: Props) {
   return (
     <div className="min-w-0 space-y-3">
       <div className="flex flex-wrap gap-1.5">
-        {NOMES_DAS_LISTAS.map((nome) => {
+        {listas.map((nome) => {
           const n = contagem(nome);
           return (
             <button
@@ -220,7 +231,22 @@ export function AsaasListas({ resumo, versao, aoMudar }: Props) {
           ))}
         </div>
       ) : (
-        <Input value={digitado} onChange={(e) => setDigitado(e.target.value)} placeholder={t("asaas.buscar")} className="max-w-sm" />
+        <div className="flex flex-wrap items-center gap-2">
+          <Input value={digitado} onChange={(e) => setDigitado(e.target.value)} placeholder={t("asaas.buscar")} className="max-w-sm" />
+          {comFiltroDeAtraso && (
+            <button
+              type="button"
+              aria-pressed={soEmAtraso}
+              onClick={() => {
+                setSoEmAtraso((v) => !v);
+                setPagina(1);
+              }}
+              className={cn("rounded-md border px-2 py-1 text-xs", soEmAtraso ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-muted")}
+            >
+              {t("asaas.soEmAtraso")}
+            </button>
+          )}
+        </div>
       )}
 
       {estado.falhou && !carregando ? (
@@ -234,7 +260,7 @@ export function AsaasListas({ resumo, versao, aoMudar }: Props) {
         <p className="text-muted-foreground">{t("asaas.carregando")}</p>
       ) : pag.itens.length === 0 ? (
         // chave montada: `asaas.vazio.<nome>`
-        <p className="text-muted-foreground">{t(`asaas.vazio.${lista}` as Parameters<typeof t>[0])}</p>
+        <p className="text-muted-foreground">{atraso ? t("asaas.vazioEmAtraso") : t(`asaas.vazio.${lista}` as Parameters<typeof t>[0])}</p>
       ) : (
         <ul className="divide-y divide-border rounded-md border border-border">
           {lista === "inadimplentes"

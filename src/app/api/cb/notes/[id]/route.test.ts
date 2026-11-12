@@ -58,7 +58,9 @@ const estado = vi.hoisted(() => ({
 function casa(linha: Linha | null, filtros: Filtro[]): linha is Linha {
   if (!linha) return false;
   return filtros.every((f) => {
-    if (f.op === 'is') return linha[f.col] === f.val;
+    // `is null` casa a coluna ausente da linha fictícia (a anotação viva
+    // não carrega `apagada_em` no teste antigo — no banco, ela é NULL).
+    if (f.op === 'is') return f.val === null ? linha[f.col] == null : linha[f.col] === f.val;
     if (f.op !== 'eq') return true;
     if (f.col === 'editada_em') {
       return linha.editada_em !== null && Date.parse(String(linha.editada_em)) === Date.parse(String(f.val));
@@ -274,16 +276,35 @@ describe('PUT /api/cb/notes/[id] — quem edita (A2)', () => {
     expect(estado.updates).toEqual([]);
   });
 
-  it('a nota é lida sob RLS, na conta de quem edita e na versão que a caixa abriu', async () => {
+  it('a nota é lida sob RLS, na conta de quem edita, VIVA (1132) e na versão que a caixa abriu', async () => {
     await editar({ texto: 'Outro texto' });
     expect(estado.leiturasDaNota[0]).toEqual({
       colunas: '*',
       filtros: [
         { op: 'eq', col: 'id', val: NOTA },
         { op: 'eq', col: 'account_id', val: CONTA },
+        { op: 'is', col: 'apagada_em', val: null },
         { op: 'is', col: 'editada_em', val: null },
       ],
     });
+  });
+
+  it('a anotação na LIXEIRA (1132) não se edita: 409 NOTE_GONE, sem UPDATE', async () => {
+    estado.nota = { ...estado.nota, apagada_em: '2026-11-10T12:00:00Z' };
+    const res = await editar({ texto: 'Outro texto' });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'NOTE_GONE' });
+    expect(estado.updates).toEqual([]);
+  });
+
+  it('apagada entre a leitura e o UPDATE: o UPDATE é cercado por `apagada_em` e responde NOTE_GONE', async () => {
+    estado.antesDoUpdate = () => {
+      estado.nota = { ...estado.nota, apagada_em: '2026-11-10T12:00:00Z' };
+    };
+    const res = await editar({ texto: 'Outro texto' });
+    expect(estado.updates[0].filtros).toContainEqual({ op: 'is', col: 'apagada_em', val: null });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'NOTE_GONE' });
   });
 });
 

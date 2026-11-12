@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Sparkles, Pause, Undo2, Loader2 } from "lucide-react";
+import { Sparkles, Pause, Undo2, Loader2, CircleSlash } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EVENTO_EXECUCOES } from "@/lib/execucoes/aviso";
+import { MOTIVOS_DA_PAUSA, type MotivoDaPausa } from "@/lib/ia-agentes/pausa";
 import {
   MOTIVOS_DO_AGENTE_QUE_NAO_ATENDE,
   type MotivoDoAgenteQueNaoAtende,
@@ -24,9 +25,16 @@ import { useTranslations } from "next-intl";
 // auto-reply legado saiu (E2), e o responsável não cala o agente. Um merge
 // que traga a faixa crua devolve as duas mentiras sem conflito nenhum.
 //
-//   - atendendo → "IA · <nome> responde nesta conversa" + [Pausar]
-//   - pausada   → "IA pausada — <motivo>" + [Retomar IA] (D26: só este botão
-//                 retoma; mudar o card de etapa não)
+//   - atendendo → "IA · <nome> responde nesta conversa" + [Pausar] +
+//                 [Desativar IA] (1138: o Pausar é TEMPORÁRIO — a IA volta se
+//                 a cliente esperar N min sem resposta da equipe; o Desativar
+//                 fica até o Retomar). Com N = 0 na conta, só o [Pausar], que
+//                 então é permanente (como antes).
+//   - pausada   → "IA pausada — <motivo>" + [Retomar IA]; a TEMPORÁRIA
+//                 (`gente`/`botao` com N > 0) diz quando volta ("volta às
+//                 14:32 se ninguém responder", com mensagem esperando) e
+//                 oferece também [Desativar IA]. Mudar o card de etapa não
+//                 retoma (D26, mantida em 11/11/2026).
 //   - não atende → "IA · <nome> não atende esta conversa: <motivo>", discreta,
 //                 sem botão: a etapa do card TEM agente, mas ele está
 //                 desligado, sem a conexão ou o card é antigo (D27; nunca
@@ -37,12 +45,13 @@ import { useTranslations } from "next-intl";
 //                 segunda linha da pausada: retomar não faria ele atender.
 //   - nada      → não desenha
 //
-// Pausar e Retomar vão pela rota `POST /api/ai/autoreply/[id]`, que NÃO mexe
-// no responsável humano.
+// Pausar, Desativar e Retomar vão pela rota `POST /api/ai/autoreply/[id]`,
+// que NÃO mexe no responsável humano.
 // ============================================================
 
-export const MOTIVOS_DA_PAUSA = ["gente", "botao", "transferencia", "automacao"] as const;
-export type MotivoDaPausa = (typeof MOTIVOS_DA_PAUSA)[number];
+// A lista dos motivos é a do motor (1138): o motivo é chave MONTADA
+// (`Inbox.aiBanner.motivo.<m>`), cobrada nos dois dicionários pelo teste.
+export { MOTIVOS_DA_PAUSA, type MotivoDaPausa };
 
 /** O agente da etapa que não atende esta conversa, e por quê (`naoAtende` da rota). */
 export interface NaoAtende {
@@ -55,6 +64,12 @@ export interface EstadoDaIa {
   agente: { id: string; nome: string } | null;
   pausada: boolean;
   pausadaPor: string | null;
+  /** A pausa VOLTA sozinha (1138). */
+  pausaTemporaria: boolean;
+  /** O N da conta (0 = desligado); nulo = servidor antigo (a faixa de antes). */
+  voltaAposMin: number | null;
+  /** Quando o turno que espera a equipe vai rodar. */
+  voltaEm: string | null;
   naoAtende: NaoAtende | null;
 }
 
@@ -80,10 +95,14 @@ function lerNaoAtende(v: unknown): NaoAtende | null {
 export function lerEstadoDaIa(corpo: unknown): EstadoDaIa | null {
   if (!corpo || typeof corpo !== "object") return null;
   const c = corpo as Record<string, unknown>;
+  const minutos = c.voltaAposMin;
   return {
     agente: lerAgente(c.agente),
     pausada: c.pausada === true,
     pausadaPor: typeof c.pausadaPor === "string" ? c.pausadaPor : null,
+    pausaTemporaria: c.pausaTemporaria === true,
+    voltaAposMin: typeof minutos === "number" && Number.isInteger(minutos) && minutos >= 0 ? minutos : null,
+    voltaEm: typeof c.voltaEm === "string" && Number.isFinite(Date.parse(c.voltaEm)) ? c.voltaEm : null,
     naoAtende: lerNaoAtende(c.naoAtende),
   };
 }
@@ -91,9 +110,13 @@ export function lerEstadoDaIa(corpo: unknown): EstadoDaIa | null {
 /** A linha "não atende": o nome do agente e o motivo. */
 export type LinhaNaoAtende = { agente: string; motivo: MotivoDoAgenteQueNaoAtende };
 
+/** A pausa que VOLTA sozinha (1138): o N da conta e, com mensagem esperando, quando. */
+export type VoltaDaPausa = { minutos: number; em: string | null };
+
 export type Faixa =
-  | { tipo: "atendendo"; agente: string }
-  | { tipo: "pausada"; motivo: MotivoDaPausa | null; naoAtende: LinhaNaoAtende | null }
+  /** `minutos`: o N da conta — > 0 = o Pausar é temporário e o Desativar aparece; 0 ou nulo, a faixa de antes. */
+  | { tipo: "atendendo"; agente: string; minutos: number | null }
+  | { tipo: "pausada"; motivo: MotivoDaPausa | null; naoAtende: LinhaNaoAtende | null; volta: VoltaDaPausa | null }
   | ({ tipo: "naoAtende" } & LinhaNaoAtende)
   | null;
 
@@ -114,11 +137,31 @@ export function faixaDaIa(estado: EstadoDaIa | null, iaAgenteIdDaConversa: strin
     const motivo = (MOTIVOS_DA_PAUSA as readonly string[]).includes(estado.pausadaPor ?? "")
       ? (estado.pausadaPor as MotivoDaPausa)
       : null;
-    return { tipo: "pausada", motivo, naoAtende };
+    // Temporária só com o N conhecido e > 0: na dúvida, a faixa de antes
+    // (nunca "volta sozinha" sobre uma pausa que não volta).
+    const volta =
+      estado.pausaTemporaria && estado.voltaAposMin !== null && estado.voltaAposMin > 0
+        ? { minutos: estado.voltaAposMin, em: estado.voltaEm }
+        : null;
+    return { tipo: "pausada", motivo, naoAtende, volta };
   }
   // Daqui para baixo, agente da etapa só sem pausa (pausada com ele já saiu acima).
-  if (estado.agente) return { tipo: "atendendo", agente: estado.agente.nome };
+  if (estado.agente) return { tipo: "atendendo", agente: estado.agente.nome, minutos: estado.voltaAposMin };
   return naoAtende ? { tipo: "naoAtende", ...naoAtende } : null;
+}
+
+/** O que cada botão manda à rota. */
+export type AcaoDaFaixa = "pausar" | "desativar" | "retomar";
+
+export function corpoDaAcao(acao: AcaoDaFaixa): { paused: boolean; permanente?: boolean } {
+  switch (acao) {
+    case "pausar":
+      return { paused: true };
+    case "desativar":
+      return { paused: true, permanente: true };
+    case "retomar":
+      return { paused: false };
+  }
 }
 
 /** Qual frase do dicionário explica a recusa da rota. Nunca o `error` cru (inglês). */
@@ -149,13 +192,19 @@ interface AiThreadBannerProps {
   disabled: boolean;
   /** `conversations.ia_pausada_por` — por que pausou. */
   pausadaPor?: string | null;
+  /**
+   * `conversations.ia_pausada_em` — recarimbado quando a equipe responde na
+   * pausa temporária (1138): a faixa pergunta de novo, senão continuaria
+   * dizendo "volta às …" sobre o retorno que a resposta descartou.
+   */
+  pausadaEm?: string | null;
 }
 
-export function AiThreadBanner({ conversationId, iaAgenteId, disabled, pausadaPor }: AiThreadBannerProps) {
+export function AiThreadBanner({ conversationId, iaAgenteId, disabled, pausadaPor, pausadaEm }: AiThreadBannerProps) {
   const t = useTranslations("Inbox.aiBanner");
   // O estado carrega DE QUAL conversa é: a faixa não remonta ao trocar de
   // conversa, e o da anterior não pode aparecer nem por um quadro.
-  const [lido, setLido] = useState<{ conversa: string; estado: EstadoDaIa | null } | null>(null);
+  const [lido, setLido] = useState<{ conversa: string; estado: EstadoDaIa | null; em: number } | null>(null);
   const [recarga, setRecarga] = useState(0);
   const [busy, setBusy] = useState(false);
 
@@ -172,12 +221,13 @@ export function AiThreadBanner({ conversationId, iaAgenteId, disabled, pausadaPo
       } catch {
         estado = null;
       }
-      if (vivo) setLido({ conversa: conversationId, estado });
+      // `em`: quando a rota respondeu — a hora da volta diz o dia quando não é hoje.
+      if (vivo) setLido({ conversa: conversationId, estado, em: Date.now() });
     })();
     return () => {
       vivo = false;
     };
-  }, [conversationId, disabled, pausadaPor, iaAgenteId, recarga]);
+  }, [conversationId, disabled, pausadaPor, pausadaEm, iaAgenteId, recarga]);
 
   // Quem responde depende da ETAPA do card, e mover o card só muda `deals`:
   // nenhuma das props acima muda. O aviso das execuções sai quando uma tela
@@ -189,20 +239,20 @@ export function AiThreadBanner({ conversationId, iaAgenteId, disabled, pausadaPo
     return () => window.removeEventListener(EVENTO_EXECUCOES, aoMudar);
   }, []);
 
-  async function alternar(pausar: boolean) {
+  async function alternar(acao: AcaoDaFaixa) {
     setBusy(true);
     try {
       const res = await fetch(`/api/ai/autoreply/${conversationId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paused: pausar }),
+        body: JSON.stringify(corpoDaAcao(acao)),
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
         toast.error(textoDoErro(t, erroDaResposta(res.status, j?.code)));
         return;
       }
-      toast.success(pausar ? t("pausou") : t("resumed"));
+      toast.success(acao === "pausar" ? t("pausou") : acao === "desativar" ? t("desativou") : t("resumed"));
     } catch {
       toast.error(t("networkError"));
     } finally {
@@ -215,9 +265,11 @@ export function AiThreadBanner({ conversationId, iaAgenteId, disabled, pausadaPo
   return (
     <FaixaDaIa
       faixa={faixaDaIa(estado, iaAgenteId)}
+      lidoEm={lido?.em}
       busy={busy}
-      aoPausar={() => void alternar(true)}
-      aoRetomar={() => void alternar(false)}
+      aoPausar={() => void alternar("pausar")}
+      aoDesativar={() => void alternar("desativar")}
+      aoRetomar={() => void alternar("retomar")}
     />
   );
 }
@@ -243,33 +295,76 @@ function textoDoErro(t: ReturnType<typeof useTranslations>, erro: ErroDaFaixa): 
   }
 }
 
+/**
+ * "14:32", no fuso e no idioma de quem olha; com o dia da semana quando não é
+ * o dia em que a rota respondeu (`lidoEm`) — com N grande, "às 09:00" seria
+ * ambíguo. Sem `lidoEm`, só a hora.
+ */
+export function horaDaVolta(iso: string, lidoEm?: number): string {
+  const volta = new Date(iso);
+  const outroDia = lidoEm !== undefined && new Date(lidoEm).toDateString() !== volta.toDateString();
+  return volta.toLocaleString(undefined, {
+    ...(outroDia ? { weekday: "short" as const } : {}),
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 /** A faixa desenhada (sem dado nem efeito) — o que os testes renderizam. */
 export function FaixaDaIa({
   faixa,
+  lidoEm,
   busy,
   aoPausar,
+  aoDesativar,
   aoRetomar,
 }: {
   faixa: Faixa;
+  /** Quando a rota respondeu (o dia da hora da volta). */
+  lidoEm?: number;
   busy: boolean;
   aoPausar: () => void;
+  aoDesativar: () => void;
   aoRetomar: () => void;
 }) {
   const t = useTranslations("Inbox.aiBanner");
   if (!faixa) return null;
 
   if (faixa.tipo === "pausada") {
+    const desativada = faixa.motivo === "desativada";
     return (
       <Banner tone="muted">
         <div className="min-w-0 flex-1">
           <p className="truncate font-medium text-foreground">
-            {faixa.motivo ? t("pausadaComMotivo", { motivo: t(`motivo.${faixa.motivo}`) }) : t("pausada")}
+            {desativada
+              ? t("desativadaNaConversa")
+              : faixa.motivo
+                ? t("pausadaComMotivo", { motivo: t(`motivo.${faixa.motivo}`) })
+                : t("pausada")}
           </p>
+          {faixa.volta ? (
+            // Quebra linha (nunca `truncate`): no celular a hora sumiria cortada.
+            <p className="mt-0.5 text-muted-foreground">
+              {faixa.volta.em
+                ? t("voltaAs", { hora: horaDaVolta(faixa.volta.em, lidoEm) })
+                : t("voltaSeEsperar", { minutos: faixa.volta.minutos })}
+            </p>
+          ) : null}
           {faixa.naoAtende ? <LinhaNaoAtendeDaFaixa linha={faixa.naoAtende} /> : null}
         </div>
-        <BannerButton onClick={aoRetomar} busy={busy} icon={Undo2} title={t("retomarDica")}>
+        <BannerButton
+          onClick={aoRetomar}
+          busy={busy}
+          icon={Undo2}
+          title={faixa.volta ? t("retomarAgoraDica") : t("retomarDica")}
+        >
           {t("resume")}
         </BannerButton>
+        {faixa.volta ? (
+          <BannerButton onClick={aoDesativar} busy={busy} icon={CircleSlash} title={t("desativarDica")}>
+            {t("desativar")}
+          </BannerButton>
+        ) : null}
       </Banner>
     );
   }
@@ -282,15 +377,28 @@ export function FaixaDaIa({
     );
   }
 
+  // Com N > 0 na conta, o Pausar é TEMPORÁRIO e o Desativar fica ao lado;
+  // com 0 (ou sem saber), a faixa de antes: um Pausar, permanente.
+  const temporario = faixa.minutos !== null && faixa.minutos > 0;
   return (
     <Banner tone="primary">
       <div className="flex min-w-0 flex-1 items-center gap-1.5">
         <Sparkles className="h-3.5 w-3.5 flex-shrink-0 text-primary" />
         <span className="truncate font-medium text-foreground">{t("atendendo", { agente: faixa.agente })}</span>
       </div>
-      <BannerButton onClick={aoPausar} busy={busy} icon={Pause}>
+      <BannerButton
+        onClick={aoPausar}
+        busy={busy}
+        icon={Pause}
+        title={temporario ? t("pausarDica", { minutos: faixa.minutos ?? 0 }) : undefined}
+      >
         {t("pausar")}
       </BannerButton>
+      {temporario ? (
+        <BannerButton onClick={aoDesativar} busy={busy} icon={CircleSlash} title={t("desativarDica")}>
+          {t("desativar")}
+        </BannerButton>
+      ) : null}
     </Banner>
   );
 }

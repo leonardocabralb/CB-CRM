@@ -120,7 +120,10 @@ export async function GET(request: Request) {
       // (918 — grupo não tem contato), e é isso que a recorta, sem embed na
       // conversa. Medido em 01/10/2026: nenhuma anotação 1:1 tem
       // `contact_id` nulo.
-      .not('contact_id', 'is', null);
+      .not('contact_id', 'is', null)
+      // A anotação na LIXEIRA (1132) não existe para quem integra — como
+      // antes, quando apagar a removia: o contrato não muda.
+      .is('apagada_em', null);
 
     if (conversationId) query = query.eq('conversation_id', conversationId);
     if (contactId) query = query.eq('contact_id', contactId);

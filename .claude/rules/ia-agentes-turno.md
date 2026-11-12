@@ -147,7 +147,9 @@ das ações está em `ia.md` e `ia-agentes.md`.
   alguém, como na passagem do robô (`flows/engine.ts`, ação `handoff`). O
   UPDATE da pausa em `transferirParaGente` grava `status: 'pending'` junto,
   marcado com `marcarOrigem` (`agente`): a trilha da 1083 diz quem mudou.
-- Conversa encerrada ou já pausada: nada muda (o UPDATE não casa).
+- Conversa encerrada ou já pausada de vez: nada muda (o UPDATE não casa).
+  A pausa TEMPORÁRIA (`gente`/`botao`, 1138) vira a transferência, com a
+  anotação: a IA pediu gente, e a temporária a deixaria voltar em N min.
 - A pendente continua na caixa (o filtro padrão mostra aberta e pendente). A
   IA só se cala na ENCERRADA, então "Retomar IA" não precisa reabrir; voltar
   para aberta é com a equipe.

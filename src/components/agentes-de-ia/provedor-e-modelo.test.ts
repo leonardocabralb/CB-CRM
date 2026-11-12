@@ -19,6 +19,7 @@ const ler = (rel: string) =>
 const SELETOR = ler('src/components/agentes-de-ia/provedor-e-modelo.tsx')
 const CONFIG = ler('src/components/agentes-de-ia/configuracao-do-agente.tsx')
 const NOVO = ler('src/components/agentes-de-ia/novo-agente-dialog.tsx')
+const DETALHE = ler('src/components/agentes-de-ia/detalhe-do-agente.tsx')
 const INTEGRACOES = ler('src/components/settings/integracoes-panel.tsx')
 
 describe('o seletor de modelo', () => {
@@ -53,10 +54,13 @@ describe('as telas', () => {
     expect(CONFIG).not.toContain('AI_PROVIDER_MODELS')
   })
 
-  it('Configuração: mudar "Ligado" avisa a D27 antes de salvar, nos dois sentidos', () => {
-    const aviso = CONFIG.slice(CONFIG.indexOf('ativo !== agente.ativo'))
-    expect(CONFIG).toMatch(/\{ativo !== agente\.ativo \? \(/)
-    expect(aviso.slice(0, 300)).toMatch(/ativo \? t\('campo\.ativoLigando'\) : t\('campo\.ativoDesligando'\)/)
+  it('"Ligado" avisa a D27 ANTES de gravar, nos dois sentidos — no cabeçalho do detalhe (10/11/2026)', () => {
+    // Saiu da Configuração: lá, o rascunho guardaria o "Ligado" antigo e o Salvar o desfaria.
+    expect(CONFIG).not.toContain('setAtivo')
+    expect(CONFIG).toContain('ativo: agente.ativo')
+    // O interruptor do cabeçalho só grava depois da confirmação, que traz o aviso.
+    expect(DETALHE).toMatch(/onCheckedChange=\{\(v\) => setMudandoLigado\(v === true\)\}/)
+    expect(DETALHE).toMatch(/mudandoLigado \? t\('campo\.ativoLigando'\) : t\('campo\.ativoDesligando'\)/)
   })
 
   it('Novo agente: manda o modelo escolhido (ou o recomendado da chave), não o padrão fixo', () => {

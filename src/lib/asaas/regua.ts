@@ -1,6 +1,6 @@
 import { diaNoFuso, FUSO_PADRAO, paraInstante } from "@/lib/agenda/fuso";
 
-import { classificar, diaPorExtenso, diasDeAtraso, dinheiro, ehDevida, rotuloDaParcela, rotulosDasParcelas, valorAtualizado, type ParcelaDoEspelho } from "./inadimplencia";
+import { classificar, diaPorExtenso, diasDeAtraso, dinheiro, ehDevida, rotulosDasParcelas, valorAtualizado, type ParcelaDoEspelho } from "./inadimplencia";
 
 /**
  * A RÉGUA DE COBRANÇA — a parte PURA (Fase 3 do plano do Asaas, §3.6):
@@ -32,8 +32,22 @@ import { classificar, diaPorExtenso, diasDeAtraso, dinheiro, ehDevida, rotuloDaP
  * a janela do dia, e `diaNoFuso`, para "que dia é hoje".
  */
 
-/** A hora limite: nada sai depois disto (D12). */
+/** A hora limite: nada sai depois disto (D12) — menos o lembrete da NOITE, abaixo. */
 export const HORA_LIMITE = "18:00";
+/**
+ * O LEMBRETE DA NOITE (D12 revista pelo operador em 10/11/2026): no dia do
+ * vencimento saem dois lembretes — o do dia (`hora_envio` antes das 18:00) e
+ * o da noite (a partir das 18:00), com cara de mensagem automática ("Assinar
+ * como" = "Mensagem automática"), para lembrar no fim do dia sem parecer uma
+ * pessoa cobrando. A noite vai das 18:00 às 21:00; a cobrança de atraso
+ * continua só até as 18:00. Cada turno tem a SUA trava (`marco` 0 = dia,
+ * 1 = noite; CHECK da 1133).
+ */
+export const INICIO_DA_NOITE = "18:00";
+export const HORA_LIMITE_DA_NOITE = "21:00";
+/** O último `hora_envio` aceito no lembrete da noite (a janela fecha às 21:00). */
+export const HORA_MAXIMA_DA_NOITE = "20:30";
+export type TurnoDoLembrete = "dia" | "noite";
 export const HORA_PADRAO_COBRANCA = "09:00";
 export const HORA_PADRAO_LEMBRETE = "08:00";
 /** A faixa que o editor aceita para `hora_envio` (a mesma de `validate.ts` para a tarefa). */
@@ -85,9 +99,24 @@ export const FERIADOS_NACIONAIS_FIXOS = ["01-01", "04-21", "05-01", "09-07", "10
 const RE_DIA = /^\d{4}-\d{2}-\d{2}$/;
 const RE_HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-/** `HH:MM` entre 08:00 e 17:00? */
+/** `HH:MM` entre 08:00 e 17:00? (a cobrança de atraso e o lembrete do dia) */
 export function horaDeEnvioValida(hora: unknown): hora is string {
   return typeof hora === "string" && RE_HORA.test(hora) && hora >= HORA_MINIMA && hora <= HORA_MAXIMA;
+}
+
+/** O lembrete aceita também a noite: 08:00–17:00 ou 18:00–20:30. */
+export function horaDeLembreteValida(hora: unknown): hora is string {
+  return horaDeEnvioValida(hora) || (typeof hora === "string" && RE_HORA.test(hora) && hora >= INICIO_DA_NOITE && hora <= HORA_MAXIMA_DA_NOITE);
+}
+
+/** O turno do lembrete pela hora: a partir das 18:00 é o da noite. */
+export function turnoDaHora(hora: string): TurnoDoLembrete {
+  return hora >= INICIO_DA_NOITE ? "noite" : "dia";
+}
+
+/** Até quando a janela de uma automação da régua fica aberta: 21:00 no lembrete da noite, 18:00 no resto. */
+export function fimDaJanela(a: Pick<AutomacaoDaRegua, "tipo" | "horaEnvio">): string {
+  return a.tipo === "vence_hoje" && turnoDaHora(a.horaEnvio) === "noite" ? HORA_LIMITE_DA_NOITE : HORA_LIMITE;
 }
 
 function diaEmMs(dia: string): number {
@@ -173,11 +202,11 @@ export function diaAlvoDoMarco(p: Pick<ParcelaDoEspelho, "vencimento" | "vista_v
   return ctx.somenteDiasUteis ? proximoDiaUtil(alvo) : alvo;
 }
 
-/** Puro: `agora` está entre `hora_envio` e as 18:00 do dia `hoje`, no fuso? */
-export function janelaAberta(agora: Date, hoje: string, horaEnvio: string, fuso: string = FUSO_PADRAO): boolean {
-  if (!RE_DIA.test(hoje) || !RE_HORA.test(horaEnvio)) return false;
+/** Puro: `agora` está entre `hora_envio` e o fim (18:00; 21:00 no lembrete da noite) do dia `hoje`, no fuso? */
+export function janelaAberta(agora: Date, hoje: string, horaEnvio: string, fuso: string = FUSO_PADRAO, limite: string = HORA_LIMITE): boolean {
+  if (!RE_DIA.test(hoje) || !RE_HORA.test(horaEnvio) || !RE_HORA.test(limite)) return false;
   const inicio = paraInstante(hoje, horaEnvio, fuso).getTime();
-  const fim = paraInstante(hoje, HORA_LIMITE, fuso).getTime();
+  const fim = paraInstante(hoje, limite, fuso).getTime();
   const t = agora.getTime();
   return t >= inicio && t < fim;
 }
@@ -241,30 +270,154 @@ export function dentroDoIntervalo(ultimaCobrancaEm: string | null, hoje: string,
   return somarDias(ultima, intervaloDias) > hoje;
 }
 
-/** Uma linha de `cobranca_detalhe`: "• Parcela 3/12 — R$ 648,20 (atualizado) — venceu em 23/08/2026 — https://…" */
+/**
+ * Pessoa física ou jurídica, pelo CPF/CNPJ do espelho (só dígitos): 11 = CPF,
+ * 14 = CNPJ; o resto é `null` (não sei) e é tratado como pessoa — 59 dos 73
+ * devedores com ficha eram CPF, nenhum sem documento (10/11/2026). O
+ * documento em si nunca sai daqui: só o tipo.
+ */
+export type TipoDePessoa = "fisica" | "juridica" | null;
+
+export function tipoDePessoa(cpfCnpj: string | null | undefined): TipoDePessoa {
+  const digitos = (cpfCnpj ?? "").replace(/\D/g, "");
+  return digitos.length === 11 ? "fisica" : digitos.length === 14 ? "juridica" : null;
+}
+
+const DIAS_DA_SEMANA = ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"];
+const NUMEROS_POR_EXTENSO = ["", "uma", "duas", "três", "quatro", "cinco", "seis", "sete", "oito", "nove", "dez"];
+
+/** `DD/MM`, com o ano só quando não é o de `hoje` (11/09; 11/12/2025). */
+function diaCurto(dia: string, hoje: string): string {
+  if (!RE_DIA.test(dia)) return dia;
+  const [a, m, d] = dia.split("-");
+  return a === hoje.slice(0, 4) ? `${d}/${m}` : `${d}/${m}/${a}`;
+}
+
+/**
+ * Quando venceu ou vence, como se fala (10/11/2026, pedido do operador: o
+ * texto tem de parecer escrito para aquela pessoa): "vence hoje", "vence
+ * amanhã", "venceu ontem", "venceu na sexta-feira (07/11)" até 6 dias, e
+ * "venceu em 11/09" daí para trás. Relativo ao dia da MENSAGEM (`hoje`, no
+ * fuso do escritório) — a varredura só manda no próprio dia.
+ */
+export function quandoVence(vencimento: string, hoje: string): string {
+  if (!RE_DIA.test(vencimento) || !RE_DIA.test(hoje)) return "";
+  if (vencimento === hoje) return "vence hoje";
+  if (vencimento === somarDias(hoje, 1)) return "vence amanhã";
+  if (vencimento > hoje) return `vence em ${diaCurto(vencimento, hoje)}`;
+  if (vencimento === somarDias(hoje, -1)) return "venceu ontem";
+  if (vencimento >= somarDias(hoje, -6)) {
+    const s = diaDaSemana(vencimento);
+    return `venceu ${s === 0 || s === 6 ? "no" : "na"} ${DIAS_DA_SEMANA[s]} (${diaCurto(vencimento, hoje)})`;
+  }
+  return `venceu em ${diaCurto(vencimento, hoje)}`;
+}
+
+/**
+ * O rótulo que VAI AO CLIENTE: "Parcela 3 de 12", ou "Cobrança" na avulsa.
+ * ⚠️⚠️ NUNCA a descrição da cobrança (`rotuloDaParcela` a usa, e a aba
+ * Cobranças da equipe continua usando): medido em 10/11/2026, as avulsas
+ * guardam ANOTAÇÃO INTERNA da equipe na descrição ("pediu para colocar para
+ * após…", "recriada em nome de…", "promessa de pagamento…"), que iria
+ * inteira para o WhatsApp do cliente.
+ */
+function rotuloParaOCliente(p: Pick<ParcelaDoEspelho, "parcela_numero" | "parcela_total">): string {
+  if (p.parcela_numero === null) return "Cobrança";
+  return p.parcela_total !== null && p.parcela_total > 0 ? `Parcela ${p.parcela_numero} de ${p.parcela_total}` : `Parcela ${p.parcela_numero}`;
+}
+
+function comJuros(p: Pick<ParcelaDoEspelho, "juros_e_multa">): boolean {
+  return p.juros_e_multa !== null && p.juros_e_multa > 0;
+}
+
+/**
+ * Uma linha de `cobranca_detalhe`, com o link na linha de baixo:
+ * "• Parcela 3 de 12 — R$ 648,20 (com juros e multa) — venceu ontem\n  https://…".
+ * Sem juros, só o valor (0 das parcelas em aberto tinham juros em 10/11/2026,
+ * e "(valor original)" em toda linha era ruído).
+ */
 export function linhaDaParcela(p: ParcelaDoEspelho, hoje: string): string {
-  const rotulo = p.parcela_numero !== null ? `Parcela ${rotuloDaParcela(p)}` : rotuloDaParcela(p);
-  const comJuros = p.juros_e_multa !== null && p.juros_e_multa > 0;
-  const valor = comJuros ? `${dinheiro(valorAtualizado(p))} (atualizado)` : `${dinheiro(p.valor)} (valor original)`;
-  const quando = p.vencimento === hoje ? `vence hoje (${diaPorExtenso(p.vencimento)})` : p.vencimento > hoje ? `vence em ${diaPorExtenso(p.vencimento)}` : `venceu em ${diaPorExtenso(p.vencimento)}`;
+  const valor = comJuros(p) ? `${dinheiro(valorAtualizado(p))} (com juros e multa)` : dinheiro(p.valor);
   const link = p.link_fatura ?? p.link_boleto ?? "";
-  return `• ${rotulo} — ${valor} — ${quando}${link ? ` — ${link}` : ""}`;
+  return `• ${rotuloParaOCliente(p)} — ${valor} — ${quandoVence(p.vencimento, hoje)}${link ? `\n  ${link}` : ""}`;
 }
 
 function somaAtualizada(parcelas: readonly ParcelaDoEspelho[]): number {
   return Math.round(parcelas.reduce((s, p) => s + valorAtualizado(p), 0) * 100) / 100;
 }
 
-function primeiroNome(nome: string): string {
+/** "MARIA-JOSÉ" → "Maria-José": a inicial de cada parte em maiúscula, o resto em minúscula. */
+function comIniciais(palavra: string): string {
+  return palavra.toLowerCase().replace(/(^|[-'’])(\p{L})/gu, (_, antes: string, letra: string) => antes + letra.toUpperCase());
+}
+
+/**
+ * O primeiro nome. Pessoa (CPF, ou sem documento) ganha a inicial maiúscula
+ * mesmo vindo em CAIXA ALTA — 49 dos 73 devedores com ficha tinham o nome
+ * assim no Asaas (10/11/2026), e "Olá, JOÃO!" soa como cobrança automática.
+ * Empresa (CNPJ) fica como antes: a sigla em caixa alta continua como está, e
+ * o resto ganha a inicial maiúscula ("padaria" → "Padaria").
+ */
+function primeiroNome(nome: string, pessoa: TipoDePessoa): string {
   const limpo = nome.trim().split(/\s+/)[0] ?? "";
-  // Nome de empresa em caixa alta continua como está; nome de gente ganha a
-  // primeira maiúscula.
-  if (limpo.length <= 1 || limpo === limpo.toUpperCase()) return limpo;
-  return limpo.charAt(0).toUpperCase() + limpo.slice(1).toLowerCase();
+  if (pessoa === "juridica") {
+    if (limpo.length <= 1 || limpo === limpo.toUpperCase()) return limpo;
+    return limpo.charAt(0).toUpperCase() + limpo.slice(1).toLowerCase();
+  }
+  if (limpo.length <= 1) return limpo.toUpperCase();
+  return comIniciais(limpo);
+}
+
+/** "Olá, Maria!" — ou só "Olá!" para empresa (CNPJ) e cliente sem nome. */
+function saudacao(nome: string, pessoa: TipoDePessoa): string {
+  const primeiro = pessoa === "juridica" ? "" : primeiroNome(nome, pessoa);
+  return primeiro.length > 1 ? `Olá, ${primeiro}!` : "Olá!";
+}
+
+/**
+ * A situação numa frase, para seguir "Vi aqui que …" (minúscula no começo,
+ * sem ponto no fim), com singular e plural certos:
+ * - uma: "a parcela 3 de 12, de R$ 450,00, venceu ontem";
+ * - várias, na cobrança: "duas parcelas estão em aberto, somando R$ 900,00, e
+ *   a mais antiga venceu em 11/10";
+ * - várias, no lembrete: "duas parcelas vencem hoje, somando R$ 750,00";
+ * - o lembrete empurrado do fim de semana/feriado acrescenta "… e pode(m) ser
+ *   paga(s) hoje sem juros" (a mesma promessa do `vencimento_texto`, D17), e
+ *   aí o valor é o ORIGINAL — "com juros e multa" ao lado de "sem juros" se
+ *   contradiz (revisão do PR #494). Nenhuma de hoje: "venceram no fim de
+ *   semana" (ou "no feriado"); umas de hoje e outras não: "venceram ou vencem
+ *   hoje".
+ * "parcelas" quando todas são de parcelamento; senão "cobranças".
+ */
+function fraseDaSituacao(lista: readonly ParcelaDoEspelho[], ehLembrete: boolean, hoje: string): string {
+  if (lista.length === 0) return "";
+  if (lista.length === 1) {
+    const p = lista[0];
+    const qual = p.parcela_numero === null ? "a cobrança" : rotuloParaOCliente(p).replace(/^Parcela/, "a parcela");
+    // o lembrete empurrado do fim de semana/feriado (D17): ainda sem juros hoje
+    const empurrado = ehLembrete && p.vencimento < hoje;
+    const valor = comJuros(p) && !empurrado ? `${dinheiro(valorAtualizado(p))} com juros e multa` : dinheiro(p.valor);
+    return `${qual}, de ${valor}, ${quandoVence(p.vencimento, hoje)}${empurrado ? " e pode ser paga hoje sem juros" : ""}`;
+  }
+  const n = lista.length;
+  const quantas = `${NUMEROS_POR_EXTENSO[n] ?? String(n)} ${lista.every((p) => p.parcela_numero !== null) ? "parcelas" : "cobranças"}`;
+  const total = dinheiro(somaAtualizada(lista));
+  if (ehLembrete) {
+    const deHoje = lista.filter((p) => p.vencimento === hoje).length;
+    if (deHoje === n) return `${quantas} vencem hoje, somando ${total}`;
+    const original = dinheiro(Math.round(lista.reduce((s, p) => s + p.valor, 0) * 100) / 100);
+    const noFimDeSemana = lista.filter((p) => [0, 6].includes(diaDaSemana(p.vencimento))).length;
+    const quando =
+      deHoje > 0 ? "venceram ou vencem hoje" : noFimDeSemana === n ? "venceram no fim de semana" : noFimDeSemana === 0 ? "venceram no feriado" : "venceram no fim de semana e no feriado";
+    return `${quantas} ${quando}, somando ${original}, e podem ser pagas hoje sem juros`;
+  }
+  return `${quantas} estão em aberto, somando ${total}, e a mais antiga ${quandoVence(lista[0].vencimento, hoje)}`;
 }
 
 export interface DadosDasVariaveis {
   clienteNome: string;
+  /** pelo CPF/CNPJ do espelho (`tipoDePessoa`); ausente = `null`, tratado como pessoa */
+  pessoa?: TipoDePessoa;
   escritorioNome: string;
   /** TODAS as vencidas do cliente, da mais antiga para a mais nova (D11) */
   vencidas: readonly ParcelaDoEspelho[];
@@ -282,24 +435,46 @@ export interface DadosDasVariaveis {
  * cliente deve (D11); no lembrete, só o que vence hoje. `dias_de_atraso` é
  * o da parcela que cruzou o marco (vencida na sexta, o marco de 1 dia sai
  * na segunda com "3"); `dias_de_atraso_maior`, o da mais antiga.
+ *
+ * As do texto humano (10/11/2026): `saudacao` ("Olá, Maria!"/"Olá!"),
+ * `cobranca_situacao` (a frase, com concordância) e `cobranca_links` (o link
+ * sozinho quando há UMA cobrança a pagar; com várias — inclusive a que
+ * vence hoje junto —, a lista com um por linha: o mesmo texto serve aos dois
+ * casos, sem ramo por quantidade).
+ * `vencidas_quantidade` é SEMPRE o número de vencidas (0 no
+ * lembrete, ao contrário de `cobranca_quantidade`): é o que a condição
+ * "Situação da cobrança" lê (`automations/situacao-da-cobranca.ts`).
  */
 export function montarVariaveis(d: DadosDasVariaveis): Record<string, string> {
   const fuso = d.fuso ?? FUSO_PADRAO;
+  const pessoa = d.pessoa ?? null;
   const ehLembrete = d.vencidas.length === 0 && d.venceHoje.length > 0;
-  const detalhe = (ehLembrete ? d.venceHoje : d.vencidas).map((p) => linhaDaParcela(p, d.hoje)).join("\n");
+  const daMensagem = ehLembrete ? d.venceHoje : d.vencidas;
+  const detalhe = daMensagem.map((p) => linhaDaParcela(p, d.hoje)).join("\n");
   const maisAntiga = d.vencidas[0] ?? null;
   const cruzou = d.cruzaram[0] ?? null;
   const dias = (p: ParcelaDoEspelho | null) => (p ? String(Math.max(0, diasDeAtraso(p.vencimento, d.agora, fuso) ?? 0)) : "0");
   const venceHojeDetalhe = d.venceHoje.map((p) => linhaDaParcela(p, d.hoje)).join("\n");
+  // O que dá para pagar a partir desta mensagem: as vencidas e, na cobrança
+  // que sai no dia de outro vencimento, também a de hoje (D17) — assim o
+  // texto não precisa da linha solta `vence_hoje_detalhe`.
+  const paraPagar = ehLembrete ? d.venceHoje : [...d.vencidas, ...d.venceHoje];
+  const unica = paraPagar.length === 1 ? paraPagar[0] : null;
+  const linhasParaPagar = paraPagar.map((p) => linhaDaParcela(p, d.hoje)).join("\n");
   return {
+    saudacao: saudacao(d.clienteNome, pessoa),
     cliente_nome: d.clienteNome.trim(),
-    cliente_primeiro_nome: primeiroNome(d.clienteNome),
+    cliente_primeiro_nome: primeiroNome(d.clienteNome, pessoa),
     escritorio_nome: d.escritorioNome.trim(),
+    cobranca_situacao: fraseDaSituacao(daMensagem, ehLembrete, d.hoje),
+    cobranca_links: unica ? unica.link_fatura || unica.link_boleto || linhasParaPagar : linhasParaPagar,
     cobranca_detalhe: detalhe,
-    cobranca_parcelas: rotulosDasParcelas(ehLembrete ? d.venceHoje : d.vencidas, 12),
+    // sem a descrição da avulsa (`rotuloParaOCliente`): pode ser anotação interna
+    cobranca_parcelas: rotulosDasParcelas(daMensagem.map((p) => ({ ...p, descricao: null })), 12),
     cobranca_valor: dinheiro(somaAtualizada(ehLembrete ? d.venceHoje : d.vencidas)),
     cobranca_vencimento: maisAntiga ? diaPorExtenso(maisAntiga.vencimento) : d.venceHoje[0] ? diaPorExtenso(d.venceHoje[0].vencimento) : "",
-    cobranca_quantidade: String(ehLembrete ? d.venceHoje.length : d.vencidas.length),
+    cobranca_quantidade: String(daMensagem.length),
+    vencidas_quantidade: String(d.vencidas.length),
     dias_de_atraso: dias(cruzou),
     dias_de_atraso_maior: dias(maisAntiga),
     marco_detalhe: d.cruzaram.map((p) => linhaDaParcela(p, d.hoje)).join("\n"),
@@ -324,7 +499,7 @@ export interface AutomacaoDaRegua {
   id: string;
   nome: string;
   tipo: "atraso" | "vence_hoje";
-  /** `dias_de_atraso` (0 no lembrete) */
+  /** `dias_de_atraso`; no lembrete, o TURNO da trava: 0 = do dia, 1 = da noite (1133) */
   marco: number;
   horaEnvio: string;
   somenteDiasUteis: boolean;
@@ -339,8 +514,8 @@ export function lerAutomacaoDaRegua(a: { id: string; name: string; trigger_type:
   const cfg = (a.trigger_config ?? {}) as Record<string, unknown>;
   const somenteDiasUteis = cfg.somente_dias_uteis !== false;
   if (a.trigger_type === "asaas_cobranca_vence_hoje") {
-    const horaEnvio = horaDeEnvioValida(cfg.hora_envio) ? cfg.hora_envio : HORA_PADRAO_LEMBRETE;
-    return { id: a.id, nome: a.name, tipo: "vence_hoje", marco: 0, horaEnvio, somenteDiasUteis };
+    const horaEnvio = horaDeLembreteValida(cfg.hora_envio) ? cfg.hora_envio : HORA_PADRAO_LEMBRETE;
+    return { id: a.id, nome: a.name, tipo: "vence_hoje", marco: turnoDaHora(horaEnvio) === "noite" ? 1 : 0, horaEnvio, somenteDiasUteis };
   }
   if (a.trigger_type === "asaas_cobranca_vencida") {
     const marco = Number(cfg.dias_de_atraso);
@@ -445,11 +620,16 @@ export interface GrupoDeLembrete {
 }
 
 /**
- * Puro: os lembretes de hoje, por cliente (D17). ⚠️ Cliente com marco de
- * cobrança cruzando hoje (`clientesComMarcoHoje`) NÃO recebe lembrete — a
- * cobrança das 9h absorve (uma mensagem só, 13/09). Se às 9h a cobrança não
- * sair (pagou as vencidas antes), o cliente deixa de ter marco e o lembrete
- * volta a ser candidato no ciclo seguinte, dentro da janela.
+ * Puro: os lembretes de hoje, por cliente e por TURNO (D17; a noite, 1133).
+ * UM lembrete por turno — o de menor id: dois ligados no mesmo turno
+ * disputariam a mesma trava. ⚠️ Só o do DIA cede a vez: cliente com marco de
+ * cobrança cruzando hoje (`clientesComMarcoHoje`) não recebe o lembrete do
+ * dia — a cobrança das 9h absorve (uma mensagem só, 13/09). Se às 9h a
+ * cobrança não sair (pagou as vencidas antes), o cliente deixa de ter marco e
+ * o lembrete volta a ser candidato no ciclo seguinte, dentro da janela. O da
+ * NOITE lembra quem AINDA não pagou o que vence hoje, tenha recebido de manhã
+ * o lembrete ou a cobrança com a linha de hoje (decisão do operador,
+ * 10/11/2026) — a releitura no Asaas antes da trava tira quem pagou no dia.
  */
 export function agruparLembretes(
   automacoes: readonly AutomacaoDaRegua[],
@@ -458,20 +638,26 @@ export function agruparLembretes(
   ctx: ContextoDaRegua,
   agora: Date,
 ): GrupoDeLembrete[] {
-  const lembrete = automacoes.find((a) => a.tipo === "vence_hoje");
-  if (!lembrete) return [];
-  if (!janelaAberta(agora, ctx.hoje, lembrete.horaEnvio, ctx.fuso)) return [];
-  const dias = new Set(diasDoLembrete(ctx.hoje, lembrete.somenteDiasUteis));
-  if (dias.size === 0) return [];
-  const grupos = new Map<string, GrupoDeLembrete>();
-  for (const p of parcelas) {
-    if (!cabeNoLembrete(p, dias, ctx.hoje)) continue;
-    if (clientesComMarcoHoje.has(p.asaas_customer_id)) continue;
-    const g = grupos.get(p.asaas_customer_id) ?? { asaasCustomerId: p.asaas_customer_id, automacao: lembrete, venceHoje: [] };
-    g.venceHoje.push(p);
-    grupos.set(p.asaas_customer_id, g);
+  const saida: GrupoDeLembrete[] = [];
+  for (const turno of [0, 1]) {
+    const lembrete = automacoes
+      .filter((a) => a.tipo === "vence_hoje" && a.marco === turno)
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))[0];
+    if (!lembrete) continue;
+    if (!janelaAberta(agora, ctx.hoje, lembrete.horaEnvio, ctx.fuso, fimDaJanela(lembrete))) continue;
+    const dias = new Set(diasDoLembrete(ctx.hoje, lembrete.somenteDiasUteis));
+    if (dias.size === 0) continue;
+    const grupos = new Map<string, GrupoDeLembrete>();
+    for (const p of parcelas) {
+      if (!cabeNoLembrete(p, dias, ctx.hoje)) continue;
+      if (turno === 0 && clientesComMarcoHoje.has(p.asaas_customer_id)) continue;
+      const g = grupos.get(p.asaas_customer_id) ?? { asaasCustomerId: p.asaas_customer_id, automacao: lembrete, venceHoje: [] };
+      g.venceHoje.push(p);
+      grupos.set(p.asaas_customer_id, g);
+    }
+    saida.push(...grupos.values());
   }
-  return [...grupos.values()];
+  return saida;
 }
 
 /**

@@ -1,0 +1,12 @@
+{
+  "AudioCaptureAllowedUrls": ["https://web.whatsapp.com", "http://127.0.0.1:8090"],
+  "VideoCaptureAllowed": false,
+  "DownloadRestrictions": 3,
+  "DefaultNotificationsSetting": 2,
+  "PasswordManagerEnabled": false,
+  "MetricsReportingEnabled": false,
+  "BrowserSignin": 0,
+  "SyncDisabled": true,
+  "TranslateEnabled": false,
+  "PromotionalTabsEnabled": false
+}

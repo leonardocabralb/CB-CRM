@@ -1,0 +1,23 @@
+{
+  "name": "maquina-de-ligacoes",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Computador de ligações: um Chrome com o WhatsApp Web de um número, comandado pelo CRM (docs/PLANO-ligar-pelo-crm.md).",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "packageManager": "npm@10.9.9",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "playwright-core": "1.65.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26",
+    "typescript": "^6"
+  }
+}

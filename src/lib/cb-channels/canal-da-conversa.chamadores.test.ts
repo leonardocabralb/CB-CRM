@@ -55,6 +55,10 @@ const SAIDA = [
   'lib/ia-agentes/eco.ts',
   // A bolha "não enviada" do robô: a tentativa que o provedor recusou.
   'lib/whatsapp/envio-que-falhou.ts',
+  // A faixa da ligação pelo CRM (1134): só REGISTRO (D6/D6b). Preenche a
+  // conversa SEM número (a recebida de número novo) e nunca a move — a
+  // feita sai do número da própria conversa.
+  'lib/whatsapp/ligacoes/pelo-crm.ts',
 ];
 
 const FORA: Record<string, string> = {

@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/ai/admin-client'
 import { getCurrentAccount, toErrorResponse } from '@/lib/auth/account'
 import { ehInstagram } from '@/lib/cb-channels/transporte'
+import { ehMotivoTemporario, ERRO_DA_ESPERA_DA_EQUIPE, lerVoltaAposMin } from '@/lib/ia-agentes/pausa'
 import {
   canalDaIaNaConversa,
   ehNumeroDeConexao,
@@ -29,7 +30,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  *     e o card entrou na etapa depois — D27), MESMO com a IA pausada (a faixa diz "IA
  *     pausada" e oferece Retomar); nulo = ninguém.
  *   - `pausada`/`pausadaPor` — a pausa e o motivo (`gente`, `botao`,
- *     `transferencia`, `automacao`; nulo = pausa sem motivo).
+ *     `desativada`, `transferencia`, `automacao`; nulo = pausa sem motivo).
+ *   - `voltaAposMin` — o N da CONTA (1138): em quantos minutos sem resposta
+ *     da equipe a IA volta; 0 = desligado (toda pausa até o "Retomar IA").
+ *   - `pausaTemporaria` — a pausa VOLTA sozinha (`gente`/`botao` com N > 0).
+ *   - `voltaEm` — quando o turno que espera a equipe vai rodar (o pendente
+ *     marcado `ERRO_DA_ESPERA_DA_EQUIPE`); nulo = nenhuma mensagem esperando.
  *   - `motivo` — por que `agente` é nulo (o `MotivoDeNinguem` do motor).
  *   - `naoAtende` — `{ agente: { id, nome }, motivo }` quando a etapa do card
  *     TEM agente, mas ele não atende esta conversa (desligado, sem a conexão,
@@ -139,10 +145,48 @@ export async function GET(_request: Request, { params }: Contexto) {
       agente && motivo && (MOTIVOS_DO_AGENTE_QUE_NAO_ATENDE as readonly string[]).includes(motivo)
         ? { agente: { id: agente.id, nome: agente.nome }, motivo: motivo as MotivoDoAgenteQueNaoAtende }
         : null
+
+    // A pausa temporária (1138): o N da conta, e quando a IA volta — o
+    // pendente que espera a equipe. Só onde há agente ou pausa (a faixa só
+    // aparece aí). Leitura que falha é 500, como as outras: nunca "0 = como
+    // antes" nem "não volta" por ignorância.
+    let voltaAposMin = 0
+    let voltaEm: string | null = null
+    if (decisao.quem === 'agente' || pausada) {
+      try {
+        voltaAposMin = await lerVoltaAposMin(db, ctx.accountId)
+      } catch (err) {
+        return falhou('pausa da conta', err instanceof Error ? err.message : String(err))
+      }
+    }
+    // A temporária só VOLTA onde um agente atenderia (o card numa etapa com
+    // agente ligado, com a conexão, D27): no card que saiu para etapa sem
+    // agente, ou com o agente desligado, nenhum turno nasce — "volta sozinha"
+    // seria falso.
+    const pausaTemporaria =
+      pausada && voltaAposMin > 0 && ehMotivoTemporario(pausadaPor) && decisao.quem === 'agente'
+    if (pausaTemporaria) {
+      const { data: espera, error: erroEspera } = await db
+        .from('cb_ia_turnos')
+        .select('executar_apos')
+        .eq('account_id', ctx.accountId)
+        .eq('conversation_id', conversationId)
+        .eq('status', 'aguardando')
+        .eq('tipo', 'resposta')
+        .eq('erro', ERRO_DA_ESPERA_DA_EQUIPE)
+        .order('executar_apos', { ascending: true })
+        .limit(1)
+      if (erroEspera) return falhou('espera da equipe', erroEspera.message)
+      const primeira = (espera ?? [])[0] as { executar_apos?: unknown } | undefined
+      voltaEm = typeof primeira?.executar_apos === 'string' ? primeira.executar_apos : null
+    }
     return NextResponse.json({
       agente: decisao.quem === 'agente' && agente ? { id: agente.id, nome: agente.nome } : null,
       pausada,
       pausadaPor,
+      pausaTemporaria,
+      voltaAposMin,
+      voltaEm,
       motivo,
       naoAtende,
     })

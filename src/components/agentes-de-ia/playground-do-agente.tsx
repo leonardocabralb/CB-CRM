@@ -68,6 +68,13 @@
 // escrever de novo. Com a retomada DESLIGADA na versão testada, a bolha avisa
 // que na produção nada sairia. O botão só acende quando o turno real ARMARIA
 // uma retomada: a última resposta saiu sem transferir nem passar a conversa.
+//
+// O RAIO-X (10/11/2026, `playground-raio-x.tsx`): as ações saem em CARTÕES
+// debaixo da resposta (com o "Transferir para" da versão testada quando a
+// conversa iria para a equipe); "Bastidores" guarda o resumo do raciocínio
+// do modelo, o que ele escreveu com os marcadores, o que viu e o pedido; e o
+// painel "O lead depois desta conversa", ao lado, soma tudo o que o agente
+// teria feito. Tudo derivado do que a rota devolve — nada a mais é gravado.
 
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
@@ -76,33 +83,30 @@ import {
   Ban,
   Bot,
   CalendarClock,
-  CalendarX,
-  ClipboardX,
   Columns2,
-  Eye,
-  FileText,
   History,
-  Link2Off,
   ListRestart,
   Loader2,
   PowerOff,
   RotateCcw,
   Send,
-  ShieldAlert,
   UserCircle2,
-  Wrench,
   X,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { FONTE_MONO } from '@/components/settings/copiar';
 import { useAuth } from '@/hooks/use-auth';
 import { SeletorDeContatoRemoto } from '@/components/contacts/seletor-de-contato-remoto';
+import { fetchAccountMembersOrNull, memberLabel } from '@/lib/account/members';
+import { mostraRaciocinio } from '@/lib/ai/providers/raciocinio';
+import type { AiProvider } from '@/lib/ai/types';
 import { TETO_DE_RESULTADOS } from '@/lib/contacts/busca-remota';
 import { ACAO_TRANSFERIR } from '@/lib/ia-agentes/acoes';
 import { lerRetomada } from '@/lib/ia-agentes/retomada';
 import { cn } from '@/lib/utils';
+import type { AccountMember } from '@/types';
+import { Bastidores, EfeitosDaResposta, idDaResposta, PainelDoLead, type DestinoDaTransferencia } from './playground-raio-x';
 import {
   HORARIOS_A_MOSTRA,
   esperaDoLimite,
@@ -112,15 +116,7 @@ import {
 } from './ferramentas';
 import { NAO_MUDAM_A_RESPOSTA } from './rascunho';
 import type { AcoesSimuladas, HorarioOferecido, IaAgente } from './tipos';
-import {
-  fraseDaAcao,
-  motivoDaRecusa,
-  rotuloDaChaveDoRascunho,
-  rotuloDoBloco,
-  rotuloDoTipoDeAcao,
-  textoDaParadaDaRetomada,
-  textoDoCodigo,
-} from './textos';
+import { rotuloDaChaveDoRascunho, textoDaParadaDaRetomada, textoDoCodigo } from './textos';
 
 /** O que o agente viu para gerar a resposta (`vistos` da rota). */
 interface Vistos {
@@ -170,6 +166,14 @@ interface Turno {
   versao?: Versao;
   /** Só do agente: o pedido que foi ao modelo, quando pedido (`verPedido`). */
   pedido?: string;
+  /** Só do agente: o resumo do raciocínio (10/11/2026); `null` = o modelo não o devolveu. */
+  raciocinio?: string | null;
+  /** Só do agente: o modelo da versão que respondeu devolve o raciocínio (`mostraRaciocinio`). */
+  mostraRaciocinio?: boolean;
+  /** Só do agente: o que o modelo escreveu, com os marcadores (fora a retomada). */
+  respostaCrua?: string;
+  /** Só do agente: o "Transferir para" da versão que gerou esta resposta (nulo = a fila). */
+  transferirPara?: string | null;
 }
 
 /** Um lado da comparação salvo × rascunho. */
@@ -199,10 +203,26 @@ function paraARota(turnos: Turno[]) {
   return turnos.map((x) => ({ role: x.role, content: x.content }));
 }
 
-/** O corpo da resposta da rota → a bolha do agente. */
-function turnoDaResposta(corpo: Record<string, unknown>, versao: Versao): Turno {
+/** Os bastidores da resposta (10/11/2026): parse, nunca `as`. */
+function lerBastidores(corpo: Record<string, unknown>, mostra: boolean): Pick<Turno, 'raciocinio' | 'mostraRaciocinio' | 'respostaCrua'> {
+  return {
+    raciocinio: typeof corpo.raciocinio === 'string' && corpo.raciocinio.trim() ? corpo.raciocinio : null,
+    mostraRaciocinio: mostra,
+    ...(typeof corpo.respostaCrua === 'string' ? { respostaCrua: corpo.respostaCrua } : {}),
+  };
+}
+
+/** O corpo da resposta da rota → a bolha do agente. `mostra` = o modelo da versão devolve o raciocínio. */
+function turnoDaResposta(
+  corpo: Record<string, unknown>,
+  versao: Versao,
+  mostra: boolean,
+  transferirPara: string | null,
+): Turno {
   const usage = corpo.usage as { totalTokens?: unknown } | null | undefined;
   return {
+    ...lerBastidores(corpo, mostra),
+    transferirPara,
     role: 'assistant',
     content: typeof corpo.reply === 'string' ? corpo.reply : '',
     handoff: corpo.handoff === true,
@@ -219,6 +239,17 @@ function turnoDaResposta(corpo: Record<string, unknown>, versao: Versao): Turno 
     versao,
     pedido: typeof corpo.pedido === 'string' ? corpo.pedido : undefined,
   };
+}
+
+/** O modelo de uma versão: o do rascunho, se ele o mudou; senão o salvo. */
+function modeloDa(rascunho: Record<string, unknown> | null, agente: IaAgente): string {
+  return rascunho && typeof rascunho.modelo === 'string' && rascunho.modelo.trim() ? rascunho.modelo.trim() : agente.modelo;
+}
+
+/** O provedor de uma versão: o do rascunho, se ele o mudou; senão o salvo. */
+function provedorDa(rascunho: Record<string, unknown> | null, agente: IaAgente): AiProvider {
+  const p = rascunho?.provedor;
+  return p === 'openai' || p === 'anthropic' || p === 'gemini' ? p : agente.provedor;
 }
 
 /** "14:32" no idioma de quem vê; data ilegível = travessão. */
@@ -263,17 +294,6 @@ function proximaRetomada(turnos: Turno[], cadencia: number): number | null {
     return null;
   }
   return seguidas < cadencia ? seguidas + 1 : null;
-}
-
-/** A resposta tem algo das ações (F4) a mostrar: pedido vazado, link inventado, reunião ou ação prometida, ação aceita ou recusada. */
-function temAvisoDeAcao(x: Turno): boolean {
-  return (
-    x.pedidoVazado === true ||
-    x.linkInventado === true ||
-    x.reuniaoPrometida === true ||
-    x.acaoPrometida === true ||
-    (!!x.acoes && (x.acoes.aceitas.length > 0 || x.acoes.recusadas.length > 0))
-  );
 }
 
 type Falha = { ok: false; texto: string; descricao?: string; esperaMs: number | null };
@@ -327,8 +347,58 @@ export function PlaygroundDoAgente({
     comparacao !== null && (comparacao.salvo.fase === 'carregando' || comparacao.rascunho.fase === 'carregando');
   const ocupado = enviando || comparando || roteiro !== null;
   const doCliente = turnos.filter((x) => x.role === 'user').length;
-  const modelo =
-    usaRascunho && typeof rascunho.modelo === 'string' && rascunho.modelo.trim() ? rascunho.modelo.trim() : agente.modelo;
+  // O número de cada resposta do agente (1, 2…), o mesmo que o painel do lead mostra.
+  let respostasAteAqui = 0;
+  const numeroDaResposta = turnos.map((x) => (x.role === 'assistant' ? ++respostasAteAqui : 0));
+  const modelo = modeloDa(usaRascunho ? rascunho : null, agente);
+  // O modelo de cada versão devolve o resumo do raciocínio? (os Bastidores dizem quando não)
+  const mostraNoSalvo = mostraRaciocinio(agente.provedor, agente.modelo);
+  const mostraNoRascunho = mostraRaciocinio(provedorDa(rascunho, agente), modeloDa(rascunho, agente));
+  const mostraODaVersao = usaRascunho ? mostraNoRascunho : mostraNoSalvo;
+
+  // "Transferir para" da versão testada: a quem a conversa iria (10/11/2026).
+  // A equipe é lida só para dar NOME ao id; `undefined` = ainda carregando,
+  // `null` = não carregou (nunca "fora da equipe").
+  const [membros, setMembros] = useState<AccountMember[] | null | undefined>(undefined);
+  useEffect(() => {
+    let vivo = true;
+    void (async () => {
+      const m = await fetchAccountMembersOrNull();
+      if (vivo) setMembros(m);
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, []);
+  // O "Transferir para" de uma versão (o do rascunho, se ele o mudou). Cada
+  // resposta guarda o DA VERSÃO QUE A GEROU (Codex, #495): na comparação, o
+  // salvo e o rascunho podem transferir para pessoas diferentes, e trocar
+  // "Testar" depois não muda o que uma resposta antiga diria.
+  const transferirParaDa = (r: Record<string, unknown> | null): string | null =>
+    r && r.transferir_para !== undefined
+      ? typeof r.transferir_para === 'string'
+        ? r.transferir_para
+        : null
+      : agente.transferirPara;
+  const transferirParaDaChamada = transferirParaDa(rascunhoDaChamada);
+  /** O destino em texto, com o nome pela equipe lida. */
+  const destinoDe = (id: string | null): DestinoDaTransferencia => {
+    const membro = id && membros ? membros.find((m) => m.user_id === id) : undefined;
+    return {
+      texto:
+        id === null
+          ? t('playground.destinoFila')
+          : membro
+            ? t('playground.destinoMembro', { nome: memberLabel(membro) })
+            : membros === undefined
+              ? t('playground.destinoCarregando')
+              : t('playground.destinoDesconhecido'),
+      pessoa: id !== null,
+    };
+  };
+  /** O destino de uma resposta: o da versão que a gerou (a de agora, se ela não o guardou). */
+  const destinoDaResposta = (x: { transferirPara?: string | null }): DestinoDaTransferencia =>
+    destinoDe(x.transferirPara !== undefined ? x.transferirPara : transferirParaDaChamada);
 
   // O que mudou no rascunho, separado do que não muda a resposta do teste.
   const chaves = rascunho ? Object.keys(rascunho) : [];
@@ -408,6 +478,8 @@ export function PlaygroundDoAgente({
     const antes = turnos;
     const proximos: Turno[] = [...turnos, { role: 'user', content: conteudo }];
     const versao = versaoDaChamada;
+    const mostra = mostraODaVersao;
+    const destino = transferirParaDaChamada;
     setTurnos(proximos);
     setTexto('');
     setComparacao(null);
@@ -423,12 +495,14 @@ export function PlaygroundDoAgente({
       setTexto(conteudo);
       return;
     }
-    setTurnos([...proximos, turnoDaResposta(r.corpo, versao)]);
+    setTurnos([...proximos, turnoDaResposta(r.corpo, versao, mostra, destino)]);
   }
 
   async function simularRetomada() {
     if (ocupado || tentativaDaRetomada === null) return;
     const versao = versaoDaChamada;
+    const mostra = mostraODaVersao;
+    const destino = transferirParaDaChamada;
     setComparacao(null);
     setEnviando(true);
     const r = await chamar({
@@ -458,6 +532,8 @@ export function PlaygroundDoAgente({
         retomada: { tentativa: lida.tentativa, de: lida.de, parada: lida.parada, desligada: lida.desligada },
         versao,
         pedido: typeof r.corpo.pedido === 'string' ? r.corpo.pedido : undefined,
+        ...lerBastidores(r.corpo, mostra),
+        transferirPara: destino,
       },
     ]);
   }
@@ -481,13 +557,14 @@ export function PlaygroundDoAgente({
       chamar({ messages: mensagens }),
       chamar({ messages: mensagens, rascunho: doRascunho }),
     ]);
-    const lado = (x: typeof s, versao: Versao): LadoDaComparacao =>
-      x.ok ? { fase: 'pronto', turno: turnoDaResposta(x.corpo, versao) } : { fase: 'falhou', texto: x.texto };
+    const lado = (x: typeof s, versao: Versao, mostra: boolean, destino: string | null): LadoDaComparacao =>
+      x.ok ? { fase: 'pronto', turno: turnoDaResposta(x.corpo, versao, mostra, destino) } : { fase: 'falhou', texto: x.texto };
     setComparacao({
       pergunta: turnos[ate].content,
       salvoEm,
-      salvo: lado(s, { tipo: 'salvo', em: salvoEm }),
-      rascunho: lado(r, { tipo: 'rascunho' }),
+      // Cada lado com o "Transferir para" da SUA versão (Codex, #495).
+      salvo: lado(s, { tipo: 'salvo', em: salvoEm }, mostraNoSalvo, agente.transferirPara),
+      rascunho: lado(r, { tipo: 'rascunho' }, mostraNoRascunho, transferirParaDa(doRascunho)),
     });
   }
 
@@ -503,6 +580,8 @@ export function PlaygroundDoAgente({
     if (mensagens.length === 0 || ocupado) return;
     const antes = turnos;
     const versao = versaoDaChamada;
+    const mostra = mostraODaVersao;
+    const destino = transferirParaDaChamada;
     const doRascunho = rascunhoDaChamada;
     const salvoNoInicio = agente.updatedAt;
     const salvouNoMeio = () => salvoEmRef.current !== salvoNoInicio;
@@ -533,7 +612,7 @@ export function PlaygroundDoAgente({
           // laço devolve a conversa de antes (Codex #442).
           if (!vivoRef.current || pararRef.current || salvouNoMeio()) continue;
           if (r.ok) {
-            novos = [...novos, turnoDaResposta(r.corpo, versao)];
+            novos = [...novos, turnoDaResposta(r.corpo, versao, mostra, destino)];
             setTurnos(novos);
             setRoteiro({ feitas: i + 1, total, pausadoAte: null });
             break;
@@ -635,7 +714,9 @@ export function PlaygroundDoAgente({
         <Checkbox checked={verPedido} onCheckedChange={(v) => setVerPedido(v === true)} />
         {t('playground.verPedido')}
       </label>
-      <div className="flex h-[60vh] min-h-[420px] flex-col rounded-xl border border-border bg-card">
+      {/* A conversa e, ao lado (embaixo no celular), a soma do que o agente teria feito. */}
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="flex h-[60vh] min-h-[420px] min-w-0 flex-col rounded-xl border border-border bg-card">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
           <span className="min-w-0 truncate text-sm font-medium text-foreground">
             {agente.nome} · <code className="text-xs text-muted-foreground">{modelo}</code>
@@ -696,20 +777,25 @@ export function PlaygroundDoAgente({
             </div>
           ) : null}
           {turnos.map((x, i) => (
-            <div key={i} className={cn('flex gap-2', x.role === 'user' ? 'justify-end' : 'justify-start')}>
+            <div
+              key={i}
+              // A resposta n do agente: o painel do lead leva até ela.
+              id={x.role === 'assistant' ? idDaResposta(agente.id, numeroDaResposta[i]) : undefined}
+              className={cn('flex scroll-m-4 gap-2', x.role === 'user' ? 'justify-end' : 'justify-start')}
+            >
               {x.role === 'assistant' ? <Bot className="mt-1 size-5 shrink-0 text-primary" /> : null}
               <div
                 className={cn(
                   // `min-w-0` + `break-words`: um link longo (o do boleto,
                   // justo o que o agente de cobrança manda) não vaza da bolha.
-                  'min-w-0 max-w-[80%] break-words rounded-2xl px-3.5 py-2 text-sm',
+                  'min-w-0 break-words rounded-2xl px-3.5 py-2 text-sm',
                   x.role === 'user'
-                    ? 'rounded-br-sm bg-primary text-primary-foreground'
-                    : 'rounded-bl-sm bg-muted text-foreground'
+                    ? 'max-w-[80%] rounded-br-sm bg-primary text-primary-foreground'
+                    : 'max-w-[88%] rounded-bl-sm bg-muted text-foreground'
                 )}
               >
                 {x.role === 'assistant' ? (
-                  <ConteudoDaResposta x={x} />
+                  <ConteudoDaResposta x={x} destinoDaTransferencia={destinoDaResposta(x)} />
                 ) : (
                   <p className="whitespace-pre-wrap">{x.content}</p>
                 )}
@@ -747,8 +833,13 @@ export function PlaygroundDoAgente({
                 <LadoComparado
                   titulo={t('playground.comparacaoSalvo', { hora: horaDe(comparacao.salvoEm) })}
                   lado={comparacao.salvo}
+                  destinoDaResposta={destinoDaResposta}
                 />
-                <LadoComparado titulo={t('playground.comparacaoRascunho')} lado={comparacao.rascunho} />
+                <LadoComparado
+                  titulo={t('playground.comparacaoRascunho')}
+                  lado={comparacao.rascunho}
+                  destinoDaResposta={destinoDaResposta}
+                />
               </div>
             </div>
           ) : null}
@@ -814,12 +905,22 @@ export function PlaygroundDoAgente({
           </Button>
         </div>
       </div>
+      <PainelDoLead turnos={turnos} agenteId={agente.id} destinoDaResposta={destinoDaResposta} />
+      </div>
     </div>
   );
 }
 
 /** Um lado da comparação salvo × rascunho: carregando, a falha, ou a resposta com tudo o que a bolha mostra. */
-function LadoComparado({ titulo, lado }: { titulo: string; lado: LadoDaComparacao }) {
+function LadoComparado({
+  titulo,
+  lado,
+  destinoDaResposta,
+}: {
+  titulo: string;
+  lado: LadoDaComparacao;
+  destinoDaResposta: (x: Turno) => DestinoDaTransferencia;
+}) {
   return (
     <div className="min-w-0 break-words rounded-lg bg-muted px-3 py-2 text-sm text-foreground">
       <p className="mb-1 text-[11px] font-medium text-muted-foreground">{titulo}</p>
@@ -828,19 +929,20 @@ function LadoComparado({ titulo, lado }: { titulo: string; lado: LadoDaComparaca
       ) : lado.fase === 'falhou' ? (
         <p className="text-xs text-red-700 dark:text-red-300">{lado.texto}</p>
       ) : (
-        <ConteudoDaResposta x={lado.turno} />
+        <ConteudoDaResposta x={lado.turno} destinoDaTransferencia={destinoDaResposta(lado.turno)} />
       )}
     </div>
   );
 }
 
 /**
- * O que a bolha do agente mostra: o texto (ou a retomada simulada), a
- * transferência e a passagem, os horários, as ações simuladas e as travas, o
- * que ele viu, o pedido (quando pedido) e o rodapé com o selo da versão que a
+ * O que a bolha do agente mostra: o texto (ou a retomada simulada), os
+ * horários, os cartões do que aconteceria no CRM (as ações, a passagem ou a
+ * transferência, as travas e as recusadas), os bastidores (raciocínio,
+ * resposta crua, o que viu, o pedido) e o rodapé com o selo da versão que a
  * gerou e os tokens.
  */
-function ConteudoDaResposta({ x }: { x: Turno }) {
+function ConteudoDaResposta({ x, destinoDaTransferencia }: { x: Turno; destinoDaTransferencia: DestinoDaTransferencia }) {
   const t = useTranslations('IaAgentes');
   return (
     <>
@@ -863,112 +965,11 @@ function ConteudoDaResposta({ x }: { x: Turno }) {
           <span>{t('playground.retomadaDesligada')}</span>
         </p>
       ) : null}
-      {x.handoff ? (
-        <p
-          className={cn(
-            'flex items-center gap-1 text-xs text-amber-700 dark:text-amber-300',
-            x.content && 'mt-1.5 border-t border-border/50 pt-1.5'
-          )}
-        >
-          <UserCircle2 className="size-3.5" /> {t('playground.transferiria')}
-        </p>
-      ) : null}
-      {x.passaPara ? (
-        <p className="flex items-start gap-1 text-xs text-primary">
-          <Bot className="mt-px size-3.5 shrink-0" /> <span>{t('playground.passaria', { agente: x.passaPara })}</span>
-        </p>
-      ) : null}
       {x.horarios ? <HorariosOferecidos horarios={x.horarios} /> : null}
-      {temAvisoDeAcao(x) ? (
-        <div className="mt-1.5 space-y-1 border-t border-border/50 pt-1.5 text-xs">
-          {x.pedidoVazado ? (
-            <p className="flex items-start gap-1 text-red-700 dark:text-red-300">
-              <ShieldAlert className="mt-px size-3.5 shrink-0" />
-              <span>{t('playground.pedidoVazado')}</span>
-            </p>
-          ) : null}
-          {x.linkInventado ? (
-            <p className="flex items-start gap-1 text-red-700 dark:text-red-300">
-              <Link2Off className="mt-px size-3.5 shrink-0" />
-              <span>{t('playground.linkInventado')}</span>
-            </p>
-          ) : null}
-          {x.transferenciaInferida ? (
-            <p className="flex items-start gap-1 text-amber-700 dark:text-amber-300">
-              <UserCircle2 className="mt-px size-3.5 shrink-0" />
-              <span>{t('playground.transferenciaInferida')}</span>
-            </p>
-          ) : null}
-          {x.reuniaoPrometida ? (
-            <p className="flex items-start gap-1 text-red-700 dark:text-red-300">
-              <CalendarX className="mt-px size-3.5 shrink-0" />
-              <span>{t('playground.reuniaoPrometida')}</span>
-            </p>
-          ) : null}
-          {x.acaoPrometida ? (
-            <p className="flex items-start gap-1 text-red-700 dark:text-red-300">
-              <ClipboardX className="mt-px size-3.5 shrink-0" />
-              <span>{t('playground.acaoPrometida')}</span>
-            </p>
-          ) : null}
-          {x.acoes && x.acoes.aceitas.length > 0 ? (
-            <p className="flex items-start gap-1 text-foreground">
-              <Wrench className="mt-px size-3.5 shrink-0 text-primary" />
-              <span>
-                {/* Com a passagem, as que rodariam ANTES de passar (25/10/2026). */}
-                {x.passaPara
-                  ? t('playground.acoesAntesDaPassagem', {
-                      itens: x.acoes.aceitas.map((a) => fraseDaAcao(t, a.tipo, a.nome, a.valor)).join(' · '),
-                    })
-                  : t('playground.acoesSimuladas', {
-                      itens: x.acoes.aceitas.map((a) => fraseDaAcao(t, a.tipo, a.nome, a.valor)).join(' · '),
-                    })}
-              </span>
-            </p>
-          ) : null}
-          {x.acoes && x.acoes.recusadas.length > 0 ? (
-            <p className="flex items-start gap-1 text-amber-700 dark:text-amber-300">
-              <Ban className="mt-px size-3.5 shrink-0" />
-              <span>
-                {t('playground.acoesRecusadas', {
-                  itens: x.acoes.recusadas
-                    .map((r) =>
-                      t('playground.recusada', {
-                        tipo: rotuloDoTipoDeAcao(t, r.tipo),
-                        motivo: motivoDaRecusa(t, r.motivo),
-                      }),
-                    )
-                    .join(' · '),
-                })}
-              </span>
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-      {x.vistos ? (
-        <p className="mt-1.5 flex items-start gap-1 border-t border-border/50 pt-1.5 text-[11px] text-muted-foreground">
-          <Eye className="mt-px size-3 shrink-0" />
-          <span>
-            {t('playground.viu', {
-              itens: [t('playground.conversa'), ...x.vistos.blocos.map((b) => rotuloDoBloco(t, b))].join(', '),
-              trechos: t('playground.trechos', { n: x.vistos.trechos }),
-            })}
-          </span>
-        </p>
-      ) : null}
-      {x.pedido ? (
-        <details className="mt-1.5 border-t border-border/50 pt-1.5 text-[11px] text-muted-foreground">
-          <summary className="inline-flex cursor-pointer items-center gap-1 hover:text-foreground">
-            <FileText className="size-3 shrink-0" /> {t('playground.pedidoEnviado')}
-          </summary>
-          <pre
-            className="mt-1 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md bg-background/70 p-2 text-[11px] text-foreground"
-            style={{ fontFamily: FONTE_MONO }}
-          >
-            {x.pedido}
-          </pre>
-        </details>
-      ) : null}
+      {/* O raio-x (10/11/2026): um cartão por ação, as travas, a passagem ou a
+          transferência (com o destino), as recusadas; e os bastidores. */}
+      <EfeitosDaResposta x={x} destinoDaTransferencia={destinoDaTransferencia} />
+      <Bastidores x={x} />
       {x.versao || x.tokens !== undefined ? (
         <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
           {x.versao ? (

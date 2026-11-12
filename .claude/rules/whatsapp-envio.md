@@ -196,14 +196,14 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
   substituída como gente (`stopped_by_agent`/`replaced_by_agent`), não como
   regra.
 - ⚠️ **O "Enviar mídia" do robô manda arquivo do ACERVO (`acervo_id`), áudio
-  incluso, e COPIA o item a cada envio** (`midia-do-no.ts` →
-  `copiarDoAcervo`): a mensagem no fio aponta para a cópia, e apagar o item do
-  acervo (que remove o objeto) não deixa "indisponível" o histórico que o robô
-  atendeu. Item apagado = run `failed` com o motivo, nunca um link morto à
-  Meta. A cópia NÃO é apagada quando o envio falha: a Meta baixa a mídia
-  DEPOIS de aceitar, e um erro tardio com a cópia apagada quebraria a mídia no
-  celular do cliente. Áudio nunca leva legenda (932), em três lugares
-  (validação, tela, motor).
+  incluso, pela CÓPIA CONGELADA do item** (`midia-do-no.ts` →
+  `copiaCongeladaDoAcervo`; uma por item, 09/11/2026, `midia.md`): a
+  mensagem aponta para ela, e apagar o item (que remove só o original) não
+  deixa "indisponível" o histórico. Item apagado = run `failed` com o motivo,
+  nunca um link morto à Meta. A cópia NUNCA é apagada: a Meta baixa a mídia
+  DEPOIS de aceitar, e um erro tardio com ela apagada quebraria a mídia no
+  celular. Áudio nunca leva legenda (932), em três lugares (validação, tela,
+  motor).
 - ⚠️ **`salvar_em` grava a resposta na FICHA** (`resposta-na-ficha.ts`): o
   texto do `collect_input` ou o TÍTULO da opção tocada. Nome só no
   `collect_input`, e o valor é CONVERSA, não formulário: passa por

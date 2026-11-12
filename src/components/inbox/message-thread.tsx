@@ -28,6 +28,7 @@ import { FaixaDeNoShow } from "./faixa-de-no-show";
 import { dividaDoContato, leituraAindaFresca, type RespostaDoResumo } from "@/lib/asaas/aviso-na-conversa";
 import { ExecutarAutomacaoDialog } from "./executar-automacao-dialog";
 import { CopiarLinkDaConversa } from "@/components/inbox/copiar-link-da-conversa";
+import { BotaoLigar } from "@/components/ligacoes/botao-ligar";
 import { AvataresNaConversa } from "./avatares-na-conversa";
 import { FaixaDePresenca } from "./faixa-de-presenca";
 import { FaixaDeConexao } from "./faixa-de-conexao";
@@ -1441,6 +1442,7 @@ export function MessageThread({
     remover: removerNotaLocal,
     acrescentar: acrescentarNota,
     substituir: substituirNota,
+    colocar: colocarNota,
     recarregar: recarregarNotas,
     aplicarFixacao,
   } = useConversationNotes(conversationId, resyncToken);
@@ -1573,13 +1575,15 @@ export function MessageThread({
   /**
    * Apagar anotação. ⚠️ A ação mora no hook (como `useFixarNota`) porque a
    * ABA Notas do painel e a do grupo fazem a MESMA coisa desde 2026-09-02, e
-   * o que as três precisam ter igual é a guarda do `count`: RLS que barra
-   * DELETE devolve 0 linhas SEM erro, e a cópia que a esquecesse faria a
-   * anotação sumir da tela, ficar no banco e voltar na próxima abertura.
+   * o que as três precisam ter igual é a guarda da resposta: a rota que
+   * recusa (ou a rede que cai) tem de RECARREGAR, senão a anotação some da
+   * tela e volta na próxima abertura. Desde a 1132 apagar MANDA PARA A
+   * LIXEIRA (a rota marca); a linha devolvida entra na lixeira da lista.
    */
   const { apagarNota: handleApagarNota } = useApagarNota(
     removerNotaLocal,
     recarregarNotas,
+    colocarNota,
   );
 
   // ============================================================
@@ -2990,6 +2994,18 @@ export function MessageThread({
             </button>
           )}
 
+          {/* Ligar pelo WhatsApp (4c): só onde o número da conversa tem
+              computador de ligações; desligado com o porquê. */}
+          {conversation && (
+            <BotaoLigar
+              conversationId={conversation.id}
+              canalId={conversation.channel_id ?? null}
+              ehGrupo={ehGrupo}
+              temTelefone={Boolean(contact?.phone)}
+              nome={contactDisplayName}
+            />
+          )}
+
           {/* A lupa: busca DENTRO desta conversa (09/09/2026). Fica acesa
               enquanto a barra está aberta; clicar de novo fecha. */}
           {conversation && (
@@ -3690,6 +3706,7 @@ export function MessageThread({
         iaAgenteId={conversation.ia_agente_id ?? null}
         disabled={conversation.ai_autoreply_disabled ?? false}
         pausadaPor={conversation.ia_pausada_por ?? null}
+        pausadaEm={conversation.ia_pausada_em ?? null}
       />
       )}
 

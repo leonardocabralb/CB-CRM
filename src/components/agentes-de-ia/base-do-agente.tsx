@@ -26,6 +26,7 @@ import { Switch } from '@/components/ui/switch';
 import { LIMITES } from '@/lib/ia-agentes/agente';
 import { mesmoConjunto } from './rascunho';
 import { textoDoCodigo } from './textos';
+import type { SalvarDaAba } from './tipos';
 
 interface Documento {
   id: string;
@@ -44,6 +45,7 @@ type Carga =
 export function BaseDoAgente({
   agenteId,
   aoMudarNaoSalvo,
+  registrarSalvar,
 }: {
   agenteId: string;
   /**
@@ -51,12 +53,13 @@ export function BaseDoAgente({
    * base SALVA, e diz isso em âmbar (DC4, 26/10/2026).
    */
   aoMudarNaoSalvo?: (naoSalvo: boolean) => void;
+  /** Entrega ao detalhe o Salvar desta aba (a barra de salvar o chama; 10/11/2026). */
+  registrarSalvar?: (salvar: SalvarDaAba | null) => void;
 }) {
   const t = useTranslations('IaAgentes');
   const [carga, setCarga] = useState<Carga>({ fase: 'carregando' });
   // O rascunho nasce junto com a carga (nulo até ela voltar).
   const [marcados, setMarcados] = useState<string[] | null>(null);
-  const [salvando, setSalvando] = useState(false);
 
   const carregar = useCallback(async () => {
     try {
@@ -92,8 +95,9 @@ export function BaseDoAgente({
     setMarcados((m) => (m === null ? m : m.includes(id) ? m.filter((x) => x !== id) : [...m, id]));
   }
 
-  async function salvar() {
-    if (!naoSalvo || marcados === null || carga.fase !== 'pronto') return;
+  /** O Salvar desta aba (a barra do detalhe o chama): `true` = gravou ou não havia o que gravar. */
+  async function salvar(): Promise<boolean> {
+    if (!naoSalvo || marcados === null || carga.fase !== 'pronto') return true;
     // Só o que existe na base de agora: documento apagado por fora sai sozinho
     // (o vínculo cai em cascata), e mandá-lo faria a rota recusar a lista.
     // ⚠️ Mas só uma lista COMPLETA prova que ele sumiu: no teto de linhas do
@@ -102,7 +106,6 @@ export function BaseDoAgente({
     const existentes = new Set(carga.documentos.map((d) => d.id));
     const completa = carga.documentos.length < TETO_DO_POSTGREST;
     const documentoIds = completa ? marcados.filter((id) => existentes.has(id)) : marcados;
-    setSalvando(true);
     try {
       const res = await fetch(`/api/cb/ia/agentes/${agenteId}/documentos`, {
         method: 'PUT',
@@ -112,17 +115,22 @@ export function BaseDoAgente({
       const corpo = (await res.json().catch(() => ({}))) as { documentoIds?: string[]; code?: string; error?: string };
       if (!res.ok || !Array.isArray(corpo.documentoIds)) {
         toast.error(textoDoCodigo(t, corpo.code, corpo.error));
-        return;
+        return false;
       }
       toast.success(t('base.salvo'));
       setCarga({ ...carga, salvos: corpo.documentoIds });
       setMarcados([...corpo.documentoIds]);
+      return true;
     } catch {
       toast.error(t('erro.generico'));
-    } finally {
-      setSalvando(false);
+      return false;
     }
   }
+  // A barra de salvar do detalhe chama o Salvar MAIS RECENTE (o do último render).
+  useEffect(() => {
+    registrarSalvar?.(salvar);
+  });
+  useEffect(() => () => registrarSalvar?.(null), [registrarSalvar]);
 
   const gerenciar = (
     <Link
@@ -194,12 +202,6 @@ export function BaseDoAgente({
           </ul>
         </>
       )}
-
-      <div className="flex justify-end border-t border-border pt-4">
-        <Button onClick={() => void salvar()} disabled={salvando || !naoSalvo}>
-          {t('base.salvar')}
-        </Button>
-      </div>
     </div>
   );
 }

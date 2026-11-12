@@ -55,20 +55,47 @@ describe('a ligação NÃO aciona motor nenhum', () => {
   it('o módulo tem os arquivos esperados', () => {
     expect(ARQUIVOS.sort()).toEqual(
       [
+        // Ligar e atender pelo CRM (1134): a máquina e a faixa de registro.
+        `${MODULO}/computador.ts`,
         `${MODULO}/desfecho.ts`,
         `${MODULO}/evento.ts`,
+        // A operação do computador pela tela Conexões (4e, 1137).
+        `${MODULO}/operacao.ts`,
+        `${MODULO}/pelo-crm.ts`,
         `${MODULO}/previa.ts`,
         `${MODULO}/registrar.ts`,
         `${MODULO}/telefone.ts`,
+        // A transcrição, o resumo e a poda das gravações (4d, 1136).
+        `${MODULO}/dialogo.ts`,
+        `${MODULO}/dialogos-gravados.ts`,
+        `${MODULO}/poda.ts`,
+        `${MODULO}/transcricao.ts`,
       ].sort(),
     );
+  });
+
+  // ⚠️ Exceção ESCRITA (4d, 1136): a transcrição usa o ENCANAMENTO dos
+  // provedores — o endereço do Gemini (`ai/providers/`), o esquema da saída
+  // JSON (`ai/structured`), os tipos e o registro de custo (`ai/usage`) —
+  // para transcrever e resumir (D11, D14). Nunca o gerador de resposta
+  // (`ai/generate`), o assistente nem o agente (`ia-agentes/`): a ligação
+  // continua sem responder ninguém.
+  const IMPORTA_MOTOR =
+    /from '@\/lib\/(automations\/engine|flows\/|ai\/(?!providers\/|structured'|types'|usage')|ia-agentes\/|webhooks\/deliver)/;
+
+  it('a exceção da transcrição não abre o gerador de resposta', () => {
+    expect(`from '@/lib/ai/generate'`).toMatch(IMPORTA_MOTOR);
+    expect(`from '@/lib/ai/auto-reply'`).toMatch(IMPORTA_MOTOR);
+    expect(`from '@/lib/ia-agentes/turno'`).toMatch(IMPORTA_MOTOR);
+    expect(`from '@/lib/ai/providers/gemini'`).not.toMatch(IMPORTA_MOTOR);
+    expect(`from '@/lib/ai/usage'`).not.toMatch(IMPORTA_MOTOR);
   });
 
   for (const arquivo of ARQUIVOS) {
     it(`${arquivo} não cita motor, ingestão de mensagem nem envio`, () => {
       const f = fonte(arquivo);
       for (const nome of PROIBIDOS) expect(f).not.toContain(nome);
-      expect(f).not.toMatch(/from '@\/lib\/(automations\/engine|flows\/|ai\/|ia-agentes\/|webhooks\/deliver)/);
+      expect(f).not.toMatch(IMPORTA_MOTOR);
     });
   }
 });

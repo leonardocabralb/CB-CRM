@@ -16,6 +16,10 @@ const h = vi.hoisted(() => ({
       wa_user_id?: string | null;
     } | null,
     ownedCustomField: null as { id: string; field_type?: string } | null,
+    /** O item do acervo que o "Enviar arquivo" confere (09/11/2026); só pela conta `acct-1`. */
+    itemDoAcervo: null as { id: string; tipo: string; filename: string } | null,
+    /** Preenchido, a conferência do item do acervo devolve este erro. */
+    erroNoAcervo: null as string | null,
     pipeline: null as { id: string } | null,
     stage: null as { id?: string; resultado?: string | null } | null,
     dealExistente: null as { id: string; stage_id?: string } | null,
@@ -190,6 +194,14 @@ vi.mock('./admin-client', () => {
       }
       // ownership guard / condition read
       return { data: state.owned, error: null };
+    }
+    // A conferência do item do acervo do "Enviar arquivo" (09/11/2026): o
+    // item só volta pela conta dos testes — a leitura que esquecer a cerca
+    // da conta enxergaria o item alheio, e o teste vê isso.
+    if (table === 'cb_media_library') {
+      if (state.erroNoAcervo) return { data: null, error: { message: state.erroNoAcervo } };
+      const conta = ops.filters.find(([op, k]) => op === 'eq' && k === 'account_id');
+      return { data: conta?.[2] === 'acct-1' ? state.itemDoAcervo : null, error: null };
     }
     if (table === 'conversations') {
       // O passo assign_conversation escreve aqui, e QUAIS filtros ele usa é
@@ -715,6 +727,40 @@ vi.mock('@/lib/notes/anotacao-da-automacao', async (original) => ({
   ...(await original<typeof import('@/lib/notes/anotacao-da-automacao')>()),
   escreverAnotacaoDaAutomacao: anotacaoMock.escreverAnotacaoDaAutomacao,
 }));
+// "Enviar arquivo" do ACERVO (09/11/2026): a cópia (`copiaCongeladaDoAcervo`) e a
+// régua da origem são testadas em `midia-do-passo.test.ts`, e o link-função no
+// remetente em `flows/meta-send.test.ts`; aqui, o que o motor faz com elas — o
+// TIPO que chega ao remetente, a URL que ele produz, e a falha que encerra o
+// passo antes de qualquer envio. O remetente dublê produz o link como o real
+// (depois das recusas dele) e guarda a URL que sairia.
+const midiaMock = vi.hoisted(() => {
+  const linksEnviados: string[] = [];
+  return {
+    linksEnviados,
+    engineSendMedia: vi.fn<(args: Record<string, unknown>) => Promise<{ whatsapp_message_id: string }>>(
+      async (args) => {
+        const link = args.link as string | (() => Promise<string>);
+        linksEnviados.push(typeof link === 'function' ? await link() : link);
+        return { whatsapp_message_id: 'mid-1' };
+      }
+    ),
+    copiaCongeladaDoAcervo: vi.fn<(db: unknown, conta: string, itemId: string) => Promise<unknown>>(async () => ({
+      ok: true,
+      tipo: 'video',
+      mediaUrl: 'https://storage/account-acct-1/acervo/enviados/00000000-0000-4000-8000-0000000000a1/gestante.mp4',
+      path: 'account-acct-1/acervo/enviados/00000000-0000-4000-8000-0000000000a1/gestante.mp4',
+      filename: 'gestante.mp4',
+    })),
+  };
+});
+vi.mock('@/lib/flows/meta-send', async (original) => ({
+  ...(await original<typeof import('@/lib/flows/meta-send')>()),
+  engineSendMedia: midiaMock.engineSendMedia,
+}));
+vi.mock('@/lib/acervo/copiar', async (original) => ({
+  ...(await original<typeof import('@/lib/acervo/copiar')>()),
+  copiaCongeladaDoAcervo: midiaMock.copiaCongeladaDoAcervo,
+}));
 
 import {
   dispararAutomacoes,
@@ -745,6 +791,8 @@ const ACCOUNT = 'acct-1';
 beforeEach(() => {
   h.state.owned = null;
   h.state.ownedCustomField = null;
+  h.state.itemDoAcervo = null;
+  h.state.erroNoAcervo = null;
   h.state.pipeline = null;
   h.state.stage = null;
   h.state.dealExistente = null;
@@ -2062,12 +2110,12 @@ describe('set_ai — a pausa com MOTIVO (1049, D26)', () => {
 
   const escritasNaConversa = () => h.state.updateCalls.filter((u) => u.table === 'conversations');
 
-  it('desligar grava a pausa por automação, só se ainda não havia pausa', async () => {
+  it('desligar grava a pausa por automação sem pausa ou por cima da TEMPORÁRIA (1138), nunca da permanente', async () => {
     await rodar(false);
     const conversas = escritasNaConversa();
     expect(conversas).toHaveLength(1);
     expect(conversas[0].payload).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'automacao' });
-    expect(conversas[0].filters).toContainEqual(['eq', 'ai_autoreply_disabled', false]);
+    expect(conversas[0].filters).toContainEqual(['or', 'expr', 'ai_autoreply_disabled.eq.false,ia_pausada_por.in.(gente,botao)']);
   });
 
   it('ligar desfaz a pausa por AUTOMAÇÃO, com a condição no próprio UPDATE, e não zera o teto', async () => {
@@ -6089,6 +6137,52 @@ describe("condição 'hora do dia' — no fuso do escritório", () => {
   });
 });
 
+describe("condição 'Situação da cobrança' — régua do Asaas (10/11/2026)", () => {
+  // O motor lê as `vars` que a varredura passa; o gatilho aqui é outro só
+  // para o disparo andar (a régua casa pelo `automation_id`).
+  const condicao = {
+    id: 'cond-cobranca',
+    automation_id: 'a1',
+    step_type: 'condition',
+    position: 0,
+    parent_step_id: null,
+    step_config: { subject: 'asaas_situacao', cobranca_parcelas: 2, cobranca_dias: 15 },
+  };
+  const ramo = (branch: 'yes' | 'no', text: string) => ({
+    ...sendStep({ text }),
+    id: `ramo-${branch}`,
+    parent_step_id: 'cond-cobranca',
+    branch,
+    position: 0,
+  });
+
+  async function avaliar(vars: Record<string, unknown> | undefined) {
+    vi.mocked(engineSendText).mockClear();
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [condicao, ramo('yes', 'ligar'), ramo('no', 'só a mensagem')];
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { conversation_id: 'conv1', ...(vars ? { vars } : {}) },
+    });
+    return vi.mocked(engineSendText).mock.calls[0]?.[0]?.text;
+  }
+
+  it('duas vencidas ou 15 dias: Sim; uma com 3 dias: Não — e o registro diz o que leu', async () => {
+    expect(await avaliar({ vencidas_quantidade: '2', dias_de_atraso_maior: '3' })).toBe('ligar');
+    expect(await avaliar({ vencidas_quantidade: '1', dias_de_atraso_maior: '15' })).toBe('ligar');
+    expect(await avaliar({ vencidas_quantidade: '1', dias_de_atraso_maior: '3' })).toBe('só a mensagem');
+    expect(JSON.stringify(h.state.logUpdates)).toContain('1 parcela vencida, a mais antiga com 3 dias de atraso');
+  });
+
+  it('sem as vars da cobrança (fora da régua): Não, e o registro diz por quê', async () => {
+    expect(await avaliar(undefined)).toBe('só a mensagem');
+    expect(JSON.stringify(h.state.logUpdates)).toContain('só a régua do Asaas');
+  });
+});
+
 describe('Aguardar até estar dentro do horário (B6a, 26/09/2026)', () => {
   // Instantes UTC explícitos (Brasília = UTC-3). Relógio falso SÓ do Date:
   // timers de verdade, senão os awaits do motor não andam. 25/09/2026 é
@@ -6921,5 +7015,203 @@ describe('valoresParaPrevia — a prévia usa as funções do envio e só lê', 
       context: { conversation_id: 'conv1' },
     });
     expect(vi.mocked(engineSendText).mock.calls[0]?.[0]?.text).toBe('Oi Marcelo []');
+  });
+});
+
+// ------------------------------------------------------------
+// "Enviar arquivo" do ACERVO (09/11/2026): o passo escolhe um item do acervo
+// de mídias (`acervo_id`), e o motor o COPIA a cada envio — como o nó "Enviar
+// mídia" do robô. O passo antigo (arquivo subido no passo, `url`) segue igual.
+// ------------------------------------------------------------
+
+describe('"Enviar arquivo": o arquivo subido no passo ou um item do ACERVO (09/11/2026)', () => {
+  const ITEM = '00000000-0000-4000-8000-0000000000a1';
+  const URL_DA_COPIA = 'https://storage/account-acct-1/acervo/enviados/00000000-0000-4000-8000-0000000000a1/gestante.mp4';
+
+  beforeEach(() => {
+    midiaMock.engineSendMedia.mockClear();
+    midiaMock.copiaCongeladaDoAcervo.mockClear();
+    midiaMock.linksEnviados.length = 0;
+    destinatarioMock.conversaDoContato.mockClear();
+    h.state.itemDoAcervo = { id: ITEM, tipo: 'video', filename: 'gestante.mp4' };
+  });
+
+  async function executar(
+    step_config: Record<string, unknown>,
+    context: Record<string, unknown> = { conversation_id: 'conv-1' }
+  ) {
+    h.state.owned = { id: 'c1', name: 'Maria' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [{ ...sendStep(step_config), step_type: 'send_media' }];
+    return runAutomationById({
+      automationId: 'a1',
+      accountId: ACCOUNT,
+      contactId: 'c1',
+      context,
+      triggerType: 'deal_stage_changed',
+    });
+  }
+
+  it('SEM acervo: manda a URL do passo como sempre — nada é lido nem copiado', async () => {
+    await executar({
+      kind: 'document',
+      url: 'https://storage/account-acct-1/contrato.pdf',
+      filename: 'Contrato.pdf',
+      caption: 'Segue o contrato',
+    });
+
+    expect(midiaMock.copiaCongeladaDoAcervo).not.toHaveBeenCalled();
+    expect(midiaMock.engineSendMedia).toHaveBeenCalledTimes(1);
+    expect(midiaMock.engineSendMedia.mock.calls[0]?.[0]).toMatchObject({
+      accountId: ACCOUNT,
+      conversationId: 'conv-1',
+      contactId: 'c1',
+      kind: 'document',
+      link: 'https://storage/account-acct-1/contrato.pdf',
+      filename: 'Contrato.pdf',
+      caption: 'Segue o contrato',
+    });
+  });
+
+  it('COM acervo: o tipo é o do ITEM, e o remetente recebe a CÓPIA CONGELADA como função — a mesma em todo envio', async () => {
+    const passo = {
+      // foto velha da escolha: o motor manda com o tipo do ITEM
+      kind: 'image',
+      url: 'https://storage/account-acct-1/acervo/gestante.mp4',
+      acervo_id: ITEM,
+      caption: 'Veja como funciona, {{contact.name}}',
+    };
+    await executar(passo);
+    await executar(passo);
+
+    const envio = midiaMock.engineSendMedia.mock.calls[0]?.[0] ?? {};
+    expect(envio).toMatchObject({
+      kind: 'video',
+      caption: 'Veja como funciona, Maria',
+      // vídeo não leva nome
+      filename: undefined,
+    });
+    // A cópia é do REMETENTE (depois das recusas dele): o motor só entrega a função.
+    expect(typeof envio.link).toBe('function');
+    expect(midiaMock.copiaCongeladaDoAcervo).toHaveBeenCalledTimes(2);
+    expect(midiaMock.copiaCongeladaDoAcervo).toHaveBeenCalledWith(expect.anything(), ACCOUNT, ITEM);
+    expect(midiaMock.linksEnviados).toEqual([URL_DA_COPIA, URL_DA_COPIA]);
+    // A URL do item (guardada só para a tela) nunca vai ao WhatsApp.
+    expect(midiaMock.linksEnviados).not.toContain(passo.url);
+  });
+
+  it('item de ÁUDIO do acervo: sai sem legenda, mesmo com legenda gravada no passo (o tipo é o do item)', async () => {
+    h.state.itemDoAcervo = { id: ITEM, tipo: 'audio', filename: 'voz.ogg' };
+    await executar({ kind: 'video', url: '', acervo_id: ITEM, caption: 'texto que não viajaria' });
+
+    expect(midiaMock.engineSendMedia.mock.calls[0]?.[0]).toMatchObject({ kind: 'audio', caption: undefined });
+  });
+
+  it('CRÍTICO: item APAGADO do acervo — o passo falha com o motivo, nada é copiado nem sai, e nenhuma conversa é criada', async () => {
+    h.state.itemDoAcervo = null;
+    // Ficha SEM conversa: chegando ao envio, o passo a criaria (encerrada).
+    await executar({ kind: 'video', url: 'https://storage/acervo/gestante.mp4', acervo_id: ITEM }, {});
+
+    expect(h.state.logUpdates).toContainEqual(expect.objectContaining({ desfecho: 'falhou' }));
+    expect(midiaMock.engineSendMedia).not.toHaveBeenCalled();
+    expect(midiaMock.copiaCongeladaDoAcervo).not.toHaveBeenCalled();
+    expect(destinatarioMock.conversaDoContato).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.state.logUpdates)).toContain(
+      'o arquivo do acervo escolhido neste passo foi apagado'
+    );
+    // Não é falha do provedor: não volta para a fila.
+    expect(h.state.esperasEnfileiradas).toEqual([]);
+  });
+
+  it('erro de BANCO ao conferir o item: falha como leitura, NUNCA "apagado"', async () => {
+    h.state.erroNoAcervo = 'timeout';
+    await executar({ kind: 'video', url: '', acervo_id: ITEM });
+
+    expect(midiaMock.engineSendMedia).not.toHaveBeenCalled();
+    const registro = JSON.stringify(h.state.logUpdates);
+    expect(registro).toContain('a leitura do acervo falhou (timeout)');
+    expect(registro).not.toContain('apagado');
+  });
+
+  it('a CÓPIA que falha dentro do remetente falha o passo com o motivo — e não volta para a fila', async () => {
+    midiaMock.copiaCongeladaDoAcervo.mockResolvedValueOnce({ ok: false, erro: 'copia', detalhe: 'Object not found' });
+    await executar({ kind: 'video', url: '', acervo_id: ITEM });
+
+    expect(midiaMock.linksEnviados).toEqual([]);
+    expect(JSON.stringify(h.state.logUpdates)).toContain('a cópia do arquivo do acervo falhou (Object not found)');
+    expect(h.state.esperasEnfileiradas).toEqual([]);
+  });
+
+  it('sem arquivo nenhum (nem subido, nem do acervo): falha antes de ler, copiar ou enviar', async () => {
+    await executar({ kind: 'image', url: '' });
+
+    expect(midiaMock.copiaCongeladaDoAcervo).not.toHaveBeenCalled();
+    expect(midiaMock.engineSendMedia).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.state.logUpdates)).toContain('send_media precisa de um arquivo');
+  });
+});
+
+// ------------------------------------------------------------
+// A automação que o AGENTE DE IA executa fala EM NOME dele (09/11/2026): o
+// vídeo e o link da assinatura do Trabalhista saem com a marca do agente
+// (`iaAgenteId` → `messages.ia_agente_id`), e a retomada dele não para como
+// "robô falou". A marca entra SÓ pelo argumento de `runAutomationById`; o
+// disparo por evento a descarta — a cascata da etiqueta copia o contexto da
+// mãe, e a 972 conta `bot` com a marca como "respondido".
+// ------------------------------------------------------------
+
+describe('a automação executada pelo agente de IA fala em nome dele (09/11/2026)', () => {
+  beforeEach(() => {
+    vi.mocked(engineSendText).mockClear();
+    midiaMock.engineSendMedia.mockClear();
+  });
+
+  async function executar(
+    passo: Record<string, unknown>,
+    extra: { iaAgenteId?: string; context?: Record<string, unknown> } = {}
+  ) {
+    h.state.owned = { id: 'c1', name: 'Maria' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [passo];
+    return runAutomationById({
+      automationId: 'a1',
+      accountId: ACCOUNT,
+      contactId: 'c1',
+      context: { conversation_id: 'conv-1', ...(extra.context ?? {}) },
+      triggerType: 'manual',
+      ...(extra.iaAgenteId ? { iaAgenteId: extra.iaAgenteId } : {}),
+    });
+  }
+
+  const passoDeMidia = {
+    ...sendStep({ kind: 'video', url: 'https://storage/account-acct-1/v.mp4', caption: 'Veja' }),
+    step_type: 'send_media',
+  };
+
+  it('executada pelo agente: o TEXTO sai com a marca dele', async () => {
+    await executar(sendStep({ text: 'E este é o formulário' }), { iaAgenteId: 'ag-1' });
+    expect(vi.mocked(engineSendText).mock.calls[0]?.[0]).toMatchObject({ iaAgenteId: 'ag-1' });
+  });
+
+  it('executada pelo agente: a MÍDIA sai com a marca dele', async () => {
+    await executar(passoDeMidia, { iaAgenteId: 'ag-1' });
+    expect(midiaMock.engineSendMedia.mock.calls[0]?.[0]).toMatchObject({ iaAgenteId: 'ag-1' });
+  });
+
+  it('executada por gente ("Executar automação") ou acionada sem o agente: sem marca', async () => {
+    await executar(sendStep({ text: 'oi' }));
+    await executar(passoDeMidia);
+    expect(vi.mocked(engineSendText).mock.calls[0]?.[0]).toMatchObject({ iaAgenteId: null });
+    expect(midiaMock.engineSendMedia.mock.calls[0]?.[0]).toMatchObject({ iaAgenteId: null });
+  });
+
+  it('⚠️ a marca que chega no CONTEXTO não vale — só a do argumento', async () => {
+    await executar(sendStep({ text: 'oi' }), { context: { ia_agente_id: 'ag-forjado' } });
+    expect(vi.mocked(engineSendText).mock.calls[0]?.[0]).toMatchObject({ iaAgenteId: null });
+  });
+
+  it('⚠️ o disparo por EVENTO descarta a marca (a cascata da etiqueta copia o contexto da mãe)', async () => {
+    const args = await dispararEnvio({ text: 'oi' }, { ia_agente_id: 'ag-1' });
+    expect(args).toMatchObject({ iaAgenteId: null });
   });
 });

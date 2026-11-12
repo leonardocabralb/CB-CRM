@@ -165,6 +165,11 @@ function textoCurto(t: Tradutor, a: AlarmeDoCabecalho): string {
       return t('alarme.falhas', { canal: a.rotulo, quando: quandoFoi(a.desdeIso) });
     case 'quedas':
       return t('alarme.quedas', { canal: a.rotulo, quando: quandoFoi(a.desdeIso) });
+    // O computador de ligações (4e).
+    case 'ligacoes_fora':
+      return t('alarme.ligacoesFora', { canal: a.rotulo, quando: quandoFoi(a.desdeIso) });
+    case 'ligacoes_qr':
+      return t('alarme.ligacoesQr', { canal: a.rotulo, quando: quandoFoi(a.desdeIso) });
   }
 }
 
@@ -177,6 +182,9 @@ function textoNaFicha(t: Tradutor, a: AlarmeDoCabecalho): string | null {
   switch (a.tipo) {
     case 'fora_do_ar':
     case 'nao_recebe':
+    // A linha "Ligações pelo CRM" da ficha já diz (4e).
+    case 'ligacoes_fora':
+    case 'ligacoes_qr':
       return null;
     case 'sem_recibo':
       return t('alarme.naFicha.semRecibo', { quando: quandoFoi(a.desdeIso) });
@@ -191,6 +199,41 @@ function textoNaFicha(t: Tradutor, a: AlarmeDoCabecalho): string | null {
     case 'quedas':
       return t('alarme.naFicha.quedas', { quando: quandoFoi(a.desdeIso) });
   }
+}
+
+/**
+ * A linha das ligações pelo CRM da conexão (4e): só com o computador LIGADO
+ * pelo admin — desligado, a sonda nem a manda (D16). Âmbar quando as ligações
+ * não funcionam (fora do ar, pedindo o QR), como as outras linhas de aviso.
+ */
+function LinhaDasLigacoes({ ligacoes }: { ligacoes: NonNullable<ChannelHealth['ligacoes']> }) {
+  const t = useTranslations('ChannelHealth');
+  let texto: string;
+  switch (ligacoes.situacao) {
+    case 'pronto':
+      texto = t('ligacoes.pronto');
+      break;
+    case 'em_ligacao':
+      texto = t('ligacoes.emLigacao');
+      break;
+    case 'qr':
+      texto = t('ligacoes.qr');
+      break;
+    case 'carregando':
+      texto = t('ligacoes.carregando');
+      break;
+    case 'fora': {
+      const tempo = hums(ligacoes.sinalEm);
+      texto = tempo ? t('ligacoes.fora', { tempo }) : t('ligacoes.foraSemSinal');
+      break;
+    }
+  }
+  const aviso = ligacoes.situacao === 'fora' || ligacoes.situacao === 'qr';
+  return (
+    <p className={cn('mt-0.5 text-xs', aviso ? 'font-medium text-amber-700 dark:text-amber-300' : 'text-muted-foreground')}>
+      {texto}
+    </p>
+  );
 }
 
 /**
@@ -242,6 +285,7 @@ function Ficha({ c, alarmes }: { c: ChannelHealth; alarmes: readonly AlarmeDoCab
         <p className="mt-0.5 text-xs text-muted-foreground">
           {verificado ? t('checkedAgo', { tempo: verificado }) : t('neverChecked')}
         </p>
+        {c.ligacoes && <LinhaDasLigacoes ligacoes={c.ligacoes} />}
         {/* Nível 3 (1002). Leva QUANDO foi medido junto: sem isso, uma
             conexão que ficou quieta depois de um episódio mostraria o
             atraso velho como se fosse de agora.

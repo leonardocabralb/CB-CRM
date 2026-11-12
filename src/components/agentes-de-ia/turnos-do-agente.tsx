@@ -50,6 +50,7 @@ import { Button } from '@/components/ui/button';
 import { ACAO_TRANSFERIR } from '@/lib/ia-agentes/acoes';
 import { PRAZO_DO_CONTEUDO_DO_TURNO_DIAS } from '@/lib/ia-agentes/conteudo-dos-turnos';
 import { ERRO_DA_ESPERA_DO_HORARIO } from '@/lib/ia-agentes/horario';
+import { ERRO_DA_ESPERA_DA_EQUIPE } from '@/lib/ia-agentes/pausa';
 import { urlDoInbox } from '@/lib/inbox/url';
 import { cn } from '@/lib/utils';
 import { lerAcoesDoTurno } from './ferramentas';
@@ -87,6 +88,11 @@ interface Turno {
 /** O turno que espera a abertura do horário do agente (25/10/2026): ainda na fila, com a marca do servidor. */
 function esperaOHorario(turno: Turno): turno is Turno & { executarApos: string } {
   return turno.status === 'aguardando' && turno.erro === ERRO_DA_ESPERA_DO_HORARIO && turno.executarApos !== null;
+}
+
+/** O turno que espera a EQUIPE responder (a pausa temporária, 1138): a IA volta no `executarApos` se ninguém responder. */
+function esperaAEquipe(turno: Turno): turno is Turno & { executarApos: string } {
+  return turno.status === 'aguardando' && turno.erro === ERRO_DA_ESPERA_DA_EQUIPE && turno.executarApos !== null;
 }
 
 /** Parse, nunca `as`: forma estranha = turno de resposta (sem rótulo). */
@@ -241,6 +247,17 @@ export function TurnosDoAgente({ agenteId }: { agenteId: string }) {
                   })}
                 </span>
               ) : null}
+              {esperaAEquipe(turno) ? (
+                <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                  <Clock className="size-3" />
+                  {t('turnos.esperaAEquipe', {
+                    quando: new Date(turno.executarApos).toLocaleString(undefined, {
+                      dateStyle: 'short',
+                      timeStyle: 'short',
+                    }),
+                  })}
+                </span>
+              ) : null}
               <span className="shrink-0 text-xs text-muted-foreground">
                 {new Date(turno.criadoEm).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
               </span>
@@ -254,7 +271,7 @@ export function TurnosDoAgente({ agenteId }: { agenteId: string }) {
               ) : (
                 <span className="min-w-0 flex-1 truncate text-muted-foreground">{t('turnos.semConversa')}</span>
               )}
-              {turno.erro && !esperaOHorario(turno) ? (
+              {turno.erro && !esperaOHorario(turno) && !esperaAEquipe(turno) ? (
                 <p className="w-full truncate text-xs text-muted-foreground" title={turno.erro}>
                   {textoDoErroDoTurno(t, turno.erro)}
                 </p>

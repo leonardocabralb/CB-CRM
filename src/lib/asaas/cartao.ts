@@ -4,6 +4,7 @@
  */
 
 import { diasDeAtraso } from "./inadimplencia";
+import { lerAutomacaoDaRegua } from "./regua";
 
 /**
  * Os códigos que a tela sabe traduzir. ⚠️ A lista mora AQUI, e não dentro do
@@ -105,7 +106,7 @@ export interface ReguaDoCartao {
   automacoesLigadas: number;
   /** `dias_de_atraso` com duas ou mais automações LIGADAS, em ordem */
   marcosRepetidos: number[];
-  /** mais de um lembrete do vencimento ligado */
+  /** mais de um lembrete do vencimento ligado NO MESMO TURNO (dia ou noite, 1133) */
   lembreteRepetido: boolean;
 }
 
@@ -115,10 +116,12 @@ export function reguaDoCartao(config: Pick<ConfigDoAsaas, "regua_ativa" | "regua
   const daRegua = automacoes.filter((a) => a.trigger_type === "asaas_cobranca_vencida" || a.trigger_type === "asaas_cobranca_vence_hoje");
   const ligadas = daRegua.filter((a) => a.is_active);
   const porMarco = new Map<number, number>();
-  let lembretes = 0;
+  const lembretesPorTurno = new Map<string, number>();
   for (const a of ligadas) {
     if (a.trigger_type === "asaas_cobranca_vence_hoje") {
-      lembretes += 1;
+      // o turno é o da varredura (`lerAutomacaoDaRegua`): um do dia e um da noite não se repetem
+      const turno = lerAutomacaoDaRegua({ id: "", name: "", trigger_type: a.trigger_type, trigger_config: a.trigger_config })?.marco ?? 0;
+      lembretesPorTurno.set(String(turno), (lembretesPorTurno.get(String(turno)) ?? 0) + 1);
       continue;
     }
     const cfg = (a.trigger_config ?? {}) as Record<string, unknown>;
@@ -133,7 +136,7 @@ export function reguaDoCartao(config: Pick<ConfigDoAsaas, "regua_ativa" | "regua
     automacoesTotal: daRegua.length,
     automacoesLigadas: ligadas.length,
     marcosRepetidos: [...porMarco.entries()].filter(([, n]) => n >= 2).map(([m]) => m).sort((a, b) => a - b),
-    lembreteRepetido: lembretes >= 2,
+    lembreteRepetido: [...lembretesPorTurno.values()].some((n) => n >= 2),
   };
 }
 

@@ -13,17 +13,21 @@ import {
   ehDiaUtil,
   ehGatilhoDaRegua,
   entrouNaRegua,
+  fimDaJanela,
   horaDeEnvioValida,
+  horaDeLembreteValida,
   janelaAberta,
   lerAutomacaoDaRegua,
   linhaDaParcela,
   montarVariaveis,
   porMaiorMarco,
   proximoDiaUtil,
+  quandoVence,
   RESULTADOS_DA_TRAVA,
   resultadoDoLog,
   somarDias,
   textoDoVencimento,
+  tipoDePessoa,
   type AutomacaoDaRegua,
   type ContextoDaRegua,
 } from "./regua";
@@ -243,6 +247,47 @@ describe("agruparPorCliente (D11) — uma mensagem por cliente, através das aut
   });
 });
 
+describe("o lembrete da NOITE (1133, D12 revista em 10/11/2026)", () => {
+  const noite = (extra: Partial<AutomacaoDaRegua> = {}) => lembrete({ id: "a-noite", marco: 1, horaEnvio: "20:00", ...extra });
+
+  it("a hora decide o turno: antes das 18:00 é o do dia (marco 0), a partir das 18:00 é o da noite (marco 1), até 20:30", () => {
+    expect(lerAutomacaoDaRegua({ id: "x", name: "x", trigger_type: "asaas_cobranca_vence_hoje", trigger_config: { hora_envio: "09:00" } })).toMatchObject({ marco: 0, horaEnvio: "09:00" });
+    expect(lerAutomacaoDaRegua({ id: "x", name: "x", trigger_type: "asaas_cobranca_vence_hoje", trigger_config: { hora_envio: "20:00" } })).toMatchObject({ marco: 1, horaEnvio: "20:00" });
+    // fora das duas faixas: o padrão (08:00, do dia) — como antes
+    expect(lerAutomacaoDaRegua({ id: "x", name: "x", trigger_type: "asaas_cobranca_vence_hoje", trigger_config: { hora_envio: "17:30" } })).toMatchObject({ marco: 0, horaEnvio: "08:00" });
+    expect(horaDeLembreteValida("20:30")).toBe(true);
+    expect(horaDeLembreteValida("20:45")).toBe(false);
+    expect(horaDeLembreteValida("17:30")).toBe(false);
+    // a cobrança de atraso continua só até as 17:00
+    expect(horaDeEnvioValida("20:00")).toBe(false);
+    expect(fimDaJanela(noite())).toBe("21:00");
+    expect(fimDaJanela(lembrete())).toBe("18:00");
+    expect(fimDaJanela(cobranca(1))).toBe("18:00");
+  });
+
+  it("a janela da noite vai das 20:00 às 21:00; o lembrete do dia não sai à noite", () => {
+    const hoje = parcela({ status: "PENDING", vencimento: "2026-09-14", vista_vencida_em: null, asaas_customer_id: "cus_a" });
+    const as2010 = agruparLembretes([lembrete(), noite()], [hoje], new Set(), ctx("2026-09-14"), em("2026-09-14", "20:10"));
+    expect(as2010.map((g) => [g.asaasCustomerId, g.automacao.id, g.automacao.marco])).toEqual([["cus_a", "a-noite", 1]]);
+    expect(agruparLembretes([lembrete(), noite()], [hoje], new Set(), ctx("2026-09-14"), em("2026-09-14", "21:00"))).toEqual([]);
+    expect(agruparLembretes([lembrete(), noite()], [hoje], new Set(), ctx("2026-09-14"), em("2026-09-14", "19:30"))).toEqual([]);
+    // de manhã, só o do dia
+    expect(agruparLembretes([lembrete(), noite()], [hoje], new Set(), ctx("2026-09-14"), em("2026-09-14", "08:10")).map((g) => g.automacao.id)).toEqual(["a-0"]);
+  });
+
+  it("o da noite NÃO cede a vez a quem teve cobrança hoje (lembra quem ainda não pagou o que vence hoje); o do dia cede", () => {
+    const hoje = parcela({ status: "PENDING", vencimento: "2026-09-14", vista_vencida_em: null, asaas_customer_id: "cus_b" });
+    expect(agruparLembretes([lembrete({ horaEnvio: "08:00" })], [hoje], new Set(["cus_b"]), ctx("2026-09-14"), em("2026-09-14", "10:00"))).toEqual([]);
+    expect(agruparLembretes([noite()], [hoje], new Set(["cus_b"]), ctx("2026-09-14"), em("2026-09-14", "20:10")).map((g) => g.asaasCustomerId)).toEqual(["cus_b"]);
+  });
+
+  it("dois ligados no MESMO turno: um só envia (o de menor id)", () => {
+    const hoje = parcela({ status: "PENDING", vencimento: "2026-09-14", vista_vencida_em: null });
+    const grupos = agruparLembretes([noite({ id: "n-2" }), noite({ id: "n-1" })], [hoje], new Set(), ctx("2026-09-14"), em("2026-09-14", "20:10"));
+    expect(grupos.map((g) => g.automacao.id)).toEqual(["n-1"]);
+  });
+});
+
 describe("agruparLembretes (D17) — e a absorção pela cobrança do dia", () => {
   it("PENDING vencendo hoje entra; cliente com marco hoje é pulado (uma mensagem só); a vencida do sábado entra na segunda", () => {
     const hoje = parcela({ status: "PENDING", vencimento: "2026-09-14", vista_vencida_em: null, asaas_customer_id: "cus_a" });
@@ -283,42 +328,126 @@ describe("as variáveis da mensagem", () => {
   it("a cobrança lista TODAS as vencidas (D11), soma tudo, e os dias vêm da que cruzou e da mais antiga", () => {
     const v = montarVariaveis({ clienteNome: "andré da silva", escritorioNome: "CB Advogados", vencidas: [p1, p2], cruzaram: [p2], venceHoje: [], hoje: "2026-09-14", agora, fuso: FUSO });
     expect(v.cliente_primeiro_nome).toBe("André");
+    expect(v.saudacao).toBe("Olá, André!");
+    // o link na linha de baixo; "(com juros e multa)" só com juros; sem o ano do mesmo ano
     expect(v.cobranca_detalhe).toBe(
-      `• Parcela 3/12 — ${dinheiro(648.2)} (atualizado) — venceu em 23/08/2026 — https://www.asaas.com/i/abc\n• Parcela 4/12 — ${dinheiro(620)} (valor original) — venceu em 11/09/2026 — https://www.asaas.com/i/def`,
+      `• Parcela 3 de 12 — ${dinheiro(648.2)} (com juros e multa) — venceu em 23/08\n  https://www.asaas.com/i/abc\n• Parcela 4 de 12 — ${dinheiro(620)} — venceu na sexta-feira (11/09)\n  https://www.asaas.com/i/def`,
     );
     expect(v.cobranca_parcelas).toBe("3/12 e 4/12");
     expect(v.cobranca_valor).toBe(dinheiro(1268.2));
     expect(v.cobranca_vencimento).toBe("23/08/2026");
     expect(v.cobranca_quantidade).toBe("2");
+    expect(v.vencidas_quantidade).toBe("2");
     expect(v.dias_de_atraso).toBe("3");
     expect(v.dias_de_atraso_maior).toBe("22");
-    expect(v.marco_detalhe).toContain("Parcela 4/12");
+    expect(v.marco_detalhe).toContain("Parcela 4 de 12");
     expect(v.vence_hoje_detalhe).toBe("");
+    // várias: a frase diz quantas, o total e a mais antiga; os links são a lista
+    expect(v.cobranca_situacao).toBe(`duas parcelas estão em aberto, somando ${dinheiro(1268.2)}, e a mais antiga venceu em 23/08`);
+    expect(v.cobranca_links).toBe(v.cobranca_detalhe);
   });
 
-  it("com parcela vencendo hoje junto (13/09: uma mensagem só), `vence_hoje_detalhe` traz a linha", () => {
+  it("com parcela vencendo hoje junto (13/09: uma mensagem só), `vence_hoje_detalhe` traz a linha; UMA vencida = frase no singular e só o link dela", () => {
     const hoje = parcela({ id: "c-3", asaas_payment_id: "pay_3", status: "PENDING", vencimento: "2026-09-14", vista_vencida_em: null, parcela_numero: 5 });
     const v = montarVariaveis({ clienteNome: "ANA", escritorioNome: "CB", vencidas: [p2], cruzaram: [p2], venceHoje: [hoje], hoje: "2026-09-14", agora, fuso: FUSO });
-    expect(v.vence_hoje_detalhe).toBe(`• Parcela 5/12 — ${dinheiro(620)} (valor original) — vence hoje (14/09/2026) — https://www.asaas.com/i/abc`);
-    expect(v.cliente_primeiro_nome).toBe("ANA");
+    expect(v.vence_hoje_detalhe).toBe(`• Parcela 5 de 12 — ${dinheiro(620)} — vence hoje\n  https://www.asaas.com/i/abc`);
+    // pessoa (ou sem documento) em CAIXA ALTA ganha a inicial maiúscula
+    expect(v.cliente_primeiro_nome).toBe("Ana");
     expect(v.vencimento_texto).toBe("vence hoje");
+    expect(v.cobranca_situacao).toBe(`a parcela 4 de 12, de ${dinheiro(620)}, venceu na sexta-feira (11/09)`);
+    // com a de hoje junto, são duas a pagar: a lista, com a de hoje no fim
+    expect(v.cobranca_links).toBe(`${linhaDaParcela(p2, "2026-09-14")}\n${v.vence_hoje_detalhe}`);
+    const soUma = montarVariaveis({ clienteNome: "ANA", escritorioNome: "CB", vencidas: [p2], cruzaram: [p2], venceHoje: [], hoje: "2026-09-14", agora, fuso: FUSO });
+    expect(soUma.cobranca_links).toBe("https://www.asaas.com/i/def");
   });
 
   it("o lembrete fala só do que vence hoje; empurrado da sexta/sábado diz quando venceu e que pode pagar hoje", () => {
     const sab = parcela({ status: "OVERDUE", vencimento: "2026-09-12", vista_vencida_em: "2026-09-13T03:00:00Z", parcela_numero: 6, juros_e_multa: null });
     const v = montarVariaveis({ clienteNome: "Rubens", escritorioNome: "CB", vencidas: [], cruzaram: [], venceHoje: [sab], hoje: "2026-09-14", agora, fuso: FUSO });
-    expect(v.cobranca_detalhe).toBe(`• Parcela 6/12 — ${dinheiro(620)} (valor original) — venceu em 12/09/2026 — https://www.asaas.com/i/abc`);
+    expect(v.cobranca_detalhe).toBe(`• Parcela 6 de 12 — ${dinheiro(620)} — venceu no sábado (12/09)\n  https://www.asaas.com/i/abc`);
     expect(v.cobranca_quantidade).toBe("1");
+    // a condição "Situação da cobrança" lê esta: no lembrete não há vencida
+    expect(v.vencidas_quantidade).toBe("0");
     expect(v.cobranca_valor).toBe(dinheiro(620));
+    expect(v.cobranca_situacao).toBe(`a parcela 6 de 12, de ${dinheiro(620)}, venceu no sábado (12/09) e pode ser paga hoje sem juros`);
     expect(v.vencimento_texto).toBe("venceu no sábado, 12/09 — o boleto pode ser pago hoje sem juros");
     expect(textoDoVencimento([], "2026-09-14")).toBe("");
     // 07/09 (feriado) empurrado para 08/09
     expect(textoDoVencimento([parcela({ vencimento: "2026-09-07" })], "2026-09-08")).toBe("venceu no feriado, 07/09 — o boleto pode ser pago hoje sem juros");
   });
 
-  it("cobrança avulsa usa a descrição; sem link fica sem o traço final", () => {
-    const avulsa = parcela({ parcela_numero: null, descricao: "Honorários iniciais", link_fatura: null, link_boleto: null });
-    expect(linhaDaParcela(avulsa, "2026-09-14")).toBe(`• Honorários iniciais — ${dinheiro(620)} (valor original) — venceu em 10/09/2026`);
+  it("lembrete de várias: 'vencem hoje' quando todas são de hoje", () => {
+    const a = parcela({ id: "a", status: "PENDING", vencimento: "2026-09-14", parcela_numero: 4 });
+    const b = parcela({ id: "b", status: "PENDING", vencimento: "2026-09-14", parcela_numero: 2, parcela_total: 6, valor: 300 });
+    const v = montarVariaveis({ clienteNome: "Rubens", escritorioNome: "CB", vencidas: [], cruzaram: [], venceHoje: [a, b], hoje: "2026-09-14", agora, fuso: FUSO });
+    expect(v.cobranca_situacao).toBe(`duas parcelas vencem hoje, somando ${dinheiro(920)}`);
+    const sab = parcela({ id: "c", status: "OVERDUE", vencimento: "2026-09-12", parcela_numero: 5 });
+    expect(montarVariaveis({ clienteNome: "Rubens", escritorioNome: "CB", vencidas: [], cruzaram: [], venceHoje: [sab, a], hoje: "2026-09-14", agora, fuso: FUSO }).cobranca_situacao).toBe(
+      `duas parcelas venceram ou vencem hoje, somando ${dinheiro(1240)}, e podem ser pagas hoje sem juros`,
+    );
+  });
+
+  it("lembrete empurrado: nenhuma de hoje = 'venceram no fim de semana'/'no feriado', e o valor ORIGINAL ao lado de 'sem juros' (revisão do PR #494)", () => {
+    const sab = parcela({ id: "s", status: "OVERDUE", vencimento: "2026-09-12", parcela_numero: 4, juros_e_multa: 9 });
+    const dom = parcela({ id: "d", status: "OVERDUE", vencimento: "2026-09-13", parcela_numero: 2, parcela_total: 6, valor: 300 });
+    const base = { clienteNome: "Rubens", escritorioNome: "CB", vencidas: [], cruzaram: [], hoje: "2026-09-14", agora, fuso: FUSO };
+    expect(montarVariaveis({ ...base, venceHoje: [sab, dom] }).cobranca_situacao).toBe(`duas parcelas venceram no fim de semana, somando ${dinheiro(920)}, e podem ser pagas hoje sem juros`);
+    // uma só, com juros informados: o valor original, sem "com juros e multa"
+    expect(montarVariaveis({ ...base, venceHoje: [sab] }).cobranca_situacao).toBe(`a parcela 4 de 12, de ${dinheiro(620)}, venceu no sábado (12/09) e pode ser paga hoje sem juros`);
+    // 07/09 (feriado, segunda) e 08/09 (terça, mas lembrete na terça cobre só ela): feriado sozinho
+    const feriado = parcela({ id: "f", status: "OVERDUE", vencimento: "2026-09-07", parcela_numero: 1 });
+    const feriado2 = parcela({ id: "f2", status: "OVERDUE", vencimento: "2026-09-07", parcela_numero: 2 });
+    expect(montarVariaveis({ ...base, hoje: "2026-09-08", venceHoje: [feriado, feriado2] }).cobranca_situacao.startsWith("duas parcelas venceram no feriado,")).toBe(true);
+    // sábado + feriado na segunda (lembrete na terça)
+    expect(montarVariaveis({ ...base, hoje: "2026-09-08", venceHoje: [parcela({ id: "s5", vencimento: "2026-09-05" }), feriado] }).cobranca_situacao.startsWith("duas parcelas venceram no fim de semana e no feriado,")).toBe(true);
+  });
+
+  it("empresa (CNPJ) mantém o primeiro nome como antes: sigla em caixa alta fica, o resto ganha a inicial", () => {
+    const base = { escritorioNome: "CB", vencidas: [p2], cruzaram: [p2], venceHoje: [], hoje: "2026-09-14", agora, fuso: FUSO };
+    expect(montarVariaveis({ ...base, clienteNome: "padaria do bairro", pessoa: "juridica" }).cliente_primeiro_nome).toBe("Padaria");
+    expect(montarVariaveis({ ...base, clienteNome: "ACME LTDA", pessoa: "juridica" }).cliente_primeiro_nome).toBe("ACME");
+  });
+
+  it("⚠️ a cobrança avulsa NUNCA leva a descrição ao cliente (é onde a equipe anota: 'pediu para colocar após…', 10/11/2026); sem link, sem a linha do link", () => {
+    const avulsa = parcela({ parcela_numero: null, parcela_total: null, descricao: "Pediu para pagar depois das eleições", link_fatura: null, link_boleto: null });
+    expect(linhaDaParcela(avulsa, "2026-09-14")).toBe(`• Cobrança — ${dinheiro(620)} — venceu na quinta-feira (10/09)`);
+    const v = montarVariaveis({ clienteNome: "Rubens", escritorioNome: "CB", vencidas: [avulsa], cruzaram: [avulsa], venceHoje: [], hoje: "2026-09-14", agora, fuso: FUSO });
+    expect(JSON.stringify(v)).not.toContain("eleições");
+    expect(v.cobranca_parcelas).toBe("cobrança");
+    expect(v.cobranca_situacao).toBe(`a cobrança, de ${dinheiro(620)}, venceu na quinta-feira (10/09)`);
+    // sem link, `cobranca_links` cai na linha (o texto "Para pagar:" nunca fica sem nada)
+    expect(v.cobranca_links).toBe(`• Cobrança — ${dinheiro(620)} — venceu na quinta-feira (10/09)`);
+    // avulsa + parcela = "cobranças"; acima de dez, o número
+    const mistas = montarVariaveis({ clienteNome: "Rubens", escritorioNome: "CB", vencidas: [avulsa, p2], cruzaram: [p2], venceHoje: [], hoje: "2026-09-14", agora, fuso: FUSO });
+    expect(mistas.cobranca_situacao.startsWith("duas cobranças estão em aberto")).toBe(true);
+    const doze = Array.from({ length: 12 }, (_, i) => parcela({ id: `p${i}`, parcela_numero: i + 1, vencimento: "2026-09-10" }));
+    expect(montarVariaveis({ clienteNome: "Rubens", escritorioNome: "CB", vencidas: doze, cruzaram: [], venceHoje: [], hoje: "2026-09-14", agora, fuso: FUSO }).cobranca_situacao.startsWith("12 parcelas")).toBe(true);
+  });
+
+  it("saudação e primeiro nome: pessoa ganha a inicial maiúscula (inclusive nome composto); empresa (CNPJ) e cliente sem nome recebem só 'Olá!'", () => {
+    const base = { escritorioNome: "CB", vencidas: [p2], cruzaram: [p2], venceHoje: [], hoje: "2026-09-14", agora, fuso: FUSO };
+    expect(montarVariaveis({ ...base, clienteNome: "JOÃO PEDRO SOUZA", pessoa: "fisica" }).saudacao).toBe("Olá, João!");
+    expect(montarVariaveis({ ...base, clienteNome: "MARIA-JOSÉ SOUZA", pessoa: "fisica" }).cliente_primeiro_nome).toBe("Maria-José");
+    const empresa = montarVariaveis({ ...base, clienteNome: "ACME COMERCIO LTDA", pessoa: "juridica" });
+    expect(empresa.saudacao).toBe("Olá!");
+    expect(empresa.cliente_primeiro_nome).toBe("ACME");
+    expect(montarVariaveis({ ...base, clienteNome: "  " }).saudacao).toBe("Olá!");
+    expect(tipoDePessoa("000.000.000-00")).toBe("fisica");
+    expect(tipoDePessoa("00.000.000/0000-00")).toBe("juridica");
+    expect(tipoDePessoa(null)).toBe(null);
+    expect(tipoDePessoa("123")).toBe(null);
+  });
+
+  it("quandoVence — como se fala, relativo ao dia da mensagem (quinta, 12/11/2026)", () => {
+    const hoje = "2026-11-12";
+    expect(quandoVence("2026-11-12", hoje)).toBe("vence hoje");
+    expect(quandoVence("2026-11-13", hoje)).toBe("vence amanhã");
+    expect(quandoVence("2026-11-20", hoje)).toBe("vence em 20/11");
+    expect(quandoVence("2026-11-11", hoje)).toBe("venceu ontem");
+    expect(quandoVence("2026-11-07", hoje)).toBe("venceu no sábado (07/11)");
+    expect(quandoVence("2026-11-06", hoje)).toBe("venceu na sexta-feira (06/11)");
+    expect(quandoVence("2026-11-05", hoje)).toBe("venceu em 05/11");
+    expect(quandoVence("2025-12-20", hoje)).toBe("venceu em 20/12/2025");
   });
 });
 

@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { ehInstagram } from '@/lib/cb-channels/transporte'
+import { supabaseAdmin } from '@/lib/ai/admin-client'
+import { anteciparEsperaDaEquipe } from '@/lib/ia-agentes/fila'
+import { MOTIVOS_TEMPORARIOS } from '@/lib/ia-agentes/pausa'
+import { agendarTurno } from '@/lib/ia-agentes/turno'
 import { canalDaIaNaConversa } from '@/lib/ia-agentes/quem-responde'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 
@@ -9,18 +13,24 @@ type Params = { params: Promise<{ conversationId: string }> }
 /**
  * POST /api/ai/autoreply/[conversationId]  (agent+)
  *
- * O "Pausar / Retomar IA" da faixa do fio (D26 do docs/PLANO-agentes-de-ia.md).
+ * O "Pausar / Desativar IA / Retomar IA" da faixa do fio (D26 do
+ * docs/PLANO-agentes-de-ia.md, revista pela 1138 em 11/11/2026).
  *
- * Body: { paused: boolean }
- *   - paused: true  → pausa a IA nesta conversa com o MOTIVO `botao` (1049):
- *                     `ai_autoreply_disabled`, `ia_pausada_por` e
- *                     `ia_pausada_em`.
+ * Body: { paused: boolean, permanente?: boolean }
+ *   - paused: true  → "Pausar": a pausa TEMPORÁRIA (`botao`, 1049/1138) — a IA
+ *                     volta sozinha se a cliente escrever e ninguém da equipe
+ *                     responder em N min (a configuração da conta). Nunca
+ *                     REBAIXA uma pausa permanente (o UPDATE só casa sem
+ *                     pausa ou com pausa temporária; 0 linhas = 409).
+ *   - paused: true, permanente: true → "Desativar IA": `desativada`,
+ *                     permanente até o "Retomar IA" (sobrescreve a temporária).
  *   - paused: false → RETOMA: limpa a pausa (os três campos) e carimba
  *                     `ia_retomada_em` — é dele (com a entrada do card na
  *                     etapa) que o teto de respostas volta a contar. ⚠️ É a
- *                     ÚNICA porta que desfaz as pausas `gente`, `botao` e
- *                     `transferencia` (D26): mudar o card de etapa não retoma,
- *                     e o `set_ai` das automações só desfaz a pausa dele.
+ *                     ÚNICA porta que desfaz `desativada` e `transferencia`
+ *                     (D26): mudar o card de etapa não retoma, o `set_ai` das
+ *                     automações só desfaz a pausa dele, e as temporárias
+ *                     (`gente`, `botao`) também o turno levanta (1138).
  *
  * ⚠️⚠️ NOSSO: retomar NÃO solta o responsável humano. No upstream o portão do
  * auto-reply era "há alguém atribuído?", e retomar zerava `assigned_agent_id`;
@@ -49,6 +59,10 @@ export async function POST(request: Request, { params }: Params) {
       )
     }
     const paused = body.paused as boolean
+    if (body.permanente !== undefined && typeof body.permanente !== 'boolean') {
+      return NextResponse.json({ error: 'permanente must be a boolean' }, { status: 400 })
+    }
+    const permanente = paused && body.permanente === true
 
     // Confirm the conversation is in the caller's account before writing.
     const { data: conv, error: convErr } = await supabase
@@ -116,19 +130,24 @@ export async function POST(request: Request, { params }: Params) {
     }
 
     const agora = new Date().toISOString()
-    const update: Record<string, unknown> = paused
-      ? { ai_autoreply_disabled: true, ia_pausada_por: 'botao', ia_pausada_em: agora }
-      : { ai_autoreply_disabled: false, ia_pausada_por: null, ia_pausada_em: null, ia_retomada_em: agora }
+    const update: Record<string, unknown> = !paused
+      ? { ai_autoreply_disabled: false, ia_pausada_por: null, ia_pausada_em: null, ia_retomada_em: agora }
+      : { ai_autoreply_disabled: true, ia_pausada_por: permanente ? 'desativada' : 'botao', ia_pausada_em: agora }
 
     // ⚠️ Confere as LINHAS: RLS que barra o UPDATE (ou a conversa apagada
     // entre a leitura e a escrita) volta 0 linhas com `error: null`, e a tela
     // diria "IA pausada" sobre uma conversa em que ela segue respondendo.
-    const { data: gravadas, error: upErr } = await supabase
+    let escrita = supabase
       .from('conversations')
       .update(update)
       .eq('id', conversationId)
       .eq('account_id', accountId)
-      .select('id')
+    // O "Pausar" (temporário) nunca rebaixa a desativada, a transferência ou a
+    // automação: só casa sem pausa ou com a temporária (1138).
+    if (paused && !permanente) {
+      escrita = escrita.or(`ai_autoreply_disabled.eq.false,ia_pausada_por.in.(${MOTIVOS_TEMPORARIOS.join(',')})`)
+    }
+    const { data: gravadas, error: upErr } = await escrita.select('id')
     if (upErr) {
       console.error('[ai/autoreply] update error:', upErr)
       return NextResponse.json(
@@ -143,7 +162,21 @@ export async function POST(request: Request, { params }: Params) {
       )
     }
 
-    return NextResponse.json({ success: true, paused })
+    // "Retomar IA" com mensagem esperando a equipe (1138): a IA responde AGORA
+    // (a dica do botão promete isso), não no fim dos N min. Pelo cliente de
+    // SERVIÇO (a fila é fechada ao navegador), com a conta e a conversa já
+    // conferidas acima. Melhor esforço: sem isto, o turno roda no horário dele.
+    if (!paused) {
+      try {
+        for (const turno of await anteciparEsperaDaEquipe(supabaseAdmin(), { accountId, conversationId })) {
+          agendarTurno(turno)
+        }
+      } catch (err) {
+        console.error('[ai/autoreply] antecipar a resposta da IA falhou:', err)
+      }
+    }
+
+    return NextResponse.json({ success: true, paused, permanente })
   } catch (err) {
     return toErrorResponse(err)
   }

@@ -75,6 +75,8 @@ export interface AiUsage {
 export interface ProviderResult {
   text: string
   usage: AiUsage | null
+  /** NOSSO (10/11/2026): o resumo do raciocínio, quando pedido e devolvido (`ProviderArgs.raciocinio`). */
+  raciocinio?: string
 }
 
 /** Outcome of a generation call. */
@@ -85,6 +87,8 @@ export interface GenerateResult {
   handoff: boolean
   /** Provider token usage for this call, or null when unavailable. */
   usage: AiUsage | null
+  /** NOSSO (10/11/2026): o resumo do raciocínio, só com `mostrarRaciocinio` (o Playground). */
+  raciocinio?: string
 }
 
 /**

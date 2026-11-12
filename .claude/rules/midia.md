@@ -210,10 +210,19 @@ Tabela `cb_media_library`, `src/lib/acervo/` (puro, com teste), rotas em
   áudio sai como nota de voz. O editor do robô avisa
   (`audioViraNotaDeVozNaMeta`, `src/lib/flows/tipo-da-midia.ts`); o selo "como
   nota de voz" do seletor do acervo no compositor ainda afirma sem distinguir.
-- **A cópia mora em `copiarDoAcervo` (`src/lib/acervo/copiar.ts`)**, com DOIS
-  chamadores: a rota `copiar` (compositor) e o nó "Enviar mídia" do robô, que
-  copia a cada envio (`.claude/rules/whatsapp-envio.md`). Erro de banco é
-  `leitura`, nunca `nao_encontrado`.
+- **A cópia mora em `src/lib/acervo/copiar.ts`, em DUAS formas.**
+  `copiarDoAcervo` faz uma cópia NOVA por envio, num caminho de anexo, e só o
+  compositor a usa (rota `copiar`), porque apaga o rascunho que morre.
+  `copiaCongeladaDoAcervo` faz UMA cópia por ITEM em
+  `acervo/enviados/<item>/`, criada no 1º envio e reaproveitada (decisão do
+  operador, 09/11/2026). Ela serve ao nó "Enviar mídia" do robô e ao passo
+  "Enviar arquivo" das automações, que nunca apagam o que mandaram. Por
+  envio, o vídeo de 13,85 MB custava o arquivo inteiro a cada cliente.
+  ⚠️ Nada apaga a congelada: a 954 (só admin escreve em `acervo/`) e a 1097
+  (`acervo/` fora da fila) já cobrem a subpasta, e o DELETE do item remove
+  só o original. O `exists()` dela segue as duas armadilhas acima. Erro de
+  banco é `leitura`, nunca `nao_encontrado`. Chamador novo entra no pino
+  `arquivos-do-chat-media.chamadores.test.ts`.
 
 ### Arquivo que SAI do `chat-media`: a fila (1097)
 
@@ -223,7 +232,10 @@ Tabela `cb_media_library`, `src/lib/acervo/` (puro, com teste), rotas em
 (`src/lib/storage/arquivos-a-apagar.ts`). Quem enfileira: excluir de vez da
 Lixeira de contatos (prazo ou "Excluir agora"; `supabase.md`, "APAGAR
 CONTATO") e o gatilho da anotação (1102, origem `anotacao`: anotação apagada
-ou anexo tirado, fora do sinal `cb.lixeira`; `anotacoes.md`).
+ou anexo tirado, fora do sinal `cb.lixeira`; `anotacoes.md`). ⚠️ Desde a 1136
+a fila tem um SEGUNDO bucket, `ligacoes` (as gravações das ligações pelo CRM,
+`ligacoes-transcricao.md`): a guarda e o `remove` são POR BUCKET, e as
+citações valem só no `chat-media`.
 
 - ⚠️ **`notas/` (anexo de anotação) é subpasta com regra própria**, o par rota
   + policy da 954: o `POST /api/cb/notes` exige o prefixo e lê tamanho e tipo

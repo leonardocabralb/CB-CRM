@@ -437,6 +437,13 @@ interface MensagemDaJanela {
   transcricao: string | null
   transcricao_status: string | null
   created_at: string | null
+  /** A faixa de ligação (1044; pelo CRM, 1134; o resumo, 1136). */
+  ligacao?: {
+    pelo_crm?: boolean
+    direcao?: string
+    desfecho?: string
+    resumo?: string | null
+  } | null
 }
 
 /**
@@ -521,7 +528,7 @@ export async function analisarConversaReivindicada(
   const { data: mensagens, error: msgErr } = await admin
     .from('messages')
     .select(
-      'id, sender_type, sender_id, from_device, ia_agente_id, content_type, content_text, transcricao, transcricao_status, created_at',
+      'id, sender_type, sender_id, from_device, ia_agente_id, content_type, content_text, transcricao, transcricao_status, created_at, ligacao',
     )
     .eq('conversation_id', args.conversationId)
     .gte('created_at', janelaInicio.toISOString())
@@ -643,9 +650,21 @@ export async function analisarConversaReivindicada(
     // cliente, a atendida é a equipe falando com ele. Sem a linha, ela caía em
     // "áudios/mídias sem texto" e o modelo a lia como anexo que não viu.
     if (m.content_type === 'call') {
-      return m.sender_type === 'customer'
-        ? '[ligação perdida: ligou pelo WhatsApp e ninguém atendeu]'
-        : '[ligação atendida pelo celular do escritório]'
+      if (m.sender_type === 'customer') return '[ligação perdida: ligou pelo WhatsApp e ninguém atendeu]'
+      // A ligação pelo CRM (1134) também é do lado `agent`: feita ou atendida
+      // pela equipe no CRM, com o resumo quando a transcrição ficou pronta (4d).
+      const l = m.ligacao
+      if (l?.pelo_crm === true) {
+        const qual =
+          l.direcao === 'recebida'
+            ? 'ligação recebida e atendida pela equipe pelo CRM'
+            : l.desfecho === 'nao_atendida'
+              ? 'ligação feita pela equipe pelo CRM, o cliente não atendeu'
+              : 'ligação feita pela equipe pelo CRM'
+        const resumo = (l.resumo ?? '').trim()
+        return resumo ? `[${qual}; resumo: ${resumo}]` : `[${qual}]`
+      }
+      return '[ligação atendida pelo celular do escritório]'
     }
     if (m.content_text && m.content_text.trim()) return m.content_text
     const t = transcricoes.get(m.id)

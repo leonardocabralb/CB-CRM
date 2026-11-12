@@ -29,6 +29,11 @@ export interface ConfigDoEspelho {
   last_error: string | null;
   /** o interruptor "Cobrança automática" (998, D20) — ausente na linha anterior à migration */
   regua_ativa?: boolean | null;
+  /** ícone, faixa e filtro "Inadimplentes" (1135); `false` desliga — ausente/nulo é ligado */
+  aviso_inadimplencia_ativo?: boolean | null;
+  /** a fronteira da ativação (D13) e o intervalo mínimo — a "Próxima" da aba Cobranças (1135) */
+  regua_ativada_em?: string | null;
+  regua_intervalo_dias?: number | null;
 }
 
 export interface Espelho {
@@ -82,7 +87,7 @@ export function lerParcela(l: Record<string, unknown>): ParcelaDoEspelho {
 export async function lerConfigDoEspelho(admin: SupabaseClient, accountId: string): Promise<ConfigDoEspelho | null> {
   const { data, error } = await admin
     .from("cb_asaas_config")
-    .select("status, last_sync_at, last_sync_attempt_at, vencidas_listadas_em, last_full_sync_at, sincronizando_desde, vinculo_completo_em, last_error, regua_ativa")
+    .select("status, last_sync_at, last_sync_attempt_at, vencidas_listadas_em, last_full_sync_at, sincronizando_desde, vinculo_completo_em, last_error, regua_ativa, aviso_inadimplencia_ativo, regua_ativada_em, regua_intervalo_dias")
     .eq("account_id", accountId)
     .maybeSingle();
   if (error) throw new Error(`config: ${error.message}`);
@@ -156,13 +161,16 @@ export interface EnvioDaRegua {
   detalhe: string | null;
   criadoEm: string;
   finalizadoEm: string | null;
+  /** a parcela e o cliente do Asaas da trava (a "Próxima" separa por eles, 1135) */
+  cobrancaId: string | null;
+  clienteAsaas: string | null;
 }
 
 /** O histórico da régua para UM contato (998): os últimos `teto` registros, mais recentes primeiro. */
 export async function lerEnviosDoContato(admin: SupabaseClient, accountId: string, contactId: string, teto = 30): Promise<EnvioDaRegua[]> {
   const { data, error } = await admin
     .from("cb_asaas_regua_envios")
-    .select("id, automation_nome, tipo, marco, vencimento, resultado, detalhe, criado_em, finalizado_em")
+    .select("id, automation_nome, tipo, marco, vencimento, resultado, detalhe, criado_em, finalizado_em, cobranca_id, asaas_customer_id")
     .eq("account_id", accountId)
     .eq("contact_id", contactId)
     .order("criado_em", { ascending: false })
@@ -171,6 +179,8 @@ export async function lerEnviosDoContato(admin: SupabaseClient, accountId: strin
   return ((data ?? []) as Record<string, unknown>[]).map((l) => ({
     id: l.id as string,
     automationNome: (l.automation_nome as string | null) ?? "",
+    cobrancaId: (l.cobranca_id as string | null) ?? null,
+    clienteAsaas: (l.asaas_customer_id as string | null) ?? null,
     tipo: l.tipo === "vence_hoje" ? "vence_hoje" : "atraso",
     marco: typeof l.marco === "number" ? l.marco : 0,
     vencimento: (l.vencimento as string | null) ?? "",

@@ -48,7 +48,9 @@ memória.
 09/09/2026: sem crontab do root, sem tarefa de dump, sem volume espelhado. O
 `/etc/cron.d` tem `certbot`, `docker-image-prune`, `docker-builder-prune`,
 `e2scrub_all` e `popularity-contest` — nenhum faz backup (desde 13/10/2026
-há também o `saude-whatsapp`, a sentinela da §12, que não faz backup). O que existe são os
+há também o `saude-whatsapp`, a sentinela da §12, e desde 11/11/2026 o
+`ligacoes-imagem`, a remontagem semanal do computador de ligações da §4 —
+nenhum dos dois faz backup). O que existe são os
 **dumps manuais de 09/09** em `/root/backups/` (do plano da Baileys 7), no
 mesmo disco.
 
@@ -95,7 +97,7 @@ Esta é a ordem de reconstrução. Cada camada precisa da anterior de pé.
 2. Rede overlay CBAdvNet
 3. Traefik            (TLS, roteamento)  ─┐
 4. Postgres, Redis    (dados)             ├─ infra compartilhada
-5. Evolution, n8n, Typebot, pgvector, Portainer, OpenClaw
+5. Evolution, n8n, Typebot, pgvector, Portainer   (o OpenClaw saiu em 10/11/2026, §8)
 6. CRM  (crm_crm + crm_agendador)
 ```
 
@@ -106,6 +108,17 @@ Esta é a ordem de reconstrução. Cada camada precisa da anterior de pé.
 | `CBAdvNet` | overlay | 10.0.1.0/24 | **false** |
 | `ingress` | overlay | 10.0.0.0/24 | false |
 | `typebot_typebot_internal` | overlay | 10.0.2.0/24 | false |
+| `LigacoesNet` | overlay | 10.0.3.0/24 | **true** |
+
+`LigacoesNet` (desde 10/11/2026) é a rede SÓ do CRM e dos computadores de
+ligações (§4): anexável porque eles são contêineres avulsos. Nunca pôr nela o
+Postgres, o Redis ou a Evolution. Criada com
+`docker network create --driver overlay --attachable LigacoesNet`. Nela
+ficam os computadores de ligações e, desde a 4b (10/11/2026), o `crm_crm` (o
+`docker-stack.yml` tem a rede; o deploy foi o das três linhas, §10). A máquina
+chama o CRM por `http://crm_crm:3000`; o CRM chama a máquina pelo nome do
+contêiner (`http://ligacoes-<nome>:8080`, gravado em
+`cb_computadores_de_ligacao`).
 
 ⚠️ **`CBAdvNet` foi criada SEM `--attachable`**, então contêiner avulso
 (`docker run --network CBAdvNet`) é recusado com *"network CBAdvNet not manually
@@ -143,13 +156,13 @@ Todos apontam para `82.25.76.63` e entram pelo `websecure`.
 | `painel.cbadvogados.com` | `portainer_portainer` | 9000 |
 | `typebot.cbadvogados.com` | `typebot_typebot-builder` | 3000 |
 | `bot.cbadvogados.com` | `typebot_typebot-viewer` | 3000 |
-| `openclaw.cbadvogados.com` | `openclaw_openclaw-gateway` | 18789 |
+| ~~`openclaw.cbadvogados.com`~~ | removido em 10/11/2026 (§8); o registro DNS ainda aponta para cá e o Traefik responde 404 | — |
 
 ---
 
 ## 4. Inventário completo (2026-08-04)
 
-**10 stacks, 16 serviços.**
+**10 stacks, 16 serviços** (desde 10/11/2026, 9 e 15: o OpenClaw saiu, §8).
 
 | Stack | Serviço | Imagem | Réplicas |
 |---|---|---|---|
@@ -163,7 +176,117 @@ Todos apontam para `82.25.76.63` e entram pelo `websecure`.
 | `n8n` | `n8n_n8n_editor` / `_webhook` / `_worker` | `n8nio/n8n:latest` | 1 / 1 / 1 |
 | `typebot` | `typebot_typebot-builder` / `-viewer` / `-db` | `baptistearno/*`, `postgres:16` | 1 cada |
 | `portainer` | `portainer_portainer` / `_agent` | `portainer/*` | 1 / global |
-| `openclaw` | `openclaw_openclaw-gateway` | `ghcr.io/openclaw/openclaw:latest` | 1 |
+| ~~`openclaw`~~ | ~~`openclaw_openclaw-gateway`~~ | removido em 10/11/2026 (§8) | — |
+
+⚠️ **Computador de ligações `ligacoes-previdenciario` (contêiner AVULSO,
+desde 10/11/2026, a 4a de `docs/PLANO-ligar-pelo-crm.md`):** o Chrome com o
+WhatsApp Web da conexão Previdenciario - Comercial (um aparelho conectado a
+mais nesse número) e o orquestrador do subprojeto `maquina-de-ligacoes/`.
+PARADO fora das sessões de teste (o CRM fala com ele desde a 4b e tem a tela
+de ligar e atender desde a 4c, 11/11/2026; parado, o "Ligar" fica desligado
+e a recebida não toca no CRM). Desde a 4e, o CRM só o usa com o INTERRUPTOR
+"Ligações pelo CRM" ligado na tela Conexões (1137), e a sentinela (§12) vigia
+o contêiner do computador ligado.
+Desde 11/11/2026 (18:07 UTC): imagem `maquina-de-ligacoes:20261111-9` (a
+gravação que abre no começo do pedido e o `iniciar.sh` que limpa a pasta do
+PulseAudio, `.claude/rules/ligacoes.md`; montada à mão, abaixo), URL do CRM
+`http://crm_crm:3000`, segredo próprio em `previdenciario/segredo.env`.
+
+- **Pastas** (`/root/ligacoes`, 700): `imagem/` (cópia do subprojeto, de onde
+  a imagem é montada), `criar-maquina.sh` (= `ops/vps/ligacoes/`),
+  `previdenciario/segredo.env` (600, gravado pelo `criar-maquina.sh`: o
+  segredo DESTE computador, HMAC do `LIGACOES_SEGREDO` do `crm.env` com o
+  nome; nunca impresso), `previdenciario/perfil` (a SESSÃO do WhatsApp:
+  protegê-la como o `postgres_data`; dono 1000) e `previdenciario/gravacoes`
+  (só até o CRM confirmar o envio). O `segredo.env` compartilhado da 4a, na
+  raiz da pasta, foi APAGADO em 11/11/2026, com o "pode" do operador (nada o
+  lia desde a 4b).
+- **Montar a imagem** (na própria VPS, ~2 min; só as camadas do código, ~10 s):
+  copiar o subprojeto para `/root/ligacoes/imagem/` e
+  `docker build -t maquina-de-ligacoes:<data> /root/ligacoes/imagem`. O `tar`
+  do Mac leva arquivos `._*` (metadados) sem `COPYFILE_DISABLE=1`: os que já
+  estão lá são inofensivos (o TypeScript ignora nome começado por ponto).
+- **Criar** (nasce parado): `sh /root/ligacoes/criar-maquina.sh previdenciario
+  maquina-de-ligacoes:<data> http://crm_crm:3000` (exige o `LIGACOES_SEGREDO`
+  no `/root/crm.env`; deriva e grava o segredo da máquina). O script tem o `docker create`
+  inteiro: o perfil seccomp do Chrome (`imagem/seccomp/chrome.json`),
+  `no-new-privileges`, `--cap-drop ALL --cap-add SYS_CHROOT` (a caixa de
+  areia do Chrome, §8.12 do plano), `--init`, `--restart unless-stopped`, a
+  rede `LigacoesNet`, os tetos do teste (1,5 GB sem swap, `--cpus 2
+  --cpu-shares 256`, 1.024 processos) e NENHUMA porta publicada. Trocar de
+  imagem = `docker rm -f ligacoes-previdenciario` e criar de novo (o perfil
+  fica na pasta).
+- **Ligar e parar:** `docker start ligacoes-previdenciario` /
+  `docker stop ligacoes-previdenciario` (o `unless-stopped` respeita o stop,
+  inclusive depois de reiniciar a VPS). ⚠️ Imagem anterior à `20261111-9` não
+  voltava do stop (laço de reinício: "Daemon startup failed" do PulseAudio);
+  a saída era recriar o contêiner. Conferir depois de ligar:
+  `docker inspect -f '{{.RestartCount}}' ligacoes-previdenciario` = 0.
+- **Remontagem semanal com o Chrome do dia** (§8.7 do plano: o Chrome de uma
+  imagem não se atualiza sozinho): `/root/ligacoes/atualizar-maquinas.sh`
+  (= `ops/vps/ligacoes/`) monta `maquina-de-ligacoes:semanal-<data>` sem cache
+  e com a base nova (~2 min) e troca cada `ligacoes-*` (menos a bancada) pelo
+  `criar-maquina.sh`: só com a linha LIVRE (pergunta o `/estado` à máquina;
+  ocupada, tenta por até 1 h), devolve o contêiner ligado ou parado como
+  estava e, ligado, volta à imagem anterior se a nova não responder em 2 min.
+  Log em `/root/ligacoes/atualizar.log`. Rodado à mão em 11/11/2026 com a
+  máquina ligada: `20261111-8` → `semanal-20261111` em 2 min 13 s, a máquina
+  respondendo. O cron `/etc/cron.d/ligacoes-imagem` (=
+  `ops/vps/ligacoes/ligacoes-imagem.cron`: domingo 07:10 UTC, com `flock` e
+  `timeout` de 2 h) foi instalado em 11/11/2026, com o "pode" do operador.
+  Atualizar o script = copiar o versionado por cima (700); desligar = apagar
+  o arquivo do `/etc/cron.d`.
+- **No CRM (4b):** cada computador é uma linha de `cb_computadores_de_ligacao`
+  (fechada ao navegador): `account_id` e `channel_id` da conexão, `nome` (o
+  `LIGACOES_COMPUTADOR`, ex. `previdenciario`) e `endereco`
+  (`http://ligacoes-previdenciario:8080`). Gravada à mão (SQL pelo conector,
+  com autorização). O CRM só liga e atende com o INTERRUPTOR ligado
+  (`ligado_em`, 1137 — o admin liga e desliga em Configurações → Conexões →
+  "Ligações pelo CRM"), sinal de vida de menos de 3 min e o WhatsApp da
+  máquina conectado: com o contêiner parado, as rotas respondem
+  `computador_fora`.
+- **Computador para um número NOVO (D17, 4e):** a tela não cria contêiner —
+  é aqui. Conferir a memória antes (cada um ocupa ~0,8–1 GiB parado e ~1
+  núcleo em ligação; a VPS tem 2 núcleos, D8). Depois: `criar-maquina.sh
+  <nome> <imagem> http://crm_crm:3000` (o `<nome>` em `[a-z0-9-]`), a linha em
+  `cb_computadores_de_ligacao` (conta, conexão, `nome`, `endereco`
+  `http://ligacoes-<nome>:8080`; nasce DESLIGADA), `docker start
+  ligacoes-<nome>` e, na tela Conexões, ligar o interruptor e ler o QR com o
+  celular do número. O "Reparear" da mesma tela desconecta o WhatsApp da
+  máquina para um QR novo.
+- **Medido em 10/11:** com o WhatsApp aberto, 840–900 MiB e 170–210
+  processos; a caixa de areia ativa (as páginas em outro namespace de usuário
+  e de processos).
+- **A bancada (aposentada na 4b, 10/11/2026: o CRM faz o papel dela).** Os
+  arquivos seguem em `ops/vps/ligacoes/bancada/` para depurar a máquina sem o
+  CRM: recriar a máquina com a URL `http://ligacoes-bancada:8091` e trocar,
+  no comando abaixo, o `--env-file` pelo `/root/ligacoes/<nome>/segredo.env`.
+  Na 4a: `ligacoes-bancada`, um
+  `node:22-bookworm-slim` com `/root/ligacoes/bancada` (=
+  `ops/vps/ligacoes/bancada/`), na `LigacoesNet`, publicado SÓ em
+  `127.0.0.1:8091` (túnel SSH do Mac: `ssh -L 8091:127.0.0.1:8091 …`) e com
+  `--rm`: faz o papel do CRM e guarda as gravações em
+  `/root/ligacoes/bancada-gravacoes` (dono 1000). A página dela NÃO tem
+  senha: fica de pé só durante a sessão (`docker stop ligacoes-bancada`
+  remove). A máquina aponta para ela com a URL `http://ligacoes-bancada:8091`
+  no `criar-maquina.sh`.
+
+```bash
+docker run -d --rm --name ligacoes-bancada --hostname ligacoes-bancada --network LigacoesNet \
+  -p 127.0.0.1:8091:8091 --env-file /root/ligacoes/segredo.env -e MAQUINA=http://ligacoes-previdenciario:8080 \
+  -v /root/ligacoes/bancada:/bancada:ro -v /root/ligacoes/bancada-gravacoes:/gravacoes \
+  --user node --read-only --cap-drop ALL --security-opt no-new-privileges --memory 128m \
+  node:22-bookworm-slim node /bancada/servidor.mjs
+```
+
+~~Contêiner avulso `ligacoes-teste`~~ (os Testes A e B do plano, 10/11/2026):
+**removido em 10/11/2026**, com o "pode" do operador — `docker rm`, `docker
+rmi ligacoes-teste:5` e `rm -rf /root/ligacoes-teste`. A sessão do WhatsApp
+tinha saído dele antes, MOVIDA para o `ligacoes-previdenciario` (é o mesmo
+aparelho conectado no celular: nada a tirar em "Aparelhos conectados"). Com
+ele saíram a tela remota (noVNC) e a sinalização sem senha que ele expunha e o
+Chrome sem a caixa de areia. Os arquivos da montagem seguem em
+`ops/vps/ligacoes-teste/`, como registro dos testes.
 
 ⚠️ **A Evolution é uma IMAGEM NOSSA**, não a oficial — desde **05/11/2026
 09:20 BRT**: `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao-foto-sessao-status-recibo@sha256:5cbbfe22fe402644a6f9c7cec7224c8f67af73562934604e0fccf7773cac0507`
@@ -202,8 +325,8 @@ banco novo = cadastrar de novo. O label `com.docker.stack.image` ainda diz
 `evoapicloud/evolution-api:latest` — **engana**, nunca pinar por ele. O que
 foi medido, decidido e testado está em `docs/PLANO-baileys-7.md`.
 
-⚠️ **Várias imagens estão em `:latest`** (n8n, redis, portainer, typebot,
-openclaw). Um `docker service update --force` nelas pode trazer versão nova sem
+⚠️ **Várias imagens estão em `:latest`** (n8n, redis, portainer, typebot).
+Um `docker service update --force` nelas pode trazer versão nova sem
 ninguém pedir. O CRM e a Evolution estão fixados por digest — que é o certo.
 
 ### Arquivos de stack, todos em `/root/`
@@ -242,7 +365,8 @@ recupera o pareamento.
 `/root/crm.env` (fora do git, **corretamente**). Variáveis:
 
 `AUTOMATION_CRON_SECRET`, `ENCRYPTION_KEY`, `EVOLUTION_BASE_URL`,
-`EVOLUTION_GLOBAL_API_KEY`, `EVOLUTION_WEBHOOK_SECRET`,
+`EVOLUTION_GLOBAL_API_KEY`, `EVOLUTION_WEBHOOK_SECRET`, `LIGACOES_SEGREDO`
+(desde 10/11/2026: o segredo de onde sai o de cada computador de ligações),
 `NEXT_PUBLIC_APP_LOCALE`, `NEXT_PUBLIC_SITE_URL`,
 `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SUPABASE_URL`,
 `SUPABASE_SERVICE_ROLE_KEY`.
@@ -349,8 +473,8 @@ o `stack deploy` manual descrito no `DEPLOY-VPS.md`.
 
 ## 6. Reconstruir do zero
 
-1. **DNS** — apontar `crm`, `api`, `n8n`, `webhook`, `painel`, `typebot`, `bot`,
-   `openclaw` (todos `.cbadvogados.com`) para o IP novo.
+1. **DNS** — apontar `crm`, `api`, `n8n`, `webhook`, `painel`, `typebot` e `bot`
+   (todos `.cbadvogados.com`) para o IP novo.
 2. **Docker + Swarm** — `docker swarm init`.
 3. **Rede** — `docker network create --driver overlay --subnet 10.0.1.0/24 CBAdvNet`.
 4. **Volumes** — restaurar do backup. ⚠️ **Hoje não existe backup**; ver §7.
@@ -405,7 +529,7 @@ o `stack deploy` manual descrito no `DEPLOY-VPS.md`.
    avisada por ela.
 4. **Ubuntu 20.04 fora de suporte** (163 atualizações de segurança pendentes).
 5. **3,7 GB de volumes órfãos** (`chatwoot_*`, `traefik-letsencrypt`).
-6. **Imagens em `:latest`** em 5 serviços — atualização silenciosa num
+6. **Imagens em `:latest`** em 4 serviços — atualização silenciosa num
    `--force`.
 7. **`crm.env` como variável de ambiente**, não Docker secret.
 8. **Sem swap** em 7,8 GB de RAM.
@@ -413,6 +537,30 @@ o `stack deploy` manual descrito no `DEPLOY-VPS.md`.
 ---
 
 ## 8. Histórico de incidentes
+
+### 2026-11-10 — OpenClaw removido
+
+Não foi incidente: o operador confirmou que não usa o OpenClaw e pediu a
+remoção, para liberar memória para o teste de ligações
+(`docs/PLANO-ligar-pelo-crm.md`, Fase 0).
+
+- **O que havia:** um gateway de agente de IA (stack `openclaw`, desde
+  08/04/2026), com os arquivos em `/opt/openclaw` (montados no contêiner) e a
+  rota `openclaw.cbadvogados.com`. O canal de WhatsApp estava habilitado mas
+  nunca foi pareado (sem credencial: não ocupava vaga de aparelho em nenhum
+  número). O agente, pelo OpenRouter, falhava por falta de crédito. Nenhum
+  fluxo do n8n e nada no CRM o citavam.
+- **Cópia** em `/root/backups/openclaw-20261110T172838Z.tar.gz` (1,3 MB, só
+  root): config, workspace, os dois arquivos de stack, o `.env` e o
+  `auto-approve.sh`. O resto era um clone do código público (commit
+  `fdf60c06b0`), sem mudança local.
+- **Remoção:** `docker stack rm openclaw`, as imagens (3,17 GB) e
+  `rm -rf /opt/openclaw`.
+- **Depois:** memória disponível de 3,7 GB para 4,9 GB; disco de 36 GB para
+  32 GB usados. Os 15 serviços em 1/1, o CRM em 307, a Evolution em 200, o
+  cron em 401 e o domínio do OpenClaw em 404.
+- **Falta (operador):** apagar o registro DNS `openclaw`, revogar a chave do
+  OpenRouter (está na cópia) e apagar a cópia quando quiser.
 
 ### 2026-11-05 — troca para o 5º patch: o recibo de grupo por participante
 
@@ -846,7 +994,9 @@ Redis db 8 (`HSCAN … MATCH 'session-*.99'` nos hashes `evolution:instance:*`,
 uma vez por dia, às 10h de Brasília); `/proc/meminfo` e o disco; e, pelo
 PostgREST com a service role do `/root/crm.env`, `cb_channels`, `profiles`
 (papel e perfil dos membros ativos), `cb_perfis_de_acesso` (as conexões de cada
-perfil) e `messages.message_id` (a conferência por id). **O que grava:** só
+perfil), `messages.message_id` (a conferência por id) e os computadores de
+ligações ligados (`cb_computadores_de_ligacao`, 4e), com `docker inspect` do
+contêiner de cada um. **O que grava:** só
 `/root/saude-whatsapp`, linhas `whatsapp_alert` em `notifications` (1085) e os
 alarmes de conexão abertos em `cb_alarmes_da_sentinela` (1123): upsert pela
 chave (conexão, tipo) a cada execução e, das conexões de produção, apaga o que
@@ -866,6 +1016,7 @@ instância não tem "teste"):
 | `descartadas` | "error in handling message" no log da Evolution (mensagem descartada antes do banco: o caso da §8, 30/09). O log não diz de quem é: o aviso traz a conexão PROVÁVEL | é evento: no máximo um aviso a cada 6 h; o que chega dentro do intervalo, ou que o sino recusa, fica em `eventos_pendentes` e sai somado depois, para os destinatários de então |
 | `sessao99` | campo `session-<n>.99` em algum hash (§8), por `HSCAN … MATCH` (nunca `HKEYS`: o Redis é compartilhado), uma vez por dia a partir das 10h — e de novo a cada hora até dar certo no dia. ⚠️ Só chave do tipo HASH: a Evolution grava também `evolution:instance:whatsapp_web_version` como texto, e o `redis-cli` devolve o `WRONGTYPE` com código 0 — em 13/10 isso virou um laço que travou a execução das 15:05 (encerrada à mão) | 0 |
 | `replica:<serviço>` | só os vigiados — `crm_crm`, `crm_agendador`, `evolution_evolution`, `postgres_postgres`, `redis_redis`, `traefik_traefik` — com réplicas rodando ≠ esperadas, desligados (`scale …=0`, que aparece como "0/0") ou ausentes do Swarm, conferido de novo 60 s depois. Os outros serviços (n8n, Typebot…) ficam na semanal | iguais e diferentes de zero (⚠️ manutenção que escala a Evolution a 0 acende o aviso — é o esperado) |
+| `maquina:<nome>` | (4e) o computador de ligações com o INTERRUPTOR ligado no CRM (`cb_computadores_de_ligacao.ligado_em`, 1137) cujo contêiner avulso `ligacoes-<nome>` não está rodando (fora do Swarm, ele não aparece no `docker service ls`), conferido de novo 60 s depois. Desligado no CRM, não é vigiado. Vai aos owner/admin da conta dona; o botão das conexões do CRM já mostra o "sem sinal" por conta própria | rodando |
 | `disco` / `memoria` | disco > 85% / `MemAvailable` < 300 MB (conferida de novo) | abaixo do limite |
 | `sentinela_cega` | alguma medição falhou ("não medido") em 3 execuções seguidas — sem isto, a sentinela cega só deixaria uma linha no `sentinela.log` | uma execução sem "não medido" |
 

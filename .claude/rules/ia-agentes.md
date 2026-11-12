@@ -226,7 +226,7 @@ uma AÇÃO a mais do protocolo da F4 (`marcar_reuniao`, `[[REUNIAO:n]]`).
   (`reuniaoNaoMarcada` + `transferirParaGente`, motivo
   `reuniao_nao_marcada` com o `{motivo}` do código): a resposta já saiu
   prometendo. O desfecho continua `respondeu`; a transferência não passa por
-  cima de pausa existente — mas, com a conversa já pausada (`nada_mudou`), a
+  cima de pausa permanente — mas, com ela (`nada_mudou`), a
   ANOTAÇÃO da falha sai assim mesmo (`anotarNaConversa`). A nota manda
   conferir no Calendly se a reunião não foi criada antes de marcar de novo
   (5xx/tempo podem tê-la criado). Envio que não saiu não transfere pela
@@ -331,6 +331,7 @@ testados; `prepararMidias` em `turno.ts`; `contexto.ts` e `pedido.ts`.
   uma; o Playground corta pelo MESMO `aiContextMessageLimit()` (a env vale
   nos dois).
 - **Playground**: continua só texto — não recebe arquivo.
+- Ligação pelo CRM transcrita: NOTA no contexto (`ligacoes-transcricao.md`).
 - ⚠️ **Áudio pela OpenAI (a queda da transcrição, `transcrever.ts`)**: texto
   VAZIO é o áudio sem fala e vira `MARCA_INAUDIVEL` (`[inaudível]`), o mesmo
   desfecho do Gemini; só o campo AUSENTE é falha. Tratado como falha, o

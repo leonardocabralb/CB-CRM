@@ -25,6 +25,11 @@ export interface RespostaDoResumo {
    * ligado" só é resposta com isto.
    */
   cicloCompleto: boolean;
+  /**
+   * O aviso foi DESLIGADO na tela de Integrações (1135): ícone, faixa e filtro
+   * calam, e `contatos` vem vazio de propósito — nunca é "ninguém deve".
+   */
+  avisoDesligado: boolean;
   /** contato → as parcelas DEVIDAS (vencidas e negativadas) dos clientes do Asaas ligados a ele */
   contatos: Record<string, ParcelaDoEspelho[]>;
 }
@@ -81,6 +86,7 @@ export function lerRespostaDoResumo(json: unknown): RespostaDoResumo | null {
     // Ausente (resposta de uma versão anterior da rota) conta como NÃO
     // completo: neutraliza, em vez de afirmar.
     cicloCompleto: o.cicloCompleto === true,
+    avisoDesligado: o.avisoDesligado === true,
     contatos,
   };
 }
@@ -111,7 +117,7 @@ export function dividasPorContato(resumo: RespostaDoResumo, agora: Date): Map<st
   const mapa = new Map<string, ResumoDeDivida>();
   // Uma régua, UM portão: desconectado não acende ícone nenhum, mesmo que
   // o corpo (parse permissivo) traga contatos — o filtro já cala nesse caso.
-  if (!resumo.conectado) return mapa;
+  if (!resumo.conectado || resumo.avisoDesligado) return mapa;
   for (const [id, parcelas] of Object.entries(resumo.contatos)) {
     const divida = resumirDivida(parcelas, agora, resumo.atualizadoEm);
     if (divida.vencidas.length > 0) mapa.set(id, divida);
@@ -125,7 +131,7 @@ export function dividasPorContato(resumo: RespostaDoResumo, agora: Date): Map<st
  * no `null` sozinho.
  */
 export function dividaDoContato(resumo: RespostaDoResumo | null, contactId: string | null | undefined, agora: Date): ResumoDeDivida | null {
-  if (!resumo || !contactId || !resumo.conectado) return null;
+  if (!resumo || !contactId || !resumo.conectado || resumo.avisoDesligado) return null;
   const parcelas = resumo.contatos[contactId];
   if (!parcelas || parcelas.length === 0) return null;
   const divida = resumirDivida(parcelas, agora, resumo.atualizadoEm);
@@ -147,17 +153,20 @@ export function dividaDoContato(resumo: RespostaDoResumo | null, contactId: stri
  *   vigente ainda por rodar (`cicloCompleto`) — a janela entre o passo 4 e
  *   o 8 de todo ciclo. Um conjunto vazio aí faria uma visão salva esconder
  *   a caixa inteira com cara de "ninguém deve" (Codex, PR #203).
+ * - `aviso_desligado`: o administrador desligou o aviso de inadimplência na
+ *   tela de Integrações (1135) — a rota manda os contatos vazios de propósito.
  *
  * ⚠️ Leitura ANTIGA (espelho parado) NÃO neutraliza: é a MESMA régua do
  * ícone da linha — um interruptor que cala em silêncio sobre dado velho
  * deixaria o operador com 15 ícones na lista e um filtro que "não faz
  * nada". A resposta é a última listagem, e a tela diz de quando ela é.
  */
-export type MotivoDaNeutralizacao = "sem_resposta" | "desconectado" | "sincronizando";
+export type MotivoDaNeutralizacao = "sem_resposta" | "desconectado" | "aviso_desligado" | "sincronizando";
 
 export function motivoDaNeutralizacao(resumo: RespostaDoResumo | null): MotivoDaNeutralizacao | null {
   if (!resumo) return "sem_resposta";
   if (!resumo.conectado) return "desconectado";
+  if (resumo.avisoDesligado) return "aviso_desligado";
   if (!resumo.atualizadoEm || !resumo.cicloCompleto) return "sincronizando";
   return null;
 }
@@ -195,6 +204,9 @@ export interface EnvioDaReguaNaAba {
   detalhe: string | null;
   criadoEm: string;
   finalizadoEm: string | null;
+  /** a parcela e o cliente do Asaas da trava — a "Próxima" do servidor (1135) separa por eles; a tela não usa */
+  cobrancaId?: string | null;
+  clienteAsaas?: string | null;
 }
 
 export interface RespostaDoContato {
@@ -212,6 +224,10 @@ export interface RespostaDoContato {
   reguaComAutomacoes: boolean;
   /** o histórico da régua deste contato, mais recente primeiro */
   envios: EnvioDaReguaNaAba[];
+  /** a próxima etapa PREVISTA (1135) — estimativa; `null` sem régua ligada ou sem nada a cobrar */
+  proxima: { dia: string; hora: string; tipo: "atraso" | "vence_hoje"; marco: number } | null;
+  /** a etiqueta do "Pedir ligação" está nesta ficha (1135): a régua não pede de novo até alguém tirá-la */
+  ligacao: { etiqueta: string; desde: string } | null;
 }
 
 function lerEnvio(bruto: unknown): EnvioDaReguaNaAba | null {
@@ -263,7 +279,19 @@ export function lerRespostaDoContato(json: unknown): RespostaDoContato | null {
     reguaAtiva: o.reguaAtiva === true,
     reguaComAutomacoes: o.reguaComAutomacoes === true,
     envios,
+    proxima: lerProxima(o.proxima),
+    ligacao:
+      o.ligacao && typeof o.ligacao === "object" && typeof (o.ligacao as Record<string, unknown>).desde === "string"
+        ? { etiqueta: String((o.ligacao as Record<string, unknown>).etiqueta ?? ""), desde: (o.ligacao as Record<string, unknown>).desde as string }
+        : null,
   };
+}
+
+function lerProxima(v: unknown): RespostaDoContato["proxima"] {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o.dia !== "string" || typeof o.hora !== "string" || typeof o.marco !== "number") return null;
+  return { dia: o.dia, hora: o.hora, tipo: o.tipo === "vence_hoje" ? "vence_hoje" : "atraso", marco: o.marco };
 }
 
 /** Quantos dias uma parcela paga ainda aparece em "Regularizadas". */

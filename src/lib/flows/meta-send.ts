@@ -374,8 +374,15 @@ interface SendMediaEngineArgs {
   conversationId: string
   contactId: string
   kind: MediaKind
-  /** Public URL Meta fetches at send time. */
-  link: string
+  /**
+   * Public URL Meta fetches at send time.
+   *
+   * NOSSO (09/11/2026): ou a função que a PRODUZ, chamada só depois de todas as
+   * recusas (contato, conversa, canal, alvo, conexão) e antes da tentativa —
+   * o "Enviar arquivo" do acervo das automações pede aí a cópia congelada do
+   * item (`automations/midia-do-passo.ts`), e a recusa não toca o Storage.
+   */
+  link: string | (() => Promise<string>)
   caption?: string
   /** Document-only; ignored by Meta for image/video. */
   filename?: string
@@ -384,6 +391,15 @@ interface SendMediaEngineArgs {
   preferredChannelId?: string | null
   /** Ver `SendTextEngineArgs.aoFalhar`. */
   aoFalhar?: AoFalhar
+  /**
+   * NOSSO (09/11/2026): o agente de IA em nome de quem a mídia sai — só o
+   * "Enviar arquivo" da automação que o agente EXECUTOU no turno dele
+   * (`AutomationContext.ia_agente_id`): o vídeo antes do link da assinatura
+   * não para a retomada dele. ⚠️ A 972 conta `bot` COM a marca como
+   * "respondido". Pino default-deny em
+   * `src/lib/ia-agentes/envio.chamadores.test.ts`.
+   */
+  iaAgenteId?: string | null
 }
 
 /**
@@ -455,6 +471,10 @@ export async function engineSendMedia(
   // dá à conversa SEM número o número desta conexão (06/10/2026).
   const accessToken = tokenDaMeta(channel)
   const transport = ehEvolution(channel) ? evolutionTransportFor(channel) : null
+  // NOSSO (09/11/2026): o link PRODUZIDO agora (a cópia do item do acervo),
+  // depois de todas as recusas acima e antes da tentativa: a cópia que falha
+  // não dá número à conversa nem vira bolha — nada foi tentado.
+  const link = typeof args.link === 'function' ? await args.link() : args.link
   await preencherCanalDaConversa(db, args.accountId, args.conversationId, channel.channelId)
 
   let waMessageId = ''
@@ -469,7 +489,7 @@ export async function engineSendMedia(
       const res = await transport.sendMedia({
         to: alvo,
         kind: args.kind,
-        media: args.link,
+        media: link,
         caption: legendaFinal,
         filename: args.filename,
       })
@@ -482,7 +502,7 @@ export async function engineSendMedia(
           accessToken,
           to: v,
           kind: args.kind,
-          link: args.link,
+          link,
           caption: legendaFinal,
           filename: args.filename,
         })
@@ -501,8 +521,9 @@ export async function engineSendMedia(
         contentType: args.kind,
         texto: legendaFinal ?? null,
         previa: preview,
-        mediaUrl: args.link,
+        mediaUrl: link,
         mediaFilename: args.kind === 'document' ? (args.filename ?? null) : null,
+        iaAgenteId: args.iaAgenteId ?? null,
       },
       err,
       args.aoFalhar,
@@ -527,7 +548,7 @@ export async function engineSendMedia(
       // imagem pelo WhatsApp e a EQUIPE via uma bolha vazia no CRM — o pior
       // formato de defeito, porque ninguém desconfia do que já saiu. O envio
       // manual sempre gravou (`send-message.ts:783`); só este caminho não.
-      media_url: args.link,
+      media_url: link,
       // CB (26/09/2026): o nome do DOCUMENTO como saiu (969). Sem ele a bolha
       // cai no nome do objeto no bucket — com o arquivo do acervo, a CÓPIA
       // ("<carimbo>-Contrato_padrao.pdf"). Só documento: nota de voz não tem
@@ -538,6 +559,7 @@ export async function engineSendMedia(
       remote_jid_lid: endereco?.remoteJidLid ?? null,
       from_me: ehEvolution(channel) ? true : null,
       status: 'sent',
+      ...(args.iaAgenteId ? { ia_agente_id: args.iaAgenteId } : {}),
     })
     .select('id')
     .single()

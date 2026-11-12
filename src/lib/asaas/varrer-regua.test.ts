@@ -249,9 +249,10 @@ describe("varrerRegua — a cobrança do marco", () => {
     expect(ch.context?.channel_id).toBe(CANAL);
     expect(ch.context?.vars?.cobranca_quantidade).toBe("1");
     expect(ch.context?.vars?.dias_de_atraso).toBe("3");
-    // a conversa nasceu com o dono da conta e o canal do passo, sem pino
+    // a conversa nasceu ENCERRADA (a cobrança não abre conversa), com o dono
+    // da conta e o canal do passo, sem pino
     const conversa = e.tabelas.conversations[0];
-    expect(conversa).toMatchObject({ account_id: CONTA, user_id: DONO, contact_id: "ct-a", channel_id: CANAL, channel_pinned: false });
+    expect(conversa).toMatchObject({ account_id: CONTA, user_id: DONO, contact_id: "ct-a", channel_id: CANAL, channel_pinned: false, status: "closed" });
     expect(ch.context?.conversation_id).toBe(conversa.id);
     // a trava é do marco, com o desfecho
     expect(e.tabelas.cb_asaas_regua_envios).toHaveLength(1);
@@ -314,6 +315,35 @@ describe("varrerRegua — a cobrança do marco", () => {
     expect(e.tabelas.cb_asaas_cobrancas.find((c) => c.id === "c-ago")).toMatchObject({ status: "RECEIVED" });
   });
 
+  it("{{vars.escritorio_nome}} é o nome automático da assinatura, não o nome da conta (que pode ser o do dono); sem ele, o nome da conta", async () => {
+    const comAssinatura = estado({ accounts: [{ id: CONTA, owner_user_id: DONO, name: "Fulano de Tal", assinatura_nome_automatica: "  CB Advogados " }] });
+    const a = deps(comAssinatura, { listas: {}, recursos: { "/payments/pay_c1": noAsaas("c1", "cus_a") } });
+    await varrerRegua(dubleDoSupabase(comAssinatura), CONTA, a.d);
+    expect(a.disparos.chamadas[0].context?.vars?.escritorio_nome).toBe("CB Advogados");
+
+    const semAssinatura = estado({ accounts: [{ id: CONTA, owner_user_id: DONO, name: "Escritório Exemplo", assinatura_nome_automatica: null }] });
+    const b = deps(semAssinatura, { listas: {}, recursos: { "/payments/pay_c1": noAsaas("c1", "cus_a") } });
+    await varrerRegua(dubleDoSupabase(semAssinatura), CONTA, b.d);
+    expect(b.disparos.chamadas[0].context?.vars?.escritorio_nome).toBe("Escritório Exemplo");
+  });
+
+  it("a saudação sai do tipo de pessoa pelo CPF/CNPJ: pessoa em CAIXA ALTA vira 'Olá, Maria!', empresa só 'Olá!' — e o documento não vai para as variáveis", async () => {
+    const pessoa = estado({ cb_asaas_clientes: [cliente("cus_a", "ct-a", { nome: "MARIA DA SILVA", cpf_cnpj: "00000000000" })] });
+    const a = deps(pessoa, { listas: {}, recursos: { "/payments/pay_c1": noAsaas("c1", "cus_a") } });
+    await varrerRegua(dubleDoSupabase(pessoa), CONTA, a.d);
+    const va = a.disparos.chamadas[0].context?.vars ?? {};
+    expect(va.saudacao).toBe("Olá, Maria!");
+    expect(va.cliente_primeiro_nome).toBe("Maria");
+    expect(JSON.stringify(va)).not.toContain("00000000000");
+
+    const empresa = estado({ cb_asaas_clientes: [cliente("cus_a", "ct-a", { nome: "ACME COMERCIO LTDA", cpf_cnpj: "00000000000000" })] });
+    const b = deps(empresa, { listas: {}, recursos: { "/payments/pay_c1": noAsaas("c1", "cus_a") } });
+    await varrerRegua(dubleDoSupabase(empresa), CONTA, b.d);
+    const vb = b.disparos.chamadas[0].context?.vars ?? {};
+    expect(vb.saudacao).toBe("Olá!");
+    expect(vb.cliente_primeiro_nome).toBe("ACME");
+  });
+
   it("a mensagem lista TODAS as vencidas do cliente (D11) e só a que cruzou o marco é travada", async () => {
     const e = estado({
       cb_asaas_cobrancas: [
@@ -326,6 +356,7 @@ describe("varrerRegua — a cobrança do marco", () => {
     await varrerRegua(dubleDoSupabase(e), CONTA, d);
     const vars = disparos.chamadas[0].context?.vars ?? {};
     expect(vars.cobranca_quantidade).toBe("2");
+    expect(vars.vencidas_quantidade).toBe("2");
     expect(vars.cobranca_vencimento).toBe("11/08/2026");
     expect(e.tabelas.cb_asaas_regua_envios.map((t) => t.cobranca_id)).toEqual(["c1"]);
   });
@@ -571,6 +602,56 @@ describe("varrerRegua — a cobrança do marco", () => {
 describe("varrerRegua — o lembrete do vencimento (D17)", () => {
   const as8h = new Date("2026-09-14T11:10:00Z"); // 08:10 em São Paulo
 
+  it("o lembrete da NOITE (1133): o do dia sai às 8h, o da noite às 20h com a SUA trava (marco 1), e um terceiro ciclo à noite não repete", async () => {
+    const e = estado({
+      automations: [automacao("a-0", "asaas_cobranca_vence_hoje", { hora_envio: "08:00" }, "Lembrete"), automacao("a-noite", "asaas_cobranca_vence_hoje", { hora_envio: "20:00" }, "Lembrete · noite")],
+      cb_asaas_cobrancas: [cobranca("h1", "cus_a", { status: "PENDING", vencimento: "2026-09-14", vista_vencida_em: null })],
+    });
+    const respostas = { listas: {}, recursos: { "/payments/pay_h1": noAsaas("h1", "cus_a", { status: "PENDING", dueDate: "2026-09-14" }) } };
+    const disparos: Disparos = { chamadas: [] };
+    await varrerRegua(dubleDoSupabase(e), CONTA, deps(e, respostas, { agora: as8h }, disparos).d);
+    const as19h = new Date("2026-09-14T22:30:00Z"); // 19:30: nenhum lembrete (o do dia fechou às 18:00, o da noite abre às 20:00)
+    await varrerRegua(dubleDoSupabase(e), CONTA, deps(e, respostas, { agora: as19h }, disparos).d);
+    const as20h = new Date("2026-09-14T23:10:00Z"); // 20:10
+    const r20 = await varrerRegua(dubleDoSupabase(e), CONTA, deps(e, respostas, { agora: as20h }, disparos).d);
+    expect(r20.enviados).toBe(1);
+    const as2040 = new Date("2026-09-14T23:40:00Z");
+    const r2040 = await varrerRegua(dubleDoSupabase(e), CONTA, deps(e, respostas, { agora: as2040 }, disparos).d);
+    expect(r2040.enviados).toBe(0);
+    expect(disparos.chamadas.map((c) => c.context?.automation_id)).toEqual(["a-0", "a-noite"]);
+    expect(e.tabelas.cb_asaas_regua_envios.map((t) => ({ tipo: t.tipo, marco: t.marco, r: t.resultado, a: t.automation_id }))).toEqual([
+      { tipo: "vence_hoje", marco: 0, r: "enviado", a: "a-0" },
+      { tipo: "vence_hoje", marco: 1, r: "enviado", a: "a-noite" },
+    ]);
+  });
+
+  it("dia em dias ÚTEIS e noite em dias CORRIDOS: no sábado o da noite sai — a releitura usa os dias do lembrete do grupo (Codex, PR #494)", async () => {
+    const e = estado({
+      automations: [automacao("a-0", "asaas_cobranca_vence_hoje", { hora_envio: "08:00" }, "Lembrete"), automacao("a-noite", "asaas_cobranca_vence_hoje", { hora_envio: "20:00", somente_dias_uteis: false }, "Lembrete · noite")],
+      cb_asaas_cobrancas: [cobranca("s1", "cus_a", { status: "PENDING", vencimento: "2026-09-12", vista_vencida_em: null })],
+    });
+    const respostas = { listas: {}, recursos: { "/payments/pay_s1": noAsaas("s1", "cus_a", { status: "PENDING", dueDate: "2026-09-12" }) } };
+    const sabado20h = new Date("2026-09-12T23:10:00Z"); // sábado, 20:10
+    const { d, disparos } = deps(e, respostas, { agora: sabado20h });
+    const r = await varrerRegua(dubleDoSupabase(e), CONTA, d);
+    expect(r.enviados).toBe(1);
+    expect(disparos.chamadas[0].context?.automation_id).toBe("a-noite");
+    expect(e.tabelas.cb_asaas_regua_envios[0]).toMatchObject({ tipo: "vence_hoje", marco: 1, resultado: "enviado" });
+  });
+
+  it("quem PAGOU durante o dia não recebe o da noite: a releitura no Asaas o tira antes da trava", async () => {
+    const e = estado({
+      automations: [automacao("a-noite", "asaas_cobranca_vence_hoje", { hora_envio: "20:00" }, "Lembrete · noite")],
+      cb_asaas_cobrancas: [cobranca("h1", "cus_a", { status: "PENDING", vencimento: "2026-09-14", vista_vencida_em: null })],
+    });
+    const respostas = { listas: {}, recursos: { "/payments/pay_h1": noAsaas("h1", "cus_a", { status: "RECEIVED", dueDate: "2026-09-14" }) } };
+    const { d, disparos } = deps(e, respostas, { agora: new Date("2026-09-14T23:10:00Z") });
+    const r = await varrerRegua(dubleDoSupabase(e), CONTA, d);
+    expect(r.enviados).toBe(0);
+    expect(disparos.chamadas).toEqual([]);
+    expect(e.tabelas.cb_asaas_regua_envios).toEqual([]);
+  });
+
   it("PENDING vencendo hoje: lembrete às 8h, com o detalhe só do que vence hoje", async () => {
     const e = estado({ cb_asaas_cobrancas: [cobranca("h1", "cus_a", { status: "PENDING", vencimento: "2026-09-14", vista_vencida_em: null })] });
     const { d, disparos } = deps(e, { listas: {}, recursos: { "/payments/pay_h1": noAsaas("h1", "cus_a", { status: "PENDING", dueDate: "2026-09-14" }) } }, { agora: as8h });
@@ -594,7 +675,7 @@ describe("varrerRegua — o lembrete do vencimento (D17)", () => {
     expect(r9.enviados).toBe(1);
     expect(disparos.chamadas).toHaveLength(1);
     expect(disparos.chamadas[0].triggerType).toBe("asaas_cobranca_vencida");
-    expect(disparos.chamadas[0].context?.vars?.vence_hoje_detalhe).toContain("Parcela 2/3");
+    expect(disparos.chamadas[0].context?.vars?.vence_hoje_detalhe).toContain("Parcela 2 de 3");
     const travas = e.tabelas.cb_asaas_regua_envios.map((t) => ({ c: t.cobranca_id, tipo: t.tipo, r: t.resultado }));
     expect(travas).toEqual(expect.arrayContaining([{ c: "c1", tipo: "atraso", r: "enviado" }, { c: "h1", tipo: "vence_hoje", r: "absorvida" }]));
   });
@@ -640,8 +721,8 @@ describe("varrerRegua — o lembrete do vencimento (D17)", () => {
     expect(disparos.chamadas).toHaveLength(1);
     expect(disparos.chamadas[0].triggerType).toBe("asaas_cobranca_vencida");
     const vars = disparos.chamadas[0].context?.vars as Record<string, string>;
-    expect(vars.vence_hoje_detalhe).toContain("Parcela 2/3");
-    expect(vars.vence_hoje_detalhe).toContain("venceu em 12/09/2026");
+    expect(vars.vence_hoje_detalhe).toContain("Parcela 2 de 3");
+    expect(vars.vence_hoje_detalhe).toContain("venceu no sábado (12/09)");
     expect(vars.vencimento_texto).toBe("venceu no sábado, 12/09 — o boleto pode ser pago hoje sem juros");
     expect(registro.pedidos).toContain("/payments/pay_s1");
     const travas = e.tabelas.cb_asaas_regua_envios.map((t) => ({ c: t.cobranca_id, tipo: t.tipo, v: t.vencimento, r: t.resultado }));
@@ -659,7 +740,7 @@ describe("varrerRegua — o lembrete do vencimento (D17)", () => {
     const r = await varrerRegua(dubleDoSupabase(e), CONTA, d);
     expect(r.enviados).toBe(1);
     expect(disparos.chamadas.map((c) => c.triggerType)).toEqual(["asaas_cobranca_vencida"]);
-    expect(disparos.chamadas[0].context?.vars?.vence_hoje_detalhe ?? "").not.toContain("Parcela 2/3");
+    expect(disparos.chamadas[0].context?.vars?.vence_hoje_detalhe ?? "").not.toContain("Parcela 2 de 3");
     const lembretes = e.tabelas.cb_asaas_regua_envios.filter((t) => t.tipo === "vence_hoje");
     expect(lembretes.map((t) => t.id)).toEqual(["t-sab"]);
   });
@@ -679,7 +760,7 @@ describe("varrerRegua — o lembrete do vencimento (D17)", () => {
     const r = await varrerRegua(dubleDoSupabase(e), CONTA, d);
     expect(r.enviados).toBe(1);
     expect(disparos.chamadas.map((c) => c.triggerType)).toEqual(["asaas_cobranca_vencida"]);
-    expect(disparos.chamadas[0].context?.vars?.vence_hoje_detalhe ?? "").not.toContain("Parcela 2/3");
+    expect(disparos.chamadas[0].context?.vars?.vence_hoje_detalhe ?? "").not.toContain("Parcela 2 de 3");
     const lembretes = e.tabelas.cb_asaas_regua_envios.filter((t) => t.tipo === "vence_hoje");
     expect(lembretes.map((t) => t.id)).toEqual(["t-sab"]);
   });
@@ -695,8 +776,8 @@ describe("varrerRegua — o lembrete do vencimento (D17)", () => {
     expect(r.enviados).toBe(1);
     expect(disparos.chamadas.map((c) => c.triggerType)).toEqual(["asaas_cobranca_vence_hoje"]);
     const vars = disparos.chamadas[0].context?.vars as Record<string, string>;
-    expect(vars.cobranca_detalhe).toContain("Parcela 3/3");
-    expect(vars.cobranca_detalhe).not.toContain("Parcela 2/3");
+    expect(vars.cobranca_detalhe).toContain("Parcela 3 de 3");
+    expect(vars.cobranca_detalhe).not.toContain("Parcela 2 de 3");
     expect(registro.pedidos).not.toContain("/payments/pay_s1");
     const lembretes = e.tabelas.cb_asaas_regua_envios.filter((t) => t.tipo === "vence_hoje").map((t) => ({ c: t.cobranca_id, r: t.resultado }));
     expect(lembretes).toEqual(expect.arrayContaining([{ c: "s1", r: "enviado" }, { c: "h1", r: "enviado" }]));

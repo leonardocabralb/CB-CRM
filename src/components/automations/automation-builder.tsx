@@ -1,5 +1,6 @@
 "use client"
 
+import { AvisoDaRegua } from "@/components/automations/selo-da-regua"
 import {
   createContext,
   useContext,
@@ -52,6 +53,7 @@ import {
   ListChecks,
   NotebookPen,
   X,
+  Library,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -71,6 +73,7 @@ import type {
   CustomField,
   InteractiveMessagePayload,
   KeywordMatchTriggerConfig,
+  MediaLibraryItem,
   MessageTemplate,
   Tag as TagRecord,
 } from "@/types"
@@ -117,6 +120,8 @@ import { ehGatilhoDaRegua, HORA_PADRAO_COBRANCA, HORA_PADRAO_LEMBRETE } from "@/
 import { WebhookTriggerConfig } from "@/components/automations/webhook-trigger-config"
 import { ZapSignTriggerConfig } from "@/components/automations/zapsign-trigger-config"
 import { CondicaoPorCampoFields } from "@/components/automations/condicao-por-campo-fields"
+import { SituacaoDaCobrancaFields } from "@/components/automations/situacao-da-cobranca-fields"
+import { lerLimitesDaCobranca } from "@/lib/automations/situacao-da-cobranca"
 // Seletor de variáveis (29/09/2026, CB): todo campo que aceita `{{…}}` vira
 // `CampoComVariaveis` — ver docs/PLANO-seletor-de-variaveis.md.
 import { CampoComVariaveis } from "@/components/automations/variaveis/campo-com-variaveis"
@@ -137,6 +142,7 @@ import type { CbChannel } from "@/lib/cb-channels/repo"
 import { ChannelMultiSelect, ChannelSelect } from "@/components/channels/channel-select"
 import { validateChannelScopeForActivation, type ValidationIssue } from "@/lib/automations/validate"
 import {
+  acervoParaConferir,
   camposParaConferir,
   conferirParaLigar,
   TETO_DE_LINHAS,
@@ -155,6 +161,10 @@ import { opcoesDoCampo } from "@/lib/contacts/campo-opcoes"
 import { uploadAccountMedia, MEDIA_MAX_BYTES_BY_KIND } from "@/lib/storage/upload-media"
 import { mensagemDoUpload } from "@/lib/storage/erro-de-upload"
 import { CHAT_MEDIA_BUCKET } from "@/lib/storage/buckets"
+import { AcervoPicker } from "@/components/inbox/acervo-picker"
+import { useAcervo } from "@/hooks/use-acervo"
+import { TETO_DA_LEITURA_DO_ACERVO } from "@/lib/acervo/filtro"
+import { audioViraNotaDeVozNaMeta } from "@/lib/flows/tipo-da-midia"
 import { origemDoConstrutor, urlDoConstrutor, voltaDoConstrutor } from "@/lib/pipelines/url"
 import { opcoesDeResponsavel } from "@/lib/account/suspensao"
 
@@ -541,6 +551,12 @@ interface AutomationResources {
    */
   reguaDoAsaas: boolean
   /**
+   * NOSSO: o gatilho é a COBRANÇA de atraso da régua (não o lembrete)? Só nela
+   * a condição "Situação da cobrança" tem vencidas para ler — no lembrete a
+   * varredura não passa nenhuma, e a ativação a recusa (revisão do PR #494).
+   */
+  cobrancaDeAtraso: boolean
+  /**
    * O gatilho em edição é o "Situação mudou no Atlas"? O nó Atlas esconde as
    * ações que a ativação recusa nele (`PASSOS_FORA_DO_GATILHO_DO_ATLAS`), e
    * o menu de adicionar faz o nó nascer "Criar tarefa".
@@ -576,6 +592,40 @@ interface AutomationResources {
   flows: FlowOption[]
   /** Em que pé está a carga de cada lista acima — ver `CargaDasListas`. */
   carga: CargaDasListas
+  /** O acervo de mídias, para o "Enviar arquivo" do acervo (09/11/2026). */
+  acervo: AcervoDoConstrutor
+}
+
+/**
+ * O acervo visto pelo construtor (09/11/2026). Lido na RAIZ, e só quando
+ * algum "Enviar arquivo" aponta um item (`algumPassoDoAcervo`): é o que dá o
+ * título do item, diz se ele ainda existe e alimenta a conferência de ligar
+ * (`acervoParaConferir`). O seletor (`AcervoPicker`) lê o acervo de novo a
+ * cada abertura.
+ */
+interface AcervoDoConstrutor {
+  /** Os itens DESTA conta (`useAcervo` com a conta). */
+  itens: MediaLibraryItem[]
+  estado: EstadoDaLista
+  /**
+   * Os escolhidos no seletor NESTA tela. ⚠️ O seletor leu o acervo na hora, e
+   * a lista acima pode ser de antes de o item existir (subido noutra aba):
+   * sem isto, a tela diria "apagado" — e barraria o ligar — sobre o item
+   * recém-escolhido.
+   */
+  escolhidos: ReadonlyMap<string, MediaLibraryItem>
+  aoEscolher: (item: MediaLibraryItem) => void
+}
+
+/** Algum "Enviar arquivo" (ramos inclusive) aponta um item do acervo? */
+function algumPassoDoAcervo(steps: BuilderStep[]): boolean {
+  return steps.some(
+    (s) =>
+      (s.step_type === "send_media" &&
+        typeof s.step_config.acervo_id === "string" &&
+        s.step_config.acervo_id.trim() !== "") ||
+      (s.branches ? algumPassoDoAcervo(s.branches.yes) || algumPassoDoAcervo(s.branches.no) : false),
+  )
 }
 
 /**
@@ -639,6 +689,7 @@ interface PipelineStageOption {
 
 const ResourcesContext = createContext<AutomationResources>({
   reguaDoAsaas: false,
+  cobrancaDeAtraso: false,
   gatilhoDoAtlas: false,
   tags: [],
   members: [],
@@ -650,6 +701,7 @@ const ResourcesContext = createContext<AutomationResources>({
   automations: [],
   flows: [],
   carga: CARGA_INICIAL,
+  acervo: { itens: [], estado: "carregando", escolhidos: new Map(), aoEscolher: () => {} },
 })
 
 function useResources(): AutomationResources {
@@ -796,7 +848,7 @@ function issuesDaResposta(body: unknown): ValidationIssue[] {
  */
 function useRecursosDaAutomacao(
   automacaoAtualId: string | undefined,
-): Omit<AutomationResources, "reguaDoAsaas" | "gatilhoDoAtlas"> {
+): Omit<AutomationResources, "reguaDoAsaas" | "cobrancaDeAtraso" | "gatilhoDoAtlas" | "acervo"> {
   const [tags, setTags] = useState<TagRecord[]>([])
   const [members, setMembers] = useState<AccountMember[]>([])
   const [templates, setTemplates] = useState<MessageTemplate[]>([])
@@ -1710,6 +1762,43 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
     () => (carga.customFields === "pronto" ? camposParaConferir(customFields, accountId) : null),
     [carga.customFields, customFields, accountId],
   )
+  // O acervo (09/11/2026): lido só quando algum "Enviar arquivo" aponta um
+  // item, e pela conta da automação (sob RLS viria o de toda conta da pessoa).
+  const usaAcervo = useMemo(() => algumPassoDoAcervo(state.steps), [state.steps])
+  const {
+    itens: itensDoAcervo,
+    carregando: acervoCarregando,
+    jaCarregou: acervoJaCarregou,
+    falhou: acervoFalhou,
+  } = useAcervo(usaAcervo && !!accountId, accountId ?? undefined)
+  const [escolhidosDoAcervo, setEscolhidosDoAcervo] = useState<ReadonlyMap<string, MediaLibraryItem>>(
+    () => new Map(),
+  )
+  const estadoDoAcervo: EstadoDaLista = acervoFalhou
+    ? "falhou"
+    : acervoJaCarregou && !acervoCarregando
+      ? "pronto"
+      : "carregando"
+  const acervoDaTela = useMemo<AcervoDoConstrutor>(
+    () => ({
+      itens: itensDoAcervo,
+      estado: estadoDoAcervo,
+      escolhidos: escolhidosDoAcervo,
+      aoEscolher: (item) => setEscolhidosDoAcervo((m) => new Map(m).set(item.id, item)),
+    }),
+    [itensDoAcervo, estadoDoAcervo, escolhidosDoAcervo],
+  )
+  // `null` = não dá para afirmar nada (lista carregando, falhando ou no teto):
+  // a conferência do acervo é pulada e quem decide é a rota.
+  const acervoDaConta = useMemo(
+    () =>
+      acervoParaConferir(
+        estadoDoAcervo === "pronto" ? itensDoAcervo : null,
+        accountId,
+        escolhidosDoAcervo.keys(),
+      ),
+    [estadoDoAcervo, itensDoAcervo, accountId, escolhidosDoAcervo],
+  )
   // As automações e robôs que os passos acionam, para os avisos. A própria
   // automação entra com o "Ativa" da TELA, não o do banco: ligá-la agora não
   // pode gerar "a automação acionada está desligada" sobre ela mesma (o
@@ -1752,6 +1841,7 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
               steps: toApiSteps(state.steps),
               canais: canaisParaConferir,
               campos: camposDaConta,
+              acervo: acervoDaConta,
             }),
           )
         : null,
@@ -1763,6 +1853,7 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
       state.channel_ids,
       canaisParaConferir,
       camposDaConta,
+      acervoDaConta,
     ],
   )
   const pendencias =
@@ -1893,6 +1984,7 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
         steps: toApiSteps(state.steps),
         canais: canaisParaConferir,
         campos: camposDaConta,
+        acervo: acervoDaConta,
       })
       if (issues.length > 0) {
         setTentouLigar(true)
@@ -2045,6 +2137,8 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
           {isEditing ? t("save") : t("saveDraft")}
         </Button>
       </header>
+      {/* NOSSO (1135): automação da régua do Asaas = etapa da "Cobrança automática"; só avisa. */}
+      <AvisoDaRegua gatilho={state.trigger_type} />
 
       {/* Canvas */}
       <div className="relative flex-1 overflow-y-auto">
@@ -2054,7 +2148,9 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
             value={{
               ...recursosCarregados,
               reguaDoAsaas: ehGatilhoDaRegua(state.trigger_type),
+              cobrancaDeAtraso: state.trigger_type === "asaas_cobranca_vencida",
               gatilhoDoAtlas: state.trigger_type === GATILHO_DO_ATLAS,
+              acervo: acervoDaTela,
             }}
           >
             <MarcasContext.Provider value={marcas}>
@@ -3433,10 +3529,14 @@ function canalDoPasso(cfg: Record<string, unknown>): string | null {
 /**
  * Editor do passo "Enviar arquivo".
  *
- * O arquivo sobe UMA vez, aqui, para o bucket `chat-media`, e a URL pública
- * fica gravada na config. **Não há coleta de lixo** — o mesmo objeto serve
- * toda execução da automação, para sempre; apagá-lo no envio (como a mensagem
- * agendada faz) quebraria a automação a partir do segundo disparo.
+ * Duas origens (09/11/2026):
+ *  - o arquivo SUBIDO aqui, UMA vez, para o bucket `chat-media`, com a URL
+ *    pública gravada na config. **Não há coleta de lixo** — o mesmo objeto
+ *    serve toda execução da automação, para sempre; apagá-lo no envio (como a
+ *    mensagem agendada faz) quebraria a automação a partir do segundo disparo;
+ *  - um item do ACERVO (`acervo_id`), que o motor COPIA a cada envio
+ *    (`midia-do-passo.ts`): a URL do item fica na config só para a tela, e o
+ *    TIPO segue o do item, como no nó "Enviar mídia" do robô.
  */
 function EditorDeMidia({
   cfg,
@@ -3449,9 +3549,40 @@ function EditorDeMidia({
 }) {
   const [enviando, setEnviando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  const [acervoAberto, setAcervoAberto] = useState(false)
   const tUpload = useTranslations("Upload")
+  const { accountId } = useAuth()
+  const { acervo } = useResources()
   const kind = (cfg.kind as MediaKindUI) ?? "image"
   const url = (cfg.url as string) ?? ""
+  const acervoId =
+    typeof cfg.acervo_id === "string" && cfg.acervo_id.trim() ? cfg.acervo_id.trim() : null
+  const itemDoAcervo = acervoId
+    ? (acervo.escolhidos.get(acervoId) ?? acervo.itens.find((i) => i.id === acervoId) ?? null)
+    : null
+  // "Apagado" só com a lista CARREGADA e INTEIRA: durante a carga, com ela
+  // falhando ou no teto da leitura (pode ter vindo cortada), o item que só não
+  // chegou não é afirmado apagado — a mesma régua de `acervoParaConferir`.
+  const itemApagado =
+    acervoId !== null &&
+    itemDoAcervo === null &&
+    acervo.estado === "pronto" &&
+    acervo.itens.length < TETO_DA_LEITURA_DO_ACERVO
+  // ⚠️ No número OFICIAL só .ogg (Opus) vira nota de voz — o aviso do robô.
+  const audioSemNotaDeVozNaMeta =
+    itemDoAcervo !== null &&
+    itemDoAcervo.tipo === "audio" &&
+    !audioViraNotaDeVozNaMeta(itemDoAcervo.mime_type)
+  const linkDoArquivo = acervoId ? (itemDoAcervo?.media_url ?? url) : url
+
+  // O rótulo do tipo por chamadas LITERAIS: chave montada escapa dos portões
+  // de i18n do CI.
+  function rotuloDoTipo(tipo: MediaKindUI): string {
+    if (tipo === "image") return t("midia.image")
+    if (tipo === "video") return t("midia.video")
+    if (tipo === "document") return t("midia.document")
+    return t("midia.audio")
+  }
 
   async function aoEscolher(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -3467,13 +3598,31 @@ function EditorDeMidia({
     try {
       const { publicUrl } = await uploadAccountMedia(CHAT_MEDIA_BUCKET, file)
       // O nome só é usado em documento, mas guardar sempre custa nada e evita
-      // perder a informação se o operador trocar o tipo depois.
-      set({ url: publicUrl, filename: file.name })
+      // perder a informação se o operador trocar o tipo depois. O upload
+      // SOLTA o item do acervo: com `acervo_id` o motor ignoraria o arquivo.
+      set({ url: publicUrl, filename: file.name, acervo_id: null })
     } catch (err) {
       setErro(mensagemDoUpload(err, tUpload, String(err)))
     } finally {
       setEnviando(false)
     }
+  }
+
+  function escolherDoAcervo(item: MediaLibraryItem) {
+    // O TIPO vem do item (o seletor mostra o acervo inteiro): quem estava em
+    // "Áudio" e tocou num PDF vê o passo virar "Documento" — dito, não em
+    // silêncio. Áudio perde a legenda (932).
+    if (item.tipo !== kind) toast.info(t("midia.tipoSegueOAcervo", { tipo: rotuloDoTipo(item.tipo) }))
+    set({
+      acervo_id: item.id,
+      kind: item.tipo,
+      url: item.media_url,
+      filename: item.filename,
+      ...(item.tipo === "audio" ? { caption: "" } : {}),
+    })
+    acervo.aoEscolher(item)
+    setErro(null)
+    setAcervoAberto(false)
   }
 
   return (
@@ -3486,7 +3635,13 @@ function EditorDeMidia({
             // ⚠️ Trocar para ÁUDIO limpa a legenda. Sem isso ela ficaria
             // gravada na config, invisível na tela (o campo some), e a
             // validação recusaria a ativação sem o operador ver o porquê.
-            set(novo === "audio" ? { kind: novo, caption: "" } : { kind: novo })
+            // E trocar o tipo SOLTA o item do acervo: o tipo dele é o do
+            // arquivo, e o motor mandaria o item com o tipo dele (como o robô).
+            set({
+              kind: novo,
+              ...(novo === "audio" ? { caption: "" } : {}),
+              ...(acervoId ? { acervo_id: null, url: "", filename: "" } : {}),
+            })
           }}
           className={SELECT_CLASS}
         >
@@ -3498,32 +3653,80 @@ function EditorDeMidia({
       </FieldBlock>
 
       <FieldBlock label={t("midia.arquivoLabel")}>
-        <label className="flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-border bg-muted px-3 py-2 text-sm text-muted-foreground hover:border-primary">
-          {enviando ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Upload className="h-4 w-4" />
-          )}
-          <span className="truncate">
-            {enviando
-              ? t("midia.enviando")
-              : url
-                ? ((cfg.filename as string) || url.split("/").pop() || url)
-                : t("midia.escolher")}
-          </span>
-          <input type="file" className="hidden" onChange={aoEscolher} disabled={enviando} />
-        </label>
+        {acervoId ? (
+          <div className="flex min-w-0 items-center gap-2 rounded-md border border-border bg-muted px-3 py-2 text-sm">
+            <Library className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span
+              className="min-w-0 flex-1 truncate text-foreground"
+              title={itemDoAcervo?.titulo || (cfg.filename as string) || undefined}
+            >
+              {itemDoAcervo?.titulo || (cfg.filename as string) || t("midia.doAcervo")}
+            </span>
+            <span className="shrink-0 rounded-full bg-background px-2 py-0.5 text-[10px] text-muted-foreground">
+              {t("midia.doAcervo")}
+            </span>
+            <button
+              type="button"
+              onClick={() => set({ acervo_id: null, url: "", filename: "" })}
+              aria-label={t("midia.tirarArquivo")}
+              title={t("midia.tirarArquivo")}
+              className="shrink-0 rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : (
+          // Um embaixo do outro: o cartão do passo tem 320 px (157 num ramo),
+          // e lado a lado os dois rótulos saíam cortados.
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => setAcervoAberto(true)}
+              disabled={enviando}
+              title={t("midia.escolherDoAcervo")}
+              className="flex min-w-0 items-center gap-2 rounded-md border border-dashed border-border bg-muted px-3 py-2 text-left text-sm text-muted-foreground hover:border-primary disabled:opacity-60"
+            >
+              <Library className="h-4 w-4 shrink-0" />
+              <span className="truncate">{t("midia.escolherDoAcervo")}</span>
+            </button>
+            <label className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md border border-dashed border-border bg-muted px-3 py-2 text-sm text-muted-foreground hover:border-primary">
+              {enviando ? (
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+              ) : (
+                <Upload className="h-4 w-4 shrink-0" />
+              )}
+              <span className="truncate">
+                {enviando
+                  ? t("midia.enviando")
+                  : url
+                    ? ((cfg.filename as string) || url.split("/").pop() || url)
+                    : t("midia.escolher")}
+              </span>
+              <input type="file" className="hidden" onChange={aoEscolher} disabled={enviando} />
+            </label>
+          </div>
+        )}
         {erro && <p className="mt-1 text-[11px] text-destructive">{erro}</p>}
-        {url && (
+        {itemApagado && <p className="mt-1 text-[11px] text-destructive">{t("midia.itemApagado")}</p>}
+        {audioSemNotaDeVozNaMeta && (
+          <p className="mt-1 text-[11px] text-amber-500">{t("midia.audioNaoOgg")}</p>
+        )}
+        {linkDoArquivo && !itemApagado && (
           <a
-            href={url}
+            href={linkDoArquivo}
             target="_blank"
             rel="noreferrer"
             className="mt-1 block truncate text-[11px] text-primary hover:underline"
           >
-            {t("midia.abrir")}
+            {acervoId ? t("midia.abrirDoAcervo") : t("midia.abrir")}
           </a>
         )}
+        <AcervoPicker
+          open={acervoAberto}
+          onOpenChange={setAcervoAberto}
+          onPick={escolherDoAcervo}
+          contaId={accountId ?? undefined}
+        />
       </FieldBlock>
 
       {kind === "document" && (
@@ -4542,7 +4745,7 @@ function StepEditor({
   onChange: (s: BuilderStep) => void
 }) {
   const t = useTranslations("Automations.builder")
-  const { channels, pipelines, stages, templates, carga } = useResources()
+  const { channels, pipelines, stages, templates, carga, cobrancaDeAtraso } = useResources()
   // Mesmo agrupamento do seletor do gatilho: "Contato Acordo" existe em mais
   // de um quadro, e o nome sozinho não distingue.
   const stagesPorFunil = useMemo(
@@ -5110,8 +5313,12 @@ function StepEditor({
                 // Entrar ou sair da janela de 24h, da hora do dia ou do campo
                 // personalizado (2.10) limpa também o resto: o "só de segunda
                 // a sexta" é da hora, e o valor e o operador são do campo.
+                //
+                // NOSSO: a situação da cobrança (régua do Asaas) nasce com os
+                // limites do operador (2 parcelas ou 15 dias, 10/11/2026) — o
+                // que se vê é o que se salva — e os perde ao sair dela.
                 const proprio = (s: unknown) =>
-                  s === "meta_window_open" || s === "time_of_day" || s === "custom_field"
+                  s === "meta_window_open" || s === "time_of_day" || s === "custom_field" || s === "asaas_situacao"
                 set({
                   subject: novo,
                   operand: novo === "deal_status" ? "won" : "",
@@ -5120,6 +5327,8 @@ function StepEditor({
                         somente_seg_a_sex: undefined,
                         value: "",
                         operator: novo === "custom_field" ? "equals" : undefined,
+                        cobranca_parcelas: novo === "asaas_situacao" ? 2 : undefined,
+                        cobranca_dias: novo === "asaas_situacao" ? 15 : undefined,
                       }
                     : {}),
                 })
@@ -5148,9 +5357,17 @@ function StepEditor({
               )}
               <option value="deal_status">{t("config.subjects.deal_status")}</option>
               <option value="meta_window_open">{t("config.subjects.meta_window_open")}</option>
+              {/* NOSSO: só a COBRANÇA de atraso da régua entrega a situação
+                  (no lembrete e noutro gatilho a ativação recusa); gravada
+                  fora dela, continua na lista para poder ser trocada. */}
+              {(cobrancaDeAtraso || cfg.subject === "asaas_situacao") && (
+                <option value="asaas_situacao">{t("config.subjects.asaas_situacao")}</option>
+              )}
             </select>
           </FieldBlock>
-          {criterio === "custom_field" ? (
+          {criterio === "asaas_situacao" ? (
+            <SituacaoDaCobrancaFields cfg={cfg} set={set} />
+          ) : criterio === "custom_field" ? (
             <CondicaoPorCampoFields cfg={cfg} set={set} />
           ) : criterio === "meta_window_open" ? (
             <JanelaDaMetaFields
@@ -5418,6 +5635,7 @@ const CRITERIOS_DA_CONDICAO = new Set([
   "deal_stage",
   "deal_status",
   "meta_window_open",
+  "asaas_situacao",
 ])
 
 /** Corta o texto do resumo: o cartão fechado tem uma linha só. */
@@ -5499,6 +5717,16 @@ function resumoDaCondicao(
         : r.carga.customFields === "pronto"
           ? t("fields.unknown")
           : null
+      break
+    }
+    case "asaas_situacao": {
+      // "2 parcelas ou mais ou 15 dias ou mais" — só o que está preenchido.
+      const l = lerLimitesDaCobranca(cfg)
+      const partes = [
+        l.parcelas !== null ? t("config.cobrancaResumoParcelas", { n: l.parcelas }) : null,
+        l.dias !== null ? t("config.cobrancaResumoDias", { n: l.dias }) : null,
+      ].filter((x): x is string => x !== null)
+      alvo = partes.length > 0 ? partes.join(t("config.cobrancaResumoOu")) : null
       break
     }
   }

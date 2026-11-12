@@ -1,10 +1,12 @@
 ---
 paths:
   - "src/app/api/cb/ia/agentes/*/playground/**"
-  - "src/components/agentes-de-ia/playground-do-agente.tsx"
+  - "src/components/agentes-de-ia/playground*"
+  - "src/components/agentes-de-ia/estado-do-lead*"
   - "src/components/agentes-de-ia/detalhe-do-agente*"
   - "src/components/agentes-de-ia/rascunho*"
   - "src/lib/ia-agentes/sandbox-sem-efeito*"
+  - "src/lib/ai/providers/raciocinio*"
 ---
 
 # Sandbox dos agentes de IA: o Playground testa o RASCUNHO (DC4)
@@ -78,6 +80,31 @@ que o agente vê, ações simuladas, travas, retomada) está em `ia-agentes.md`,
 - **"Simular retomada"**: a cadência da versão testada; a rota devolve
   `desligada` quando a retomada está desligada nela — a simulação roda e a
   bolha avisa que na produção nada sairia.
+
+### O raio-x: cartões, Bastidores e o lead (10/11/2026)
+
+- **Cartões** (`playground-raio-x.tsx`): um por ação ACEITA, com o efeito no
+  passado (`playground.efeito.<tipo>`, chave MONTADA) e o nome/valor; a
+  etapa como "Funil › Etapa" (`nomeDaEtapa`: o "·" separava as ações E o
+  funil da etapa). A transferência diz o destino — o "Transferir para" da
+  VERSÃO testada (`transferir_para` do rascunho, senão o salvo), com o nome
+  pela equipe lida só para isso; vai a ele só sem responsável.
+- **"O lead depois desta conversa"** (`estado-do-lead.ts`, puro): a SOMA das
+  aceitas da conversa (último valor por campo, última etapa, etiqueta pela
+  última mudança; a resposta retida conta como transferência). Nunca a
+  comparação, que é retrato. Recusada não entra: não aconteceria.
+- ⚠️⚠️ **O raciocínio é pedido SÓ pelo Playground** (`mostrarRaciocinio` →
+  `ProviderArgs.raciocinio`) e SÓ aos modelos que já raciocinam por padrão
+  (`providers/raciocinio.ts`: Anthropic família 5, Fable, Mythos — `thinking:
+  { type: 'adaptive', display: 'summarized' }`, o padrão é `omitted`; Gemini
+  2.5+ sem "lite" — `includeThoughts`). Neles muda só o que VOLTA: o mesmo
+  raciocínio, o mesmo custo, e o teste fiel à produção. Nos Claude 4.x,
+  omitir é não raciocinar — pedir mudaria a resposta testada. O turno e a
+  retomada NUNCA passam a opção (o corpo é o de sempre; teste em
+  `providers/raciocinio.test.ts`). 400 do provedor ao pedido = o teste
+  repete SEM ele (`gerarComRaciocinio`). A OpenAI não devolve o resumo.
+- **`respostaCrua`**: o que o modelo escreveu, com os marcadores (o `reply`
+  nunca os traz); o `[[HANDOFF]]` já saiu (é o `handoff`).
 
 ### Nada do Playground escreve
 
