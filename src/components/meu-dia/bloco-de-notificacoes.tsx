@@ -19,6 +19,7 @@ import { formatDistanceToNow } from 'date-fns';
 import {
   AtSign,
   Bell,
+  Bot,
   ListTodo,
   MessageSquareReply,
   Reply,
@@ -58,6 +59,7 @@ const ICONE: Record<Notification['type'], typeof Bell> = {
   task_assigned: ListTodo,
   task_reply: Reply,
   whatsapp_alert: TriangleAlert,
+  ia_transferiu: Bot,
 };
 
 export function BlocoDeNotificacoes({

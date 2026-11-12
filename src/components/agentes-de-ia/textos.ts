@@ -128,6 +128,8 @@ export function rotuloDaChaveDoRascunho(t: ReturnType<typeof useTranslations>, c
       return t('campo.teto');
     case 'transferir_para':
       return t('campo.transferirPara');
+    case 'avisar_ao_transferir':
+      return t('campo.avisarAoTransferir');
     case 'pode_passar_para':
       return t('campo.podePassarPara');
     case 'etapas':

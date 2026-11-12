@@ -161,7 +161,8 @@ import {
   RESERVA_DO_ENVIO_MS,
   type TurnoNaFila,
 } from './fila'
-import { anotarNaConversa, executarAcoes } from './executar-acoes'
+import { avisarDaTransferencia } from './aviso-da-transferencia'
+import { anotarNaConversa, executarAcoes, type CampoPreenchido } from './executar-acoes'
 import { opcoesDoAgente } from './ferramentas'
 import { aberturaDeHoje, dentroDoHorario, ERRO_DA_ESPERA_DO_HORARIO, proximaAbertura } from './horario'
 import { juntarPartes, lerPassagem, partesDoPedidoDaRetomada, partesDoPedidoDoAgente } from './pedido'
@@ -328,9 +329,9 @@ export type ResultadoDaTransferencia = 'transferiu' | 'nada_mudou' | 'falhou'
 
 /**
  * Pausa a IA na conversa (`'transferencia'`), deixa a conversa PENDENTE,
- * atribui o destino do agente quando ninguém é responsável, e deixa uma
+ * atribui o destino do agente quando ninguém é responsável, deixa uma
  * anotação interna de verdade (autor sem usuário, nome congelado
- * "IA · <agente>").
+ * "IA · <agente>") e AVISA a equipe no sino (1139, `avisarDaTransferencia`).
  *
  * Pendente como na passagem do robô (`flows/engine.ts`, ação `handoff`):
  * alguém da equipe precisa agir. Pedido do operador (09/11/2026). A conversa
@@ -354,6 +355,13 @@ export async function transferirParaGente(
     /** O agente que transfere — a trilha da conversa (1083) o nomeia. */
     agenteId?: string | null
     transferirPara: string | null
+    /** Quem recebe o aviso no sino e na tela (1139, `avisar_ao_transferir` do agente). */
+    avisarAoTransferir: readonly string[]
+    /**
+     * Os campos que o agente preencheu na resposta que passou a conversa
+     * (1139): o corpo do aviso. Vazio fora do turno (a rede do cron).
+     */
+    campos?: readonly CampoPreenchido[]
     motivo: MotivoDeTransferencia
     /** Na `reuniao_nao_marcada` (F5): o código da recusa ou da falha, que a nota diz. */
     codigoDaReuniao?: string | null
@@ -410,6 +418,16 @@ export async function transferirParaGente(
 
     const { autor, texto } = await textosDaTransferencia(args.nomeDoAgente, args.motivo, args.codigoDaReuniao)
     await anotarNaConversa(db, { ...args, autor, texto })
+    // 1139: o aviso no sino (e a caixinha na tela) para quem o agente manda
+    // avisar. Só aqui, com a transferência FEITA: `nada_mudou` (já pausada,
+    // encerrada) não avisa. Nunca lança.
+    await avisarDaTransferencia(db, {
+      accountId: args.accountId,
+      conversationId: args.conversationId,
+      escolhidos: args.avisarAoTransferir,
+      campos: args.campos ?? [],
+      motivo: texto,
+    })
     return 'transferiu'
   } catch (err) {
     console.error('[ia-agentes] transferência falhou:', err)
@@ -1127,6 +1145,12 @@ interface Andamento {
    */
   acoes: RegistroDeAcao[] | null
   /**
+   * Os campos que as ações preencheram nesta rodada, com o valor (1139): o
+   * corpo do aviso se a conversa for para a equipe ("Pendência da IA: …").
+   * Só em memória — o registro guarda o campo, não o valor.
+   */
+  camposPreenchidos: CampoPreenchido[]
+  /**
    * A resposta que saiu pediu a EQUIPE (o `[[TRANSFERIR]]`, a equipe
    * prometida, a reunião pedida e não marcada): não se arma retomada — a
    * conversa foi para gente.
@@ -1592,6 +1616,7 @@ async function conduzir(
               },
               comAPassagem,
             )
+            andamento.camposPreenchidos = feitas.campos
             andamento.acoes = [
               ...feitas.registros,
               ...aceitas
@@ -1660,6 +1685,7 @@ async function conduzir(
       aceitas,
     )
     andamento.acoes = [...feitas.registros, ...recusasDaLeitura]
+    andamento.camposPreenchidos = feitas.campos
     // O card mudou de etapa (ação `mover_etapa`): a automação da etapa nova
     // roda já, como a tela faz — DEPOIS da resposta e das ações. A rede do
     // cron cuida se isto falhar.
@@ -1688,6 +1714,8 @@ async function conduzir(
       nomeDoAgente: agente.nome,
       agenteId: agente.id,
       transferirPara: agente.transferirPara,
+      avisarAoTransferir: agente.avisarAoTransferir,
+      campos: andamento.camposPreenchidos,
       motivo: 'reuniao_nao_marcada',
       codigoDaReuniao,
     })
@@ -1721,6 +1749,8 @@ async function conduzir(
       nomeDoAgente: agente.nome,
       agenteId: agente.id,
       transferirPara: agente.transferirPara,
+      avisarAoTransferir: agente.avisarAoTransferir,
+      campos: andamento.camposPreenchidos,
       motivo: 'agente_passou',
     })
     // A inferida leva `sem_marcador` mesmo no `nada_mudou`: é a medida do esquecimento.
@@ -2483,6 +2513,8 @@ async function encerrar(
     nomeDoAgente: andamento.agente.nome,
     agenteId: andamento.agente.id,
     transferirPara: andamento.agente.transferirPara,
+    avisarAoTransferir: andamento.agente.avisarAoTransferir,
+    campos: andamento.camposPreenchidos,
     motivo,
   })
   // Alguém pausou antes (a equipe respondeu enquanto o modelo pensava, o
@@ -2538,6 +2570,7 @@ export async function executarTurno(turnoId: string): Promise<void> {
     transcreveu: false,
     semLeitor: new Set(),
     acoes: null,
+    camposPreenchidos: [],
     pediuEquipe: false,
     abertoDesde: null,
     cancelarDigitando: new AbortController(),

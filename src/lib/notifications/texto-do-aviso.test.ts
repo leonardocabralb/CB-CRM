@@ -120,6 +120,8 @@ describe("clienteDoAviso (28/10/2026: de quem é o aviso)", () => {
   it("nada a dizer = null: atribuição (o corpo já traz o contato), saúde do WhatsApp, sem ficha nem grupo", () => {
     expect(clienteDoAviso({ ...base, contact: { name: "Fulana" } })).toBeNull();
     expect(clienteDoAviso({ ...mencao, type: "whatsapp_alert", contact: { name: "Fulana" } })).toBeNull();
+    // 1139: o aviso da IA que passou a conversa já diz o cliente no título.
+    expect(clienteDoAviso({ ...mencao, type: "ia_transferiu", contact: { name: "Fulana" } })).toBeNull();
     expect(clienteDoAviso(mencao)).toBeNull();
     expect(clienteDoAviso({ ...mencao, contact: { name: "  ", phone: null } })).toBeNull();
     expect(clienteDoAviso({ ...mencao, conversation: { group: { subject: "   " } } })).toBeNull();

@@ -86,6 +86,8 @@ const PROIBIDOS = [
   'removeContactTag',
   'criarTarefaComAviso',
   'transferirParaGente',
+  // 1139: o aviso no sino de quem a IA passou para a equipe.
+  'avisarDaTransferencia',
   'anotarNaConversa',
   'mostrarDigitando',
   'drenarEventosDeFunil',

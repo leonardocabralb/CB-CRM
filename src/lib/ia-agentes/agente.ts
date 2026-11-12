@@ -43,6 +43,8 @@ export const LIMITES = {
   frasesAutorizadas: 10,
   /** Caracteres de UMA frase autorizada (1131), já numa linha só e aparada. */
   fraseAutorizada: 400,
+  /** Quem recebe o aviso quando o agente passa a conversa (1139): o MESMO teto do CHECK da coluna. */
+  avisarAoTransferir: 50,
 } as const
 
 /**
@@ -180,6 +182,13 @@ export interface IaAgente {
   podePassarPara: string[]
   /** Membro que recebe a transferência; nulo = fila sem responsável. */
   transferirPara: string | null
+  /**
+   * Quem recebe o aviso no sino e na tela quando o agente passa a conversa
+   * para a equipe (1139, decisão D1 do operador): ids de LOGIN. Vazia = o
+   * dono, os administradores e quem atende o número. O responsável pela
+   * conversa recebe sempre (`quemAvisarDaTransferencia`).
+   */
+  avisarAoTransferir: string[]
   /** O que ele vê além da conversa (F3). */
   acesso: AcessoDoAgente
   /** O que ele pode FAZER junto com a resposta (F4, D28). */
@@ -223,7 +232,7 @@ export type AgenteComEtapas = IaAgente & { etapas: EtapaDoAgente[] }
 
 /** Colunas lidas: nomeadas, nunca `*` (uma coluna sem GRANT derrubaria a consulta). */
 export const COLUNAS_DO_AGENTE =
-  'id, account_id, nome, descricao, instrucoes, regras, provedor, modelo, ativo, conexoes, horario, teto_respostas, pode_passar_para, transferir_para, acesso, ferramentas, retomada, conduz_fechamento, frases_autorizadas, ativado_em, arquivado_em, created_at, updated_at'
+  'id, account_id, nome, descricao, instrucoes, regras, provedor, modelo, ativo, conexoes, horario, teto_respostas, pode_passar_para, transferir_para, avisar_ao_transferir, acesso, ferramentas, retomada, conduz_fechamento, frases_autorizadas, ativado_em, arquivado_em, created_at, updated_at'
 
 function ehProvedor(v: unknown): v is AiProvider {
   return v === 'openai' || v === 'anthropic' || v === 'gemini'
@@ -369,6 +378,8 @@ export function lerLinhaDoAgente(linha: Record<string, unknown>): IaAgente | nul
     tetoRespostas: typeof linha.teto_respostas === 'number' ? linha.teto_respostas : 10,
     podePassarPara: listaDeTexto(linha.pode_passar_para),
     transferirPara: typeof linha.transferir_para === 'string' ? linha.transferir_para : null,
+    // Ausente (antes da 1139) ou fora da forma = ninguém escolhido (avisa o dono e os admins).
+    avisarAoTransferir: listaDeTexto(linha.avisar_ao_transferir).filter((id) => UUID.test(id)),
     acesso: lerAcesso(linha.acesso),
     ferramentas: lerFerramentas(linha.ferramentas),
     retomada: lerRetomada(linha.retomada),
@@ -397,6 +408,8 @@ export interface AlteracaoDoAgente {
   tetoRespostas?: number
   podePassarPara?: string[]
   transferirPara?: string | null
+  /** Quem recebe o aviso da transferência (1139): a lista INTEIRA. */
+  avisarAoTransferir?: string[]
   acesso?: AcessoDoAgente
   /** O que ele pode fazer junto com a resposta (F4): o objeto INTEIRO. */
   ferramentas?: FerramentasDoAgente
@@ -522,6 +535,13 @@ export function lerAlteracao(corpo: unknown, criacao: boolean): LeituraDaAlterac
       v.transferirPara = c.transferir_para
     } else return { ok: false, codigo: 'lista_invalida' }
   }
+  if ('avisar_ao_transferir' in c) {
+    // ESTRITO: id fora da forma ou acima do teto recusa — descartar em
+    // silêncio tiraria do aviso alguém que o administrador acabou de marcar.
+    const ids = lerIds(c.avisar_ao_transferir)
+    if (!ids || ids.length > LIMITES.avisarAoTransferir) return { ok: false, codigo: 'lista_invalida' }
+    v.avisarAoTransferir = ids
+  }
   if ('teto_respostas' in c) {
     const n = Number(c.teto_respostas)
     if (!Number.isInteger(n) || n < LIMITES.tetoMin || n > LIMITES.tetoMax) {
@@ -602,6 +622,7 @@ export function aplicarAlteracao<A extends IaAgente>(agente: A, a: AlteracaoDoAg
     ...(a.tetoRespostas !== undefined ? { tetoRespostas: a.tetoRespostas } : {}),
     ...(a.podePassarPara !== undefined ? { podePassarPara: a.podePassarPara } : {}),
     ...(a.transferirPara !== undefined ? { transferirPara: a.transferirPara } : {}),
+    ...(a.avisarAoTransferir !== undefined ? { avisarAoTransferir: a.avisarAoTransferir } : {}),
     ...(a.acesso !== undefined ? { acesso: a.acesso } : {}),
     ...(a.ferramentas !== undefined ? { ferramentas: a.ferramentas } : {}),
     ...(a.retomada !== undefined ? { retomada: a.retomada } : {}),
@@ -627,6 +648,7 @@ export function colunasDaAlteracao(a: AlteracaoDoAgente): Record<string, unknown
   if (a.tetoRespostas !== undefined) c.teto_respostas = a.tetoRespostas
   if (a.podePassarPara !== undefined) c.pode_passar_para = a.podePassarPara
   if (a.transferirPara !== undefined) c.transferir_para = a.transferirPara
+  if (a.avisarAoTransferir !== undefined) c.avisar_ao_transferir = a.avisarAoTransferir
   if (a.acesso !== undefined) c.acesso = a.acesso
   if (a.ferramentas !== undefined) c.ferramentas = a.ferramentas
   if (a.retomada !== undefined) c.retomada = a.retomada

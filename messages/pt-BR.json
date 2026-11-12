@@ -6725,6 +6725,10 @@
       "transferirPara": "Transferir para",
       "fila": "Fila sem responsável (qualquer pessoa pode assumir)",
       "transferirParaDica": "Quando o agente passa a conversa para a equipe, a IA para de responder nela, a conversa fica pendente e ganha uma anotação com o motivo.",
+      "avisarAoTransferir": "Avisar quando passar para a equipe",
+      "avisarAoTransferirDica": "Quem recebe um aviso no sino e na tela, que abre a conversa, quando este agente passa o cliente para a equipe. Quem é responsável pela conversa recebe sempre.",
+      "avisarAoTransferirNinguem": "Ninguém marcado: recebem o dono, os administradores e quem atende o número da conversa.",
+      "avisarEquipeNaoCarregou": "Não foi possível carregar a equipe. Quem recebe o aviso continua como está até você recarregar a página.",
       "membroSuspenso": "{name} (suspenso)",
       "foraDaEquipe": "(a pessoa saiu da equipe)",
       "foraDaEquipeDica": "Quem recebia as transferências saiu da equipe. Escolha outra pessoa, ou a fila sem responsável.",
@@ -6778,7 +6782,7 @@
         },
         "limites": {
           "titulo": "Limites e passagem",
-          "porque": "Até quantas respostas ele dá, para quem a conversa vai quando ele transfere e para quais agentes ele pode passar o cliente."
+          "porque": "Até quantas respostas ele dá, para quem a conversa vai quando ele transfere, quem é avisado e para quais agentes ele pode passar o cliente."
         },
         "arquivar": {
           "titulo": "Arquivar o agente",
@@ -7380,6 +7384,10 @@
         "acao_prometida": "{agente} passou a conversa para a equipe: a resposta dizia que algo foi feito no sistema (uma tarefa, um campo, uma etiqueta, a etapa do card…), mas nada foi feito — e ela não foi enviada. O texto retido está nos Turnos do agente; faça o que foi pedido e responda ao cliente."
       },
       "passagem": "{agente} passou a conversa para IA · {destino}, e o card foi para a etapa desse agente.",
+      "aviso": {
+        "titulo": "IA passou {cliente} para a equipe",
+        "clienteSemNome": "um cliente"
+      },
       "acoes": {
         "mover_etapa": "{agente} moveu o card para {alvo}.",
         "etiquetar": "{agente} etiquetou o contato com {alvo}.",
@@ -7624,6 +7632,10 @@
       "apagadaPor": "Anotação apagada por {nome} em {quando}",
       "apagadaEm": "Anotação apagada em {quando}"
     }
+  },
+  "AvisoDaIaNaTela": {
+    "abrir": "Abrir a conversa",
+    "fechar": "Fechar o aviso"
   },
   "SignupPage": {
     "passwordsDoNotMatch": "As senhas não coincidem",

@@ -209,6 +209,20 @@ async function conferirReferencias(
     if (error) throw new ErroDoAgente('banco', error.message)
     if (!data) throw new ErroDoAgente('membro_de_outra_conta', 'membro que não é desta conta')
   }
+  // 1139: quem recebe o aviso da transferência. Membro desta conta — o
+  // suspenso continua aceito (a tela o mantém marcado; na hora de avisar ele
+  // é ignorado, como quem saiu).
+  if (a.avisarAoTransferir && a.avisarAoTransferir.length > 0) {
+    const { data, error } = await db
+      .from('profiles')
+      .select('user_id')
+      .eq('account_id', accountId)
+      .in('user_id', a.avisarAoTransferir)
+    if (error) throw new ErroDoAgente('banco', error.message)
+    if ((data ?? []).length !== a.avisarAoTransferir.length) {
+      throw new ErroDoAgente('membro_de_outra_conta', 'membro que não é desta conta')
+    }
+  }
   if (a.ferramentas) {
     let r: Awaited<ReturnType<typeof conferirFerramentas>>
     try {

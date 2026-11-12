@@ -13,6 +13,7 @@ import {
   textosDaAcao,
   textosDaPassagem,
   textosDaTransferencia,
+  tituloDoAvisoDaTransferencia,
 } from './textos-do-servidor'
 
 // As chaves da anotação de transferência são MONTADAS (`nota.<motivo>`), e o
@@ -36,6 +37,9 @@ describe('textos da transferência do agente', () => {
         expect(typeof pegar(d, `IaAgentes.transferencia.nota.${m}`), m).toBe('string')
       }
       expect(typeof pegar(d, 'IaAgentes.transferencia.passagem')).toBe('string')
+      // O aviso no sino quando a IA passa a conversa (1139).
+      expect(typeof pegar(d, 'IaAgentes.transferencia.aviso.titulo')).toBe('string')
+      expect(typeof pegar(d, 'IaAgentes.transferencia.aviso.clienteSemNome')).toBe('string')
       // As AÇÕES (F4): uma anotação por tipo, e o aviso da tarefa.
       for (const tipo of TIPOS_DE_ACAO) {
         expect(typeof pegar(d, `IaAgentes.transferencia.acoes.${tipo}`), tipo).toBe('string')
@@ -47,6 +51,13 @@ describe('textos da transferência do agente', () => {
       }
     })
   }
+
+  it('1139: o título do aviso diz o cliente; sem nome, o rótulo neutro (nunca um id)', async () => {
+    expect(await tituloDoAvisoDaTransferencia('Fulana')).toMatch(/Fulana/)
+    const semNome = await tituloDoAvisoDaTransferencia(null)
+    expect(semNome).not.toMatch(/\{|null|undefined/)
+    expect(await tituloDoAvisoDaTransferencia('   ')).toBe(semNome)
+  })
 
   it('monta o autor e o texto com o nome do agente', async () => {
     const { autor, texto } = await textosDaTransferencia('Triagem', 'sentinela')

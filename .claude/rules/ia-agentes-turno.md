@@ -9,6 +9,9 @@ paths:
   - "src/components/agentes-de-ia/turnos-do-agente.tsx"
   - "src/components/agentes-de-ia/playground-do-agente.tsx"
   - "supabase/migrations/1109_cb_encerrar_nao_apaga_turno_que_ja_respondeu.sql"
+  - "src/lib/ia-agentes/aviso-da-transferencia*"
+  - "src/hooks/use-aviso-da-ia-na-tela*"
+  - "supabase/migrations/1139_cb_aviso_da_ia_que_passa.sql"
 ---
 
 # Turno do agente: ação prometida, passagem com ações, horário, encerrar
@@ -153,3 +156,37 @@ das ações está em `ia.md` e `ia-agentes.md`.
 - A pendente continua na caixa (o filtro padrão mostra aberta e pendente). A
   IA só se cala na ENCERRADA, então "Retomar IA" não precisa reabrir; voltar
   para aberta é com a equipe.
+
+### A transferência AVISA a equipe (1139)
+
+Pedido do operador (11/11/2026), D1–D4 em
+`docs/PLANO-aviso-da-ia-que-passa-a-conversa.md`: a conversa passada ficava
+pendente sem ninguém saber. Vale para TODO motivo (a PENDÊNCIA do Trabalhista
+e do Prev, teto, áudio, incerto também pela rede, retidas); a passagem entre
+agentes não avisa.
+
+- ⚠️⚠️ **Só com a transferência FEITA** (`transferiu`, depois da anotação;
+  `avisarDaTransferencia`): `nada_mudou` não avisa. Melhor esforço: o aviso
+  que falha (o CHECK sem a 1139) vira log e nunca derruba a transferência.
+- **Quem** (`quemAvisarDaTransferencia`, puro): os marcados no agente
+  (`avisar_ao_transferir`, ids de LOGIN, até 50) e, sempre, o responsável
+  DEPOIS da transferência (o destino atribuído entra). Ninguém marcado ainda
+  ATIVO = dono, admins e quem tem a conexão no perfil (a régua dos alarmes,
+  1122) — lista velha nunca deixa o aviso sem ninguém. O salvar confere os
+  ids contra a conta (`conferirReferencias`).
+- **O texto**: "IA passou <cliente> para a equipe" (sem a linha "de quem é"
+  no sino: `clienteDoAviso` devolve null); o corpo são os CAMPOS preenchidos
+  na resposta que passou ("Pendência da IA: …"), que `executarAcoes` devolve
+  em memória (`campos`; o registro guarda o campo, não o valor) — o
+  `ja_estava` conta. Sem campo, o texto da anotação.
+- **A caixinha dentro do CRM** (`useAvisoDaIaNaTela`, no
+  `BrowserNotificationsListener`): só `ia_transferiu`, sem prazo, sem
+  depender da permissão do navegador (vale no celular); cala como o pop-up
+  do sino (`silencioDoSino`). Some ao clicar (marca lido e abre a conversa),
+  no X, quando o aviso é lido por outro caminho (UPDATE do realtime) e quando
+  a conversa abre na caixa de entrada. ⚠️ Com a aba EM FOCO o pop-up do
+  sistema cala para este tipo e o som sai da caixinha; fora de foco, o som é
+  do pop-up (`caixinhaTocaOSom`) — senão tocariam os dois.
+- **Limites aceitos**: com "Transferir para" e sem responsável, o destino
+  recebe também o "Conversa atribuída" da 0027; o resumo da porta do Meu dia
+  não conta o tipo novo (o bloco de notificações mostra).

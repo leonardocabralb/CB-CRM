@@ -543,8 +543,8 @@ export interface Conversation {
  * ⚠️ Espelha o CHECK de `notifications.type`. Alargar aqui sem alargar o
  * banco (ou o contrário) só aparece em runtime, como violação de constraint.
  * Os literais vivem na 027 (`conversation_assigned`), na 919 (`note_mention`),
- * na 944 (`task_assigned`, `task_reply`), na 1075 (`note_reply`) e na 1085
- * (`whatsapp_alert`).
+ * na 944 (`task_assigned`, `task_reply`), na 1075 (`note_reply`), na 1085
+ * (`whatsapp_alert`) e na 1139 (`ia_transferiu`).
  *
  * `whatsapp_alert` (1085) é gravado com a service role, título e corpo já
  * escritos, sem conversa nem tarefa (o clique só marca lido), por DOIS
@@ -553,6 +553,11 @@ export interface Conversation {
  * `docs/INFRA-VPS.md`), e o próprio CRM, nos alarmes de conexão (1122,
  * `src/lib/cb-channels/avisar-alarmes.ts`), para os owner/admin e os membros
  * cujo perfil vê a conexão.
+ *
+ * `ia_transferiu` (1139) é gravado pelo servidor quando um agente de IA passa
+ * a conversa para a equipe (`src/lib/ia-agentes/aviso-da-transferencia.ts`),
+ * com título e corpo prontos e a conversa; é o ÚNICO tipo que abre também a
+ * caixinha clicável dentro do CRM (`useAvisoDaIaNaTela`).
  *
  * ⚠️ Não confundir com o `'conversation_assigned'` homônimo mais abaixo neste
  * arquivo, que é gatilho de AUTOMAÇÃO. São coisas diferentes com o mesmo nome.
@@ -563,7 +568,8 @@ export type NotificationType =
   | 'note_reply'
   | 'task_assigned'
   | 'task_reply'
-  | 'whatsapp_alert';
+  | 'whatsapp_alert'
+  | 'ia_transferiu';
 
 export interface Notification {
   id: string;

@@ -160,6 +160,7 @@ describe('mover_etapa', () => {
     expect(r).toEqual({
       registros: [{ tipo: 'mover_etapa', alvo: { id: 'etapa-proposta', nome: 'Bancário · Proposta' }, ok: true }],
       moveu: true,
+      campos: [],
     })
     expect(notas()).toEqual([
       expect.objectContaining({
@@ -223,6 +224,7 @@ describe('mover_etapa', () => {
     expect(r).toEqual({
       registros: [{ tipo: 'mover_etapa', alvo: { id: 'etapa-proposta', nome: 'Proposta' }, ok: true, detalhe: 'ja_estava' }],
       moveu: false,
+      campos: [],
     })
     expect(banco.rpcs).toEqual([])
     expect(notas()).toEqual([])
@@ -290,6 +292,8 @@ describe('preencher_campo', () => {
     })
     expect(r.registros[0]).toMatchObject({ ok: true })
     expect(notas()[0].texto).toContain('R$ 150 mil')
+    // 1139: o campo e o valor voltam ao turno (o corpo do aviso, se ele passar a conversa).
+    expect(r.campos).toEqual([{ nome: 'Dívida', valor: 'R$ 150 mil' }])
   })
 
   it('⚠️ o MESMO valor que a ficha já tem (a ação repetida): ok, `ja_estava`, sem escrita e sem anotação', async () => {
@@ -310,6 +314,12 @@ describe('preencher_campo', () => {
     ])
     expect(banco.escritas.filter((e) => e.tabela === 'contact_custom_values')).toEqual([])
     expect(notas()).toEqual([])
+    // 1139: o campo que JÁ tinha o valor também volta — a pendência repetida
+    // continua sendo o motivo da passagem.
+    expect(r.campos).toEqual([
+      { nome: 'Dívida', valor: 'R$ 150 mil' },
+      { nome: 'Data', valor: '2026-10-01 14:00' },
+    ])
     // O valor é lido do contato DO TURNO, naquele campo, com a conta pelo contato.
     expect(banco.consultas.find((c) => c.tabela === 'contact_custom_values')?.filtros).toEqual([
       ['contacts.account_id', 'conta-1'],
@@ -504,7 +514,7 @@ describe('executarAcoes', () => {
   })
 
   it('nenhuma ação: nada acontece', async () => {
-    expect(await executarAcoes(db, CTX, [])).toEqual({ registros: [], moveu: false })
+    expect(await executarAcoes(db, CTX, [])).toEqual({ registros: [], moveu: false, campos: [] })
     expect(banco.escritas).toEqual([])
   })
 
@@ -541,7 +551,11 @@ describe('marcar_reuniao (F5)', () => {
       tipoDeEvento: TIPO,
       inicio: H,
     })
-    expect(r).toEqual({ registros: [{ tipo: 'marcar_reuniao', alvo: { id: H, nome: 'Mon 28/09 15:15' }, ok: true }], moveu: false })
+    expect(r).toEqual({
+      registros: [{ tipo: 'marcar_reuniao', alvo: { id: H, nome: 'Mon 28/09 15:15' }, ok: true }],
+      moveu: false,
+      campos: [],
+    })
     // Sem o nome no marcador: `marcarNoCalendly` usa o da ficha (o `nome` nem vai).
     expect(vi.mocked(marcarNoCalendly).mock.calls[0][1]).not.toHaveProperty('nome')
     expect(notas()).toEqual([

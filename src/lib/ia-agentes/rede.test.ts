@@ -230,6 +230,7 @@ describe('rodarRedeDosTurnos — o órfão', () => {
       nomeDoAgente: 'Triagem',
       agenteId: 'ag-1',
       transferirPara: 'membro-1',
+      avisarAoTransferir: [],
       motivo: 'incerto',
     })
     expect(executarTurno).not.toHaveBeenCalled()
@@ -241,7 +242,8 @@ describe('rodarRedeDosTurnos — o órfão', () => {
     await rodarRedeDosTurnos()
     expect(transferirParaGente).toHaveBeenCalledWith(
       banco,
-      expect.objectContaining({ nomeDoAgente: 'IA', transferirPara: null, motivo: 'incerto' }),
+      // 1139: sem o agente, o aviso vai à régua da lista vazia (dono, admins, quem atende o número).
+      expect.objectContaining({ nomeDoAgente: 'IA', transferirPara: null, avisarAoTransferir: [], motivo: 'incerto' }),
     )
   })
 

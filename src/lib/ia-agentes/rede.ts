@@ -99,6 +99,9 @@ async function recolherOrfaos(db: SupabaseClient): Promise<void> {
         nomeDoAgente: agente?.nome ?? 'IA',
         agenteId: agente?.id ?? o.ia_agente_id,
         transferirPara: agente?.transferirPara ?? null,
+        // O agente ilegível (arquivado, leitura que falhou) avisa o dono, os
+        // admins e quem atende o número — nunca ninguém.
+        avisarAoTransferir: agente?.avisarAoTransferir ?? [],
         motivo: 'incerto',
       })
     }

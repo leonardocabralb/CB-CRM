@@ -34,6 +34,7 @@ const SALVO: IaAgente = {
   tetoRespostas: 10,
   podePassarPara: ['b', 'c'],
   transferirPara: 'membro-que-saiu',
+  avisarAoTransferir: ['m1', 'm2'],
   ativadoEm: '2026-09-25T00:00:00Z',
   etapas: [
     { stageId: 'e1', pipelineId: 'f1', desde: '2026-09-25T00:00:00Z' },
@@ -62,6 +63,7 @@ function rascunhoDe(a: IaAgente): Rascunho {
     horario: a.horario ? { ...a.horario, dias: [...a.horario.dias] } : null,
     tetoRespostas: a.tetoRespostas,
     transferirPara: a.transferirPara,
+    avisarAoTransferir: [...a.avisarAoTransferir],
     podePassarPara: [...a.podePassarPara],
     etapas: a.etapas.map((e) => e.stageId),
     conduzFechamento: a.conduzFechamento,
@@ -136,6 +138,17 @@ describe('alteracoesDoRascunho — o Salvar manda só o que mudou', () => {
   it('escolher a fila (nulo) no lugar de quem saiu é mudança, e vai com o nome da rota', () => {
     const r = { ...rascunhoDe(SALVO), transferirPara: null }
     expect(alteracoesDoRascunho(SALVO, r)).toEqual({ transferir_para: null })
+  })
+
+  it('1139: quem recebe o aviso da transferência é conjunto — a ordem não conta; mudar manda a lista INTEIRA', () => {
+    expect(alteracoesDoRascunho(SALVO, { ...rascunhoDe(SALVO), avisarAoTransferir: ['m2', 'm1'] })).toEqual({})
+    expect(alteracoesDoRascunho(SALVO, { ...rascunhoDe(SALVO), avisarAoTransferir: ['m1'] })).toEqual({
+      avisar_ao_transferir: ['m1'],
+    })
+    // Desmarcar todos manda a lista vazia (volta ao dono, admins e quem atende o número).
+    expect(alteracoesDoRascunho(SALVO, { ...rascunhoDe(SALVO), avisarAoTransferir: [] })).toEqual({
+      avisar_ao_transferir: [],
+    })
   })
 
   it('etapas (D24): conjunto — a ordem não conta; marcar ou desmarcar manda a lista INTEIRA', () => {
@@ -340,6 +353,10 @@ describe('NAO_MUDAM_A_RESPOSTA — o que a tela diz que não muda o teste', () =
     if (!r.ok) throw new Error('fixture')
     expect(aplicarAlteracao(SALVO, r.valor)).toEqual(SALVO)
     for (const chave of ['ativo', 'conexoes', 'etapas']) expect(NAO_MUDAM_A_RESPOSTA.has(chave), chave).toBe(true)
+  })
+
+  it('1139: quem é avisado da transferência não muda a resposta (o pedido não o lê)', () => {
+    expect(NAO_MUDAM_A_RESPOSTA.has('avisar_ao_transferir')).toBe(true)
   })
 
   it('o que muda o pedido ao modelo nunca está na lista', () => {

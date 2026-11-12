@@ -149,6 +149,7 @@ export function ConfiguracaoDoAgente({
   // "1" e digitar "5" dava "15" (revisão da F1b). Lido só para salvar.
   const [tetoTexto, setTetoTexto] = useState(String(agente.tetoRespostas));
   const [transferirPara, setTransferirPara] = useState<string | null>(agente.transferirPara);
+  const [avisarAoTransferir, setAvisarAoTransferir] = useState<string[]>(agente.avisarAoTransferir);
   const [podePassarPara, setPodePassarPara] = useState<string[]>(agente.podePassarPara);
   const [etapas, setEtapas] = useState<string[]>(() => agente.etapas.map((e) => e.stageId));
   const [conduzFechamento, setConduzFechamento] = useState(agente.conduzFechamento);
@@ -204,12 +205,13 @@ export function ConfiguracaoDoAgente({
         horario,
         tetoRespostas: teto ?? agente.tetoRespostas,
         transferirPara,
+        avisarAoTransferir,
         podePassarPara,
         etapas,
         conduzFechamento,
         frasesAutorizadas: frasesTexto,
       }),
-    [agente, nome, descricao, instrucoes, regras, provedor, modelo, conexoes, horario, teto, transferirPara, podePassarPara, etapas, conduzFechamento, frasesTexto]
+    [agente, nome, descricao, instrucoes, regras, provedor, modelo, conexoes, horario, teto, transferirPara, avisarAoTransferir, podePassarPara, etapas, conduzFechamento, frasesTexto]
   );
   const naoSalvo = Object.keys(alteracoes).length > 0 || teto === null;
   const frasesMudaram = 'frases_autorizadas' in alteracoes;
@@ -233,6 +235,10 @@ export function ConfiguracaoDoAgente({
   // <select> mostrar "Fila" sobre um valor que não é a fila.
   const transferenciaForaDaEquipe =
     transferirPara !== null && membros !== null && !membros.some((m) => m.user_id === transferirPara);
+  // 1139: quem está marcado para o aviso e saiu da equipe — aparece para ser
+  // desmarcado (salvar com ele seria recusado: não é mais membro da conta).
+  const avisarForaDaEquipe =
+    membros === null ? [] : avisarAoTransferir.filter((id) => !membros.some((m) => m.user_id === id));
 
   // Conexões oferecidas: só WhatsApp (no Instagram o agente não responde).
   const conexoesOferecidas = channels.filter((c) => !ehInstagram(c));
@@ -665,6 +671,46 @@ export function ConfiguracaoDoAgente({
                 <p className="text-xs text-muted-foreground">{t('campo.transferirParaDica')}</p>
               )}
             </div>
+          </div>
+          <div className="space-y-2 border-t border-border pt-3">
+            <Label>{t('campo.avisarAoTransferir')}</Label>
+            <p className="text-xs text-muted-foreground">{t('campo.avisarAoTransferirDica')}</p>
+            {membros === null ? (
+              equipeLida ? (
+                <p className="text-xs text-amber-700 dark:text-amber-300">{t('campo.avisarEquipeNaoCarregou')}</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">{t('campo.membroNaoCarregado')}</p>
+              )
+            ) : (
+              <>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {/* 1067: suspenso não é oferecido; o já marcado fica, com a marca. */}
+                  {opcoesDeResponsavel(membros, (m) => avisarAoTransferir.includes(m.user_id)).map((m) => (
+                    <label key={m.user_id} className="flex min-w-0 items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={avisarAoTransferir.includes(m.user_id)}
+                        onCheckedChange={() => setAvisarAoTransferir(alternar(avisarAoTransferir, m.user_id))}
+                      />
+                      <span className="min-w-0 truncate">
+                        {m.suspenso_em ? t('campo.membroSuspenso', { name: memberLabel(m) }) : memberLabel(m)}
+                      </span>
+                    </label>
+                  ))}
+                  {avisarForaDaEquipe.map((id) => (
+                    <label key={id} className="flex min-w-0 items-center gap-2 text-sm">
+                      <Checkbox
+                        checked
+                        onCheckedChange={() => setAvisarAoTransferir(avisarAoTransferir.filter((x) => x !== id))}
+                      />
+                      <span className="min-w-0 truncate text-amber-700 dark:text-amber-300">{t('campo.foraDaEquipe')}</span>
+                    </label>
+                  ))}
+                </div>
+                {avisarAoTransferir.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">{t('campo.avisarAoTransferirNinguem')}</p>
+                ) : null}
+              </>
+            )}
           </div>
           <div className="space-y-2 border-t border-border pt-3">
             <Label>{t('campo.podePassarPara')}</Label>

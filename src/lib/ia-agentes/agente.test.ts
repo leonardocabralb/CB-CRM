@@ -125,6 +125,36 @@ describe('lerLinhaDoAgente', () => {
   })
 })
 
+describe('"Avisar quando passar para a equipe" (1139) — quem recebe o aviso', () => {
+  const OUTRO = '22222222-2222-4222-8222-222222222222'
+
+  it('a linha: só uuids; ausente (antes da 1139) ou fora da forma = ninguém escolhido', () => {
+    const base = { id: ID, account_id: ID, provedor: 'gemini' }
+    expect(lerLinhaDoAgente({ ...base, avisar_ao_transferir: [ID, 'x', 3, OUTRO] })?.avisarAoTransferir).toEqual([ID, OUTRO])
+    for (const v of [undefined, null, 'x', {}]) {
+      expect(lerLinhaDoAgente({ ...base, avisar_ao_transferir: v })?.avisarAoTransferir, String(v)).toEqual([])
+    }
+  })
+
+  it('PATCH: a lista inteira, sem repetição, vira a coluna avisar_ao_transferir; vazia vale (volta à régua do dono e admins)', () => {
+    const r = lerAlteracao({ avisar_ao_transferir: [ID, OUTRO, ID] }, false)
+    expect(r).toEqual({ ok: true, valor: { avisarAoTransferir: [ID, OUTRO] } })
+    if (r.ok) expect(colunasDaAlteracao(r.valor)).toEqual({ avisar_ao_transferir: [ID, OUTRO] })
+    expect(lerAlteracao({ avisar_ao_transferir: [] }, false)).toEqual({ ok: true, valor: { avisarAoTransferir: [] } })
+  })
+
+  it('⚠️ PATCH ESTRITO: id fora da forma ou acima do teto recusa — nunca descarta em silêncio quem foi marcado', () => {
+    expect(lerAlteracao({ avisar_ao_transferir: ['ana'] }, false)).toEqual({ ok: false, codigo: 'lista_invalida' })
+    expect(lerAlteracao({ avisar_ao_transferir: ID }, false)).toEqual({ ok: false, codigo: 'lista_invalida' })
+    const demais = Array.from(
+      { length: LIMITES.avisarAoTransferir + 1 },
+      (_, i) => `${String(i).padStart(8, '0')}-1111-4111-8111-111111111111`,
+    )
+    expect(lerAlteracao({ avisar_ao_transferir: demais }, false)).toEqual({ ok: false, codigo: 'lista_invalida' })
+    expect(lerAlteracao({ avisar_ao_transferir: demais.slice(1) }, false).ok).toBe(true)
+  })
+})
+
 describe('"Conduz o fechamento" (1128) — a opção por agente', () => {
   it('a linha: só o booleano true liga; ausente (antes da 1128), "true", 1 e nulo = desligada', () => {
     const base = { id: ID, account_id: ID, provedor: 'gemini' }
@@ -503,6 +533,7 @@ describe('aplicarAlteracao — o RASCUNHO do Playground por cima do salvo (DC4, 
     tetoRespostas: 10,
     podePassarPara: [],
     transferirPara: null,
+    avisarAoTransferir: [],
     acesso: { ficha: false, campos: [], negocio: false, etiquetas: false, cobrancas: false, reuniao: false },
     ferramentas: {},
     retomada: { ativa: false, cadencia: [15, 60], janela: { inicio: '08:00', fim: '21:00' } },

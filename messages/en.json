@@ -6732,6 +6732,10 @@
       "transferirPara": "Hand over to",
       "fila": "Unassigned queue (anyone can take it)",
       "transferirParaDica": "When the agent hands the conversation over to the team, the AI stops replying in it, the conversation becomes pending and gets a note with the reason.",
+      "avisarAoTransferir": "Notify when handing off to the team",
+      "avisarAoTransferirDica": "Who gets a notice in the bell and on screen, opening the conversation, when this agent hands the customer off to the team. Whoever is assigned to the conversation always gets it.",
+      "avisarAoTransferirNinguem": "Nobody selected: the owner, the administrators and whoever handles the conversation's number get it.",
+      "avisarEquipeNaoCarregou": "Could not load the team. Who gets the notice stays as it is until you reload the page.",
       "membroSuspenso": "{name} (suspended)",
       "foraDaEquipe": "(this person left the team)",
       "foraDaEquipeDica": "The person who received the transfers left the team. Choose someone else, or the unassigned queue.",
@@ -6785,7 +6789,7 @@
         },
         "limites": {
           "titulo": "Limits and handoff",
-          "porque": "How many replies it gives, who gets the conversation when it hands off and which agents it can pass the customer to."
+          "porque": "How many replies it gives, who gets the conversation when it hands off, who is notified and which agents it can pass the customer to."
         },
         "arquivar": {
           "titulo": "Archive the agent",
@@ -7387,6 +7391,10 @@
         "acao_prometida": "{agente} handed the conversation to the team: the reply said something was done in the system (a task, a field, a tag, the deal's stage…), but nothing was done — and it was not sent. The held-back text is in the agent's Turns; do what was asked and reply to the customer."
       },
       "passagem": "{agente} handed the conversation to AI · {destino}, and the deal moved to that agent's stage.",
+      "aviso": {
+        "titulo": "AI handed {cliente} off to the team",
+        "clienteSemNome": "a customer"
+      },
       "acoes": {
         "mover_etapa": "{agente} moved the card to {alvo}.",
         "etiquetar": "{agente} tagged the contact with {alvo}.",
@@ -7631,6 +7639,10 @@
       "apagadaPor": "Note deleted by {nome} on {quando}",
       "apagadaEm": "Note deleted on {quando}"
     }
+  },
+  "AvisoDaIaNaTela": {
+    "abrir": "Open the conversation",
+    "fechar": "Dismiss the notice"
   },
   "SignupPage": {
     "passwordsDoNotMatch": "Passwords do not match",

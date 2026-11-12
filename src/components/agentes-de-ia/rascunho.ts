@@ -38,6 +38,8 @@ export interface Rascunho {
   horario: Horario | null
   tetoRespostas: number
   transferirPara: string | null
+  /** Quem recebe o aviso quando o agente passa a conversa (1139): ids de login. */
+  avisarAoTransferir: string[]
   podePassarPara: string[]
   /** Ids das etapas em que o agente atua (D24). */
   etapas: string[]
@@ -95,6 +97,8 @@ export function alteracoesDoRascunho(salvo: IaAgente, r: Rascunho): Record<strin
   if (!mesmoHorario(r.horario, salvo.horario)) corpo.horario = r.horario
   if (r.tetoRespostas !== salvo.tetoRespostas) corpo.teto_respostas = r.tetoRespostas
   if (r.transferirPara !== salvo.transferirPara) corpo.transferir_para = r.transferirPara
+  // A lista vai INTEIRA (a rota a grava como veio); a ordem não conta.
+  if (!mesmoConjunto(r.avisarAoTransferir, salvo.avisarAoTransferir)) corpo.avisar_ao_transferir = r.avisarAoTransferir
   if (!mesmoConjunto(r.podePassarPara, salvo.podePassarPara)) corpo.pode_passar_para = r.podePassarPara
   // As etapas vão INTEIRAS (a rota apaga as que saíram e insere as novas).
   if (!mesmoConjunto(r.etapas, salvo.etapas.map((e) => e.stageId))) corpo.etapas = r.etapas
@@ -143,7 +147,8 @@ export function juntarRascunhos(
  * As chaves do PATCH que NÃO mudam a resposta do Playground: o nome e a
  * descrição do próprio agente não vão ao pedido, e "ligado", conexões,
  * etapas, horário, teto e transferência decidem SE o agente atende, não o que
- * ele responde (`aplicarAlteracao` nem os aplica todos). A tela os lista à
+ * ele responde (quem é AVISADO da transferência, 1139, também não muda nada
+ * nela) (`aplicarAlteracao` nem os aplica todos). A tela os lista à
  * parte, para ninguém esperar ver efeito deles no teste.
  */
 export const NAO_MUDAM_A_RESPOSTA: ReadonlySet<string> = new Set([
@@ -155,6 +160,7 @@ export const NAO_MUDAM_A_RESPOSTA: ReadonlySet<string> = new Set([
   'horario',
   'teto_respostas',
   'transferir_para',
+  'avisar_ao_transferir',
 ])
 
 /** "12" → 12; vazio, fração ou fora de 1..100 → `null` (o campo avisa, o Salvar trava). */
