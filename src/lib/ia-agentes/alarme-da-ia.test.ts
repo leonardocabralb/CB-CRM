@@ -183,6 +183,8 @@ function bancoFalso(opcoes: {
   erroNoInsert?: boolean
   /** O episódio relido DEPOIS de gravar o alarme (padrão: o mesmo, aberto). */
   episodioDepois?: { desde: string; normalizou_em: string | null } | null
+  /** O que a limpeza dos alarmes (por data e título) marcou como lido. */
+  aposentados?: Array<{ id: string; created_at: string }>
 }) {
   const chamadas: Chamada[] = []
   const rpcs: Array<{ nome: string; args: unknown }> = []
@@ -208,6 +210,9 @@ function bancoFalso(opcoes: {
       const daRpc = (opcoes.rpc?.data ?? {}) as { desde?: string }
       const ep = opcoes.episodioDepois === undefined ? { desde: daRpc.desde, normalizou_em: null } : opcoes.episodioDepois
       return { data: ep, error: null }
+    }
+    if (c.tabela === 'notifications' && c.op === 'update' && c.filtros.some(([, k]) => k === 'title')) {
+      return { data: opcoes.aposentados ?? [], error: null }
     }
     if (c.tabela === 'notifications' && c.op === 'insert') {
       if (opcoes.erroNoInsert) return { data: null, error: { message: 'violates check constraint' } }
@@ -365,6 +370,38 @@ describe('registrarFalhaDaIa — abre, lembra ou só conta', () => {
 })
 
 describe('registrarIaVoltou — a 1ª geração que deu certo fecha o episódio', () => {
+  it('⚠️ a corrida inversa (Codex, #512): um episódio NOVO abriu entre o fechamento e a limpeza — o alarme dele volta a não lido', async () => {
+    const { db, chamadas } = bancoFalso({
+      fechado: { desde: '2026-11-12T13:05:00Z', falhas: 3 },
+      aposentados: [
+        { id: 'do-velho', created_at: '2026-11-12T13:05:01.5+00:00' },
+        { id: 'do-novo', created_at: '2026-11-12T15:00:00.300001+00:00' },
+      ],
+      episodioDepois: { desde: '2026-11-12T15:00:00.200001+00:00', normalizou_em: null },
+    })
+    await registrarIaVoltou(db, { accountId: 'conta-1', provedor: 'gemini' })
+    const atualizacoes = aposentadorias(chamadas)
+    const limpeza = atualizacoes[0]
+    const devolucao = atualizacoes[1]
+    const carimbo = (limpeza.valores as { read_at: string }).read_at
+    // Só o do episódio NOVO, e só se ainda tem o carimbo DESTA limpeza.
+    expect(devolucao.valores).toEqual({ read_at: null })
+    expect(devolucao.filtros).toEqual([
+      ['in', 'id', ['do-novo']],
+      ['eq', 'read_at', carimbo],
+    ])
+  })
+
+  it('sem episódio novo (fechado, como deixamos): nada volta', async () => {
+    const { db, chamadas } = bancoFalso({
+      fechado: { desde: '2026-11-12T13:05:00Z', falhas: 3 },
+      aposentados: [{ id: 'do-velho', created_at: '2026-11-12T13:05:01.5+00:00' }],
+      episodioDepois: { desde: '2026-11-12T13:05:00Z', normalizou_em: '2026-11-12T15:00:00Z' },
+    })
+    await registrarIaVoltou(db, { accountId: 'conta-1', provedor: 'gemini' })
+    expect(aposentadorias(chamadas)).toHaveLength(1)
+  })
+
   it('sem episódio aberto: só o UPDATE condicional, nenhum aviso', async () => {
     const { db, chamadas } = bancoFalso({ fechado: null })
     await registrarIaVoltou(db, { accountId: 'conta-1', provedor: 'gemini' })

@@ -141,29 +141,76 @@ export function titulosDoAlarme(t: Tradutor, provedor: string): string[] {
 // A gravação
 // ------------------------------------------------------------
 
+/** O episódio como está no banco agora (`null` = não deu para ler). */
+async function lerEpisodio(
+  db: SupabaseClient,
+  args: { accountId: string; provedor: string },
+): Promise<{ desde: number; aberto: boolean } | 'nenhum' | null> {
+  const { data, error } = await db
+    .from('cb_ia_alarmes')
+    .select('desde, normalizou_em')
+    .eq('account_id', args.accountId)
+    .eq('provedor', args.provedor)
+    .maybeSingle()
+  if (error) {
+    console.warn('[ia-agentes] episódio do alarme não relido:', error.message)
+    return null
+  }
+  const ep = data as { desde?: unknown; normalizou_em?: unknown } | null
+  if (!ep || typeof ep.desde !== 'string') return 'nenhum'
+  return { desde: Date.parse(ep.desde), aberto: ep.normalizou_em == null }
+}
+
 /**
  * Marca como lidos os alarmes NÃO lidos deste episódio (desde a abertura) e
  * deste provedor. O lembrete SUBSTITUI o anterior (senão um dia de problema
  * empilharia quatro caixinhas vermelhas iguais na abertura do CRM, D6 da
  * 1139); o "voltou" os encerra. O UPDATE do tempo real fecha a caixinha
  * aberta. Falha vira log: o aviso novo sai mesmo assim.
+ *
+ * ⚠️ A corrida inversa (Codex, #512): entre o fechamento e esta limpeza,
+ * outro turno pode falhar, ABRIR um episódio novo e gravar o alarme dele — que
+ * o filtro por data e título pegaria junto, escondendo a falha em curso até o
+ * lembrete. Por isso, depois de limpar, relê o episódio: aberto e NOVO (desde
+ * depois do nosso), os avisos dele que esta limpeza marcou voltam a não lidos
+ * — só os que ainda têm o carimbo DESTA limpeza (quem leu no meio não é
+ * desfeito). Se o alarme novo entrou depois da limpeza, ela não o pegou; se
+ * entrou antes, a releitura (depois) vê o episódio novo.
  */
 async function aposentarAlarmes(
   db: SupabaseClient,
-  accountId: string,
+  args: { accountId: string; provedor: string },
   desde: Date,
   titulos: string[],
   agora: Date,
 ): Promise<void> {
-  const { error } = await db
+  const carimbo = agora.toISOString()
+  const { data, error } = await db
     .from('notifications')
-    .update({ read_at: agora.toISOString() })
-    .eq('account_id', accountId)
+    .update({ read_at: carimbo })
+    .eq('account_id', args.accountId)
     .eq('type', 'ia_falhou')
     .is('read_at', null)
     .gte('created_at', desde.toISOString())
     .in('title', titulos)
-  if (error) console.warn('[ia-agentes] alarmes da IA não marcados como lidos:', error.message)
+    .select('id, created_at')
+  if (error) {
+    console.warn('[ia-agentes] alarmes da IA não marcados como lidos:', error.message)
+    return
+  }
+  const marcados = (data ?? []) as Array<{ id: string; created_at: string }>
+  if (marcados.length === 0) return
+
+  const ep = await lerEpisodio(db, args)
+  if (!ep || ep === 'nenhum' || !ep.aberto || !(ep.desde > desde.getTime())) return
+  const doNovo = marcados.filter((m) => Date.parse(m.created_at) >= ep.desde).map((m) => m.id)
+  if (doNovo.length === 0) return
+  const { error: erroDevolver } = await db
+    .from('notifications')
+    .update({ read_at: null })
+    .in('id', doNovo)
+    .eq('read_at', carimbo)
+  if (erroDevolver) console.warn('[ia-agentes] alarme do episódio novo não devolvido:', erroDevolver.message)
 }
 
 /** Os marcados de TODOS os agentes daquele provedor na conta (não arquivados). */
@@ -231,19 +278,9 @@ async function conferirSeAindaParada(
   ids: string[],
 ): Promise<void> {
   if (ids.length === 0) return
-  const { data, error } = await db
-    .from('cb_ia_alarmes')
-    .select('desde, normalizou_em')
-    .eq('account_id', args.accountId)
-    .eq('provedor', args.provedor)
-    .maybeSingle()
-  if (error) {
-    console.warn('[ia-agentes] episódio do alarme não relido:', error.message)
-    return
-  }
-  const ep = data as { desde?: unknown; normalizou_em?: unknown } | null
-  const aindaAberto =
-    !!ep && ep.normalizou_em == null && typeof ep.desde === 'string' && Date.parse(ep.desde) === desde.getTime()
+  const ep = await lerEpisodio(db, args)
+  if (ep === null) return
+  const aindaAberto = ep !== 'nenhum' && ep.aberto && ep.desde === desde.getTime()
   if (aindaAberto) return
   const { error: erroLido } = await db
     .from('notifications')
@@ -285,7 +322,7 @@ export async function registrarFalhaDaIa(
       agora,
     })
     if (r.acao === 'continua') {
-      await aposentarAlarmes(db, args.accountId, desde, titulosDoAlarme(t, args.provedor), agora)
+      await aposentarAlarmes(db, args, desde, titulosDoAlarme(t, args.provedor), agora)
     }
     const ids = await gravarAviso(db, args.accountId, args.provedor, 'ia_falhou', textos)
     await conferirSeAindaParada(db, args, desde, ids)
@@ -316,7 +353,7 @@ export async function registrarIaVoltou(db: SupabaseClient, args: { accountId: s
 
     const desde = typeof fechado.desde === 'string' ? new Date(fechado.desde) : agora
     const t = await tradutorDoAlarme()
-    await aposentarAlarmes(db, args.accountId, desde, titulosDoAlarme(t, args.provedor), agora)
+    await aposentarAlarmes(db, args, desde, titulosDoAlarme(t, args.provedor), agora)
 
     const textos = textosDoAlarme(t, {
       tipo: 'voltou',

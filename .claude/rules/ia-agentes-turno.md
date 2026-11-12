@@ -228,7 +228,10 @@ fora terminavam `falhou` (E8) sem ninguém saber. `alarme-da-ia.ts`.
 - ⚠️ **Depois de gravar, o alarme RELÊ o episódio** (`conferirSeAindaParada`,
   Codex #512): o "voltou" de outro turno pode fechar entre a decisão e a
   gravação; fechado (ou já outro), os ids que ESTE turno gravou saem lidos.
-  O alarme grava→lê e o "voltou" fecha→aposenta: um sempre vê o outro.
+  O alarme grava→lê e o "voltou" fecha→aposenta: um sempre vê o outro. E o
+  INVERSO: a limpeza (por data e título) relê o episódio depois; aberto e
+  NOVO, os avisos dele que ela marcou voltam a não lidos (só os que ainda têm
+  o carimbo dela).
 - **A tela**: `ia_falhou` abre a caixinha VERMELHA (`tomDaCaixinha`), o
   clique leva a `/inbox?ver=em-atraso` (`rotaDoAviso`) e dispara
   `EVENTO_VER_EM_ATRASO` para a caixa de entrada já montada (no celular, a
