@@ -122,7 +122,7 @@ beforeEach(() => {
     const audio = partes.find((p) => p.inlineData)?.inlineData?.data;
     if (!audio) return gemini('O cliente pediu notícias do processo; o escritório vai conferir.');
     const lado = Buffer.from(audio, 'base64').toString();
-    return gemini(lado === 'CLIENTE' ? LADO_CLIENTE : LADO_ATENDENTE);
+    return gemini(lado.includes('CLIENTE') ? LADO_CLIENTE : LADO_ATENDENTE);
   };
   vi.stubGlobal(
     'fetch',
@@ -180,6 +180,26 @@ describe('transcreverLigacao', () => {
     const lado = pedidos[0].corpo as { generationConfig: Record<string, unknown> };
     expect(lado.generationConfig).toMatchObject({ temperature: 0, responseMimeType: 'application/json' });
     expect(d.restante()).toBe(0);
+  });
+
+  it('o trecho sem som medido pela máquina sai do diálogo (o Gemini inventa fala sobre áudio sem voz)', async () => {
+    // O cabeçalho OpusTags fictício com a etiqueta CB_SOM, e a marca do lado no fim.
+    const comSom = (som: string, marca: string) => {
+      const texto = (s: string) => [...new TextEncoder().encode(s)];
+      const u32 = (n: number) => [n & 255, (n >> 8) & 255, (n >> 16) & 255, (n >>> 24) & 255];
+      const etiqueta = texto(`CB_SOM=${som}`);
+      return new Blob([new Uint8Array([...texto('OpusTags'), ...u32(0), ...u32(1), ...u32(etiqueta.length), ...etiqueta, ...texto(marca)])]);
+    };
+    const d = duble({
+      ligacoes: [ok(LINHA), ok({ id: LIGACAO }), ok({ id: LIGACAO })],
+      // O cliente falou em 1 s e 9 s; o lado do atendente foi todo silêncio.
+      baixar: (caminho) => ok(caminho.endsWith('/cliente.ogg') ? comSom('0.8-1.6,9.2-11.0', 'CLIENTE') : comSom('nenhum', 'ATENDENTE')),
+    });
+    expect(await transcreverLigacao(d.db, LIGACAO)).toBe('pronta');
+    const final = d.chamadas.filter((c) => c.tabela === 'cb_ligacoes' && c.op === 'update')[1];
+    expect((final.patch as { transcricao: unknown }).transcricao).toEqual([
+      { quem: 'cliente', inicio: 1, texto: 'Alô? Quero saber do processo.' },
+    ]);
   });
 
   it('um lado ainda não chegou: cedo, sem cadeado nem provedor', async () => {

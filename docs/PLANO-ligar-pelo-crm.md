@@ -14,7 +14,7 @@ ligação de WhatsApp do que a telefônica. Vizinho deste plano:
 | 1    | Teste A: a máquina liga, com áudio de arquivo              | em curso (10/11/2026)  |
 | 2    | Teste B: o áudio no navegador do atendente                 | ✅ 10/11/2026 (falta P8) |
 | 3    | Decidir a máquina: upgrade para a KVM 4 × segunda VPS      | ✅ 10/11/2026: fica na VPS atual (D8) |
-| 4    | Ligar e atender pelo CRM: botão, toque, gravação, transcrição | desenho pronto (§8), decisões tomadas (§8.10); ✅ 4a pronta e testada em 10/11/2026 (§8.13); ✅ 4b no ar e testada ao vivo em 11/11/2026 (§8.14); ✅ 4c (a tela) no ar e testada ao vivo em 11/11/2026 (#500, §8.15); ✅ 4d (transcrição e resumo, §8.16) e 4e (o interruptor, o QR, o Reparear, os alarmes e a sentinela, §8.17) publicadas JUNTAS em 11/11/2026 (D18): falta o teste ao vivo |
+| 4    | Ligar e atender pelo CRM: botão, toque, gravação, transcrição | desenho pronto (§8), decisões tomadas (§8.10); ✅ 4a pronta e testada em 10/11/2026 (§8.13); ✅ 4b no ar e testada ao vivo em 11/11/2026 (§8.14); ✅ 4c (a tela) no ar e testada ao vivo em 11/11/2026 (#500, §8.15); ✅ 4d (transcrição e resumo, §8.16) e 4e (o interruptor, o QR, o Reparear, os alarmes e a sentinela, §8.17) publicadas JUNTAS em 11/11/2026 (D18); teste ao vivo no mesmo dia: interruptor, ligação, gravação e transcrição OK, toque com o interruptor desligado OK; achado: o Gemini inventa fala sobre áudio sem voz (proteção mínima: a etiqueta do som); falta o Reparear (§8.17) |
 | 5    | Atender pelo CRM (ligação recebida)                        | incorporada à Fase 4   |
 
 ## 1. Por que uma máquina central (o que foi descartado)
@@ -1489,15 +1489,9 @@ O desenho está no §8.5 e nas decisões D11 e D14; regras:
   (classificada como deploy em produção); aplicada em 11/11/2026 às 18:39 BRT,
   com o "pode publicar" do operador, junto com a 1137 da 4e (D18).
 
-**Falta:**
-- Medir os horários do Gemini numa gravação de verdade: a intercalação
-  depende deles. A medição pelo servidor local (com as credenciais da
-  produção) foi barrada pelo modo automático em 11/11/2026; ela fica para o
-  teste ao vivo, lendo o diálogo gravado. Se os horários não prestarem, o
-  plano B é a máquina medir os trechos de fala de cada lado (`silencedetect`
-  do ffmpeg) e o CRM só intercalar.
-- O teste ao vivo: uma ligação com fala dos dois lados vira, sozinha,
-  diálogo e resumo na faixa, e o agente de IA a lê.
+**Teste ao vivo (11/11/2026):** os horários prestaram e a ligação virou,
+sozinha, diálogo e resumo na faixa; e o Gemini inventou fala sobre um lado
+sem voz — o registro e a proteção proposta estão na §8.17.
 
 ### 8.17 A 4e: conexões e operação (11/11/2026)
 
@@ -1581,8 +1575,54 @@ computador avisava pela duração com a máquina carregando ou parada; na tela, 
 QR do Reparear sumia se a lista se renovasse no meio do pedido, e o laço
 reiniciava a cada sinal (dois avisos "conectou").
 
-**Falta:** os seletores do "Desconectar" e do QR vencido (medir ao vivo); a
-publicação junto com a 4d e o teste ao vivo (D18).
+**Publicadas em 11/11/2026** (#506, que levou o #504; deploy às 22:49 UTC;
+1136 e 1137 aplicadas antes).
+
+**Teste ao vivo (11/11/2026, à noite; operador com o lead de teste fixado na
+Previdenciário):**
+- **Interruptor:** ligado pela tela → "Prontas para ligar e atender", e o
+  botão "Ligar" voltou na conversa.
+- **Ligação feita com fala dos dois lados (60 s):** a gravação chegou 3 s
+  depois do fim; o diálogo e o resumo, 17 s depois dela (três chamadas ao
+  Gemini: um lado cada e o resumo, custo em `ai_usage_log`); os dois lados
+  saíram do bucket e o estéreo ficou. Os horários do diálogo batem com a fala
+  medida segundo a segundo no estéreo (o plano B do `silencedetect` não foi
+  preciso para a intercalação).
+- ⚠️ **Achado: o Gemini INVENTA fala sobre áudio sem voz.** A ligação das
+  15:03 (teste da 4c, atendida pelo navegador do Claude com o microfone
+  trocado por um bipe), transcrita pelo laço lento logo depois da publicação,
+  ganhou no lado do atendente um monólogo inteiro que ninguém disse (faltas de
+  uma aluna na escola), e o resumo o repetiu. Medido segundo a segundo, o
+  canal do atendente só tem o bipe e silêncio; a instrução "sem nenhuma fala,
+  devolva a lista vazia" não segurou. Numa ligação real, o lado em silêncio ou
+  só com ruído corre o mesmo risco — e o diálogo entra no contexto da IA.
+  **A proteção, MÍNIMA por decisão do operador** ("só o mínimo, sem
+  precisar testar tudo de novo"): a máquina mede onde há som em cada lado
+  (`silencedetect`, −40 dB, silêncio de 0,5 s) e grava a etiqueta `CB_SOM` no
+  cabeçalho do Opus do próprio arquivo — sem rota, contrato ou migration
+  novos; o CRM descarta o trecho que não começa perto de som (2 s antes, 3 s
+  depois), e o lado mudo fica sem trecho. Sem a etiqueta, nada muda. Provada
+  com o ffmpeg de verdade nas duas gravações do teste e num arquivo mudo.
+  Limite escrito: detecta SOM, não voz — som sem voz com ritmo (o bipe do
+  microfone de teste) ainda passa; pegar isso exigiria detectar voz.
+  Descartado por ser mais do que o mínimo: a máquina mandar os trechos por
+  cabeçalho e o CRM guardá-los numa coluna (migration), e a medição pelo
+  tamanho dos pacotes do Opus (medido: no silêncio ele ainda gasta ~1 kB/s,
+  perto da fala).
+- **Pedidos do operador na hora** (#508): o interruptor desligado era quase
+  invisível (o `Switch` do app inteiro passou a cinza no desligado, e o
+  inativo, que nunca esmaecia, esmaece) e a ligação com o que ouvir e ler
+  ganhou destaque — vira um CARTÃO no fio, com o resumo e os botões "Ouvir" e
+  "Ver transcrição"; o resto segue pílula.
+
+- **Toque com o interruptor desligado:** o cartão que tocava sumiu ao
+  desligar (o conserto do Codex no #506), e o interruptor voltou a ligar.
+
+**Falta:** o Reparear,
+que mede os seletores do "Desconectar" e do QR vencido (exige o celular da
+Previdenciário à mão para ler o QR novo); o alarme (opcional); a imagem nova da
+máquina com a etiqueta do som e uma ligação com um lado mudo, para ver o
+filtro ao vivo.
 
 ## 9. Fase 5: atender pelo CRM
 

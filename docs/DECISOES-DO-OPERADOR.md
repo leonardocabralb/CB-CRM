@@ -260,3 +260,10 @@ qualquer uma é pergunta ao operador.
   botão Ligar e o toque. Só onde já há computador de ligações: criar um para
   outro número é operação no servidor. A 4d e a 4e se publicam JUNTAS, com
   o teste ao vivo logo depois (`ligacoes-operacao.md`; plano §8.17).
+- Ligação pelo CRM em destaque (11/11/2026): a que tem o que ouvir ou ler
+  vira um cartão no fio, com o resumo e os botões "Ouvir" e "Ver
+  transcrição"; as outras ligações continuam pílula
+  (`ligacoes-transcricao.md`).
+- Fala inventada na transcrição da ligação (11/11/2026): proteção MÍNIMA, sem
+  precisar testar tudo de novo — o trecho sem som medido por perto sai; som
+  sem voz (um bipe) ainda passa (`ligacoes-transcricao.md`).
