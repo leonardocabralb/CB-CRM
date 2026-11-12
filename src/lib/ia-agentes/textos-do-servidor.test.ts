@@ -11,7 +11,6 @@ import {
   CODIGOS_DA_REUNIAO_NAO_MARCADA,
   MOTIVOS_DE_TRANSFERENCIA,
   textosDaAcao,
-  textosDaPassagem,
   textosDaTransferencia,
   tituloDoAvisoDaTransferencia,
 } from './textos-do-servidor'
@@ -36,7 +35,6 @@ describe('textos da transferência do agente', () => {
       for (const m of MOTIVOS_DE_TRANSFERENCIA) {
         expect(typeof pegar(d, `IaAgentes.transferencia.nota.${m}`), m).toBe('string')
       }
-      expect(typeof pegar(d, 'IaAgentes.transferencia.passagem')).toBe('string')
       // O aviso no sino quando a IA passa a conversa (1139).
       expect(typeof pegar(d, 'IaAgentes.transferencia.aviso.titulo')).toBe('string')
       expect(typeof pegar(d, 'IaAgentes.transferencia.aviso.clienteSemNome')).toBe('string')
@@ -105,13 +103,6 @@ describe('textos da transferência do agente', () => {
     expect(tarefa.texto).toContain('Ligar {amanhã}')
     expect(tarefa.texto).toContain('Ana')
     expect(await avisoDaTarefa('Triagem')).toContain('Triagem')
-  })
-
-  it('a passagem (D25): autor da triagem e o nome do destino no texto', async () => {
-    const { autor, texto } = await textosDaPassagem('Triagem', 'Cobrança')
-    expect(autor).toContain('Triagem')
-    expect(texto).toContain('Triagem')
-    expect(texto).toContain('Cobrança')
   })
 
   it('F5: a reunião não marcada diz o agente e o MOTIVO (o texto do código), no idioma da instalação', async () => {

@@ -53,6 +53,8 @@ interface Banco {
   escritas: Array<{ tabela: string; op: string; valores: unknown; opcoes?: unknown }>
   consultas: Array<{ tabela: string; filtros: Array<[string, unknown]> }>
   rpcs: Array<{ nome: string; args: Record<string, unknown> }>
+  /** As RPCs que passaram pelo cliente da TRILHA (1141). */
+  rpcsDaTrilha: string[]
   respostaDaRpc: { data: unknown; error: { message: string } | null }
 }
 
@@ -90,6 +92,17 @@ const db = {
   },
 } as unknown as SupabaseClient
 
+// O cliente da TRILHA (1141): um dublê À PARTE, que repassa ao banco falso e
+// registra o que passou por ele — etapa e etiqueta têm de ir por ele (é o
+// cabeçalho dele que faz a faixa dizer "pelo agente de IA").
+const dbDaTrilha = {
+  from: (tabela: string) => db.from(tabela),
+  async rpc(nome: string, args: Record<string, unknown>) {
+    banco.rpcsDaTrilha.push(nome)
+    return db.rpc(nome, args)
+  },
+} as unknown as SupabaseClient
+
 const CTX: ContextoDasAcoes = {
   accountId: 'conta-1',
   conversationId: 'conv-1',
@@ -97,6 +110,7 @@ const CTX: ContextoDasAcoes = {
   dealId: 'deal-1',
   canalId: 'canal-1',
   agente: { id: 'ag-1', nome: 'Triagem' },
+  dbDaTrilha,
   dono: 'dono-1',
 }
 
@@ -134,6 +148,7 @@ beforeEach(() => {
     escritas: [],
     consultas: [],
     rpcs: [],
+    rpcsDaTrilha: [],
     respostaDaRpc: { data: [{ ok: true, motivo: null, status_gravado: 'open' }], error: null },
   }
 })
@@ -141,7 +156,7 @@ beforeEach(() => {
 const acao = (a: Partial<AcaoResolvida> & Pick<AcaoResolvida, 'tipo' | 'id'>): AcaoResolvida => ({ nome: a.id, ...a })
 
 describe('mover_etapa', () => {
-  it('pela RPC do motor, no card do TURNO, com o status esperado; anota e avisa que moveu', async () => {
+  it('pela RPC do motor, no card do TURNO, com o status esperado, pelo cliente da TRILHA; avisa que moveu e NÃO anota (1141)', async () => {
     const r = await executarAcoes(db, CTX, [acao({ tipo: 'mover_etapa', id: 'etapa-proposta', nome: 'Bancário · Proposta' })])
     expect(banco.rpcs).toEqual([
       {
@@ -162,16 +177,10 @@ describe('mover_etapa', () => {
       moveu: true,
       campos: [],
     })
-    expect(notas()).toEqual([
-      expect.objectContaining({
-        account_id: 'conta-1',
-        conversation_id: 'conv-1',
-        contact_id: 'contato-1',
-        author_user_id: null,
-        autor_nome: 'IA · Triagem',
-        texto: expect.stringContaining('Bancário · Proposta'),
-      }),
-    ])
+    // 1141: pelo cliente do agente — a faixa da trilha diz quem moveu, e
+    // nenhuma anotação polui a conversa.
+    expect(banco.rpcsDaTrilha).toEqual(['cb_atualizar_negocio'])
+    expect(notas()).toEqual([])
     // O card é lido pela conta E pelo contato do turno.
     expect(banco.consultas.find((c) => c.tabela === 'deals')?.filtros).toEqual(
       expect.arrayContaining([
@@ -241,15 +250,16 @@ describe('mover_etapa', () => {
 describe('etiquetar / tirar_etiqueta', () => {
   it('pelo escritor central, com o contato, a conversa e a conexão do turno', async () => {
     const r = await executarAcoes(db, CTX, [acao({ tipo: 'etiquetar', id: 'tag-vip', nome: 'VIP' })])
+    // 1141: pelo cliente da TRILHA (a faixa diz "pelo agente de IA"), sem anotação.
     expect(addContactTagAndDispatch).toHaveBeenCalledWith({
-      db,
+      db: dbDaTrilha,
       accountId: 'conta-1',
       contactId: 'contato-1',
       tagId: 'tag-vip',
       context: { conversation_id: 'conv-1', channel_id: 'canal-1' },
     })
     expect(r.registros[0]).toMatchObject({ ok: true })
-    expect(notas()[0].texto).toContain('VIP')
+    expect(notas()).toEqual([])
   })
 
   it('⚠️ a etiqueta já estava lá (a ação repetida): ok, `ja_estava`, sem anotação e sem `tag_added`', async () => {
@@ -269,8 +279,8 @@ describe('etiquetar / tirar_etiqueta', () => {
 
   it('tirar: pelo `removeContactTag`, com a conta', async () => {
     await executarAcoes(db, CTX, [acao({ tipo: 'tirar_etiqueta', id: 'tag-vip', nome: 'VIP' })])
-    expect(removeContactTag).toHaveBeenCalledWith(db, { accountId: 'conta-1', contactId: 'contato-1', tagId: 'tag-vip' })
-    expect(notas()[0].texto).toContain('VIP')
+    expect(removeContactTag).toHaveBeenCalledWith(dbDaTrilha, { accountId: 'conta-1', contactId: 'contato-1', tagId: 'tag-vip' })
+    expect(notas()).toEqual([])
   })
 
   it('⚠️ tirar a etiqueta que NÃO estava (a ação repetida): ok, `ja_estava`, sem anotação', async () => {
@@ -292,6 +302,8 @@ describe('preencher_campo', () => {
     })
     expect(r.registros[0]).toMatchObject({ ok: true })
     expect(notas()[0].texto).toContain('R$ 150 mil')
+    // 1141: a ação sem faixa própria anota com o TIPO da faixa cinza.
+    expect(notas()[0]).toMatchObject({ tipo: 'acao_da_ia', author_user_id: null, autor_nome: 'IA · Triagem' })
     // 1139: o campo e o valor voltam ao turno (o corpo do aviso, se ele passar a conversa).
     expect(r.campos).toEqual([{ nome: 'Dívida', valor: 'R$ 150 mil' }])
   })

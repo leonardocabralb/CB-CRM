@@ -7390,7 +7390,6 @@
         "pedido_vazado": "{agente} handed the conversation to the team: the reply revealed part of the agent's internal instructions, and it was not sent. The held-back text is in the agent's Turns.",
         "acao_prometida": "{agente} handed the conversation to the team: the reply said something was done in the system (a task, a field, a tag, the deal's stage…), but nothing was done — and it was not sent. The held-back text is in the agent's Turns; do what was asked and reply to the customer."
       },
-      "passagem": "{agente} handed the conversation to AI · {destino}, and the deal moved to that agent's stage.",
       "aviso": {
         "titulo": "AI handed {cliente} off to the team",
         "clienteSemNome": "a customer"

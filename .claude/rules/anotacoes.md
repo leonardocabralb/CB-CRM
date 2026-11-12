@@ -1,6 +1,7 @@
 ---
 paths:
   - "src/components/inbox/note-line.tsx"
+  - "src/components/inbox/acao-da-ia-line.tsx"
   - "src/components/inbox/cartao-de-nota.tsx"
   - "src/components/inbox/citacao-da-nota.tsx"
   - "src/components/inbox/internal-note-box.tsx"
@@ -36,7 +37,7 @@ compositor, links clicáveis na nota) está em `.claude/rules/inbox-conversa.md`
 o sino e o Meu dia, em `.claude/rules/meu-dia.md`; a fila de arquivos e o
 bucket, em `.claude/rules/midia.md`. São QUATRO escritores, todos no servidor:
 a rota do painel `POST /api/cb/notes`, a API v1 `POST /api/v1/notes` (sem
-menção), o agente de IA (`anotarNaConversa`) e o passo de automação
+menção), o agente de IA (`anotarNaConversa`, que grava também a AÇÃO, abaixo) e o passo de automação
 "Escrever anotação interna" (autor nulo; `.claude/rules/automacoes-passos.md`)
 — regra nova de escrita vale em todos. Anexo, SÓ a rota do painel. EDITAR,
 só o autor e só pelo `PUT /api/cb/notes/[id]` (o navegador segue sem UPDATE
@@ -68,6 +69,27 @@ na tabela; a API v1 não edita). APAGAR manda para a LIXEIRA (1132, abaixo).
 - **A frase do autor é `Inbox.note.wrote` nas quatro telas.**
 - Quem levar o `InternalNoteBox` a uma tela nova põe a entrada dela em
   `ESCRITA_DA_TELA` como `viewer` (anotar conta como operação; ver a raiz).
+
+### A AÇÃO da IA é faixa cinza, não anotação (1141)
+
+Pedido do operador (12/11/2026): cada ação da IA virava anotação amarela e
+poluía a conversa. `docs/PLANO-acoes-da-ia-na-trilha.md`.
+
+- ⚠️⚠️ **`cb_conversation_notes.tipo`**: `anotacao` (padrão) ou `acao_da_ia`
+  (`ehAcaoDaIa`, `src/lib/notes/acao-da-ia.ts`; CHECK: só sem autor). Só o
+  agente a grava, e só para o que NÃO tem faixa na trilha: campo, tarefa,
+  automação e reunião (`ACOES_ANOTADAS`). Etapa, etiqueta, passagem e
+  "respondeu e passou" não anotam: a faixa da trilha diz "pelo agente de IA
+  <nome>" (`ia-agentes-turno.md`). Os AVISOS que pedem algo da equipe
+  (áudio, teto, retida, reunião não marcada, incerto) seguem anotação.
+- **O fio a desenha pela `AcaoDaIaLine`** (faixa cinza com ✨, no molde da
+  `LeadEventLine`): sem responder, fixar, editar nem apagar. A aba Notas do
+  painel e a ficha de /contatos NÃO a listam (`.eq('tipo', 'anotacao')` na
+  ficha, `!ehAcaoDaIa` no painel). A API v1 a devolve como antes.
+- ⚠️ **Continua anotação de propósito**: some com a conversa e vai à Lixeira
+  (o valor do campo é dado da cliente; na trilha ficaria depois da exclusão
+  da ficha). Leitor novo de anotação decide se a lista; o pino
+  `anexos-da-nota.chamadores.test.ts` tem a exceção da `AcaoDaIaLine`.
 
 ### Resposta à anotação (1075)
 

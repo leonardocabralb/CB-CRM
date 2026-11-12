@@ -23,10 +23,14 @@
 //  - Falha de uma ação NÃO impede as outras: cada uma fica no registro do
 //    turno (`cb_ia_turnos.acoes`) com um CÓDIGO da lista fechada
 //    (`CODIGOS_DE_FALHA_DA_ACAO`) e o texto cru em `detalhe`.
-//  - Cada ação feita deixa uma anotação interna na conversa, "IA · <agente>
-//    moveu o card para …" — é por ela que a equipe sabe quem foi (a trilha e
-//    o webhook `deal.*` dizem `automacao`/`sistema`: a origem `ia` exige
-//    migration nas funções de gatilho — limite escrito do plano).
+//  - QUEM FOI, no fio (1141, pedido do operador de 12/11/2026: as anotações
+//    poluíam a conversa): mover o card e pôr/tirar etiqueta escrevem pelo
+//    cliente do agente (`ctx.dbDaTrilha`, `cliente-do-agente.ts`), e a faixa
+//    cinza da trilha diz "pelo agente de IA <nome>" — sem anotação. O que
+//    não tem faixa própria (campo, tarefa, automação, reunião) deixa a
+//    anotação de TIPO `acao_da_ia`, que o fio desenha como faixa cinza e a
+//    aba Notas não lista. O webhook `deal.*` segue dizendo `system` (a 1040
+//    lê outro cabeçalho; limite escrito).
 //  - A AÇÃO REPETIDA não faz nada (o modelo re-emite em cada resposta as
 //    ações das anteriores): mover para a etapa em que o card JÁ está,
 //    etiqueta que já estava, etiqueta a tirar que não estava e campo com o
@@ -53,6 +57,7 @@ import {
 import { FUSO_DO_ESCRITORIO, TIPO_DATA } from '@/lib/contacts/campo-data'
 import { addContactTagAndDispatch } from '@/lib/contacts/tag-events'
 import { removeContactTag } from '@/lib/contacts/tag-write'
+import type { TipoDaNota } from '@/lib/notes/acao-da-ia'
 import { diaNoFuso } from '@/lib/tasks/prazo'
 import { normalizarTitulo } from '@/lib/tasks/validar'
 import type { Automation } from '@/types'
@@ -79,6 +84,13 @@ export interface ContextoDasAcoes {
   dealId: string | null
   canalId: string | null
   agente: { id: string; nome: string }
+  /**
+   * O cliente com que se escreve o que a TRILHA registra (mover o card, pôr
+   * e tirar etiqueta): no turno, `clienteDoAgente(agente.id)`, com o
+   * cabeçalho do agente (1141). O resto (campos, tarefa, leituras) vai pelo
+   * `db` de sempre.
+   */
+  dbDaTrilha: SupabaseClient
   /** O dono da conta: o autor da tarefa que o agente cria. */
   dono: string
   /**
@@ -90,11 +102,21 @@ export interface ContextoDasAcoes {
 
 /**
  * Anotação interna sem usuário (autor congelado "IA · <agente>"). Melhor
- * esforço: erro vira log. Usada também pela transferência e pela passagem.
+ * esforço: erro vira log. Usada também pelos avisos da transferência.
+ * `tipo: 'acao_da_ia'` (1141) = o que a IA FEZ sem faixa própria na trilha:
+ * o fio a desenha como faixa cinza e a aba Notas não a lista; o padrão é a
+ * anotação amarela de sempre (os avisos que pedem algo da equipe).
  */
 export async function anotarNaConversa(
   db: SupabaseClient,
-  args: { accountId: string; conversationId: string; contactId: string | null; autor: string; texto: string },
+  args: {
+    accountId: string
+    conversationId: string
+    contactId: string | null
+    autor: string
+    texto: string
+    tipo?: TipoDaNota
+  },
 ): Promise<void> {
   const { error } = await db.from('cb_conversation_notes').insert({
     account_id: args.accountId,
@@ -103,9 +125,22 @@ export async function anotarNaConversa(
     author_user_id: null,
     autor_nome: args.autor,
     texto: args.texto,
+    ...(args.tipo && args.tipo !== 'anotacao' ? { tipo: args.tipo } : {}),
   })
   if (error) console.error('[ia-agentes] anotação da IA falhou:', error.message)
 }
+
+/**
+ * As ações que deixam anotação (`acao_da_ia`, 1141): as que a trilha não
+ * registra. Mover o card e pôr/tirar etiqueta têm a faixa da trilha, com o
+ * nome do agente (`dbDaTrilha`).
+ */
+export const ACOES_ANOTADAS: ReadonlySet<AcaoResolvida['tipo']> = new Set([
+  'preencher_campo',
+  'criar_tarefa',
+  'executar_automacao',
+  'marcar_reuniao',
+])
 
 /**
  * Um campo que o agente preencheu nesta resposta (1139): o nome do campo e o
@@ -171,8 +206,9 @@ async function moverEtapa(db: SupabaseClient, ctx: ContextoDasAcoes, acao: AcaoR
   // alguém da equipe move o card (a D5 vale só para o que o agente faz).
 
   // Pela RPC do motor (funil e etapa no MESMO update, a trilha da 912 conta
-  // uma linha), com o status esperado.
-  const { data, error } = await db.rpc('cb_atualizar_negocio', {
+  // uma linha), com o status esperado — e pelo cliente do AGENTE (1141): a
+  // faixa da trilha diz quem moveu.
+  const { data, error } = await ctx.dbDaTrilha.rpc('cb_atualizar_negocio', {
     p_deal_id: ctx.dealId,
     p_account_id: ctx.accountId,
     p_pipeline_id: null,
@@ -187,14 +223,14 @@ async function moverEtapa(db: SupabaseClient, ctx: ContextoDasAcoes, acao: AcaoR
   return feita()
 }
 
-async function etiquetar(db: SupabaseClient, ctx: ContextoDasAcoes, acao: AcaoResolvida): Promise<Resultado> {
+async function etiquetar(ctx: ContextoDasAcoes, acao: AcaoResolvida): Promise<Resultado> {
   // O escritor central: dispara o `tag_added` só para etiqueta NOVA, com o
   // canal da conversa do turno. A etiqueta que já estava (o UNIQUE
   // `(contact_id, tag_id)` recusa o INSERT) não dispara nada: `ja_estava`.
   // As automações da etiqueta não são conferidas (a D5 vale só para o que o
-  // agente faz).
+  // agente faz). Pelo cliente do AGENTE (1141): a faixa da trilha diz quem pôs.
   const r = await addContactTagAndDispatch({
-    db,
+    db: ctx.dbDaTrilha,
     accountId: ctx.accountId,
     contactId: ctx.contactId,
     tagId: acao.id,
@@ -203,10 +239,10 @@ async function etiquetar(db: SupabaseClient, ctx: ContextoDasAcoes, acao: AcaoRe
   return r.added ? feita() : jaEstava
 }
 
-async function tirarEtiqueta(db: SupabaseClient, ctx: ContextoDasAcoes, acao: AcaoResolvida): Promise<Resultado> {
+async function tirarEtiqueta(ctx: ContextoDasAcoes, acao: AcaoResolvida): Promise<Resultado> {
   // O motor não tem gatilho de etiqueta tirada. Zero linhas apagadas = a
-  // etiqueta não estava lá: `ja_estava`.
-  const tirou = await removeContactTag(db, { accountId: ctx.accountId, contactId: ctx.contactId, tagId: acao.id })
+  // etiqueta não estava lá: `ja_estava`. Pelo cliente do AGENTE (1141).
+  const tirou = await removeContactTag(ctx.dbDaTrilha, { accountId: ctx.accountId, contactId: ctx.contactId, tagId: acao.id })
   return tirou ? feita() : jaEstava
 }
 
@@ -340,9 +376,9 @@ async function executarUma(db: SupabaseClient, ctx: ContextoDasAcoes, acao: Acao
     case 'mover_etapa':
       return moverEtapa(db, ctx, acao)
     case 'etiquetar':
-      return etiquetar(db, ctx, acao)
+      return etiquetar(ctx, acao)
     case 'tirar_etiqueta':
-      return tirarEtiqueta(db, ctx, acao)
+      return tirarEtiqueta(ctx, acao)
     case 'preencher_campo':
       return preencherCampo(db, ctx, acao)
     case 'criar_tarefa':
@@ -402,6 +438,8 @@ export async function executarAcoes(
     }
     if (!r.nota) continue
     if (acao.tipo === 'mover_etapa') moveu = true
+    // Etapa e etiqueta: a faixa da trilha já diz quem foi (1141) — sem anotação.
+    if (!ACOES_ANOTADAS.has(acao.tipo)) continue
     try {
       // A reunião é nomeada na anotação pela data e hora no fuso do escritório
       // ("28/09/2026 15:15"), recalculada do horário que o Calendly marcou —
@@ -414,6 +452,7 @@ export async function executarAcoes(
         contactId: ctx.contactId,
         autor,
         texto,
+        tipo: 'acao_da_ia',
       })
     } catch (err) {
       console.error('[ia-agentes] anotar a ação falhou:', acao.tipo, err)

@@ -300,12 +300,14 @@ export function ContactDetailView({
     // CONVERSA. A coluna `contact_id` é desnormalizada exatamente para esta
     // tela, que fica fora do inbox e não tem conversa aberta à mão.
     // Só as VIVAS: a apagada (1132) fica na lixeira da aba Notas do inbox;
-    // esta ficha só mostra (A6).
+    // esta ficha só mostra (A6). E só as ANOTAÇÕES: a ação da IA (1141) é
+    // faixa cinza no fio, não nota da equipe.
     const { data } = await supabase
       .from('cb_conversation_notes')
       .select('*')
       .eq('contact_id', contactId)
       .is('apagada_em', null)
+      .eq('tipo', 'anotacao')
       .order('created_at', { ascending: false });
 
     if (contatoAlvoRef.current !== alvo) return;

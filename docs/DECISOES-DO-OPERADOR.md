@@ -288,3 +288,8 @@ qualquer uma é pergunta ao operador.
 - Fala inventada na transcrição da ligação (11/11/2026): proteção MÍNIMA, sem
   precisar testar tudo de novo — o trecho sem som medido por perto sai; som
   sem voz (um bipe) ainda passa (`ligacoes-transcricao.md`).
+- Ações da IA no fio (12/11/2026, 1141): o que a IA FEZ é faixa cinza (etapa e
+  etiqueta pela trilha, "pelo agente de IA <nome>"; campo, tarefa, automação e
+  reunião como anotação `acao_da_ia`); só os AVISOS que pedem algo da equipe
+  ficam anotação amarela. A nota de pendência da automação `dc9029b4` foi
+  desligada (`anotacoes.md`, `docs/PLANO-acoes-da-ia-na-trilha.md`).

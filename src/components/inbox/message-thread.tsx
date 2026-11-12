@@ -79,6 +79,8 @@ import {
 } from "@/lib/assinatura/assinatura";
 import { LeadEventLine } from "@/components/lead-events/lead-event-line";
 import { NoteLine } from "./note-line";
+import { AcaoDaIaLine } from "./acao-da-ia-line";
+import { ehAcaoDaIa } from "@/lib/notes/acao-da-ia";
 import { InternalNoteBox } from "./internal-note-box";
 import { useEdicaoDeNota } from "@/hooks/use-edicao-de-nota";
 import { AvisoDeExecucao } from "./aviso-de-execucao";
@@ -3446,6 +3448,15 @@ export function MessageThread({
                     // ramo de mensagem e derrubaria o fio inteiro em runtime.
                     if (item.nota) {
                       const nota = item.nota;
+                      // A AÇÃO da IA (1141) é faixa cinza, como a trilha —
+                      // sem responder, fixar, editar nem apagar.
+                      if (ehAcaoDaIa(nota)) {
+                        return (
+                          <LinhaDoFio key={item.chave} tipo="nota" id={nota.id} destacada={false}>
+                            <AcaoDaIaLine nota={nota} />
+                          </LinhaDoFio>
+                        );
+                      }
                       const respondidaId = nota.resposta_de;
                       return (
                         <LinhaDoFio

@@ -21,6 +21,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useConversationNotes } from '@/hooks/use-conversation-notes';
+import { ehAcaoDaIa } from '@/lib/notes/acao-da-ia';
 import { useEdicaoDeNota } from '@/hooks/use-edicao-de-nota';
 import { CartaoDeNota } from '@/components/inbox/cartao-de-nota';
 import {
@@ -583,10 +584,11 @@ export function PainelDoContato({
 
   // O hook devolve na ordem que o `intercalar` prefere (o fio reordena tudo).
   // Aqui a lista é lida direto, e a seção sempre mostrou a mais recente no
-  // topo — ordenar é responsabilidade de quem exibe.
+  // topo — ordenar é responsabilidade de quem exibe. A AÇÃO da IA (1141) não
+  // entra: é faixa cinza no fio, registro do que a IA fez, não anotação.
   const notes = useMemo(
     () =>
-      [...notas].sort(
+      notas.filter((n) => !ehAcaoDaIa(n)).sort(
         (a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       ),
