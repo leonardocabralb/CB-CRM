@@ -1618,11 +1618,20 @@ Previdenciário):**
 - **Toque com o interruptor desligado:** o cartão que tocava sumiu ao
   desligar (o conserto do Codex no #506), e o interruptor voltou a ligar.
 
+- **O filtro do som ao vivo** (#508 publicado; máquina na
+  `20261111-11`): ligação feita de 34 s, o operador disse "Alô" e pôs o
+  celular no MUDO. A etiqueta do lado do cliente veio só com o "Alô" e um
+  toque no fim (`3.7-4.3,6.7-7.8,35.5-35.8`); o diálogo gravado trouxe só
+  o "Alô" do cliente, e o código do CRM, rodado sobre os arquivos dessa
+  ligação, descarta fala inventada no trecho mudo (0 de 2 passariam).
+- **Pedido do operador** (#509): no botão das conexões não se via qual
+  conexão tinha as ligações nem em que estado (texto cinza). Agora a ficha
+  ganha um telefone ao lado do nome e a etiqueta colorida (verde prontas, cor
+  do tema em ligação, âmbar pedindo o QR ou fora do ar).
+
 **Falta:** o Reparear,
 que mede os seletores do "Desconectar" e do QR vencido (exige o celular da
-Previdenciário à mão para ler o QR novo); o alarme (opcional); a imagem nova da
-máquina com a etiqueta do som e uma ligação com um lado mudo, para ver o
-filtro ao vivo.
+Previdenciário à mão para ler o QR novo); o alarme (opcional).
 
 ## 9. Fase 5: atender pelo CRM
 
