@@ -23,9 +23,12 @@ import { urlDoInbox } from "@/lib/inbox/url";
 // ============================================================
 
 export function rotaDoAviso(
-  aviso: Pick<Notification, "task_id" | "conversation_id" | "note_id">,
+  aviso: Pick<Notification, "task_id" | "conversation_id" | "note_id"> & Partial<Pick<Notification, "type">>,
   de?: "notificacoes" | "meu-dia",
 ): string | null {
+  // 1140: o alarme da IA (e a volta dela) leva às clientes "Em atraso" —
+  // as que ficaram sem resposta enquanto ela estava parada.
+  if (aviso.type === "ia_falhou" || aviso.type === "ia_voltou") return urlDoInbox({ ver: "em-atraso", de });
   if (aviso.task_id) return "/tarefas";
   if (aviso.conversation_id) {
     return urlDoInbox({ c: aviso.conversation_id, nota: aviso.note_id, de });

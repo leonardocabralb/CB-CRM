@@ -11,12 +11,13 @@ import {
   viewedConversationFromLocation,
 } from "@/lib/notifications/browser-notify";
 import { popUpDoSino, silencioDoSino } from "@/lib/notifications/aviso-do-sino";
-import { abaEmFoco, popUpDoSistemaCalaPelaCaixinha } from "@/lib/notifications/aviso-da-ia";
+import { abaEmFoco, ehAlarmeDaIa, popUpDoSistemaCalaPelaCaixinha } from "@/lib/notifications/aviso-da-ia";
 import { textoDoAviso, type AvisoComContato } from "@/lib/notifications/texto-do-aviso";
 import { tocarSomDoAviso } from "@/lib/notifications/som-do-aviso";
 import {
   EVENTO_ABRIR_CONVERSA,
   EVENTO_IR_PARA_NOTA,
+  EVENTO_VER_EM_ATRASO,
   type PedidoDeIrParaNota,
 } from "@/lib/inbox/url";
 import { podeVerTela } from "@/lib/perfis/visibilidade";
@@ -133,6 +134,9 @@ export function useAvisosDoSinoNoNavegador(): void {
           window.focus();
           void marcarLido(aviso.id);
           if (popUp.rota) router.push(popUp.rota);
+          // 1140: o alarme da IA com a caixa de entrada já montada — o `?ver=`
+          // não a remonta; o sinal acende o chip "Em atraso".
+          if (ehAlarmeDaIa(aviso.type)) window.dispatchEvent(new CustomEvent(EVENTO_VER_EM_ATRASO));
           // Com a caixa de entrada já montada, o push só troca a query: a
           // página abre a conversa por este sinal (como no aviso de mensagem).
           if (popUp.conversaId) {

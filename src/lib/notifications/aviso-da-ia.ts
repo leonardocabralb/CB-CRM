@@ -18,6 +18,30 @@ import type { NotificationType } from "@/types";
 /** O tipo do aviso na tabela `notifications` (o CHECK da 1139). */
 export const TIPO_DO_AVISO_DA_IA = "ia_transferiu" satisfies NotificationType;
 
+/** O alarme quando a IA para de responder (1140), que abre a caixinha VERMELHA. */
+export const TIPO_DO_ALARME_DA_IA = "ia_falhou" satisfies NotificationType;
+
+/**
+ * Os tipos que abrem a caixinha dentro do CRM: a IA que passou a conversa
+ * (âmbar) e o alarme de que ela parou (vermelho). O "voltou" (`ia_voltou`)
+ * fica só no sino — é boa notícia, não pede ação.
+ */
+export const TIPOS_COM_CAIXINHA = [TIPO_DO_AVISO_DA_IA, TIPO_DO_ALARME_DA_IA] as const;
+
+export function temCaixinha(tipo: NotificationType): boolean {
+  return (TIPOS_COM_CAIXINHA as readonly NotificationType[]).includes(tipo);
+}
+
+/** O tom da caixinha: âmbar para a passagem (D5), vermelho para a falha (F1). */
+export function tomDaCaixinha(tipo: NotificationType): "aviso" | "falha" {
+  return tipo === TIPO_DO_ALARME_DA_IA ? "falha" : "aviso";
+}
+
+/** O alarme da IA e a volta dela levam às clientes "Em atraso" (1140). */
+export function ehAlarmeDaIa(tipo: NotificationType | undefined): boolean {
+  return tipo === "ia_falhou" || tipo === "ia_voltou";
+}
+
 /**
  * D6 do operador (12/11/2026): ao abrir o CRM (ou recarregar a página), voltam
  * as caixinhas dos avisos da IA ainda NÃO lidos destas últimas horas — antes,
@@ -66,7 +90,7 @@ export function abaEmFoco(): boolean {
  * sem foco conta como fora — a pessoa pode estar noutro programa.
  */
 export function popUpDoSistemaCalaPelaCaixinha(tipo: NotificationType, emFoco: boolean): boolean {
-  return tipo === TIPO_DO_AVISO_DA_IA && emFoco;
+  return temCaixinha(tipo) && emFoco;
 }
 
 /**

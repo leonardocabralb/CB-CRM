@@ -7399,6 +7399,32 @@
         "marcar_reuniao": "{agente} marcou a reunião para {alvo}."
       }
     },
+    "alarme": {
+      "provedor": {
+        "openai": "OpenAI",
+        "anthropic": "Anthropic",
+        "gemini": "Gemini"
+      },
+      "titulo": {
+        "abriu": "A IA parou de responder ({provedor})",
+        "continua": "A IA continua parada ({provedor})",
+        "voltou": "A IA voltou a responder ({provedor})"
+      },
+      "motivo": {
+        "creditos": "Créditos ou cota de {provedor} esgotados (ou limite de gasto atingido): confira o saldo no painel do provedor.",
+        "chave_recusada": "{provedor} recusou a chave: troque-a em Integrações.",
+        "sem_chave": "Não há chave de {provedor} que sirva para responder: cadastre-a em Integrações.",
+        "modelo": "O modelo escolhido não existe mais em {provedor}: troque-o na tela do agente.",
+        "limite_por_minuto": "{provedor} recusou por excesso de pedidos por minuto.",
+        "fora_do_ar": "{provedor} não respondeu a tempo ou está fora do ar.",
+        "cortada": "A resposta de {provedor} saiu cortada pelo limite de tamanho.",
+        "outro": "{provedor} devolveu um erro."
+      },
+      "corpo": {
+        "desde": "Parada desde {desde} · {falhas, plural, one {# resposta não saiu} other {# respostas não saíram}}.",
+        "voltou": "Parada de {desde} a {agora} · {falhas, plural, one {# resposta não saiu} other {# respostas não saíram}}. Confira as conversas em atraso."
+      }
+    },
     "retomada": {
       "explicacao": "Quando o agente pergunta algo e o cliente não responde, ele volta a falar com o cliente numa cadência. A mensagem é escrita pelo modelo, a partir da conversa, e sai pela mesma conexão.",
       "ligar": "Retomar quando o cliente não responde",
@@ -7635,6 +7661,7 @@
   },
   "AvisoDaIaNaTela": {
     "abrir": "Abrir a conversa",
+    "verEmAtraso": "Ver as conversas em atraso",
     "fechar": "Fechar o aviso"
   },
   "SignupPage": {

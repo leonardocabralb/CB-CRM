@@ -544,7 +544,8 @@ export interface Conversation {
  * banco (ou o contrário) só aparece em runtime, como violação de constraint.
  * Os literais vivem na 027 (`conversation_assigned`), na 919 (`note_mention`),
  * na 944 (`task_assigned`, `task_reply`), na 1075 (`note_reply`), na 1085
- * (`whatsapp_alert`) e na 1139 (`ia_transferiu`).
+ * (`whatsapp_alert`), na 1139 (`ia_transferiu`) e na 1140 (`ia_falhou`,
+ * `ia_voltou`).
  *
  * `whatsapp_alert` (1085) é gravado com a service role, título e corpo já
  * escritos, sem conversa nem tarefa (o clique só marca lido), por DOIS
@@ -556,8 +557,13 @@ export interface Conversation {
  *
  * `ia_transferiu` (1139) é gravado pelo servidor quando um agente de IA passa
  * a conversa para a equipe (`src/lib/ia-agentes/aviso-da-transferencia.ts`),
- * com título e corpo prontos e a conversa; é o ÚNICO tipo que abre também a
- * caixinha clicável dentro do CRM (`useAvisoDaIaNaTela`).
+ * com título e corpo prontos e a conversa; abre também a caixinha clicável
+ * dentro do CRM (`useAvisoDaIaNaTela`), em âmbar.
+ *
+ * `ia_falhou`/`ia_voltou` (1140) são o ALARME quando a IA para de responder
+ * (créditos, chave, modelo, provedor fora do ar) e o aviso de que ela voltou
+ * (`src/lib/ia-agentes/alarme-da-ia.ts`): sem conversa nem contato; o clique
+ * leva às clientes "Em atraso". `ia_falhou` abre a caixinha VERMELHA.
  *
  * ⚠️ Não confundir com o `'conversation_assigned'` homônimo mais abaixo neste
  * arquivo, que é gatilho de AUTOMAÇÃO. São coisas diferentes com o mesmo nome.
@@ -569,7 +575,9 @@ export type NotificationType =
   | 'task_assigned'
   | 'task_reply'
   | 'whatsapp_alert'
-  | 'ia_transferiu';
+  | 'ia_transferiu'
+  | 'ia_falhou'
+  | 'ia_voltou';
 
 export interface Notification {
   id: string;

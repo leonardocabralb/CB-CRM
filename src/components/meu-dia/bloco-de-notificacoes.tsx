@@ -20,6 +20,7 @@ import {
   AtSign,
   Bell,
   Bot,
+  BotOff,
   ListTodo,
   MessageSquareReply,
   Reply,
@@ -30,6 +31,7 @@ import {
 import type { Bloco } from '@/hooks/use-resumo-do-dia';
 import type { Notificacoes } from '@/hooks/use-area-de-trabalho';
 import { LOCALE_DAS_DATAS } from '@/lib/idioma-das-datas';
+import { ehAlarmeDaIa } from '@/lib/notifications/aviso-da-ia';
 import { rotaDoAviso } from '@/lib/notifications/rota-do-aviso';
 import {
   clienteDoAviso,
@@ -60,6 +62,8 @@ const ICONE: Record<Notification['type'], typeof Bell> = {
   task_reply: Reply,
   whatsapp_alert: TriangleAlert,
   ia_transferiu: Bot,
+  ia_falhou: BotOff,
+  ia_voltou: Bot,
 };
 
 export function BlocoDeNotificacoes({
@@ -185,7 +189,8 @@ export function BlocoDeNotificacoes({
                         <span
                           className={cn(
                             'text-muted-foreground block text-xs',
-                            saude ? 'line-clamp-3' : 'truncate'
+                            // O alarme da IA (1140): o conserto só está no corpo.
+                            saude || ehAlarmeDaIa(aviso.type) ? 'line-clamp-3' : 'truncate'
                           )}
                         >
                           {texto.corpo}

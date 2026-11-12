@@ -88,6 +88,10 @@ const PROIBIDOS = [
   'transferirParaGente',
   // 1139: o aviso no sino de quem a IA passou para a equipe.
   'avisarDaTransferencia',
+  // 1140: o alarme de que a IA parou (e o "voltou"): a falha no teste é do teste.
+  'registrarFalhaDaIa',
+  'registrarIaVoltou',
+  'cb_ia_registrar_falha',
   'anotarNaConversa',
   'mostrarDigitando',
   'drenarEventosDeFunil',

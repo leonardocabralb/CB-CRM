@@ -36,6 +36,7 @@ import {
   EVENTO_ABRIR_CONVERSA,
   EVENTO_CONVERSA_ABERTA,
   EVENTO_IR_PARA_NOTA,
+  EVENTO_VER_EM_ATRASO,
   ehOrigemDoInbox,
   notaDaUrl,
   recorteDaUrl,
@@ -1210,6 +1211,24 @@ function InboxPageInner() {
     window.addEventListener(EVENTO_ABRIR_CONVERSA, aoPedirAbertura);
     return () => window.removeEventListener(EVENTO_ABRIR_CONVERSA, aoPedirAbertura);
   }, []);
+
+  /**
+   * NOSSO (1140): o alarme da IA ("Ver as conversas em atraso") clicado com
+   * esta página JÁ montada. A lista acende o chip sozinha; aqui, no CELULAR,
+   * a conversa aberta sai da tela — a lista só aparece sem ela, e a pessoa
+   * ficaria no fio antigo (Codex, #512). No computador, lista e fio convivem:
+   * a conversa fica. A URL já veio sem `?c=` (o `router.push` do alarme).
+   */
+  useEffect(() => {
+    if (ehDesktop) return;
+    const aoVerEmAtraso = () => {
+      if (!conversaAbertaRef.current) return;
+      abriuComPassoRef.current = false;
+      limparConversaAberta();
+    };
+    window.addEventListener(EVENTO_VER_EM_ATRASO, aoVerEmAtraso);
+    return () => window.removeEventListener(EVENTO_VER_EM_ATRASO, aoVerEmAtraso);
+  }, [ehDesktop, limparConversaAberta]);
 
   /**
    * O par do de cima no pop-up de ANOTAÇÃO (1114): o fio salta até ela. O

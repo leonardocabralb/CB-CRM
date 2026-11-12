@@ -46,9 +46,13 @@ function ehVerDoInbox(v: string | null | undefined): v is VerDoInbox {
   return v === "nao-lidas" || v === "em-atraso";
 }
 
-/** O recorte que os indicadores do Meu dia pedem à caixa de entrada. */
+/**
+ * O recorte que os indicadores do Meu dia pedem à caixa de entrada. `conexao`
+ * nula = só o chip (`?ver=` sozinho, o alarme da IA de 1140: "as clientes em
+ * atraso" de todas as conexões do perfil).
+ */
 export interface RecorteDaUrl {
-  conexao: string;
+  conexao: string | null;
   ver: VerDoInbox | null;
 }
 
@@ -62,8 +66,12 @@ export function recorteDaUrl(
   conexao: string | null | undefined,
   ver: string | null | undefined,
 ): RecorteDaUrl | null {
-  if (!conexao || !UUID.test(conexao)) return null;
-  return { conexao, ver: ehVerDoInbox(ver) ? ver : null };
+  const verQueVale = ehVerDoInbox(ver) ? ver : null;
+  // 1140: `?ver=` SEM conexão acende só o chip (o alarme da IA). Conexão
+  // presente e malformada continua não semeando nada.
+  if (!conexao) return verQueVale ? { conexao: null, ver: verQueVale } : null;
+  if (!UUID.test(conexao)) return null;
+  return { conexao, ver: verQueVale };
 }
 
 /**
@@ -102,6 +110,9 @@ export function urlDoInbox(params: {
   } else if (params.conexao) {
     partes.push(`conexao=${encodeURIComponent(params.conexao)}`);
     if (ehVerDoInbox(params.ver)) partes.push(`ver=${params.ver}`);
+  } else if (ehVerDoInbox(params.ver)) {
+    // 1140: o alarme da IA leva às clientes "Em atraso" de todas as conexões.
+    partes.push(`ver=${params.ver}`);
   }
   if (ehOrigemDoInbox(params.de)) partes.push(`de=${params.de}`);
   return partes.length > 0 ? `/inbox?${partes.join("&")}` : "/inbox";
@@ -129,6 +140,14 @@ export interface PedidoDeIrParaNota {
   conversaId: string;
   notaId: string;
 }
+
+/**
+ * Pedido de "mostrar as clientes em atraso" vindo de fora da lista com a
+ * caixa de entrada JÁ montada (o clique no alarme da IA, 1140): o `?ver=` da
+ * URL só semeia a lista na montagem, e o `router.push` sozinho não a remonta.
+ * A lista escuta e acende o chip "Em atraso" (`conversation-list.tsx`).
+ */
+export const EVENTO_VER_EM_ATRASO = "cb:ver-em-atraso";
 
 /**
  * A caixa de entrada ABRIU esta conversa (o `detail` é o id). Quem ouve: o

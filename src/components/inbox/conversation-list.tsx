@@ -61,7 +61,7 @@ import {
 } from "lucide-react";
 import { atrasoDeResposta } from "@/lib/inbox/atraso";
 import { ordenarComoOBanco } from "@/lib/inbox/ordem-da-lista";
-import type { VerDoInbox } from "@/lib/inbox/url";
+import { EVENTO_VER_EM_ATRASO, type VerDoInbox } from "@/lib/inbox/url";
 import { restanteParaExibir, type CanalDeSaida } from "@/lib/inbox/janela-24h";
 import { seloDaJanela, type CorDaJanela } from "@/lib/inbox/selo-da-janela";
 import { formatDistanceToNow } from "date-fns";
@@ -237,8 +237,32 @@ export function ConversationList({
         emAtraso: verInicial === "em-atraso",
       };
     }
+    // NOSSO (1140): `?ver=` sozinho — o alarme da IA ("as clientes em atraso",
+    // de todas as conexões do perfil). Só o chip, sem recorte de conexão.
+    if (verInicial) {
+      return {
+        ...FILTROS_VAZIOS,
+        naoLidas: verInicial === "nao-lidas",
+        emAtraso: verInicial === "em-atraso",
+      };
+    }
     return FILTROS_VAZIOS;
   });
+
+  // NOSSO (1140): o alarme da IA clicado com a caixa de entrada JÁ montada —
+  // o `?ver=` só semeia na montagem. Acende "Em atraso" sem os outros
+  // recortes, na aba das abertas — o mesmo que o `?ver=` semeia: a pessoa
+  // precisa ver TODAS as clientes que a IA deixou sem resposta, e a encerrada
+  // não fica em atraso. A busca digitada sai junto (Codex, #512): ela recorta
+  // por cima do filtro, e a lista "Em atraso" sairia vazia ou de um cliente só.
+  useEffect(() => {
+    const aoPedir = () => {
+      setFiltros({ ...FILTROS_VAZIOS, emAtraso: true });
+      setSearch("");
+    };
+    window.addEventListener(EVENTO_VER_EM_ATRASO, aoPedir);
+    return () => window.removeEventListener(EVENTO_VER_EM_ATRASO, aoPedir);
+  }, []);
   const [loading, setLoading] = useState(true);
   // Relógio do alerta de atraso (972). A linha não muda no banco quando os 10
   // minutos vencem — quem muda é o tempo —, então a lista re-renderiza a cada
@@ -866,7 +890,7 @@ export function ConversationList({
     if (semeouPadraoRef.current) return;
     // O indicador do Meu dia também vence o padrão: ele prometeu um número
     // daquela conexão, e o padrão por cima mostraria outro.
-    if (etapaInicial || conexaoInicial) {
+    if (etapaInicial || conexaoInicial || verInicial) {
       semeouPadraoRef.current = true;
       return;
     }
@@ -919,6 +943,7 @@ export function ConversationList({
   }, [
     etapaInicial,
     conexaoInicial,
+    verInicial,
     salvosCarregando,
     filtroPadraoId,
     filtrosSalvos,
@@ -943,6 +968,7 @@ export function ConversationList({
   const esperandoPadrao =
     !etapaInicial &&
     !conexaoInicial &&
+    !verInicial &&
     (salvosCarregando ||
       (filtroPadraoId !== null && (!catalogosProntos || canaisCarregando)));
 
