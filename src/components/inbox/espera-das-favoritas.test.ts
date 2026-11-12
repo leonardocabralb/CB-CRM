@@ -21,7 +21,14 @@ describe("a lista espera as favoritas antes de aplicar o recorte", () => {
     expect(lista).toMatch(
       /const aguardandoFavoritas =\s+\(filtros\.favoritas \|\| filtros\.incluirFavoritas\) && !favoritasCarregadas;/,
     );
-    expect(lista).toMatch(/\{loading \|\| aguardandoEtapas \|\| aguardandoFavoritas \|\| esperandoPadrao \? \(/);
+    expect(lista).toMatch(
+      /\{loading \|\| aguardandoEtapas \|\| aguardandoFavoritas \|\| aguardandoIa \|\| esperandoPadrao \? \(/,
+    );
+  });
+
+  it("o filtro da IA também segura o spinner até a primeira leitura voltar (boa ou não)", () => {
+    expect(lista).toMatch(/const aguardandoIa = filtros\.ia !== null && !iaRespondeu;/);
+    expect(ler("src/hooks/use-conversas-da-ia.ts")).toMatch(/respondeu: valida !== null/);
   });
 
   it("'carregadas' é carimbado com o dono e vale também para a leitura que falhou", () => {

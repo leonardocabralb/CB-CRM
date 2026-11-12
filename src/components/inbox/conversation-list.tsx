@@ -83,6 +83,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { canaisVisiveis, conversaNoEscopo } from "@/lib/perfis/escopo";
 import { canSendMessages, isAccountRole } from "@/lib/auth/roles";
 import { useFavoritas } from "@/hooks/use-favoritas";
+import { useConversasDaIa } from "@/hooks/use-conversas-da-ia";
 import { ehInstagram } from "@/lib/cb-channels/transporte";
 import { ehPreviaDeLigacao } from "@/lib/whatsapp/ligacoes/previa";
 import { tipoNaoSuportado } from "@/lib/inbox/tipo-nao-suportado";
@@ -248,6 +249,12 @@ export function ConversationList({
     }
     return FILTROS_VAZIOS;
   });
+  // As conversas da IA (o filtro "IA"): lidas só com ele ligado. `null` =
+  // não sei, e o recorte é neutralizado (`ContextoDosFiltros.conversasDaIa`).
+  const { conjuntos: conversasDaIa, respondeu: iaRespondeu } = useConversasDaIa(
+    filtros.ia !== null,
+    resyncToken,
+  );
 
   // NOSSO (1140): o alarme da IA clicado com a caixa de entrada JÁ montada —
   // o `?ver=` só semeia na montagem. Acende "Em atraso" sem os outros
@@ -757,10 +764,13 @@ export function ConversationList({
         clientesIdeais,
         // `null` (sem busca ainda, ou falhou) só deixa de somar.
         nomesNosGrupos,
+        // `null` neutraliza o filtro "IA".
+        conversasDaIa,
       }),
     [
       ordenadas,
       filtros,
+      conversasDaIa,
       etapasStatus,
       agora,
       favoritas,
@@ -786,6 +796,11 @@ export function ConversationList({
   // aparecia um segundo depois, empurrando a lista.
   const aguardandoFavoritas =
     (filtros.favoritas || filtros.incluirFavoritas) && !favoritasCarregadas;
+  // Idem com o filtro "IA": até a primeira leitura voltar, o recorte
+  // neutralizado pintaria a caixa inteira e pularia para o recorte depois.
+  // Leitura que FALHOU também conta como voltada (o painel diz que o filtro
+  // está sem efeito), senão o spinner ficava para sempre.
+  const aguardandoIa = filtros.ia !== null && !iaRespondeu;
 
   /**
    * Ciclo de vida do filtro SEMEADO por `?etapa=` (e só dele — recorte de
@@ -1169,6 +1184,14 @@ export function ConversationList({
                 ? "ha"
                 : "nenhum"
           }
+          // Ligado e sem a leitura da IA: o painel diz que o filtro está sem efeito.
+          iaSemEfeito={
+            filtros.ia === null || conversasDaIa !== null
+              ? null
+              : iaRespondeu
+                ? "falhou"
+                : "conferindo"
+          }
 
           visoes={
             <VisoesSalvas
@@ -1207,7 +1230,7 @@ export function ConversationList({
           space — the list then overflows and gets clipped by the
           parent's overflow-hidden with no scrollbar (issue #229). */}
       <ScrollArea className="min-h-0 flex-1">
-        {loading || aguardandoEtapas || aguardandoFavoritas || esperandoPadrao ? (
+        {loading || aguardandoEtapas || aguardandoFavoritas || aguardandoIa || esperandoPadrao ? (
           <div className="flex items-center justify-center py-12">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           </div>

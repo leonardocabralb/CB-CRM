@@ -26,6 +26,7 @@ import { atrasoDeResposta } from "@/lib/inbox/atraso";
 import { semAcento } from "@/lib/inbox/busca-em-mensagens";
 import { variantesDoNonoDigito } from "@/lib/contacts/telefone";
 import type { NivelDeClienteIdeal } from "@/lib/contacts/cliente-ideal";
+import { ehMotivoTemporario } from "@/lib/ia-agentes/pausa";
 import {
   matchesContactFilters,
   matchesTypeFilter,
@@ -67,6 +68,19 @@ export const SEM_RESPONSAVEL = "__sem_responsavel__";
  * controle "arquivadas" poderia contradizer este, então não existe.
  */
 export type SituacaoDaCaixa = "ativas" | "closed";
+
+/**
+ * O recorte pela IA (pedido do operador, 12/11/2026), UM campo com dois
+ * valores: as duas listas não se cruzam (a conversa transferida tem a pausa
+ * PERMANENTE e não é atendida pela IA). A régua mora no servidor
+ * (`lerConversasDaIa`, `GET /api/cb/ia/conversas`).
+ *  - `atendimento`: um agente LIGADO é dono do atendimento — responde agora,
+ *    volta sozinho da pausa temporária (follow-up) ou tem turno na fila;
+ *  - `pendencias`: a IA passou a conversa para a equipe e ninguém a resolveu
+ *    (encerrar, "Retomar IA" ou tirar o card de onde a IA o deixou).
+ */
+export type FiltroDaIa = "atendimento" | "pendencias";
+export const FILTROS_DA_IA: readonly FiltroDaIa[] = ["atendimento", "pendencias"];
 
 export interface FiltrosDoInbox {
   /** Todas / só diretas / só grupos. */
@@ -206,6 +220,15 @@ export interface FiltrosDoInbox {
    * favorita que "Incluir minhas favoritas" deixa atravessar.
    */
   clientesIdeais: boolean;
+  /**
+   * Só as conversas da IA — ver {@link FiltroDaIa}; `null` = não recorta.
+   *
+   * ⚠️ Depende de uma LEITURA do servidor (`ContextoDosFiltros.conversasDaIa`):
+   * sem ela o recorte é NEUTRALIZADO. Fica FORA do recorte do painel, como
+   * "Inadimplentes": a favorita que "Incluir minhas favoritas" deixa
+   * atravessar também passa por aqui.
+   */
+  ia: FiltroDaIa | null;
 }
 
 export const FILTROS_VAZIOS: FiltrosDoInbox = {
@@ -225,6 +248,7 @@ export const FILTROS_VAZIOS: FiltrosDoInbox = {
   emAtraso: false,
   inadimplentes: false,
   clientesIdeais: false,
+  ia: null,
 };
 
 /**
@@ -268,6 +292,7 @@ export function contarFiltrosAtivos(f: FiltrosDoInbox): number {
   if (f.emAtraso) n++;
   if (f.inadimplentes) n++;
   if (f.clientesIdeais) n++;
+  if (f.ia !== null) n++;
   return n;
 }
 
@@ -488,6 +513,41 @@ export interface ContextoDosFiltros {
    * nada — só deixa de SOMAR.
    */
   nomesNosGrupos: ReadonlyMap<string, readonly string[]> | null;
+  /**
+   * As conversas da IA (`GET /api/cb/ia/conversas`), ou `null` = ainda não
+   * sei / a leitura falhou.
+   *
+   * ⚠️ `null` NEUTRALIZA o filtro "IA", como `inadimplentes`: leitura no ar
+   * não pode virar "nenhuma conversa". Obrigatório pela mesma razão de
+   * `achadasNoTexto`.
+   */
+  conversasDaIa: ConversasDaIaNaTela | null;
+}
+
+/** Os dois conjuntos de ids de conversa que a rota devolve. */
+export interface ConversasDaIaNaTela {
+  atendimento: ReadonlySet<string>;
+  pendencias: ReadonlySet<string>;
+}
+
+/**
+ * A conversa casa com o filtro da IA? O conjunto vem do servidor (a cada
+ * minuto); a PAUSA da linha vem do tempo real e decide na hora o que dá para
+ * decidir sem o servidor: "Retomar IA" tira das pendências e a transferência
+ * tira do atendimento sem esperar a próxima leitura.
+ */
+export function casaComAIa(
+  c: Conversation,
+  filtro: FiltroDaIa,
+  conjuntos: ConversasDaIaNaTela,
+): boolean {
+  const pausada = c.ai_autoreply_disabled === true;
+  if (filtro === "pendencias") {
+    return pausada && c.ia_pausada_por === "transferencia" && conjuntos.pendencias.has(c.id);
+  }
+  // Pausa PERMANENTE (transferência, "Desativar IA", automação) tira do
+  // atendimento na hora; a temporária, não (a IA volta sozinha).
+  return !(pausada && !ehMotivoTemporario(c.ia_pausada_por)) && conjuntos.atendimento.has(c.id);
 }
 
 /**
@@ -875,6 +935,10 @@ export function aplicarFiltros(
       ctx.clientesIdeais !== null &&
       (!c.contact_id || ctx.clientesIdeais.get(c.contact_id) !== "ideal")
     ) {
+      return false;
+    }
+    // Ver `ContextoDosFiltros.conversasDaIa`: `null` neutraliza.
+    if (f.ia !== null && ctx.conversasDaIa !== null && !casaComAIa(c, f.ia, ctx.conversasDaIa)) {
       return false;
     }
 

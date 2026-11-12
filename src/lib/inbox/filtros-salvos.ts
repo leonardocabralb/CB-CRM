@@ -17,7 +17,9 @@
 // ============================================================
 
 import {
+  FILTROS_DA_IA,
   FILTROS_VAZIOS,
+  type FiltroDaIa,
   funisDoFiltro,
   recorteTemDoisNiveis,
   SEM_ETAPA,
@@ -147,6 +149,8 @@ export function lerFiltroSalvo(bruto: unknown): FiltrosDoInbox {
     inadimplentes: o.inadimplentes === true,
     // Ausente nas visões gravadas antes da 1124 → desligado.
     clientesIdeais: o.clientesIdeais === true,
+    // Ausente nas visões gravadas antes de 12/11/2026 → não recorta.
+    ia: (FILTROS_DA_IA as readonly unknown[]).includes(o.ia) ? (o.ia as FiltroDaIa) : null,
   };
 }
 
@@ -178,6 +182,7 @@ export function escreverFiltroSalvo(f: FiltrosDoInbox): Record<string, unknown> 
     emAtraso: f.emAtraso,
     inadimplentes: f.inadimplentes,
     clientesIdeais: f.clientesIdeais,
+    ia: f.ia,
   };
 }
 
@@ -233,6 +238,7 @@ export function mesmoFiltro(a: FiltrosDoInbox, b: FiltrosDoInbox): boolean {
     a.emAtraso === b.emAtraso &&
     a.inadimplentes === b.inadimplentes &&
     a.clientesIdeais === b.clientesIdeais &&
+    a.ia === b.ia &&
     etiquetasIguais &&
     (!modoImporta || a.modoDeEtiqueta === b.modoDeEtiqueta) &&
     mesmoConjunto(a.etiquetaIdsExcluidas, b.etiquetaIdsExcluidas) &&
@@ -266,6 +272,8 @@ export type ChaveDeRotulo =
   | "filterAwaiting"
   | "filterDelinquent"
   | "filterIdealClients"
+  | "filterAiAttending"
+  | "filterAiPending"
   | "favorites"
   | "favoritesIncluded"
   | "channelFilter"
@@ -567,6 +575,19 @@ export function descreverFiltro(
       chave: "clientesIdeais",
       rotulo: { fonte: "i18n", chave: "filterIdealClients" },
       limpar: { clientesIdeais: false },
+    });
+  }
+
+  // Idem: é uma pergunta à IA (quem ela atende, o que ela passou adiante),
+  // não um id. A leitura que falha neutraliza no ctx, nunca apaga a visão.
+  if (f.ia !== null) {
+    pedacos.push({
+      chave: "ia",
+      rotulo: {
+        fonte: "i18n",
+        chave: f.ia === "pendencias" ? "filterAiPending" : "filterAiAttending",
+      },
+      limpar: { ia: null },
     });
   }
 

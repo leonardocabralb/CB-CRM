@@ -32,6 +32,8 @@ import {
   X,
   CircleDollarSign,
   Gem,
+  Bot,
+  Hand,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -148,6 +150,12 @@ interface InboxFiltersProps {
    * para dar como desligá-lo. Ausente = `conferindo`.
    */
   clientesIdeais?: "conferindo" | "nenhum" | "ha";
+  /**
+   * O filtro "IA" está ligado e SEM EFEITO (recorte neutralizado): a leitura
+   * das conversas da IA ainda não chegou (`conferindo`) ou falhou (`falhou`,
+   * tenta de novo em 1 min). `null` = valendo, ou desligado.
+   */
+  iaSemEfeito?: "conferindo" | "falhou" | null;
 }
 
 /** `dd/mm hh:mm` no fuso de quem lê — a mesma forma da faixa do fio. */
@@ -176,6 +184,7 @@ export function InboxFilters({
   asaasNeutralizado = "sem_resposta",
   asaasDadosDe = null,
   clientesIdeais = "conferindo",
+  iaSemEfeito = null,
 }: InboxFiltersProps) {
   const t = useTranslations("Inbox.conversationList");
   const [aberto, setAberto] = useState(false);
@@ -762,6 +771,49 @@ export function InboxFilters({
               )}
             </div>
           )}
+
+          {/* IA (pedido do operador, 12/11/2026): "Atendimento IA" e
+              "Pendências de IA", lado a lado e EXCLUSIVOS (um campo só,
+              `ia`) — as duas listas não se cruzam. Fixos, como
+              "Inadimplentes": a barra não tem espaço para chip. A régua
+              mora no servidor (`lerConversasDaIa`). */}
+          <div>
+            <div className="grid grid-cols-2 gap-1.5">
+              {(
+                [
+                  ["atendimento", Bot, t("filterAiAttending"), t("filterAiAttendingHint")],
+                  ["pendencias", Hand, t("filterAiPending"), t("filterAiPendingHint")],
+                ] as const
+              ).map(([valor, Icone, rotulo, dica]) => {
+                const ligado = filtros.ia === valor;
+                return (
+                  <button
+                    key={valor}
+                    type="button"
+                    onClick={() => mexer({ ia: ligado ? null : valor })}
+                    aria-pressed={ligado}
+                    title={dica}
+                    className={cn(
+                      "inline-flex h-8 min-w-0 items-center gap-2 rounded-md border px-2 text-xs transition-colors",
+                      // `dark:` está inerte no app: violeta que serve nos dois temas.
+                      ligado
+                        ? "border-violet-500/50 bg-violet-500/10 text-violet-700 hover:bg-violet-500/15"
+                        : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    <Icone className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    <span className="truncate">{rotulo}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {/* Ligado e sem efeito: a tela diz por quê. */}
+            {filtros.ia !== null && iaSemEfeito !== null && (
+              <p className="mt-1 px-0.5 text-[11px] text-muted-foreground">
+                {iaSemEfeito === "falhou" ? t("aiFilterFailed") : t("aiFilterChecking")}
+              </p>
+            )}
+          </div>
 
           {/* MAIS FILTROS: tipo, responsável e empresa — os menos usados no
               dia a dia. Abrem sozinhos quando um deles está recortando,

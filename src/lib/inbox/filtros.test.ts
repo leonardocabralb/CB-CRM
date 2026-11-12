@@ -4,6 +4,7 @@ import { matchesTypeFilter } from "./conversations";
 import {
   aplicarFiltros,
   canalDaConversa,
+  casaComAIa,
   casaComABusca,
   casaComAEtapa,
   casaComOResponsavel,
@@ -97,6 +98,7 @@ const ctx = (patch: Partial<ContextoDosFiltros> = {}): ContextoDosFiltros => ({
   inadimplentes: null,
   clientesIdeais: null,
   nomesNosGrupos: null,
+  conversasDaIa: null,
   ...patch,
 });
 
@@ -1406,5 +1408,47 @@ describe("Sem as etiquetas — esconde quem tem QUALQUER uma das marcadas (08/11
         etiquetaIdsExcluidas: ["t2"],
       }),
     ).toBe(2);
+  });
+});
+
+describe("filtro da IA (atendimento × pendências, 12/11/2026)", () => {
+  const conjuntos = {
+    atendimento: new Set(["a1", "t1"]),
+    pendencias: new Set(["p1", "p2"]),
+  };
+  const transferida = (id: string) =>
+    conversa({ id, ai_autoreply_disabled: true, ia_pausada_por: "transferencia" });
+  const ids = (lista: Conversation[], ia: "atendimento" | "pendencias", c = ctx({ conversasDaIa: conjuntos })) =>
+    aplicarFiltros(lista, { ...FILTROS_VAZIOS, ia }, c).map((x) => x.id);
+
+  it("atendimento: só quem o servidor diz que a IA atende", () => {
+    expect(ids([conversa({ id: "a1" }), conversa({ id: "x" }), transferida("p1")], "atendimento")).toEqual(["a1"]);
+  });
+
+  it("pendências: só as transferidas que o servidor ainda vê de pé", () => {
+    expect(ids([transferida("p1"), transferida("p3"), conversa({ id: "a1" })], "pendencias")).toEqual(["p1"]);
+  });
+
+  it("a pausa da linha (tempo real) vence o conjunto velho: Retomar IA tira das pendências na hora", () => {
+    const retomada = conversa({ id: "p2", ai_autoreply_disabled: false, ia_pausada_por: null });
+    expect(casaComAIa(retomada, "pendencias", conjuntos)).toBe(false);
+  });
+
+  it("a transferência tira do atendimento na hora; a pausa temporária, não", () => {
+    expect(casaComAIa(transferida("t1"), "atendimento", conjuntos)).toBe(false);
+    const temporaria = conversa({ id: "t1", ai_autoreply_disabled: true, ia_pausada_por: "gente" });
+    expect(casaComAIa(temporaria, "atendimento", conjuntos)).toBe(true);
+    for (const motivo of ["desativada", "automacao"]) {
+      const permanente = conversa({ id: "t1", ai_autoreply_disabled: true, ia_pausada_por: motivo });
+      expect(casaComAIa(permanente, "atendimento", conjuntos)).toBe(false);
+    }
+  });
+
+  it("sem a leitura (null) o recorte é NEUTRALIZADO, nunca 'nenhuma conversa'", () => {
+    expect(ids([conversa({ id: "a1" }), conversa({ id: "x" })], "atendimento", ctx())).toEqual(["a1", "x"]);
+  });
+
+  it("conta como UM filtro no distintivo", () => {
+    expect(contarFiltrosAtivos({ ...FILTROS_VAZIOS, ia: "pendencias" })).toBe(1);
   });
 });

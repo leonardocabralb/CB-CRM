@@ -85,6 +85,7 @@ describe("lerFiltroSalvo", () => {
         favoritas: true,
         incluirFavoritas: true,
         naoLidas: true,
+        ia: "pendencias",
       }),
     ).toEqual({
       tipo: "grupos",
@@ -104,10 +105,17 @@ describe("lerFiltroSalvo", () => {
       emAtraso: false,
       inadimplentes: false,
       clientesIdeais: false,
+      ia: "pendencias",
     });
   });
 
-  it("CRÍTICO: valor fora da união cai no padrão, nunca vaza para aplicarFiltros", () => {
+  it("filtro da IA: valor desconhecido ou ausente não recorta", () => {
+    expect(lerFiltroSalvo({ ia: "outra" }).ia).toBeNull();
+    expect(lerFiltroSalvo({}).ia).toBeNull();
+    expect(lerFiltroSalvo({ ia: "atendimento" }).ia).toBe("atendimento");
+  });
+
+  it("CRÍTICO): valor fora da união cai no padrão, nunca vaza para aplicarFiltros", () => {
     const f = lerFiltroSalvo({ tipo: "coisa", status: "arquivada", modoDeEtiqueta: 1 });
     expect(f.tipo).toBe("todas");
     expect(f.status).toBe("ativas");
@@ -178,6 +186,7 @@ describe("escreverFiltroSalvo", () => {
       "etiquetaIdsExcluidas",
       "favoritas",
       "funilIds",
+      "ia",
       "inadimplentes",
       "incluirFavoritas",
       "modoDeEtiqueta",
@@ -511,6 +520,7 @@ const AMOSTRAS: Record<keyof FiltrosDoInbox, Partial<FiltrosDoInbox> | null> = {
   emAtraso: { emAtraso: true },
   inadimplentes: { inadimplentes: true },
   clientesIdeais: { clientesIdeais: true },
+  ia: { ia: "pendencias" },
 };
 
 describe("todo recorte que o painel CONTA, a descrição DESCREVE", () => {
