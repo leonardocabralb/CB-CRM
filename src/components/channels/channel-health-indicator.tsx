@@ -31,6 +31,7 @@
 //    título: fica só o fundo colorido.
 // ============================================================
 
+import { Phone } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { ABRE_PARA_BAIXO } from '@/components/layout/popup-do-cabecalho';
@@ -202,9 +203,25 @@ function textoNaFicha(t: Tradutor, a: AlarmeDoCabecalho): string | null {
 }
 
 /**
+ * A cor das ligações pelo CRM, no ícone ao lado do nome e na etiqueta. Cores
+ * que valem nos DOIS modos (o `dark:` está inerte): o `green-700` e o
+ * `amber-700` passam de 4 de contraste no claro e no escuro.
+ */
+const COR_DAS_LIGACOES: Record<NonNullable<ChannelHealth['ligacoes']>['situacao'], { icone: string; etiqueta: string }> = {
+  pronto: { icone: 'text-green-700', etiqueta: 'bg-green-500/10 text-green-700 ring-green-500/30' },
+  em_ligacao: { icone: 'text-primary', etiqueta: 'bg-primary/10 text-primary ring-primary/30' },
+  qr: { icone: 'text-amber-700', etiqueta: 'bg-amber-500/10 text-amber-700 ring-amber-500/40' },
+  fora: { icone: 'text-amber-700', etiqueta: 'bg-amber-500/10 text-amber-700 ring-amber-500/40' },
+  carregando: { icone: 'text-muted-foreground', etiqueta: 'bg-muted text-muted-foreground ring-border' },
+};
+
+/**
  * A linha das ligações pelo CRM da conexão (4e): só com o computador LIGADO
- * pelo admin — desligado, a sonda nem a manda (D16). Âmbar quando as ligações
- * não funcionam (fora do ar, pedindo o QR), como as outras linhas de aviso.
+ * pelo admin — desligado, a sonda nem a manda (D16). Uma ETIQUETA colorida
+ * com o telefone (pedido do operador, 11/11/2026: no texto cinza entre as
+ * outras linhas, não se via qual conexão tinha as ligações nem em que estado):
+ * verde pronta, cor do tema em ligação, âmbar quando não funcionam (fora do
+ * ar, pedindo o QR).
  */
 function LinhaDasLigacoes({ ligacoes }: { ligacoes: NonNullable<ChannelHealth['ligacoes']> }) {
   const t = useTranslations('ChannelHealth');
@@ -228,10 +245,15 @@ function LinhaDasLigacoes({ ligacoes }: { ligacoes: NonNullable<ChannelHealth['l
       break;
     }
   }
-  const aviso = ligacoes.situacao === 'fora' || ligacoes.situacao === 'qr';
   return (
-    <p className={cn('mt-0.5 text-xs', aviso ? 'font-medium text-amber-700 dark:text-amber-300' : 'text-muted-foreground')}>
-      {texto}
+    <p
+      className={cn(
+        'mt-1.5 inline-flex max-w-full items-center gap-1.5 rounded-lg px-2 py-0.5 text-xs font-medium ring-1 ring-inset',
+        COR_DAS_LIGACOES[ligacoes.situacao].etiqueta,
+      )}
+    >
+      <Phone aria-hidden className="size-3 shrink-0" />
+      <span className="min-w-0">{texto}</span>
     </p>
   );
 }
@@ -269,7 +291,14 @@ function Ficha({ c, alarmes }: { c: ChannelHealth; alarmes: readonly AlarmeDoCab
     <div className="flex items-start gap-2.5 py-1.5">
       <Glifo tone={c.tone} pulsar={c.tone === 'warn'} kind={c.kind} className="mt-0.5 shrink-0" />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-foreground">{c.label}</p>
+        {/* O telefone ao lado do nome: a conexão com as ligações pelo CRM
+            ligadas se vê de relance na lista, na cor do estado delas. */}
+        <p className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-foreground">
+          <span className="truncate">{c.label}</span>
+          {c.ligacoes && (
+            <Phone aria-hidden className={cn('size-3.5 shrink-0', COR_DAS_LIGACOES[c.ligacoes.situacao].icone)} />
+          )}
+        </p>
         <p className="text-xs text-muted-foreground">
           {t(`tone_${c.tone}`)}
           {c.detail ? ` · ${t(`detail_${c.detail}`)}` : ''}

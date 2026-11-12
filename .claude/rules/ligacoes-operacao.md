@@ -63,10 +63,14 @@ na sentinela que vigia o contêiner.
   ⚠️ Desligado: o ciclo apaga a linha CALADA (sem "Normalizou") e a sonda só
   olha os ligados — "essas informações somem" (D16). Os tipos do CHECK e o
   espelho `TIPOS_DO_ALARME` andam juntos (pino `ligacoes-interruptor-1137.test.ts`).
-- **No botão das conexões**: a linha "Ligações pelo CRM: …" na ficha
-  (`ligacoes` da sonda, só do ligado; leitura que falha = sem linha) e os dois
-  alarmes, os mais leves da conexão (`GRAVIDADE`); na ficha eles não ganham
-  linha própria (a das ligações já diz).
+- **No botão das conexões**: a ficha da conexão com as ligações LIGADAS ganha
+  um telefone ao lado do nome e a etiqueta colorida "Ligações pelo CRM: …"
+  (`ligacoes` da sonda, só do ligado; leitura que falha = sem etiqueta) —
+  verde prontas, cor do tema em ligação, âmbar pedindo o QR ou fora do ar
+  (`COR_DAS_LIGACOES`; pedido do operador, 11/11/2026: em texto cinza não se
+  via qual conexão tinha as ligações). Os dois alarmes são os mais leves da
+  conexão (`GRAVIDADE`); na ficha eles não ganham linha própria (a etiqueta já
+  diz).
 - **A sentinela da VPS** (`maquina:<nome>`): o contêiner do computador LIGADO
   que não está rodando, conferido de novo 60 s depois, só aos owner/admin da
   conta DONA (`PREFIXOS_DA_CONTA`, nunca a união das contas do servidor). As
