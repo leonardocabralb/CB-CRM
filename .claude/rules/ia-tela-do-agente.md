@@ -124,8 +124,10 @@ agente errar em silêncio.
   IA ativa ou na pausa que volta, e o follow-up só onde ele atravessa a pausa
   (sem pausa, ou `gente` com N > 0 — `ia-retomada.md`): o armado sob outra
   pausa é descartado no vencimento. Ficam de fora a resposta que espera a
-  EQUIPE (a linha da pausa já diz "volta a partir de") e a PRÉ-ARMAÇÃO não
-  resolvida (30 s; a hora dela não é a do follow-up).
+  EQUIPE (a linha da pausa já diz "volta a partir de"); a PRÉ-ARMAÇÃO não
+  resolvida (30 s; a hora dela não é a do follow-up) sai como `agendando`:
+  sem linha, só para a faixa perguntar de novo quando ela resolver — a
+  resolução só muda `cb_ia_turnos`, nenhuma prop da faixa (Codex, #515).
 - ⚠️ **`proximo` ausente ≠ `null`**: ausente (servidor antigo, forma
   estranha) = não se sabe, sem linha; `null` = nada na fila ("Sem follow-up
   agendado"). Leitura da fila que falha = 500, como o resto da rota.

@@ -15,8 +15,10 @@ import { ERRO_DA_ARMACAO_PELA_EQUIPE, ERRO_DA_ESPERA_DA_EQUIPE } from './pausa'
 //   - a resposta que espera a EQUIPE (`ERRO_DA_ESPERA_DA_EQUIPE`, 1138): a
 //     faixa da pausa já diz "a IA volta a partir de …" (`voltaEm`);
 //   - a PRÉ-ARMAÇÃO do follow-up da equipe ainda não resolvida
-//     (`ERRO_DA_ARMACAO_PELA_EQUIPE`, 30 s): a hora dela não é a do
-//     follow-up — a conferência a reagenda para o vencimento real;
+//     (`ERRO_DA_ARMACAO_PELA_EQUIPE`, 30 s) não vira linha: a hora dela não
+//     é a do follow-up (a conferência a reagenda para o vencimento real). Ela
+//     sai como `agendando`, só para a faixa perguntar de novo quando ela
+//     resolver — nada mais muda na tela nessa hora (Codex, #515);
 //   - o follow-up numa pausa que ele NÃO atravessa (só a `gente` com N > 0
 //     atravessa — `ia-retomada.md`): ele seria descartado no vencimento, e a
 //     faixa afirmaria um envio que não vai acontecer. Quem decide é a rota
@@ -30,8 +32,8 @@ export type ProximoPasso =
   | { tipo: 'resposta'; em: string; foraDoHorario: boolean }
   /** O follow-up agendado: a tentativa, de quantas, e a partir de quando. */
   | { tipo: 'retomada'; em: string; tentativa: number; tentativas: number }
-
-export const TIPOS_DO_PROXIMO_PASSO = ['agora', 'resposta', 'retomada'] as const
+  /** A pré-armação do follow-up da equipe, ainda sem hora real: sem linha, só a releitura. */
+  | { tipo: 'agendando'; em: string }
 
 /** A linha de `cb_ia_turnos` que a rota lê (colunas cruas). */
 export interface TurnoVivo {
@@ -53,7 +55,8 @@ const inteiro = (v: unknown): number | null =>
 
 /**
  * O próximo passo, nesta ordem: escrevendo agora > resposta na fila (a mais
- * cedo) > follow-up agendado (o mais cedo). Nada aplicável = `null`.
+ * cedo) > follow-up agendado (o mais cedo) > pré-armação (`agendando`). Nada
+ * aplicável = `null`.
  * `atravessaRetomada` = a conversa sem pausa, ou na pausa `gente` com N > 0.
  */
 export function proximoPassoDaIa(
@@ -74,12 +77,17 @@ export function proximoPassoDaIa(
     }
   }
   if (!opcoes.atravessaRetomada) return null
+  let armando: string | null = null
   for (const l of aguardando) {
-    if (l.tipo !== 'retomada' || l.erro === ERRO_DA_ARMACAO_PELA_EQUIPE) continue
+    if (l.tipo !== 'retomada') continue
+    if (l.erro === ERRO_DA_ARMACAO_PELA_EQUIPE) {
+      armando ??= l.executar_apos as string
+      continue
+    }
     const tentativa = inteiro(l.tentativa)
     const tentativas = inteiro(l.tentativas)
     if (tentativa === null || tentativas === null || tentativa > tentativas) continue
     return { tipo: 'retomada', em: l.executar_apos as string, tentativa, tentativas }
   }
-  return null
+  return armando ? { tipo: 'agendando', em: armando } : null
 }

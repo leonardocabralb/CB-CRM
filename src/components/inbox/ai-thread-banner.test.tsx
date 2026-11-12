@@ -471,7 +471,8 @@ describe('lerProximo — o próximo passo que a rota manda', () => {
     expect(lerProximo({ tipo: 'outro', em: EM })).toBeNull();
   });
 
-  it('lê os três tipos', () => {
+  it('lê os quatro tipos', () => {
+    expect(lerProximo({ tipo: 'agendando', em: EM })).toEqual({ tipo: 'agendando', em: EM });
     expect(lerProximo({ tipo: 'agora' })).toEqual({ tipo: 'agora' });
     expect(lerProximo({ tipo: 'resposta', em: EM, foraDoHorario: 'true' })).toEqual({ tipo: 'resposta', em: EM, foraDoHorario: false });
     expect(lerProximo(FOLLOW_UP)).toEqual(FOLLOW_UP);
@@ -542,6 +543,17 @@ describe('FaixaDaIa — a linha do próximo passo, nos dois dicionários', () =>
     expect(semSaber).not.toContain('follow-up');
     // Nenhuma segunda linha embaixo do nome.
     expect(semSaber).not.toContain('mt-0.5 pl-5');
+  });
+
+  it('⚠️ pré-armação do follow-up da equipe (`agendando`): nenhuma linha — nem "sem follow-up", que seria falso (Codex, #515)', () => {
+    const atendendoArmando = desenharNoRelogio(atendendo({ tipo: 'agendando', em: EM }), AGORA);
+    expect(atendendoArmando).not.toContain('mt-0.5 pl-5');
+    expect(atendendoArmando).not.toContain(banner.proximo.nada);
+    const pausada = faixaDaIa(
+      estado({ pausada: true, pausadaPor: 'gente', pausaTemporaria: true, proximo: { tipo: 'agendando', em: EM } }),
+      null,
+    );
+    expect(pausada).not.toHaveProperty('followUp');
   });
 
   it('pausa `gente` com follow-up: a linha dele, embaixo da volta', () => {

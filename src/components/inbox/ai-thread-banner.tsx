@@ -101,6 +101,7 @@ export function lerProximo(v: unknown): ProximoDaFaixa | null {
   const em = instante(p.em);
   if (!em) return null;
   if (p.tipo === "resposta") return { tipo: "resposta", em, foraDoHorario: p.foraDoHorario === true };
+  if (p.tipo === "agendando") return { tipo: "agendando", em };
   if (p.tipo === "retomada") {
     const tentativa = positivo(p.tentativa);
     const tentativas = positivo(p.tentativas);
@@ -330,9 +331,10 @@ export function AiThreadBanner({ conversationId, iaAgenteId, disabled, pausadaPo
   const lidoEm = lido?.em ?? null;
 
   // O próximo passo muda sem nenhuma prop mudar (a resposta sai, o
-  // follow-up é enviado e o seguinte é armado): pergunta de novo logo depois
-  // da hora marcada (20 s de folga para o cron), a cada 15 s enquanto a IA
-  // escreve, e a cada minuto se a hora passou e a fila ainda não andou.
+  // follow-up é enviado e o seguinte é armado, a pré-armação da equipe se
+  // resolve — Codex, #515): pergunta de novo logo depois da hora marcada
+  // (20 s de folga para o cron), a cada 15 s enquanto a IA escreve, e a cada
+  // minuto se a hora passou e a fila ainda não andou.
   useEffect(() => {
     if (!tipoDoProximo) return;
     let espera = 15_000;
@@ -435,6 +437,9 @@ function LinhaDoProximoPasso({
 }) {
   const t = useTranslations("Inbox.aiBanner");
   const relogio = agora ?? lidoEm;
+  // A pré-armação ainda sem hora real: sem linha — nem "sem follow-up", que
+  // seria falso; a faixa só pergunta de novo quando ela resolver.
+  if (proximo !== "nada" && proximo.tipo === "agendando") return null;
   let texto: string;
   if (proximo === "nada") {
     texto = t("proximo.nada");

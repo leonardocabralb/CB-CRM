@@ -61,8 +61,12 @@ describe('proximoPassoDaIa', () => {
     expect(proximoPassoDaIa([turno({ erro: ERRO_DA_ESPERA_DA_EQUIPE })], ATIVA)).toBeNull()
   })
 
-  it('⚠️ a pré-armação do follow-up da equipe, ainda não resolvida, não entra (a hora dela não é a do follow-up)', () => {
-    expect(proximoPassoDaIa([retomada({ tentativa: 1, tentativas: 1, erro: ERRO_DA_ARMACAO_PELA_EQUIPE })], ATIVA)).toBeNull()
+  it('⚠️ a pré-armação do follow-up da equipe, ainda não resolvida: `agendando` (só a releitura; a hora dela não é a do follow-up) — Codex, #515', () => {
+    const armacao = retomada({ tentativa: 1, tentativas: 1, erro: ERRO_DA_ARMACAO_PELA_EQUIPE })
+    expect(proximoPassoDaIa([armacao], ATIVA)).toEqual({ tipo: 'agendando', em: '2026-11-12T18:00:00Z' })
+    // O follow-up já resolvido vem antes; e a pausa que ele não atravessa cala os dois.
+    expect(proximoPassoDaIa([armacao, retomada({ executar_apos: '2026-11-13T12:00:00Z' })], ATIVA)).toMatchObject({ tipo: 'retomada' })
+    expect(proximoPassoDaIa([armacao], { atravessaRetomada: false })).toBeNull()
   })
 
   it('⚠️ pausa que o follow-up não atravessa: nenhum follow-up (seria descartado no vencimento)', () => {
