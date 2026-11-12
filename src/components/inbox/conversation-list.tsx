@@ -12,6 +12,7 @@ import {
   aplicarFiltros,
   canalDaConversa,
   casaComABusca,
+  casaComAIa,
   casaComASituacao,
   contarFiltrosAtivos,
   FILTROS_VAZIOS,
@@ -52,6 +53,7 @@ import {
   CircleDollarSign,
   Hourglass,
   Zap,
+  Sparkles,
   Search,
   Users,
   Star,
@@ -249,10 +251,14 @@ export function ConversationList({
     }
     return FILTROS_VAZIOS;
   });
-  // As conversas da IA (o filtro "IA"): lidas só com ele ligado. `null` =
-  // não sei, e o recorte é neutralizado (`ContextoDosFiltros.conversasDaIa`).
+  // As conversas da IA: o filtro "IA" E o símbolo ✨ da linha (pedido do
+  // operador, 12/11/2026) — os MESMOS conjuntos, para o símbolo e o filtro
+  // "Atendimento IA" nunca discordarem. Lidas sempre (o símbolo aparece sem
+  // filtro nenhum), a cada minuto com a aba visível: medido 259 conversas
+  // ativas, ~12 consultas por leitura. `null` = não sei: o recorte é
+  // neutralizado (`ContextoDosFiltros.conversasDaIa`) e o símbolo cala.
   const { conjuntos: conversasDaIa, respondeu: iaRespondeu } = useConversasDaIa(
-    filtros.ia !== null,
+    true,
     resyncToken,
   );
 
@@ -1261,6 +1267,9 @@ export function ConversationList({
                 esperasDeAutomacao={
                   sinalDeExecucoes?.porContato[conv.contact_id ?? ""]?.esperas ?? 0
                 }
+                // A régua do filtro "Atendimento IA", com a pausa da LINHA
+                // (tempo real) decidindo na hora: pausa permanente apaga.
+                iaAtende={conversasDaIa !== null && casaComAIa(conv, "atendimento", conversasDaIa)}
                 divida={dividasDoAsaas?.get(conv.contact_id ?? "") ?? null}
                 // Grupo não tem contato e nunca ganha selo.
                 clienteIdeal={conv.contact_id ? (clientesIdeais?.get(conv.contact_id) ?? null) : null}
@@ -1327,6 +1336,12 @@ interface ConversationItemProps {
    */
   esperasDeAutomacao: number;
   /**
+   * Um agente de IA atende esta conversa agora (a régua do filtro
+   * "Atendimento IA", `casaComAIa`). `false` = não, ou ainda não se sabe — a
+   * marca cala nos dois casos: ausência de marca não afirma "sem IA".
+   */
+  iaAtende: boolean;
+  /**
    * A dívida do contato desta conversa no Asaas (Fase 1b), ou `null` — em
    * dia, ou ainda não se sabe: a marca cala nos dois casos, porque ausência
    * de marca não pode afirmar "em dia".
@@ -1373,6 +1388,7 @@ function ConversationItem({
   corDoCanalDaLinha,
   agora,
   esperasDeAutomacao,
+  iaAtende,
   divida,
   clienteIdeal,
   canalDeSaidaDaLinha,
@@ -1575,6 +1591,18 @@ function ConversationItem({
                   className="inline-flex items-center rounded-full bg-violet-500/15 px-1 py-px text-violet-600 dark:text-violet-300"
                 >
                   <Zap className="h-3 w-3" aria-hidden="true" />
+                </span>
+              )}
+              {/* A IA atende esta conversa (pedido do operador, 12/11/2026),
+                  ao lado do raio da automação. Só o ícone, como o raio — o
+                  nome do agente e o próximo passo estão na faixa do fio. Cor
+                  própria (céu): o violeta já é do robô e da ampulheta. */}
+              {iaAtende && (
+                <span
+                  title={t("iaAtendendo")}
+                  className="inline-flex items-center rounded-full bg-sky-500/15 px-1 py-px text-sky-600 dark:text-sky-300"
+                >
+                  <Sparkles className="h-3 w-3" aria-hidden="true" />
                 </span>
               )}
               {atraso && rotuloDoAtraso && (

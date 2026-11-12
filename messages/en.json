@@ -312,6 +312,7 @@
       "resultCount": "{count} of {total}",
       "novaConversa": "New conversation",
       "automacaoRodando": "{n, plural, one {# automation scheduled for this contact} other {# automations scheduled for this contact}}",
+      "iaAtendendo": "The AI is handling this conversation",
       "searchPlaceholderInMessages": "Search by name, number or message...",
       "searchInsideMessages": "Also search inside messages",
       "previaNaoSuportada": "Unsupported message",
