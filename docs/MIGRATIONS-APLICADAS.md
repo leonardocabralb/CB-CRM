@@ -2108,3 +2108,18 @@ nome da época em que foram aplicadas.
   cinco motivos, a função fechada a anon/authenticated e aberta ao
   service_role, o gatilho novo ligado, nenhuma pré-armação (agentes
   desligados).
+
+- **1139_cb_aviso_da_ia_que_passa** — o aviso quando um agente de IA passa a
+  conversa para a equipe (D1–D4 do operador de 11/11/2026): o tipo
+  `ia_transferiu` no CHECK de `notifications.type` (os seis de antes
+  reescritos) e `cb_ia_agentes.avisar_ao_transferir uuid[] NOT NULL DEFAULT
+  '{}'` (até 50, CHECK `cb_ia_agentes_avisar_ao_transferir_teto`). PR #510.
+
+  ADITIVA, aplicada ANTES do deploy com a autorização explícita do operador
+  ("aplicar a 1139 na produção e mesclar", 12/11/2026), em 12/11/2026 às 09:31
+  BRT (histórico `20261112123108`), pela Management API, com o arquivo idêntico
+  ao do commit `b3cfb5c1` (sha256 `c20753e2…`), cujo replay do CI passou e que
+  o Codex revisou sem achados. Antes: o replay local do zero e a 1139 aplicada
+  duas vezes. Conferida na produção: os sete tipos no CHECK, a coluna `{}` em
+  todos os agentes (nenhum com lista), o teto de 50, o `service_role` lendo e
+  o `anon` sem leitura.

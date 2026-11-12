@@ -76,5 +76,13 @@ A PASSAGEM entre agentes não é transferência para gente e não avisa.
 
 ## Estado
 
-- 11/11/2026: decisões D1–D4; código, testes e doc no PR. Falta: aplicar a
-  1139 (com o "pode gravar"), mesclar e ver o 1º aviso real ao ligar um agente.
+- 11/11/2026: decisões D1–D4; código, testes e doc no PR #510.
+- 12/11/2026: 1139 aplicada na produção (histórico `20261112123108`) com a
+  autorização do operador, depois do CI verde e do Codex sem achados no
+  `b3cfb5c1`. Conferido no preview: o campo "Avisar quando passar para a
+  equipe" na tela do agente (os 16 membros, nada salvo) e um aviso de TESTE
+  no sino do operador (id `11390000-…`) — a caixinha apareceu em segundos
+  pelo tempo real, o clique abriu `/inbox?c=` do lead de teste e marcou lido,
+  o sino o mostrou com o ícone; o aviso foi apagado (contagem zero).
+- Falta: marcar quem recebe nos dois agentes do Trabalhista (vazio = dono,
+  admins e quem atende o número) e ver o 1º aviso real ao ligar um agente.
