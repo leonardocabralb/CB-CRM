@@ -187,6 +187,16 @@ agentes não avisa.
   a conversa abre na caixa de entrada. ⚠️ Com a aba EM FOCO o pop-up do
   sistema cala para este tipo e o som sai da caixinha; fora de foco, o som é
   do pop-up (`caixinhaTocaOSom`) — senão tocariam os dois.
+- **Destaque ÂMBAR e o mesmo para toda passagem** (D5/D7, 12/11/2026):
+  borda, véu translúcido e ícone âmbar; vermelho no CRM é falha. Cores que
+  valem nos dois temas (`dark:` inerte, `ui.md`).
+- ⚠️ **Volta enquanto não lido** (D6): ao montar, os `ia_transferiu` NÃO
+  lidos das últimas 24 h (`JANELA_DA_REABERTURA_MS`, até
+  `TETO_NA_REABERTURA`), sem som, lidos só no `SUBSCRIBED` do canal (e a
+  cada reconexão; o repetido cala pelo id, o fechado no X não volta) —
+  `.subscribe()` só começa a entrar, e o INSERT no vão se perdia. ⚠️ O lido pelo tempo real enquanto a consulta está
+  no ar NÃO volta (`avisosParaReabrir`, o `lidos` da página): a foto diria
+  "não lido" e a caixinha ficaria presa (Codex, #511). O X vale só ali.
 - **Limites aceitos**: com "Transferir para" e sem responsável, o destino
   recebe também o "Conversa atribuída" da 0027; o resumo da porta do Meu dia
   não conta o tipo novo (o bloco de notificações mostra).

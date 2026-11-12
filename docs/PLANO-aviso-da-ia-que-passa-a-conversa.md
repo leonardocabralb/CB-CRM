@@ -34,6 +34,20 @@ A PASSAGEM entre agentes não é transferência para gente e não avisa.
 - **D4 — Tipo próprio no sino** (`ia_transferiu`), no Meu dia e no pop-up do
   navegador de quem o ligou; a caixinha dentro do CRM é SÓ deste tipo.
 
+### Depois de ver na tela (12/11/2026, recomendações aceitas)
+
+- **D5 — Destaque âmbar**: a primeira versão, igual aos outros toasts
+  (cartão escuro, ícone violeta), era discreta demais. Borda grossa âmbar,
+  véu âmbar translúcido, ícone num círculo âmbar, título maior. Vermelho não:
+  no CRM é falha ("não enviada").
+- **D6 — Volta enquanto não lido**: recarregar a página perdia a caixinha, e
+  quem estava com o CRM fechado nunca a via. Ao abrir o CRM, voltam as dos
+  avisos da IA ainda NÃO lidos das últimas 24 h (até 5, sem som); o X vale só
+  naquela página.
+- **D7 — Mesma urgência para toda passagem**: pedido de ligação não ganha
+  destaque próprio — o texto já diz o motivo, e separar exigiria o agente
+  classificar a pendência.
+
 ## Desenho
 
 - **Migration 1139 (ADITIVA, antes do deploy)**: `ia_transferiu` no CHECK de
@@ -84,5 +98,8 @@ A PASSAGEM entre agentes não é transferência para gente e não avisa.
   no sino do operador (id `11390000-…`) — a caixinha apareceu em segundos
   pelo tempo real, o clique abriu `/inbox?c=` do lead de teste e marcou lido,
   o sino o mostrou com o ícone; o aviso foi apagado (contagem zero).
+- 12/11/2026: PR #510 mesclado (`aabd288d`) com o "mesclar agora, ajustar
+  depois" do operador. D5–D7 no PR seguinte; o âmbar conferido no preview por
+  uma página LOCAL temporária (nada gravado), nos dois temas.
 - Falta: marcar quem recebe nos dois agentes do Trabalhista (vazio = dono,
   admins e quem atende o número) e ver o 1º aviso real ao ligar um agente.

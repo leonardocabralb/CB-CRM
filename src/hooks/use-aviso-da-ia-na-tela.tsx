@@ -10,9 +10,12 @@ import { avisoPossivelNoAparelho, usePreferenciaDeAviso } from "@/hooks/use-brow
 import { EVENTO_ABRIR_CONVERSA, EVENTO_CONVERSA_ABERTA } from "@/lib/inbox/url";
 import {
   abaEmFoco,
+  avisosParaReabrir,
   caixinhaTocaOSom,
   caixinhasDaConversa,
+  desdeDaReabertura,
   idDaCaixinha,
+  TETO_NA_REABERTURA,
   TIPO_DO_AVISO_DA_IA,
 } from "@/lib/notifications/aviso-da-ia";
 import { silencioDoSino } from "@/lib/notifications/aviso-do-sino";
@@ -47,6 +50,10 @@ function conversaAVista(): string | null {
  * Fica até a pessoa agir: clicar abre a conversa e marca o aviso lido; o X só
  * fecha. Some também quando o aviso é lido por outro caminho (sino, pop-up,
  * outra aba) e quando a conversa é aberta na caixa de entrada.
+ *
+ * Ao montar (abrir o CRM, recarregar), voltam as dos avisos ainda NÃO lidos
+ * das últimas 24 h (D6 do operador, 12/11/2026), sem som — não são novos. O X
+ * vale só naquela página: recarregada, a caixinha volta até o aviso ser lido.
  */
 export function useAvisoDaIaNaTela(): void {
   const { user, profile, perfilDeAcesso } = useAuth();
@@ -76,8 +83,15 @@ export function useAvisoDaIaNaTela(): void {
   useEffect(() => {
     if (!userId) return;
     const supabase = createClient();
+    let cancelado = false;
     // As caixinhas abertas: id do aviso → conversa.
     const abertas = new Map<string, string | null>();
+    // Os avisos da IA que já se sabe LIDOS nesta página (o clique, o UPDATE do
+    // tempo real): nunca reabrem — nem a foto da consulta da abertura, que
+    // pode ter saído antes da leitura (Codex, #511).
+    const lidos = new Set<string>();
+    // As fechadas no X nesta página: a releitura da reconexão não as reabre.
+    const dispensadas = new Set<string>();
 
     const fechar = (avisoId: string) => {
       abertas.delete(avisoId);
@@ -96,6 +110,7 @@ export function useAvisoDaIaNaTela(): void {
     };
 
     const abrir = (aviso: Notification) => {
+      lidos.add(aviso.id);
       fechar(aviso.id);
       void marcarLido(aviso.id);
       const rota = rotaDoAviso(aviso);
@@ -107,7 +122,8 @@ export function useAvisoDaIaNaTela(): void {
       }
     };
 
-    const mostrar = (aviso: Notification) => {
+    const mostrar = (aviso: Notification, comSom: boolean) => {
+      if (lidos.has(aviso.id) || dispensadas.has(aviso.id)) return;
       const { ctx, preferencia: pref } = vivoRef.current;
       const silencio = silencioDoSino({
         aviso,
@@ -122,7 +138,7 @@ export function useAvisoDaIaNaTela(): void {
       // O som sai daqui só quando o pop-up do sistema não vai sair — senão
       // tocariam os dois (`caixinhaTocaOSom`).
       const popUpPossivel = pref.sino && getNotificationPermission() === "granted" && avisoPossivelNoAparelho();
-      if (caixinhaTocaOSom({ somNoSino: pref.somNoSino, abaEmFoco: abaEmFoco(), popUpPossivel })) {
+      if (comSom && caixinhaTocaOSom({ somNoSino: pref.somNoSino, abaEmFoco: abaEmFoco(), popUpPossivel })) {
         tocarSomDoAviso();
       }
 
@@ -133,11 +149,40 @@ export function useAvisoDaIaNaTela(): void {
             titulo={aviso.title}
             corpo={aviso.body?.trim() ? aviso.body : null}
             onAbrir={() => abrir(aviso)}
-            onFechar={() => fechar(aviso.id)}
+            onFechar={() => {
+              dispensadas.add(aviso.id);
+              fechar(aviso.id);
+            }}
           />
         ),
         { id: idDaCaixinha(aviso.id), duration: Infinity },
       );
+    };
+
+    // D6: os avisos da IA ainda NÃO lidos das últimas 24 h voltam a abrir a
+    // caixinha. ⚠️ Só depois de o canal CONFIRMAR a inscrição (`SUBSCRIBED`,
+    // como o `ligacoes-provider.tsx`): `.subscribe()` só começa a entrar, e um
+    // INSERT entre a consulta e a entrada não estaria em nenhum dos dois
+    // (Codex, #511). A reconexão relê também (o que chegou com o canal caído);
+    // o repetido cala pelo id, o lido e o fechado no X não voltam. O
+    // `user_id` vai ESCRITO na consulta (a RLS também recorta). Falha = só o
+    // sino, como antes.
+    const reabrirNaoLidos = async () => {
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("type", TIPO_DO_AVISO_DA_IA)
+        .is("read_at", null)
+        .gte("created_at", desdeDaReabertura(Date.now()))
+        .order("created_at", { ascending: false })
+        .limit(TETO_NA_REABERTURA);
+      if (cancelado) return;
+      if (error) {
+        console.warn("[useAvisoDaIaNaTela] avisos não lidos não carregados:", error.message);
+        return;
+      }
+      for (const aviso of avisosParaReabrir((data ?? []) as Notification[], lidos)) mostrar(aviso, false);
     };
 
     const canal = supabase
@@ -148,19 +193,25 @@ export function useAvisoDaIaNaTela(): void {
         (payload) => {
           const aviso = payload.new as Notification;
           if (aviso.type !== TIPO_DO_AVISO_DA_IA) return;
-          mostrar(aviso);
+          mostrar(aviso, true);
         },
       )
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
         (payload) => {
-          // Lido por outro caminho (o sino, o pop-up, outra aba): a caixinha sai.
+          // Lido por outro caminho (o sino, o pop-up, outra aba): a caixinha
+          // sai — e o id fica guardado, para a consulta da abertura ainda no
+          // ar não a reabrir com a foto de antes da leitura.
           const aviso = payload.new as Notification;
-          if (aviso.read_at && abertas.has(aviso.id)) fechar(aviso.id);
+          if (!aviso.read_at || aviso.type !== TIPO_DO_AVISO_DA_IA) return;
+          lidos.add(aviso.id);
+          if (abertas.has(aviso.id)) fechar(aviso.id);
         },
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") void reabrirNaoLidos();
+      });
 
     // A conversa aberta na caixa de entrada (pela lista, pelo sino…): quem
     // está nela não precisa mais da caixinha.
@@ -171,7 +222,9 @@ export function useAvisoDaIaNaTela(): void {
     };
     window.addEventListener(EVENTO_CONVERSA_ABERTA, aoAbrirConversa);
 
+
     return () => {
+      cancelado = true;
       window.removeEventListener(EVENTO_CONVERSA_ABERTA, aoAbrirConversa);
       supabase.removeChannel(canal);
       // Sem o ouvinte (saiu, trocou de login), a caixinha não teria quem a

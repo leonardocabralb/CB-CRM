@@ -6,10 +6,14 @@ import { describe, expect, it } from "vitest";
 import type { Notification } from "@/types";
 
 import {
+  avisosParaReabrir,
   caixinhaTocaOSom,
   caixinhasDaConversa,
+  desdeDaReabertura,
   idDaCaixinha,
+  JANELA_DA_REABERTURA_MS,
   popUpDoSistemaCalaPelaCaixinha,
+  TETO_NA_REABERTURA,
   TIPO_DO_AVISO_DA_IA,
 } from "./aviso-da-ia";
 import { popUpDoSino, silencioDoSino } from "./aviso-do-sino";
@@ -94,6 +98,23 @@ describe("o que fecha a caixinha (D3)", () => {
   });
 });
 
+describe("a caixinha VOLTA enquanto o aviso não é lido (D6, 12/11/2026)", () => {
+  it("as últimas 24 h, no máximo 5 de uma vez", () => {
+    expect(JANELA_DA_REABERTURA_MS).toBe(24 * 60 * 60 * 1000);
+    expect(TETO_NA_REABERTURA).toBe(5);
+    const agora = Date.parse("2026-11-12T12:00:00Z");
+    expect(desdeDaReabertura(agora)).toBe("2026-11-11T12:00:00.000Z");
+  });
+
+  it("o mais antigo primeiro; ⚠️ o que o tempo real já disse LIDO enquanto a consulta estava no ar não volta (Codex, #511)", () => {
+    const daConsulta = [{ id: "novo" }, { id: "meio" }, { id: "velho" }];
+    expect(avisosParaReabrir(daConsulta, new Set()).map((a) => a.id)).toEqual(["velho", "meio", "novo"]);
+    expect(avisosParaReabrir(daConsulta, new Set(["meio"])).map((a) => a.id)).toEqual(["velho", "novo"]);
+    // Não mexe na lista recebida.
+    expect(daConsulta.map((a) => a.id)).toEqual(["novo", "meio", "velho"]);
+  });
+});
+
 describe("pinos da montagem", () => {
   const SRC = path.join(__dirname, "../..");
   const ler = (rel: string) => fs.readFileSync(path.join(SRC, rel), "utf8");
@@ -108,6 +129,30 @@ describe("pinos da montagem", () => {
     expect(hook).toMatch(/duration: Infinity/);
     expect(hook).toMatch(/event: "UPDATE"/);
     expect(hook).toMatch(/window\.addEventListener\(EVENTO_CONVERSA_ABERTA, aoAbrirConversa\);/);
+  });
+
+  it("D6: ao montar, lê os avisos da IA NÃO lidos da PRÓPRIA pessoa, das últimas 24 h, e os mostra SEM som", () => {
+    const hook = ler("hooks/use-aviso-da-ia-na-tela.tsx");
+    const consulta = hook.slice(hook.indexOf('.from("notifications")\n        .select("*")'));
+    expect(consulta).toMatch(/\.eq\("user_id", userId\)/);
+    expect(consulta).toMatch(/\.eq\("type", TIPO_DO_AVISO_DA_IA\)/);
+    expect(consulta).toMatch(/\.is\("read_at", null\)/);
+    expect(consulta).toMatch(/\.gte\("created_at", desdeDaReabertura\(Date\.now\(\)\)\)/);
+    expect(consulta).toMatch(/\.limit\(TETO_NA_REABERTURA\)/);
+    expect(hook).toMatch(/avisosParaReabrir\(\(data \?\? \[\]\) as Notification\[\], lidos\)\) mostrar\(aviso, false\)/);
+    // O UPDATE guarda o lido ANTES de fechar, e `mostrar` o recusa.
+    expect(hook).toMatch(/lidos\.add\(aviso\.id\);\s*if \(abertas\.has\(aviso\.id\)\) fechar\(aviso\.id\);/);
+    expect(hook).toMatch(
+      /const mostrar = \(aviso: Notification, comSom: boolean\) => \{\s*if \(lidos\.has\(aviso\.id\) \|\| dispensadas\.has\(aviso\.id\)\) return;/,
+    );
+    // O que chega pelo tempo real é novo: toca.
+    expect(hook).toMatch(/mostrar\(aviso, true\)/);
+    // ⚠️ A consulta só roda com o canal JÁ inscrito (Codex, #511): antes, um
+    // INSERT no vão entre a consulta e a entrada no canal se perdia.
+    expect(hook).toMatch(/\.subscribe\(\(status\) => \{\s*if \(status === "SUBSCRIBED"\) void reabrirNaoLidos\(\);\s*\}\);/);
+    expect(hook.match(/reabrirNaoLidos\(\)/g)).toHaveLength(1);
+    // A releitura da reconexão não reabre o que a pessoa fechou no X.
+    expect(hook).toMatch(/if \(lidos\.has\(aviso\.id\) \|\| dispensadas\.has\(aviso\.id\)\) return;/);
   });
 
   it("o pop-up do sistema confere a caixinha ANTES de exibir", () => {

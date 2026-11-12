@@ -18,6 +18,35 @@ import type { NotificationType } from "@/types";
 /** O tipo do aviso na tabela `notifications` (o CHECK da 1139). */
 export const TIPO_DO_AVISO_DA_IA = "ia_transferiu" satisfies NotificationType;
 
+/**
+ * D6 do operador (12/11/2026): ao abrir o CRM (ou recarregar a página), voltam
+ * as caixinhas dos avisos da IA ainda NÃO lidos destas últimas horas — antes,
+ * recarregar a página as perdia e quem estava com o CRM fechado nunca as via.
+ */
+export const JANELA_DA_REABERTURA_MS = 24 * 60 * 60 * 1000;
+
+/** No máximo estas voltam de uma vez (as mais recentes): o resto fica no sino. */
+export const TETO_NA_REABERTURA = 5;
+
+/** Desde quando os avisos não lidos voltam a abrir a caixinha (ISO). */
+export function desdeDaReabertura(agoraMs: number): string {
+  return new Date(agoraMs - JANELA_DA_REABERTURA_MS).toISOString();
+}
+
+/**
+ * Os avisos lidos na abertura que voltam a abrir a caixinha, na ordem de
+ * MOSTRAR (o mais antigo primeiro: o sonner põe o último no topo). ⚠️ Fora os
+ * que o tempo real já disse LIDOS enquanto a consulta estava no ar (outra
+ * aba, outro aparelho): a foto da consulta diria "não lido", e a caixinha
+ * ficaria presa — nenhum UPDATE novo viria para fechá-la (Codex, #511).
+ */
+export function avisosParaReabrir<T extends { id: string }>(
+  maisRecentesPrimeiro: readonly T[],
+  lidosNoCaminho: ReadonlySet<string>,
+): T[] {
+  return [...maisRecentesPrimeiro].reverse().filter((a) => !lidosNoCaminho.has(a.id));
+}
+
 /** O `id` da caixinha no sonner: um por aviso, com prefixo próprio. */
 export function idDaCaixinha(avisoId: string): string {
   return `ia:${avisoId}`;

@@ -35,6 +35,16 @@ describe('CaixinhaDaIa', () => {
     expect(html).not.toContain('role="alert"');
   });
 
+  it('D5: destaque ÂMBAR (borda grossa, véu âmbar e o ícone cheio), nunca vermelho; cores que valem nos dois temas', () => {
+    const html = desenhar('Pendência da IA: Pediu ligação');
+    expect(html).toContain('border-2 border-amber-500');
+    expect(html).toContain('bg-amber-500/10');
+    expect(html).toContain('bg-amber-500 text-white');
+    expect(html).not.toMatch(/\b(bg|border|text)-red-/);
+    // O texto âmbar é o -700: o `dark:` está inerte e ele passa nos dois temas (`ui.md`).
+    expect(html).toContain('text-amber-700');
+  });
+
   it('sem corpo, sem o parágrafo vazio', () => {
     const html = desenhar(null);
     expect(html).not.toContain('line-clamp-3');
