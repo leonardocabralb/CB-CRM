@@ -1125,7 +1125,21 @@
         "fora_da_conexao": "a conversa chega por uma conexão que o agente não atende",
         "card_antigo": "o card já estava na etapa antes de o agente ser ligado nela"
       },
-      "naoAtendeDica": "Ele só atende os cards que entram na etapa depois de ligado: esta conversa fica com a equipe."
+      "naoAtendeDica": "Ele só atende os cards que entram na etapa depois de ligado: esta conversa fica com a equipe.",
+      "proximo": {
+        "nada": "Sem follow-up agendado: responde quando o cliente escrever.",
+        "agora": "Respondendo agora…",
+        "respostaJa": "Vai responder em instantes.",
+        "resposta": "Responde a partir de {hora}.",
+        "respostaForaDoHorario": "Fora do horário do agente: responde a partir de {hora}.",
+        "followUp": "Próximo follow-up ({tentativa} de {tentativas}) a partir de {hora} · {contagem}",
+        "followUpVencido": "Próximo follow-up ({tentativa} de {tentativas}) a qualquer momento",
+        "followUpNaPausa": "Se o cliente não responder, a IA manda um follow-up a partir de {hora} · {contagem}",
+        "followUpNaPausaVencido": "Se o cliente não responder, a IA manda um follow-up a qualquer momento",
+        "contagemMinutos": "em {minutos} min",
+        "contagemHoras": "em {horas} h{minutos, plural, =0 {} other { # min}}",
+        "contagemDias": "em {dias} d{horas, plural, =0 {} other { # h}}"
+      }
     },
     "mediaViewer": {
       "open": "Ampliar imagem",

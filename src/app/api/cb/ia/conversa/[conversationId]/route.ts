@@ -14,6 +14,12 @@ import {
   type CardDoContato,
   type MotivoDoAgenteQueNaoAtende,
 } from '@/lib/ia-agentes/quem-responde'
+import {
+  COLUNAS_DO_PROXIMO_PASSO,
+  proximoPassoDaIa,
+  type ProximoPasso,
+  type TurnoVivo,
+} from '@/lib/ia-agentes/proximo-passo'
 
 type Contexto = { params: Promise<{ conversationId: string }> }
 
@@ -36,6 +42,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  *   - `pausaTemporaria` — a pausa VOLTA sozinha (`gente`/`botao` com N > 0).
  *   - `voltaEm` — quando o turno que espera a equipe vai rodar (o pendente
  *     marcado `ERRO_DA_ESPERA_DA_EQUIPE`); nulo = nenhuma mensagem esperando.
+ *   - `proximo` — o PRÓXIMO PASSO da IA (pedido do operador, 12/11/2026):
+ *     escrevendo agora, a resposta na fila ou o follow-up agendado
+ *     (`proximoPassoDaIa`); nulo = nada na fila. Só com agente atendendo e a
+ *     IA ativa ou na pausa que volta sozinha.
  *   - `motivo` — por que `agente` é nulo (o `MotivoDeNinguem` do motor).
  *   - `naoAtende` — `{ agente: { id, nome }, motivo }` quando a etapa do card
  *     TEM agente, mas ele não atende esta conversa (desligado, sem a conexão,
@@ -180,6 +190,28 @@ export async function GET(_request: Request, { params }: Contexto) {
       const primeira = (espera ?? [])[0] as { executar_apos?: unknown } | undefined
       voltaEm = typeof primeira?.executar_apos === 'string' ? primeira.executar_apos : null
     }
+    // O próximo passo: só onde um agente atende, com a IA ativa ou na pausa
+    // que volta sozinha — na permanente nenhum turno sai, e o follow-up
+    // armado seria descartado no vencimento. O follow-up só atravessa a
+    // pausa `gente` (`ia-retomada.md`).
+    let proximo: ProximoPasso | null = null
+    if (decisao.quem === 'agente' && (!pausada || pausaTemporaria)) {
+      const { data: vivos, error: erroVivos } = await db
+        .from('cb_ia_turnos')
+        .select(COLUNAS_DO_PROXIMO_PASSO)
+        .eq('account_id', ctx.accountId)
+        .eq('conversation_id', conversationId)
+        .in('status', ['aguardando', 'rodando'])
+        .order('executar_apos', { ascending: true })
+        .limit(10)
+      if (erroVivos) return falhou('próximo passo', erroVivos.message)
+      proximo = proximoPassoDaIa((vivos ?? []) as TurnoVivo[], {
+        atravessaRetomada: !pausada || pausadaPor === 'gente',
+        // O dono de agora: o turno de outro (card movido para a etapa de
+        // outro agente) é descartado pela conferência do motor.
+        dono: { agenteId: decisao.agenteId, dealId: decisao.dealId, stageId: decisao.stageId },
+      })
+    }
     return NextResponse.json({
       agente: decisao.quem === 'agente' && agente ? { id: agente.id, nome: agente.nome } : null,
       pausada,
@@ -187,6 +219,7 @@ export async function GET(_request: Request, { params }: Contexto) {
       pausaTemporaria,
       voltaAposMin,
       voltaEm,
+      proximo,
       motivo,
       naoAtende,
     })

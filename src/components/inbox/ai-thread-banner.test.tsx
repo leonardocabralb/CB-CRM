@@ -11,6 +11,11 @@ import { MOTIVOS_DO_AGENTE_QUE_NAO_ATENDE } from '@/lib/ia-agentes/quem-responde
 import {
   AiThreadBanner,
   corpoDaAcao,
+  lerProximo,
+  quantoFalta,
+  esperaParaReler,
+  RELEITURA_SEM_PASSO_MS,
+  TETO_DA_RELEITURA_MS,
   horaDaVolta,
   erroDaResposta,
   FaixaDaIa,
@@ -45,6 +50,7 @@ function estado(p: Partial<EstadoDaIa> = {}): EstadoDaIa {
     pausaTemporaria: false,
     voltaAposMin: 15,
     voltaEm: null,
+    proximo: null,
     naoAtende: null,
     ...p,
   };
@@ -162,6 +168,8 @@ describe('lerEstadoDaIa — o corpo da rota', () => {
       pausaTemporaria: false,
       voltaAposMin: null,
       voltaEm: null,
+      // Servidor sem o campo: não se sabe — nunca "sem follow-up agendado".
+      proximo: null,
       naoAtende: null,
     });
   });
@@ -173,6 +181,8 @@ describe('lerEstadoDaIa — o corpo da rota', () => {
       pausaTemporaria: false,
       voltaAposMin: null,
       voltaEm: null,
+      // Servidor sem o campo: não se sabe — nunca "sem follow-up agendado".
+      proximo: null,
       naoAtende: null,
     });
     expect(lerEstadoDaIa(null)).toBeNull();
@@ -426,3 +436,164 @@ describe('pino estrutural do fonte da faixa', () => {
     expect(fonte).not.toMatch(/assignedAgentId/);
   });
 });
+
+// ============================================================
+// O PRÓXIMO PASSO da IA (pedido do operador, 12/11/2026): embaixo de
+// "IA · X responde nesta conversa", o follow-up agendado com a hora e
+// quanto falta, a resposta na fila, "respondendo agora" ou "sem follow-up".
+// ============================================================
+
+const EM = '2026-11-12T18:00:00Z';
+const AGORA = Date.parse(EM) - (2 * 60 + 13) * 60_000; // faltam 2 h 13 min
+const FOLLOW_UP = { tipo: 'retomada', em: EM, tentativa: 2, tentativas: 5 } as const;
+
+function desenharNoRelogio(faixa: Faixa, agora: number, messages: AbstractIntlMessages = ptBR as unknown as AbstractIntlMessages) {
+  return renderToStaticMarkup(
+    <NextIntlClientProvider locale="pt-BR" messages={messages} timeZone="America/Sao_Paulo">
+      <FaixaDaIa
+        faixa={faixa}
+        lidoEm={agora}
+        agora={agora}
+        busy={false}
+        aoPausar={() => {}}
+        aoDesativar={() => {}}
+        aoRetomar={() => {}}
+      />
+    </NextIntlClientProvider>,
+  );
+}
+
+describe('lerProximo — o próximo passo que a rota manda', () => {
+  it('`null` da rota = nada na fila; ausente ou forma estranha = não se sabe (nulo)', () => {
+    expect(lerProximo(null)).toBe('nada');
+    expect(lerProximo(undefined)).toBeNull();
+    expect(lerEstadoDaIa({ agente: TRIAGEM, proximo: null })?.proximo).toBe('nada');
+    expect(lerEstadoDaIa({ agente: TRIAGEM })?.proximo).toBeNull();
+    expect(lerProximo({ tipo: 'retomada', em: 'amanhã', tentativa: 1, tentativas: 3 })).toBeNull();
+    expect(lerProximo({ tipo: 'retomada', em: EM, tentativa: 4, tentativas: 3 })).toBeNull();
+    expect(lerProximo({ tipo: 'outro', em: EM })).toBeNull();
+  });
+
+  it('lê os quatro tipos', () => {
+    expect(lerProximo({ tipo: 'agendando', em: EM })).toEqual({ tipo: 'agendando', em: EM });
+    expect(lerProximo({ tipo: 'agora' })).toEqual({ tipo: 'agora' });
+    expect(lerProximo({ tipo: 'resposta', em: EM, foraDoHorario: 'true' })).toEqual({ tipo: 'resposta', em: EM, foraDoHorario: false });
+    expect(lerProximo(FOLLOW_UP)).toEqual(FOLLOW_UP);
+  });
+});
+
+describe('quantoFalta', () => {
+  it('em minutos inteiros, para cima; hora passada = nulo', () => {
+    expect(quantoFalta(EM, AGORA)).toEqual({ dias: 0, horas: 2, minutos: 13 });
+    expect(quantoFalta(EM, Date.parse(EM) - 30_000)).toEqual({ dias: 0, horas: 0, minutos: 1 });
+    expect(quantoFalta(EM, Date.parse(EM) - (26 * 60) * 60_000)).toEqual({ dias: 1, horas: 2, minutos: 0 });
+    expect(quantoFalta(EM, Date.parse(EM))).toBeNull();
+    expect(quantoFalta(EM, Date.parse(EM) + 1)).toBeNull();
+  });
+});
+
+describe('esperaParaReler — quando a faixa pergunta de novo', () => {
+  it('20 s depois da hora marcada; 15 s escrevendo; 1 min com a hora vencida', () => {
+    expect(esperaParaReler('comHora', EM, Date.parse(EM) - 60_000)).toBe(80_000);
+    expect(esperaParaReler('agora', null, AGORA)).toBe(15_000);
+    expect(esperaParaReler('comHora', EM, Date.parse(EM) + 1)).toBe(60_000);
+  });
+
+  it('⚠️ passo a mais de 12 h: relê em 12 h, nunca desliga (Codex, #515)', () => {
+    expect(esperaParaReler('comHora', EM, Date.parse(EM) - 48 * 3_600_000)).toBe(TETO_DA_RELEITURA_MS);
+    expect(TETO_DA_RELEITURA_MS).toBe(12 * 3_600_000);
+  });
+
+  it('⚠️ fila vazia com agente atendendo: relê a cada 2 min — o vão entre a resposta e o follow-up seguinte não pode ser a última leitura (Codex, #515)', () => {
+    expect(esperaParaReler('nada', null, AGORA)).toBe(RELEITURA_SEM_PASSO_MS);
+    expect(RELEITURA_SEM_PASSO_MS).toBe(120_000);
+  });
+});
+
+describe('faixaDaIa — o próximo passo', () => {
+  it('atendendo leva o próximo passo da rota; sem saber, nenhum', () => {
+    expect(faixaDaIa(estado({ proximo: FOLLOW_UP }), null)).toMatchObject({ tipo: 'atendendo', proximo: FOLLOW_UP });
+    expect(faixaDaIa(estado({ proximo: 'nada' }), null)).toMatchObject({ tipo: 'atendendo', proximo: 'nada' });
+    expect(faixaDaIa(estado(), null)).not.toHaveProperty('proximo');
+  });
+
+  it('pausada: só o follow-up, e só na pausa que VOLTA', () => {
+    const temporaria = estado({ pausada: true, pausadaPor: 'gente', pausaTemporaria: true, proximo: FOLLOW_UP });
+    expect(faixaDaIa(temporaria, null)).toMatchObject({ tipo: 'pausada', followUp: FOLLOW_UP });
+    expect(faixaDaIa({ ...temporaria, pausaTemporaria: false }, null)).not.toHaveProperty('followUp');
+    expect(faixaDaIa({ ...temporaria, proximo: { tipo: 'agora' } }, null)).not.toHaveProperty('followUp');
+  });
+});
+
+describe('FaixaDaIa — a linha do próximo passo, nos dois dicionários', () => {
+  const atendendo = (proximo: Faixa extends infer F ? (F extends { tipo: 'atendendo'; proximo?: infer P } ? P : never) : never) =>
+    ({ tipo: 'atendendo', agente: 'Triagem', minutos: 15, proximo }) as Faixa;
+
+  it('follow-up agendado: a tentativa, de quantas, a hora e quanto falta', () => {
+    const html = desenharNoRelogio(atendendo(FOLLOW_UP), AGORA);
+    expect(html).toContain('IA · Triagem responde nesta conversa');
+    expect(html).toContain(`Próximo follow-up (2 de 5) a partir de ${horaDaVolta(EM, AGORA)} · em 2 h 13 min`);
+  });
+
+  it('a contagem: minutos, horas sem "0 min", dias', () => {
+    expect(desenharNoRelogio(atendendo(FOLLOW_UP), Date.parse(EM) - 45 * 60_000)).toContain('· em 45 min');
+    expect(desenharNoRelogio(atendendo(FOLLOW_UP), Date.parse(EM) - 120 * 60_000)).toContain('· em 2 h<');
+    expect(desenharNoRelogio(atendendo(FOLLOW_UP), Date.parse(EM) - (27 * 60) * 60_000)).toContain('· em 1 d 3 h');
+  });
+
+  it('⚠️ hora passada (o cron ainda não pegou): "a qualquer momento", nunca "em 0 min"', () => {
+    const html = desenharNoRelogio(atendendo(FOLLOW_UP), Date.parse(EM) + 60_000);
+    expect(html).toContain('Próximo follow-up (2 de 5) a qualquer momento');
+    expect(html).not.toContain('em 0 min');
+  });
+
+  it('respondendo agora; resposta na fila em instantes; fora do horário com a hora', () => {
+    expect(desenharNoRelogio(atendendo({ tipo: 'agora' }), AGORA)).toContain(banner.proximo.agora);
+    expect(desenharNoRelogio(atendendo({ tipo: 'resposta', em: EM, foraDoHorario: false }), Date.parse(EM) - 8_000)).toContain(
+      banner.proximo.respostaJa,
+    );
+    expect(desenharNoRelogio(atendendo({ tipo: 'resposta', em: EM, foraDoHorario: true }), AGORA)).toContain(
+      `Fora do horário do agente: responde a partir de ${horaDaVolta(EM, AGORA)}.`,
+    );
+  });
+
+  it('nada na fila: "Sem follow-up agendado"; sem saber: nenhuma linha', () => {
+    expect(desenharNoRelogio(atendendo('nada'), AGORA)).toContain(banner.proximo.nada);
+    const semSaber = desenharNoRelogio({ tipo: 'atendendo', agente: 'Triagem', minutos: 15 }, AGORA);
+    expect(semSaber).not.toContain(banner.proximo.nada);
+    expect(semSaber).not.toContain('follow-up');
+    // Nenhuma segunda linha embaixo do nome.
+    expect(semSaber).not.toContain('mt-0.5 pl-5');
+  });
+
+  it('⚠️ pré-armação do follow-up da equipe (`agendando`): nenhuma linha — nem "sem follow-up", que seria falso (Codex, #515)', () => {
+    const atendendoArmando = desenharNoRelogio(atendendo({ tipo: 'agendando', em: EM }), AGORA);
+    expect(atendendoArmando).not.toContain('mt-0.5 pl-5');
+    expect(atendendoArmando).not.toContain(banner.proximo.nada);
+    const pausada = faixaDaIa(
+      estado({ pausada: true, pausadaPor: 'gente', pausaTemporaria: true, proximo: { tipo: 'agendando', em: EM } }),
+      null,
+    );
+    expect(pausada).not.toHaveProperty('followUp');
+  });
+
+  it('pausa `gente` com follow-up: a linha dele, embaixo da volta', () => {
+    const html = desenharNoRelogio(
+      { tipo: 'pausada', motivo: 'gente', naoAtende: null, volta: { minutos: 15, em: null }, followUp: FOLLOW_UP },
+      AGORA,
+    );
+    expect(html).toContain(`Se o cliente não responder, a IA manda um follow-up a partir de ${horaDaVolta(EM, AGORA)} · em 2 h 13 min`);
+  });
+
+  it('em inglês também, sem chave crua', () => {
+    const html = desenharNoRelogio(atendendo(FOLLOW_UP), AGORA, en as unknown as AbstractIntlMessages);
+    expect(html).toContain('Next follow-up (2 of 5) from');
+    expect(html).toContain('in 2 h 13 min');
+    expect(html).not.toContain('Inbox.aiBanner');
+  });
+
+  it('as frases do próximo passo existem nos DOIS dicionários, com as mesmas chaves', () => {
+    expect(Object.keys(en.Inbox.aiBanner.proximo).sort()).toEqual(Object.keys(ptBR.Inbox.aiBanner.proximo).sort());
+  });
+});
+

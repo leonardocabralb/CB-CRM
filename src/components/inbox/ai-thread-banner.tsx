@@ -9,6 +9,7 @@ import {
   MOTIVOS_DO_AGENTE_QUE_NAO_ATENDE,
   type MotivoDoAgenteQueNaoAtende,
 } from "@/lib/ia-agentes/quem-responde";
+import type { ProximoPasso } from "@/lib/ia-agentes/proximo-passo";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 
@@ -29,7 +30,11 @@ import { useTranslations } from "next-intl";
 //                 [Desativar IA] (1138: o Pausar é TEMPORÁRIO — a IA volta se
 //                 a cliente esperar N min sem resposta da equipe; o Desativar
 //                 fica até o Retomar). Com N = 0 na conta, só o [Pausar], que
-//                 então é permanente (como antes).
+//                 então é permanente (como antes). Embaixo, o PRÓXIMO PASSO
+//                 (pedido do operador, 12/11/2026): o follow-up agendado com
+//                 a hora e quanto falta, a resposta na fila, "respondendo
+//                 agora" ou "sem follow-up agendado" (`proximoPassoDaIa`).
+//                 Na pausa `gente`, a linha do follow-up que ainda sai.
 //   - pausada   → "IA pausada — <motivo>" + [Retomar IA]; a TEMPORÁRIA
 //                 (`gente`/`botao` com N > 0) diz quando volta ("volta às
 //                 14:32 se ninguém responder", com mensagem esperando) e
@@ -70,7 +75,41 @@ export interface EstadoDaIa {
   voltaAposMin: number | null;
   /** Quando o turno que espera a equipe vai rodar. */
   voltaEm: string | null;
+  /**
+   * O próximo passo da IA (`proximoPassoDaIa`); `"nada"` = a rota disse que
+   * não há nada na fila; nulo = não se sabe (servidor antigo, forma estranha)
+   * — e aí a faixa cala, nunca "sem follow-up agendado" por ignorância.
+   */
+  proximo: ProximoDaFaixa | null;
   naoAtende: NaoAtende | null;
+}
+
+/** O próximo passo como a faixa o lê: o da rota, ou `"nada"` na fila. */
+export type ProximoDaFaixa = ProximoPasso | "nada";
+
+const instante = (v: unknown): string | null =>
+  typeof v === "string" && Number.isFinite(Date.parse(v)) ? v : null;
+const positivo = (v: unknown): number | null =>
+  typeof v === "number" && Number.isInteger(v) && v >= 1 ? v : null;
+
+/** `proximo` da rota, campo a campo. Ausente = nulo (não se sabe); `null` = `"nada"`. */
+export function lerProximo(v: unknown): ProximoDaFaixa | null {
+  if (v === null) return "nada";
+  if (!v || typeof v !== "object") return null;
+  const p = v as Record<string, unknown>;
+  if (p.tipo === "agora") return { tipo: "agora" };
+  const em = instante(p.em);
+  if (!em) return null;
+  if (p.tipo === "resposta") return { tipo: "resposta", em, foraDoHorario: p.foraDoHorario === true };
+  if (p.tipo === "agendando") return { tipo: "agendando", em };
+  if (p.tipo === "retomada") {
+    const tentativa = positivo(p.tentativa);
+    const tentativas = positivo(p.tentativas);
+    return tentativa !== null && tentativas !== null && tentativa <= tentativas
+      ? { tipo: "retomada", em, tentativa, tentativas }
+      : null;
+  }
+  return null;
 }
 
 function lerAgente(v: unknown): { id: string; nome: string } | null {
@@ -103,6 +142,7 @@ export function lerEstadoDaIa(corpo: unknown): EstadoDaIa | null {
     pausaTemporaria: c.pausaTemporaria === true,
     voltaAposMin: typeof minutos === "number" && Number.isInteger(minutos) && minutos >= 0 ? minutos : null,
     voltaEm: typeof c.voltaEm === "string" && Number.isFinite(Date.parse(c.voltaEm)) ? c.voltaEm : null,
+    proximo: "proximo" in c ? lerProximo(c.proximo) : null,
     naoAtende: lerNaoAtende(c.naoAtende),
   };
 }
@@ -113,10 +153,23 @@ export type LinhaNaoAtende = { agente: string; motivo: MotivoDoAgenteQueNaoAtend
 /** A pausa que VOLTA sozinha (1138): o N da conta e, com mensagem esperando, quando. */
 export type VoltaDaPausa = { minutos: number; em: string | null };
 
+/** O follow-up que ainda sai na pausa `gente` (a tentativa e a hora). */
+export type FollowUpNaPausa = Extract<ProximoPasso, { tipo: "retomada" }>;
+
 export type Faixa =
-  /** `minutos`: o N da conta — > 0 = o Pausar é temporário e o Desativar aparece; 0 ou nulo, a faixa de antes. */
-  | { tipo: "atendendo"; agente: string; minutos: number | null }
-  | { tipo: "pausada"; motivo: MotivoDaPausa | null; naoAtende: LinhaNaoAtende | null; volta: VoltaDaPausa | null }
+  /**
+   * `minutos`: o N da conta — > 0 = o Pausar é temporário e o Desativar
+   * aparece; 0 ou nulo, a faixa de antes. `proximo`: a linha do próximo
+   * passo; ausente/nulo = não se sabe, sem linha.
+   */
+  | { tipo: "atendendo"; agente: string; minutos: number | null; proximo?: ProximoDaFaixa | null }
+  | {
+      tipo: "pausada";
+      motivo: MotivoDaPausa | null;
+      naoAtende: LinhaNaoAtende | null;
+      volta: VoltaDaPausa | null;
+      followUp?: FollowUpNaPausa | null;
+    }
   | ({ tipo: "naoAtende" } & LinhaNaoAtende)
   | null;
 
@@ -143,10 +196,20 @@ export function faixaDaIa(estado: EstadoDaIa | null, iaAgenteIdDaConversa: strin
       estado.pausaTemporaria && estado.voltaAposMin !== null && estado.voltaAposMin > 0
         ? { minutos: estado.voltaAposMin, em: estado.voltaEm }
         : null;
-    return { tipo: "pausada", motivo, naoAtende, volta };
+    // O follow-up só na pausa que VOLTA (a rota já o recorta à pausa `gente`).
+    const followUp =
+      volta && estado.proximo && estado.proximo !== "nada" && estado.proximo.tipo === "retomada" ? estado.proximo : null;
+    return { tipo: "pausada", motivo, naoAtende, volta, ...(followUp ? { followUp } : {}) };
   }
   // Daqui para baixo, agente da etapa só sem pausa (pausada com ele já saiu acima).
-  if (estado.agente) return { tipo: "atendendo", agente: estado.agente.nome, minutos: estado.voltaAposMin };
+  if (estado.agente) {
+    return {
+      tipo: "atendendo",
+      agente: estado.agente.nome,
+      minutos: estado.voltaAposMin,
+      ...(estado.proximo ? { proximo: estado.proximo } : {}),
+    };
+  }
   return naoAtende ? { tipo: "naoAtende", ...naoAtende } : null;
 }
 
@@ -262,10 +325,40 @@ export function AiThreadBanner({ conversationId, iaAgenteId, disabled, pausadaPo
   }
 
   const estado = lido?.conversa === conversationId ? lido.estado : null;
+  // `null` = a rota não leu a fila (ninguém atende, pausa permanente) ou não
+  // se sabe: a faixa relê só pelas props e eventos, como antes.
+  const passo = estado?.proximo ?? null;
+  const tipoDaReleitura =
+    passo === null ? null : passo === "nada" ? "nada" : passo.tipo === "agora" ? "agora" : "comHora";
+  const emDoProximo = passo && passo !== "nada" && passo.tipo !== "agora" ? passo.em : null;
+  const lidoEm = lido?.em ?? null;
+
+  // O próximo passo muda sem nenhuma prop mudar (a resposta sai, o
+  // follow-up é enviado e o seguinte é armado, a pré-armação da equipe se
+  // resolve): pergunta de novo sozinha (`esperaParaReler`).
+  useEffect(() => {
+    if (!tipoDaReleitura) return;
+    const id = window.setTimeout(
+      () => setRecarga((n) => n + 1),
+      esperaParaReler(tipoDaReleitura, emDoProximo, Date.now()),
+    );
+    return () => window.clearTimeout(id);
+  }, [tipoDaReleitura, emDoProximo, lidoEm]);
+
+  // O relógio da contagem ("em 2 h 13 min"): tique de 30 s em estado — o
+  // render não lê `Date.now()`. Antes do 1º tique, vale a hora da leitura.
+  const [tique, setTique] = useState<number | null>(null);
+  useEffect(() => {
+    if (!emDoProximo) return;
+    const id = window.setInterval(() => setTique(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, [emDoProximo]);
+
   return (
     <FaixaDaIa
       faixa={faixaDaIa(estado, iaAgenteId)}
       lidoEm={lido?.em}
+      agora={Math.max(tique ?? 0, lidoEm ?? 0) || undefined}
       busy={busy}
       aoPausar={() => void alternar("pausar")}
       aoDesativar={() => void alternar("desativar")}
@@ -310,10 +403,121 @@ export function horaDaVolta(iso: string, lidoEm?: number): string {
   });
 }
 
+/** O teto da espera da releitura: um follow-up de 48 h relê a cada 12 h. */
+export const TETO_DA_RELEITURA_MS = 12 * 3_600_000;
+
+/** Fila vazia com agente atendendo: relê a cada 2 min. */
+export const RELEITURA_SEM_PASSO_MS = 120_000;
+
+/**
+ * Daqui a quanto a faixa pergunta de novo (Codex, #515 — três achados do
+ * mesmo tipo: o próximo passo muda só em `cb_ia_turnos`, sem prop nenhuma
+ * mudar, e toda vez que a faixa parava de perguntar ela ficava mentindo):
+ *   - `agora` (a IA escreve): 15 s;
+ *   - `nada` (fila vazia, mas um agente atende): 2 min — há vãos em que a
+ *     fila fica vazia por instantes (a resposta saiu e o follow-up seguinte
+ *     ainda está sendo armado), e a leitura que cai neles não pode ser a
+ *     última;
+ *   - com hora: 20 s depois dela (a folga do cron), 1 min com a hora vencida
+ *     e a fila parada, e nunca mais que 12 h (o follow-up de 48 h).
+ */
+export function esperaParaReler(
+  tipo: "agora" | "nada" | "comHora",
+  em: string | null,
+  agora: number,
+): number {
+  if (tipo === "agora") return 15_000;
+  if (tipo === "nada" || !em) return RELEITURA_SEM_PASSO_MS;
+  const falta = Date.parse(em) - agora;
+  if (!Number.isFinite(falta) || falta <= 0) return 60_000;
+  return Math.min(falta + 20_000, TETO_DA_RELEITURA_MS);
+}
+
+/** Quanto falta até `iso`, em minutos inteiros (para cima); nulo = já passou. */
+export function quantoFalta(iso: string, agora: number): { dias: number; horas: number; minutos: number } | null {
+  const ms = Date.parse(iso) - agora;
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+  const total = Math.ceil(ms / 60_000);
+  return { dias: Math.floor(total / 1440), horas: Math.floor((total % 1440) / 60), minutos: total % 60 };
+}
+
+/** "em 2 h 13 min" / "em 45 min" / "em 3 d 4 h". */
+function textoDaContagem(t: ReturnType<typeof useTranslations>, falta: NonNullable<ReturnType<typeof quantoFalta>>) {
+  if (falta.dias > 0) return t("proximo.contagemDias", { dias: falta.dias, horas: falta.horas });
+  if (falta.horas > 0) return t("proximo.contagemHoras", { horas: falta.horas, minutos: falta.minutos });
+  return t("proximo.contagemMinutos", { minutos: falta.minutos });
+}
+
+/**
+ * A linha do próximo passo (atendendo). Quebra linha, nunca `truncate`: no
+ * celular a hora sumiria cortada. Sem `agora`, a contagem usa a hora da
+ * leitura; sem nenhum dos dois, só a hora.
+ */
+function LinhaDoProximoPasso({
+  proximo,
+  agora,
+  lidoEm,
+}: {
+  proximo: ProximoDaFaixa;
+  agora?: number;
+  lidoEm?: number;
+}) {
+  const t = useTranslations("Inbox.aiBanner");
+  const relogio = agora ?? lidoEm;
+  // A pré-armação ainda sem hora real: sem linha — nem "sem follow-up", que
+  // seria falso; a faixa só pergunta de novo quando ela resolver.
+  if (proximo !== "nada" && proximo.tipo === "agendando") return null;
+  let texto: string;
+  if (proximo === "nada") {
+    texto = t("proximo.nada");
+  } else if (proximo.tipo === "agora") {
+    texto = t("proximo.agora");
+  } else {
+    const hora = horaDaVolta(proximo.em, lidoEm);
+    const falta = relogio !== undefined ? quantoFalta(proximo.em, relogio) : null;
+    // Hora passada (o cron ainda não pegou): "a qualquer momento", nunca "em 0 min".
+    const vencida = relogio !== undefined && falta === null;
+    if (proximo.tipo === "resposta") {
+      if (vencida || (falta && falta.dias === 0 && falta.horas === 0 && falta.minutos <= 1)) {
+        texto = t("proximo.respostaJa");
+      } else if (proximo.foraDoHorario) {
+        texto = t("proximo.respostaForaDoHorario", { hora });
+      } else {
+        texto = t("proximo.resposta", { hora });
+      }
+    } else if (vencida) {
+      texto = t("proximo.followUpVencido", { tentativa: proximo.tentativa, tentativas: proximo.tentativas });
+    } else {
+      texto = t("proximo.followUp", {
+        tentativa: proximo.tentativa,
+        tentativas: proximo.tentativas,
+        hora,
+        contagem: falta ? textoDaContagem(t, falta) : "",
+      });
+    }
+  }
+  return <p className="mt-0.5 pl-5 text-muted-foreground">{texto}</p>;
+}
+
+/** Na pausa `gente`: o follow-up da IA que ainda sai se o cliente não responder. */
+function LinhaDoFollowUpNaPausa({ followUp, agora, lidoEm }: { followUp: FollowUpNaPausa; agora?: number; lidoEm?: number }) {
+  const t = useTranslations("Inbox.aiBanner");
+  const relogio = agora ?? lidoEm;
+  const falta = relogio !== undefined ? quantoFalta(followUp.em, relogio) : null;
+  return (
+    <p className="mt-0.5 text-muted-foreground">
+      {falta
+        ? t("proximo.followUpNaPausa", { hora: horaDaVolta(followUp.em, lidoEm), contagem: textoDaContagem(t, falta) })
+        : t("proximo.followUpNaPausaVencido")}
+    </p>
+  );
+}
+
 /** A faixa desenhada (sem dado nem efeito) — o que os testes renderizam. */
 export function FaixaDaIa({
   faixa,
   lidoEm,
+  agora,
   busy,
   aoPausar,
   aoDesativar,
@@ -322,6 +526,8 @@ export function FaixaDaIa({
   faixa: Faixa;
   /** Quando a rota respondeu (o dia da hora da volta). */
   lidoEm?: number;
+  /** O relógio da contagem do próximo passo (tique em estado, no pai). */
+  agora?: number;
   busy: boolean;
   aoPausar: () => void;
   aoDesativar: () => void;
@@ -350,6 +556,7 @@ export function FaixaDaIa({
                 : t("voltaSeEsperar", { minutos: faixa.volta.minutos })}
             </p>
           ) : null}
+          {faixa.followUp ? <LinhaDoFollowUpNaPausa followUp={faixa.followUp} agora={agora} lidoEm={lidoEm} /> : null}
           {faixa.naoAtende ? <LinhaNaoAtendeDaFaixa linha={faixa.naoAtende} /> : null}
         </div>
         <BannerButton
@@ -382,9 +589,12 @@ export function FaixaDaIa({
   const temporario = faixa.minutos !== null && faixa.minutos > 0;
   return (
     <Banner tone="primary">
-      <div className="flex min-w-0 flex-1 items-center gap-1.5">
-        <Sparkles className="h-3.5 w-3.5 flex-shrink-0 text-primary" />
-        <span className="truncate font-medium text-foreground">{t("atendendo", { agente: faixa.agente })}</span>
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <Sparkles className="h-3.5 w-3.5 flex-shrink-0 text-primary" />
+          <span className="truncate font-medium text-foreground">{t("atendendo", { agente: faixa.agente })}</span>
+        </div>
+        {faixa.proximo ? <LinhaDoProximoPasso proximo={faixa.proximo} agora={agora} lidoEm={lidoEm} /> : null}
       </div>
       <BannerButton
         onClick={aoPausar}

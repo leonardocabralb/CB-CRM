@@ -15,6 +15,7 @@ paths:
   - "src/lib/integracoes/montar*"
   - "src/components/settings/integracoes-panel.tsx"
   - "src/lib/ia-agentes/precos*"
+  - "src/lib/ia-agentes/proximo-passo*"
   - "src/lib/ia-agentes/uso*"
   - "src/app/api/cb/ia/uso/**"
   - "supabase/migrations/1108_cb_ia_uso_por_faixa.sql"
@@ -108,6 +109,39 @@ agente errar em silêncio.
   das duas etapas rodam de novo e podem escrever ao cliente outra vez.
 - Motivo é chave MONTADA (`Inbox.aiBanner.naoAtendeMotivo.<m>`), cobrada pela
   LISTA; motivo fora dela a faixa ignora (`lerNaoAtende`), nunca chave crua.
+
+### A faixa diz o PRÓXIMO PASSO (pedido do operador, 12/11/2026)
+
+`proximo-passo.ts` (puro) e o campo `proximo` de `GET /api/cb/ia/conversa/[id]`.
+
+- Embaixo de "IA · X responde nesta conversa": "Próximo follow-up (2 de 5) a
+  partir de 15:40 · em 2 h 13 min", a resposta na fila (em instantes; fora do
+  horário do agente, a hora da abertura), "Respondendo agora…" ou "Sem
+  follow-up agendado". "A partir de" porque o cron pega a linha depois e a
+  conferência pode reagendar (horário, lembrete); hora passada = "a qualquer
+  momento", nunca "em 0 min".
+- ⚠️ **Só o que vai acontecer**: a rota lê a fila só com agente atendendo E a
+  IA ativa ou na pausa que volta, e o follow-up só onde ele atravessa a pausa
+  (sem pausa, ou `gente` com N > 0 — `ia-retomada.md`): o armado sob outra
+  pausa é descartado no vencimento. E só a linha do DONO de agora (agente,
+  card e etapa da decisão): a de outro (card movido para a etapa de outro
+  agente) a conferência do motor descarta (Codex, #515). Ficam de fora a resposta que espera a
+  EQUIPE (a linha da pausa já diz "volta a partir de"); a PRÉ-ARMAÇÃO não
+  resolvida (30 s; a hora dela não é a do follow-up) sai como `agendando`:
+  sem linha, só para a faixa perguntar de novo quando ela resolver — a
+  resolução só muda `cb_ia_turnos`, nenhuma prop da faixa (Codex, #515).
+- ⚠️ **`proximo` ausente ≠ `null`**: ausente (servidor antigo, forma
+  estranha) = não se sabe, sem linha; `null` = nada na fila ("Sem follow-up
+  agendado"). Leitura da fila que falha = 500, como o resto da rota.
+- ⚠️ **A faixa pergunta de novo sozinha, e NUNCA para enquanto um agente
+  atende** (o passo muda só em `cb_ia_turnos`, sem prop nenhuma mudar;
+  `esperaParaReler`): 20 s depois da hora marcada, 15 s enquanto a IA
+  escreve, 1 min com a hora vencida, teto de 12 h, e 2 min com a fila VAZIA —
+  há vãos em que ela fica vazia por instantes (a resposta saiu e o follow-up
+  seguinte ainda está sendo armado), e cada "parar de perguntar" deixava a
+  faixa mentindo (três achados do Codex, #515). Sem leitura da fila
+  (`proximo` nulo), só as props e os eventos. A contagem anda por um tique de
+  30 s em estado (nunca `Date.now()` no render).
 
 ### Qual card decide o agente (decisão do operador, 09/11/2026)
 
