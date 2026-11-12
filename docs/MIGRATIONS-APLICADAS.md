@@ -2123,3 +2123,19 @@ nome da época em que foram aplicadas.
   duas vezes. Conferida na produção: os sete tipos no CHECK, a coluna `{}` em
   todos os agentes (nenhum com lista), o teto de 50, o `service_role` lendo e
   o `anon` sem leitura.
+- **1140_cb_alarme_da_ia** — o ALARME quando a IA para de responder (F1–F3 do
+  operador de 12/11/2026): os tipos `ia_falhou` e `ia_voltou` no CHECK de
+  `notifications.type` (os sete de antes reescritos), a tabela
+  `cb_ia_alarmes` (um episódio por conta e provedor; RLS sem policy, só
+  `service_role`) e a função `cb_ia_registrar_falha` (abre/lembra/só conta
+  sob trava; EXECUTE só do `service_role`). PR #512.
+
+  ADITIVA, aplicada ANTES do deploy com a autorização explícita do operador
+  ("Pode aplicar", 12/11/2026), em 12/11/2026 às 11:56 BRT (histórico
+  `20261112145615`), pela Management API, com o arquivo idêntico ao do commit
+  `d8209a7c` (sha256 `cdd633b1…`), cujo replay do CI passou. Antes: o replay
+  local do zero, a 1140 reaplicada com uma conta fictícia (o ciclo da
+  conferência exercitado) e a corrida de duas sessões (um aviso só).
+  Conferida na produção: os nove tipos no CHECK, a tabela vazia (o ciclo da
+  conferência foi desfeito), RLS ligada sem policy, `anon`/`authenticated`
+  sem leitura nem EXECUTE, `service_role` com os dois.
