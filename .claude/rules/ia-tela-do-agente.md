@@ -133,11 +133,15 @@ agente errar em silêncio.
 - ⚠️ **`proximo` ausente ≠ `null`**: ausente (servidor antigo, forma
   estranha) = não se sabe, sem linha; `null` = nada na fila ("Sem follow-up
   agendado"). Leitura da fila que falha = 500, como o resto da rota.
-- **A faixa pergunta de novo sozinha** (o passo muda sem prop nenhuma mudar):
-  20 s depois da hora marcada, a cada 15 s enquanto a IA escreve, a cada
-  minuto com a hora vencida, e com teto de 12 h (`esperaParaReler`): sem o
-  teto, o passo distante desligava a releitura (Codex, #515). A contagem anda
-  por um tique de 30 s em estado (nunca `Date.now()` no render).
+- ⚠️ **A faixa pergunta de novo sozinha, e NUNCA para enquanto um agente
+  atende** (o passo muda só em `cb_ia_turnos`, sem prop nenhuma mudar;
+  `esperaParaReler`): 20 s depois da hora marcada, 15 s enquanto a IA
+  escreve, 1 min com a hora vencida, teto de 12 h, e 2 min com a fila VAZIA —
+  há vãos em que ela fica vazia por instantes (a resposta saiu e o follow-up
+  seguinte ainda está sendo armado), e cada "parar de perguntar" deixava a
+  faixa mentindo (três achados do Codex, #515). Sem leitura da fila
+  (`proximo` nulo), só as props e os eventos. A contagem anda por um tique de
+  30 s em estado (nunca `Date.now()` no render).
 
 ### Qual card decide o agente (decisão do operador, 09/11/2026)
 

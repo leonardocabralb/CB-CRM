@@ -325,22 +325,25 @@ export function AiThreadBanner({ conversationId, iaAgenteId, disabled, pausadaPo
   }
 
   const estado = lido?.conversa === conversationId ? lido.estado : null;
-  const proximo = estado?.proximo && estado.proximo !== "nada" ? estado.proximo : null;
-  const tipoDoProximo = proximo?.tipo ?? null;
-  const emDoProximo = proximo && proximo.tipo !== "agora" ? proximo.em : null;
+  // `null` = a rota não leu a fila (ninguém atende, pausa permanente) ou não
+  // se sabe: a faixa relê só pelas props e eventos, como antes.
+  const passo = estado?.proximo ?? null;
+  const tipoDaReleitura =
+    passo === null ? null : passo === "nada" ? "nada" : passo.tipo === "agora" ? "agora" : "comHora";
+  const emDoProximo = passo && passo !== "nada" && passo.tipo !== "agora" ? passo.em : null;
   const lidoEm = lido?.em ?? null;
 
   // O próximo passo muda sem nenhuma prop mudar (a resposta sai, o
   // follow-up é enviado e o seguinte é armado, a pré-armação da equipe se
-  // resolve — Codex, #515): pergunta de novo sozinha (`esperaParaReler`).
+  // resolve): pergunta de novo sozinha (`esperaParaReler`).
   useEffect(() => {
-    if (!tipoDoProximo) return;
+    if (!tipoDaReleitura) return;
     const id = window.setTimeout(
       () => setRecarga((n) => n + 1),
-      esperaParaReler(tipoDoProximo === "agora" ? null : emDoProximo, Date.now()),
+      esperaParaReler(tipoDaReleitura, emDoProximo, Date.now()),
     );
     return () => window.clearTimeout(id);
-  }, [tipoDoProximo, emDoProximo, lidoEm]);
+  }, [tipoDaReleitura, emDoProximo, lidoEm]);
 
   // O relógio da contagem ("em 2 h 13 min"): tique de 30 s em estado — o
   // render não lê `Date.now()`. Antes do 1º tique, vale a hora da leitura.
@@ -403,15 +406,28 @@ export function horaDaVolta(iso: string, lidoEm?: number): string {
 /** O teto da espera da releitura: um follow-up de 48 h relê a cada 12 h. */
 export const TETO_DA_RELEITURA_MS = 12 * 3_600_000;
 
+/** Fila vazia com agente atendendo: relê a cada 2 min. */
+export const RELEITURA_SEM_PASSO_MS = 120_000;
+
 /**
- * Daqui a quanto a faixa pergunta de novo: 20 s depois da hora marcada (a
- * folga do cron), 15 s enquanto a IA escreve (`em` nulo), 1 min com a hora
- * vencida e a fila parada — e nunca mais que 12 h (Codex, #515: sem o teto,
- * o passo a mais de 12 h desligava a releitura, e a faixa ficava dizendo "a
- * qualquer momento" sobre um follow-up que já tinha saído).
+ * Daqui a quanto a faixa pergunta de novo (Codex, #515 — três achados do
+ * mesmo tipo: o próximo passo muda só em `cb_ia_turnos`, sem prop nenhuma
+ * mudar, e toda vez que a faixa parava de perguntar ela ficava mentindo):
+ *   - `agora` (a IA escreve): 15 s;
+ *   - `nada` (fila vazia, mas um agente atende): 2 min — há vãos em que a
+ *     fila fica vazia por instantes (a resposta saiu e o follow-up seguinte
+ *     ainda está sendo armado), e a leitura que cai neles não pode ser a
+ *     última;
+ *   - com hora: 20 s depois dela (a folga do cron), 1 min com a hora vencida
+ *     e a fila parada, e nunca mais que 12 h (o follow-up de 48 h).
  */
-export function esperaParaReler(em: string | null, agora: number): number {
-  if (!em) return 15_000;
+export function esperaParaReler(
+  tipo: "agora" | "nada" | "comHora",
+  em: string | null,
+  agora: number,
+): number {
+  if (tipo === "agora") return 15_000;
+  if (tipo === "nada" || !em) return RELEITURA_SEM_PASSO_MS;
   const falta = Date.parse(em) - agora;
   if (!Number.isFinite(falta) || falta <= 0) return 60_000;
   return Math.min(falta + 20_000, TETO_DA_RELEITURA_MS);
