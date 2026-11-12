@@ -224,12 +224,15 @@ describe('cartão de notificação do navegador × ouvinte', () => {
     // Pedido do operador (20/10/2026): menção e tarefa acendiam só o sino.
     // O ouvinte é do original: a versão crua tira o pop-up do sino sem erro.
     const ouvinte = semComentarios(ler('components/notifications/browser-notifications-listener.tsx'));
-    expect(ouvinte).toMatch(/useBrowserNotifications\(\);\s*useAvisosDoSinoNoNavegador\(\);/);
+    expect(ouvinte).toMatch(/useBrowserNotifications\(\);\s*useAvisosDoSinoNoNavegador\(\);\s*useAvisoDaIaNaTela\(\);/);
     const sino = semComentarios(ler('hooks/use-avisos-do-sino-no-navegador.ts'));
     expect(sino).toMatch(/table: "notifications", filter: `user_id=eq\.\$\{userId\}`/);
     expect(sino).toMatch(/if \(!avisoPossivelNoAparelho\(\)\) return;/);
     // A régua cala de verdade: chamar e ignorar passaria numa busca pela chamada.
-    expect(sino).toMatch(/const silencio = silencioDoSino\(\{[\s\S]*?\}\);\s*if \(silencio\) return;\s*void exibir\(aviso\);/);
+    // 1139: o aviso da IA, com a aba em foco, fica só na caixinha dentro do CRM.
+    expect(sino).toMatch(
+      /const silencio = silencioDoSino\(\{[\s\S]*?\}\);\s*if \(silencio\) return;\s*if \(popUpDoSistemaCalaPelaCaixinha\(aviso\.type, abaEmFoco\(\)\)\) return;\s*void exibir\(aviso\);/,
+    );
     // D3: perfil, "quais conversas" e "Conexões que avisam" não calam o sino.
     expect(sino).not.toMatch(/silencioDoAviso|silenciadas|conversaNoEscopo/);
     // D6: o clique marca lido, como o clique no sino.

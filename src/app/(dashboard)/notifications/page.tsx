@@ -20,6 +20,7 @@ import { rotaDoAviso } from "@/lib/notifications/rota-do-aviso";
 import {
   AtSign,
   Bell,
+  Bot,
   CheckCheck,
   ListTodo,
   Loader2,
@@ -49,6 +50,9 @@ const TYPE_ICON: Record<Notification["type"], typeof Bell> = {
   // Saúde do WhatsApp (1085), gravado por um monitor de fora do app. Sem
   // conversa nem tarefa: o clique só marca lido.
   whatsapp_alert: TriangleAlert,
+  // NOSSO (1139): um agente de IA passou a conversa para a equipe. Leva à
+  // conversa, como a menção.
+  ia_transferiu: Bot,
 };
 
 export default function NotificationsPage() {

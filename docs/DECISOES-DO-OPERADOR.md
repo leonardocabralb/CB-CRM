@@ -168,6 +168,12 @@ qualquer uma é pergunta ao operador.
   follow-up que sai devolve a conversa à IA; os N min contam no relógio (fora
   do horário, espera a abertura); a fala da equipe chega ao modelo rotulada,
   sem o nome (`ia-pausa.md`).
+- IA que passa a conversa para a equipe AVISA (11/11/2026; 1139): no sino e
+  numa caixinha clicável dentro do CRM, que fica até alguém abrir a conversa
+  ou fechar; recebem as pessoas marcadas em cada agente e sempre o
+  responsável (ninguém marcado = dono, admins e quem atende o número); o
+  texto diz o cliente e os campos que o agente preencheu ao passar (a
+  "Pendência da IA"), senão o motivo (`ia-agentes-turno.md`).
 - Agente de IA fora do horário: a mensagem espera e ele responde quando o
   horário abrir, se ninguém da equipe respondeu antes; o padrão da Anthropic
   é o Haiku 5.5, e o seletor mostra os modelos da chave (25/10/2026).

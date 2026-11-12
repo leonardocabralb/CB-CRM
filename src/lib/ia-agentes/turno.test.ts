@@ -205,7 +205,7 @@ vi.mock('./ferramentas', () => ({ opcoesDoAgente: vi.fn(async () => ({})) }))
 vi.mock('./agenda', () => ({ lerAgendaDoAgente: vi.fn(async () => null) }))
 vi.mock('./executar-acoes', async (original) => ({
   ...(await original<typeof import('./executar-acoes')>()),
-  executarAcoes: vi.fn(async () => ({ registros: [], moveu: false })),
+  executarAcoes: vi.fn(async () => ({ registros: [], moveu: false, campos: [] })),
 }))
 vi.mock('next/server', async (original) => ({
   ...(await original<typeof import('next/server')>()),
@@ -580,7 +580,7 @@ beforeEach(() => {
   vi.mocked(after).mockReset()
   vi.mocked(opcoesDoAgente).mockReset().mockResolvedValue({})
   vi.mocked(lerAgendaDoAgente).mockReset().mockResolvedValue(null)
-  vi.mocked(executarAcoes).mockReset().mockResolvedValue({ registros: [], moveu: false })
+  vi.mocked(executarAcoes).mockReset().mockResolvedValue({ registros: [], moveu: false, campos: [] })
 })
 
 /** O envio falha DEPOIS de chamar o provedor (o erro vem dele). */
@@ -1375,11 +1375,13 @@ describe('executarTurno — o sentinela transfere para gente', () => {
     expect(notas()).toHaveLength(1)
   })
 
-  it('sem destino configurado: fila sem responsável, sem ler perfis', async () => {
+  it('sem destino configurado: fila sem responsável, sem ler o destino', async () => {
     agenteLido().transferir_para = null
     await executarTurno(TURNO)
     expect(conversa().assigned_agent_id).toBeNull()
-    expect(banco.chamadas.some((c) => c.tabela === 'profiles')).toBe(false)
+    // A única leitura de perfis é a dos membros do aviso (1139), nunca a do destino.
+    const deProfiles = banco.chamadas.filter((c) => c.tabela === 'profiles').map((c) => c.valores)
+    expect(deProfiles).toEqual(['user_id, account_role, perfil_id'])
   })
 
   it('a geração é registrada no uso mesmo transferindo', async () => {
@@ -1403,6 +1405,7 @@ describe('transferirParaGente', () => {
     contactId: 'contato-1',
     nomeDoAgente: 'Triagem',
     transferirPara: MEMBRO,
+    avisarAoTransferir: [] as string[],
     motivo: 'sentinela' as const,
   }
 
@@ -1442,6 +1445,67 @@ describe('transferirParaGente', () => {
       status: 'pending',
     })
     expect(notas()).toHaveLength(1)
+  })
+
+  // 1139: o aviso no sino (e a caixinha na tela) quando a IA passa a conversa.
+  const avisos = () => (banco.tabelas.notifications ?? []) as Linha[]
+
+  it('1139: AVISA no sino — os escolhidos do agente e o responsável, com a conversa (o clique abre `/inbox?c=`)', async () => {
+    banco.tabelas.profiles = [
+      { id: 'perfil-1', user_id: MEMBRO, account_id: CONTA, account_role: 'agent', perfil_id: null, suspenso_em: null },
+      { id: 'perfil-2', user_id: 'ana', account_id: CONTA, account_role: 'agent', perfil_id: null, suspenso_em: null },
+      { id: 'perfil-3', user_id: 'dono-1', account_id: CONTA, account_role: 'owner', perfil_id: null, suspenso_em: null },
+    ]
+    // 'saiu' não é mais membro: ignorado.
+    await expect(transferirParaGente(banco as never, { ...args, avisarAoTransferir: ['ana', 'saiu'] })).resolves.toBe('transferiu')
+    expect(avisos().map((a) => a.user_id).sort()).toEqual(['ana', MEMBRO].sort())
+    for (const a of avisos()) {
+      expect(a).toMatchObject({
+        account_id: CONTA,
+        type: 'ia_transferiu',
+        conversation_id: CONVERSA,
+        contact_id: 'contato-1',
+        actor_user_id: null,
+      })
+      expect(String(a.title)).toMatch(/IA passou .+ para a equipe/)
+      // Sem campo preenchido: o motivo do sistema (o texto da anotação).
+      expect(a.body).toBe(notas()[0].texto)
+    }
+  })
+
+  it('1139: ninguém escolhido = o dono, os administradores e quem atende o número (e o responsável)', async () => {
+    banco.tabelas.profiles = [
+      { id: 'perfil-1', user_id: MEMBRO, account_id: CONTA, account_role: 'agent', perfil_id: null, suspenso_em: null },
+      { id: 'perfil-3', user_id: 'dono-1', account_id: CONTA, account_role: 'owner', perfil_id: null, suspenso_em: null },
+      { id: 'perfil-4', user_id: 'admin-1', account_id: CONTA, account_role: 'admin', perfil_id: null, suspenso_em: null },
+      { id: 'perfil-5', user_id: 'suspensa', account_id: CONTA, account_role: 'admin', perfil_id: null, suspenso_em: haMs(DIA) },
+    ]
+    await expect(transferirParaGente(banco as never, args)).resolves.toBe('transferiu')
+    expect(avisos().map((a) => a.user_id).sort()).toEqual(['admin-1', 'dono-1', MEMBRO].sort())
+  })
+
+  it('1139: sem transferência (`nada_mudou`), nenhum aviso', async () => {
+    conversa().status = 'closed'
+    await expect(transferirParaGente(banco as never, { ...args, avisarAoTransferir: [MEMBRO] })).resolves.toBe('nada_mudou')
+    expect(avisos()).toHaveLength(0)
+  })
+
+  it('1139: o aviso que falha (o CHECK sem a 1139) não derruba a transferência nem a anotação', async () => {
+    banco.falhas.push({ tabela: 'notifications', op: 'insert', erro: { message: 'violates check constraint' } })
+    await expect(transferirParaGente(banco as never, { ...args, avisarAoTransferir: [MEMBRO] })).resolves.toBe('transferiu')
+    expect(conversa()).toMatchObject({ ia_pausada_por: 'transferencia', status: 'pending' })
+    expect(notas()).toHaveLength(1)
+    expect(avisos()).toHaveLength(0)
+  })
+
+  it('1139: os campos preenchidos na resposta viram o corpo do aviso ("Pendência da IA: …")', async () => {
+    await transferirParaGente(banco as never, {
+      ...args,
+      avisarAoTransferir: [MEMBRO],
+      campos: [{ nome: 'Pendência da IA', valor: 'Pediu ligação' }],
+    })
+    expect(avisos()).toHaveLength(1)
+    expect(avisos()[0].body).toBe('Pendência da IA: Pediu ligação')
   })
 
   it('a conversa que já estava pendente continua pendente', async () => {
@@ -2028,7 +2092,7 @@ describe('executarTurno — a passagem (D25)', () => {
       vi.mocked(opcoesDoAgente).mockResolvedValue(OPCOES)
       vi.mocked(executarAcoes).mockImplementation(async (_db, _ctx, aceitas) => {
         ordem.push(`ações: ${aceitas.map((a) => a.tipo).join(',')}; etapa=${String(card().stage_id)}`)
-        return { registros: aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: true })), moveu: false }
+        return { registros: aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: true })), moveu: false, campos: [] }
       })
       banco.antes = (tabela, op) => {
         if (tabela === 'deals' && op === 'update') ordem.push('mover o card')
@@ -2136,7 +2200,7 @@ describe('executarTurno — a passagem (D25)', () => {
       vi.mocked(generateReply).mockResolvedValueOnce({ text: '[[PASSAR:1]]\n[[ETIQUETAR:1]]', handoff: false, usage: null })
       vi.mocked(executarAcoes).mockImplementation(async (_db, _ctx, aceitas) => {
         card().stage_id = 'etapa-meio'
-        return { registros: aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: true })), moveu: false }
+        return { registros: aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: true })), moveu: false, campos: [] }
       })
       await executarTurno(TURNO)
       expect(turno()).toMatchObject({ status: 'transferiu', erro: 'sentinela' })
@@ -2809,7 +2873,7 @@ describe('executarTurno — as ações (F4, D28)', () => {
     vi.mocked(opcoesDoAgente).mockResolvedValue(OPCOES)
     vi.mocked(executarAcoes).mockImplementation(async (_db, _ctx, aceitas) => ({
       registros: aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: true })),
-      moveu: aceitas.some((a) => a.tipo === 'mover_etapa'),
+      moveu: aceitas.some((a) => a.tipo === 'mover_etapa'), campos: [],
     }))
   })
 
@@ -2838,7 +2902,7 @@ describe('executarTurno — as ações (F4, D28)', () => {
       ordem.push('ações')
       return {
         registros: aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: true })),
-        moveu: true,
+        moveu: true, campos: [],
       }
     })
     vi.mocked(drenarEventosDeFunil).mockImplementation(async () => {
@@ -3107,13 +3171,33 @@ describe('executarTurno — as ações (F4, D28)', () => {
     const ordem: string[] = []
     vi.mocked(executarAcoes).mockImplementation(async (_db, _ctx, aceitas) => {
       ordem.push(`ações; pausada=${String(conversa().ai_autoreply_disabled)}`)
-      return { registros: aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: true })), moveu: false }
+      return { registros: aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: true })), moveu: false, campos: [] }
     })
     responde('Anotei, a equipe te chama.\n[[ETIQUETAR:1]]\n[ transferir ]')
     await executarTurno(TURNO)
     expect(ordem).toEqual(['ações; pausada=false'])
     expect(turno().acoes).toEqual([{ tipo: 'etiquetar', alvo: { id: 'tag-vip', nome: 'VIP' }, ok: true }, { ...TRANSFERIR, ok: true }])
     expect(conversa()).toMatchObject({ ai_autoreply_disabled: true })
+  })
+
+  it('1139: a PENDÊNCIA ([[TRANSFERIR]] com o campo da pendência na mesma resposta) avisa com o campo no corpo', async () => {
+    agenteLido().avisar_ao_transferir = [MEMBRO]
+    vi.mocked(executarAcoes).mockImplementation(async (_db, _ctx, aceitas) => ({
+      registros: aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: true })),
+      moveu: false,
+      campos: [{ nome: 'Pendência da IA', valor: 'Pediu condição diferente' }],
+    }))
+    responde('Esse ponto fica com o advogado, ele te responde por aqui.\n[[ETIQUETAR:1]]\n[[TRANSFERIR]]')
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    const avisos = (banco.tabelas.notifications ?? []) as Linha[]
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0]).toMatchObject({
+      user_id: MEMBRO,
+      type: 'ia_transferiu',
+      conversation_id: CONVERSA,
+      body: 'Pendência da IA: Pediu condição diferente',
+    })
   })
 
   it('[[TRANSFERIR]] com a conversa JÁ pausada de vez (desativada): não passa por cima, sem anotação — `ja_estava`', async () => {
@@ -3333,7 +3417,7 @@ describe('executarTurno — marcar reunião (F5)', () => {
     vi.mocked(lerAgendaDoAgente).mockResolvedValue(AGENDA)
     vi.mocked(executarAcoes).mockImplementation(async (_db, _ctx, aceitas) => ({
       registros: aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: true })),
-      moveu: false,
+      moveu: false, campos: [],
     }))
   })
 
@@ -3386,7 +3470,7 @@ describe('executarTurno — marcar reunião (F5)', () => {
     responde('Pronto, marquei!\n[[REUNIAO:1]]')
     vi.mocked(executarAcoes).mockResolvedValue({
       registros: [{ tipo: 'marcar_reuniao', alvo: { id: H1, nome: '28/09/2026 15:15' }, ok: false, erro: 'sem_email' }],
-      moveu: false,
+      moveu: false, campos: [],
     })
     await executarTurno(TURNO)
     expect(turno()).toMatchObject({ status: 'respondeu', mensagem_enviada_id: 'wamid.resposta' })
@@ -3471,7 +3555,7 @@ describe('executarTurno — marcar reunião (F5)', () => {
     responde('Ok!\n[[REUNIAO:1]]\n[[REUNIAO:2]]')
     vi.mocked(executarAcoes).mockImplementation(async (_db, _ctx, aceitas) => ({
       registros: aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: true })),
-      moveu: false,
+      moveu: false, campos: [],
     }))
     await executarTurno(TURNO)
     expect(vi.mocked(executarAcoes).mock.calls[0][2]).toEqual([{ tipo: 'marcar_reuniao', id: H1, nome: '28/09/2026 15:15' }])
@@ -3510,7 +3594,7 @@ describe('executarTurno — marcar reunião (F5)', () => {
       Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: 'desativada' })
       return {
         registros: [{ tipo: 'marcar_reuniao', alvo: { id: H1, nome: '28/09/2026 15:15' }, ok: false, erro: 'horario_indisponivel' }],
-        moveu: false,
+        moveu: false, campos: [],
       }
     })
     await executarTurno(TURNO)
@@ -3875,7 +3959,7 @@ describe('a RETOMADA (1056)', () => {
             Object.assign(t, { status: 'descartado', erro: 'conversa encerrada' })
           }
         }
-        return { registros: aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: true })), moveu: false }
+        return { registros: aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: true })), moveu: false, campos: [] }
       })
       await executarTurno(TURNO)
       expect(turno()).toMatchObject({
@@ -3892,7 +3976,7 @@ describe('a RETOMADA (1056)', () => {
       vi.mocked(generateReply).mockResolvedValue({ text: 'Você conseguiu separar os extratos?\n[[AUTOMACAO:1]]', handoff: false, usage: null })
       vi.mocked(executarAcoes).mockImplementation(async (_db, _ctx, aceitas) => ({
         registros: aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: true })),
-        moveu: false,
+        moveu: false, campos: [],
       }))
       await executarTurno(TURNO)
       expect(turno().status).toBe('respondeu')
@@ -3906,7 +3990,7 @@ describe('a RETOMADA (1056)', () => {
         vi.mocked(generateReply).mockResolvedValueOnce({ text: 'Segue a proposta. Conseguiu ver?\n[[MOVER:1]]', handoff: false, usage: null })
         vi.mocked(executarAcoes).mockImplementation(async (_db, _ctx, aceitas) => {
           Object.assign(card(), { stage_id: etapa, etapa_desde: new Date().toISOString() })
-          return { registros: aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: true })), moveu: true }
+          return { registros: aceitas.map((a) => ({ tipo: a.tipo, alvo: { id: a.id, nome: a.nome }, ok: true })), moveu: true, campos: [] }
         })
       }
 
@@ -3967,7 +4051,7 @@ describe('a RETOMADA (1056)', () => {
       // Reivindicado, ele não ocupa a vaga do pendente: o INSERT da retomada não
       // acusaria 23505, e a retomada (gatilho = a resposta, mais nova que a
       // mensagem do cliente) faria a reserva dele recusar `mais_nova`.
-      vi.mocked(executarAcoes).mockImplementation(async () => ({ registros: [], moveu: false }))
+      vi.mocked(executarAcoes).mockImplementation(async () => ({ registros: [], moveu: false, campos: [] }))
       vi.mocked(engineSendText).mockImplementation(async (args) => {
         args.antesDoProvedor?.()
         await args.aoSair?.('wamid.r')

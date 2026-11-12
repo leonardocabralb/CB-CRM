@@ -11,6 +11,7 @@ import {
   viewedConversationFromLocation,
 } from "@/lib/notifications/browser-notify";
 import { popUpDoSino, silencioDoSino } from "@/lib/notifications/aviso-do-sino";
+import { abaEmFoco, popUpDoSistemaCalaPelaCaixinha } from "@/lib/notifications/aviso-da-ia";
 import { textoDoAviso, type AvisoComContato } from "@/lib/notifications/texto-do-aviso";
 import { tocarSomDoAviso } from "@/lib/notifications/som-do-aviso";
 import {
@@ -171,6 +172,10 @@ export function useAvisosDoSinoNoNavegador(): void {
             agoraMs: Date.now(),
           });
           if (silencio) return;
+          // 1139: o aviso da IA que passou a conversa já abre a caixinha
+          // dentro do CRM (`useAvisoDaIaNaTela`); com a aba EM FOCO, o pop-up
+          // do sistema repetiria o mesmo aviso por cima dela.
+          if (popUpDoSistemaCalaPelaCaixinha(aviso.type, abaEmFoco())) return;
           void exibir(aviso);
         },
       )

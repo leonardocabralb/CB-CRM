@@ -170,6 +170,20 @@ export async function avisoDaTarefa(agente: string): Promise<string> {
 }
 
 /**
+ * O título do aviso no sino quando o agente passa a conversa para a equipe
+ * (1139, decisão D2 do operador): "IA passou <cliente> para a equipe". Sem
+ * nome nem identidade legível, o rótulo neutro — nunca um id.
+ */
+export async function tituloDoAvisoDaTransferencia(cliente: string | null): Promise<string> {
+  const { locale, messages } = await dicionario()
+  const t = createTranslator({ locale, messages, namespace: 'IaAgentes.transferencia.aviso' }) as unknown as (
+    chave: string,
+    valores?: Record<string, string>,
+  ) => string
+  return t('titulo', { cliente: cliente?.trim() || t('clienteSemNome') })
+}
+
+/**
  * Os textos da anotação que uma AUTOMAÇÃO escreve (passo "Escrever anotação
  * interna", `src/lib/notes/anotacao-da-automacao.ts`), no idioma da
  * instalação: quem assina (`Automação "<nome>"`, como o autor das anotações

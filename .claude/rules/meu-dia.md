@@ -379,3 +379,5 @@ na casca e o cartão em *Seu perfil*. Pino estrutural:
   aviso de mensagem é o id da conversa, e os dois se substituiriam.
 - **A conversa atribuída lê o contato** (o texto da 0027 é em inglês) e sai na
   voz passiva (`textoDoAviso` sem autor): o pop-up não carrega os membros.
+- `ia_transferiu` (1139) abre também a caixinha; em foco, o pop-up cala
+  (`ia-agentes-turno.md`).

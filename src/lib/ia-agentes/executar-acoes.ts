@@ -108,6 +108,17 @@ export async function anotarNaConversa(
 }
 
 /**
+ * Um campo que o agente preencheu nesta resposta (1139): o nome do campo e o
+ * valor como o modelo o escreveu (o mesmo da anotação). Só em memória — vai
+ * ao aviso da transferência ("Pendência da IA: …"); o registro do turno
+ * guarda o campo, não o valor.
+ */
+export interface CampoPreenchido {
+  nome: string
+  valor: string
+}
+
+/**
  * O que uma ação fez: `nota` nula = deu certo sem mudar nada (a etiqueta já
  * estava lá, o card já estava na etapa, o campo já tinha o valor — com
  * `detalhe: 'ja_estava'`). `detalhe` é o complemento cru.
@@ -359,8 +370,9 @@ export async function executarAcoes(
   db: SupabaseClient,
   ctx: ContextoDasAcoes,
   aceitas: readonly AcaoResolvida[],
-): Promise<{ registros: RegistroDeAcao[]; moveu: boolean }> {
+): Promise<{ registros: RegistroDeAcao[]; moveu: boolean; campos: CampoPreenchido[] }> {
   const registros: RegistroDeAcao[] = []
+  const campos: CampoPreenchido[] = []
   let moveu = false
   const naOrdem = [
     ...aceitas.filter((a) => a.tipo !== 'marcar_reuniao'),
@@ -382,6 +394,12 @@ export async function executarAcoes(
       continue
     }
     registros.push({ tipo: acao.tipo, alvo, ok: true, ...detalhe })
+    // O campo que JÁ tinha o valor (`ja_estava`) conta também: a pendência
+    // repetida continua sendo o motivo desta passagem.
+    if (acao.tipo === 'preencher_campo') {
+      const valor = (r.nota?.valor ?? acao.valor ?? '').trim()
+      if (valor) campos.push({ nome: acao.nome, valor })
+    }
     if (!r.nota) continue
     if (acao.tipo === 'mover_etapa') moveu = true
     try {
@@ -401,5 +419,5 @@ export async function executarAcoes(
       console.error('[ia-agentes] anotar a ação falhou:', acao.tipo, err)
     }
   }
-  return { registros, moveu }
+  return { registros, moveu, campos }
 }
