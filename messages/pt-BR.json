@@ -7389,7 +7389,6 @@
         "pedido_vazado": "{agente} passou a conversa para a equipe: a resposta revelava parte das instruções internas do agente, e não foi enviada. O texto retido está nos Turnos do agente.",
         "acao_prometida": "{agente} passou a conversa para a equipe: a resposta dizia que algo foi feito no sistema (uma tarefa, um campo, uma etiqueta, a etapa do card…), mas nada foi feito — e ela não foi enviada. O texto retido está nos Turnos do agente; faça o que foi pedido e responda ao cliente."
       },
-      "passagem": "{agente} passou a conversa para IA · {destino}, e o card foi para a etapa desse agente.",
       "aviso": {
         "titulo": "IA passou {cliente} para a equipe",
         "clienteSemNome": "um cliente"

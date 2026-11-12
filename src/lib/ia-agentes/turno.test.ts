@@ -203,6 +203,9 @@ vi.mock('./repo', () => ({ obterAgente: vi.fn() }))
 vi.mock('./ferramentas', () => ({ opcoesDoAgente: vi.fn(async () => ({})) }))
 // A agenda do Calendly (F5): um dublê (a leitura tem teste próprio em `agenda.test.ts`).
 vi.mock('./agenda', () => ({ lerAgendaDoAgente: vi.fn(async () => null) }))
+// O cliente da trilha (1141): o mesmo banco falso — o cabeçalho do agente
+// tem teste próprio (`cliente-do-agente.test.ts`).
+vi.mock('./cliente-do-agente', () => ({ clienteDoAgente: vi.fn(() => banco) }))
 vi.mock('./executar-acoes', async (original) => ({
   ...(await original<typeof import('./executar-acoes')>()),
   executarAcoes: vi.fn(async () => ({ registros: [], moveu: false, campos: [] })),
@@ -1999,16 +2002,14 @@ describe('executarTurno — a passagem (D25)', () => {
     expect(vi.mocked(generateReply).mock.calls[0][0].systemPrompt).not.toContain('PASSAR')
   })
 
-  it('passa: o card vai para a etapa do destino (no MESMO funil), fica a anotação, e o destino responde à MESMA mensagem', async () => {
+  it('passa: o card vai para a etapa do destino (no MESMO funil), SEM anotação (1141: a faixa da trilha diz quem moveu), e o destino responde à MESMA mensagem', async () => {
     comDestino()
     triagemPassa()
     await executarTurno(TURNO)
     expect(turno()).toMatchObject({ status: 'passou', erro: null })
     expect(card()).toMatchObject({ pipeline_id: FUNIL, stage_id: ETAPA_DESTINO })
     expect(drenarEventosDeFunil).toHaveBeenCalledTimes(1)
-    expect(notas()).toHaveLength(1)
-    expect(notas()[0]).toMatchObject({ author_user_id: null, autor_nome: 'IA · Triagem', contact_id: 'contato-1' })
-    expect(String(notas()[0].texto)).toContain('IA · Cobrança')
+    expect(notas()).toEqual([])
     // O turno do destino: mesma mensagem, marcado, sem espera — e já rodou
     // (por `rodarPendentesDaConversa`; o disparo agendado é a segunda porta).
     expect(after).toHaveBeenCalledTimes(1)
@@ -2042,7 +2043,7 @@ describe('executarTurno — a passagem (D25)', () => {
     expect(turno().status).toBe('passou')
     expect(card().stage_id).toBe(ETAPA_DESTINO)
     expect(drenarEventosDeFunil).toHaveBeenCalledTimes(1)
-    expect(notas()).toHaveLength(1)
+    expect(notas()).toEqual([])
     expect(turnoDoDestino()).toBeUndefined()
     expect(engineSendText).not.toHaveBeenCalled()
   })
@@ -3018,6 +3019,8 @@ describe('executarTurno — as ações (F4, D28)', () => {
       dealId: CARD,
       canalId: CANAL,
       agente: { id: AGENTE, nome: 'Triagem' },
+      // 1141: etapa e etiqueta pelo cliente do AGENTE (a faixa da trilha diz quem foi).
+      dbDaTrilha: banco,
       dono: 'dono-1',
       tipoDeEvento: null,
     })
@@ -3258,10 +3261,10 @@ describe('executarTurno — as ações (F4, D28)', () => {
     // No envio a conversa AINDA não estava pausada: a transferência vem depois.
     expect(pausadaNoEnvio).toBe(false)
     expect(turno()).toMatchObject({ status: 'respondeu', mensagem_enviada_id: 'wamid.resposta', acoes: [{ ...TRANSFERIR, ok: true }] })
-    expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'transferencia', assigned_agent_id: MEMBRO })
-    expect(notas()).toHaveLength(1)
-    expect(String(notas()[0].autor_nome)).toContain('Triagem')
-    expect(String(notas()[0].texto)).toMatch(/respondeu ao cliente e passou a conversa para a equipe|replied to the customer and handed the conversation to the team/)
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'transferencia', assigned_agent_id: MEMBRO, status: 'pending' })
+    // 1141: "respondeu e passou" não anota — a faixa da trilha "Conversa marcada
+    // como pendente · pelo agente de IA" diz, e o aviso na tela (1139) avisa.
+    expect(notas()).toEqual([])
   })
 
   it('[[TRANSFERIR]] junto com ações: as ações executam primeiro, a transferência por último', async () => {
@@ -3324,7 +3327,7 @@ describe('executarTurno — as ações (F4, D28)', () => {
     await executarTurno(TURNO)
     expect(turno().status).toBe('respondeu')
     expect(conversa()).toMatchObject({ ia_pausada_por: 'transferencia' })
-    expect(notas()).toHaveLength(1)
+    expect(notas()).toEqual([])
   })
 
   it.each<[string, () => void, string]>([
@@ -3367,7 +3370,7 @@ describe('executarTurno — as ações (F4, D28)', () => {
     expect(pausadaNoEnvio).toBe(false)
     expect(turno()).toMatchObject({ status: 'respondeu', acoes: [{ ...TRANSFERIR, ok: true, detalhe: 'sem_marcador' }] })
     expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'transferencia', assigned_agent_id: MEMBRO })
-    expect(notas()).toHaveLength(1)
+    expect(notas()).toEqual([])
   })
 
   it('a promessa da equipe COM o [[TRANSFERIR]]: não é inferida (sem `sem_marcador`)', async () => {

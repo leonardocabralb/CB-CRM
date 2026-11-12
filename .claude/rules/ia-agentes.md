@@ -79,8 +79,8 @@ Plano: `docs/PLANO-agentes-de-ia.md` (D5, D28, F4). Sem migration.
   incerto = nenhuma ação (registradas como recusadas / `envio_falhou`). A
   PASSAGEM roda só campo, etiqueta e tarefa, ANTES de mover
   (`ia-agentes-turno.md`). Cada ação é
-  conferida DE NOVO na hora e deixa a anotação "IA · <agente> …"; uma falha
-  não segura as outras.
+  conferida DE NOVO na hora; etapa e etiqueta são faixa da trilha, o resto
+  faixa cinza (1141); uma falha não segura as outras.
 - ⚠️⚠️ **D5 SÓ para o que o agente faz (decisão do operador, 27/09/2026)**
   (`motivoForaDaD5`, `ferramentas.ts`): a automação que ele EXECUTA e as que
   ela aciona por `run_automation` (com trava de ciclo; "Aguardar" conta), e a
@@ -134,8 +134,8 @@ Plano: `docs/PLANO-agentes-de-ia.md` (D5, D28, F4). Sem migration.
   (`MotivoDaRecusa` | `CODIGOS_DE_FALHA_DA_ACAO`), o cru vai em `detalhe`; a
   aba Turnos traduz por Record exaustivo — código novo sem texto não compila.
 - **Playground**: as ações são SIMULADAS (nada executa) e vêm com o valor.
-- **Limites**: a trilha/`deal.*` dizem `automation`/`sistema` (a origem `ia`
-  exige migration); ferramentas lidas no começo do turno; agente e automação
+- **Limites**: o `deal.*` diz `system` (a trilha diz o agente, 1141);
+  ferramentas lidas no começo do turno; agente e automação
   da etapa nova falam os dois (o agente primeiro); as ações não são
   reconferidas uma a uma depois do envio (a reserva é a conferência; #316).
 

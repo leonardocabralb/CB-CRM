@@ -34,8 +34,8 @@ UPDATE/INSERT/DELETE fora do app, saiba o que ele aciona:
 - **`contacts.name`** → renomeia o card ABERTO mais recente (1007–1009), salvo
   título fixado. **`contacts.email` ↔ campo "E-mail"**: espelho nos dois
   sentidos (1000), aparado (1001).
-- **`contact_tags`** INSERT/DELETE → trilha 912 com `origin = 'sistema'`. NÃO
-  dispara a automação `tag_added`: essa sai do código (`tag-events.ts`).
+- **`contact_tags`** INSERT/DELETE → trilha 912 (`sistema`; o cabeçalho do
+  agente dá a via, 1141). NÃO dispara `tag_added` (sai de `tag-events.ts`).
 - **`messages`** AFTER INSERT → `conversations.aguardando_desde` (972, pela
   ORDEM DE INSERÇÃO) e `janela_meta` (993); `gravada_em` nasce `now()`. UPDATE
   de `deleted_at` recalcula a espera. A linha `nao_saiu` (a tentativa do

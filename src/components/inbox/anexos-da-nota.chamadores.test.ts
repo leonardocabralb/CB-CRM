@@ -100,6 +100,11 @@ const CONHECIDOS = [
  * as leituras exatas (outra leitura no mesmo arquivo reprova).
  */
 const SEM_ANEXOS: Record<string, { motivo: string; leituras: string[] }> = {
+  'src/components/inbox/acao-da-ia-line.tsx': {
+    motivo:
+      'a AÇÃO do agente de IA (1141, `tipo = acao_da_ia`) como faixa cinza: o escritor do agente (`anotarNaConversa`) só grava texto — nunca anexo — e ninguém a edita (sem autor), então nem anexos nem a marca "editada" existem nela',
+    leituras: ['nota.texto'],
+  },
   'src/components/inbox/internal-note-box.tsx': {
     motivo:
       'a caixa de ESCREVER: `r.texto` é o resultado da menção aplicada (aplicarMencao) e `emEdicao?.texto` o rascunho inicial da EDIÇÃO (os anexos atuais viram fichas removíveis, `mantidos`); a anotação respondida aparece pela CitacaoDaNota',

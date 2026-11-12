@@ -1,7 +1,8 @@
 // ============================================================
 // Textos que o SERVIDOR grava para a equipe ler (a anotação de transferência
-// do agente, a da passagem e a de cada AÇÃO que ele fez — F4; e o autor da
-// anotação que uma automação escreve). O turno roda no `after()` da ingestão ou do cron, sem pedido de
+// do agente e a de cada AÇÃO que ele fez — F4; desde a 1141 só as ações sem
+// faixa própria na trilha, e a passagem não anota; e o autor da anotação que
+// uma automação escreve). O turno roda no `after()` da ingestão ou do cron, sem pedido de
 // tela: o idioma é o da instalação (`NEXT_PUBLIC_APP_LOCALE`, o mesmo de
 // `src/i18n/request.ts`), e o texto sai do dicionário — nunca frase fixa no
 // código (o `ai_handoff_summary` do app anterior era inglês fixo).
@@ -122,20 +123,6 @@ export async function textosDaTransferencia(
     autor: t('autor', { agente }),
     texto: t(`nota.${motivo}`, { agente }),
   }
-}
-
-/**
- * O autor ("IA · Triagem") e o texto da anotação da PASSAGEM (D25): a
- * triagem entregou a conversa a outro agente e o card foi para a etapa dele.
- * Chave `IaAgentes.transferencia.passagem`, com `{agente}` e `{destino}`.
- */
-export async function textosDaPassagem(agente: string, destino: string): Promise<{ autor: string; texto: string }> {
-  const { locale, messages } = await dicionario()
-  const t = createTranslator({ locale, messages, namespace: 'IaAgentes.transferencia' }) as unknown as (
-    chave: string,
-    valores: Record<string, string>,
-  ) => string
-  return { autor: t('autor', { agente }), texto: t('passagem', { agente, destino }) }
 }
 
 /**

@@ -334,6 +334,13 @@ export interface ConversationNote {
   apagada_por?: string | null;
   /** O nome de quem apagou, congelado na hora (como `autor_nome`). */
   apagada_por_nome?: string | null;
+  /**
+   * O tipo (1141): `acao_da_ia` = o que o agente de IA fez sem faixa própria
+   * na trilha — o fio a desenha como faixa cinza, a aba Notas e a ficha não a
+   * listam (`ehAcaoDaIa`). Opcional: ausente (linha anterior à 1141, dublê de
+   * teste) conta como anotação.
+   */
+  tipo?: 'anotacao' | 'acao_da_ia';
   created_at: string;
 }
 

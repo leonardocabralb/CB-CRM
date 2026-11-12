@@ -199,7 +199,8 @@ import {
 } from './retomada'
 import { lerBloqueiosDaRetomada, lerFimDaJanelaMeta, lerMensagensDepois } from './retomada-fatos'
 import { comNotaDaRetomada, lerRespostaDaRetomada, type ParadaDaResposta } from './retomada-resposta'
-import { textosDaPassagem, textosDaTransferencia, type MotivoDeTransferencia } from './textos-do-servidor'
+import { textosDaTransferencia, type MotivoDeTransferencia } from './textos-do-servidor'
+import { clienteDoAgente } from './cliente-do-agente'
 import { marcarOrigem } from '@/lib/conversations/origem-da-escrita'
 
 /** A linha de `cb_ia_turnos` que o claim devolve. */
@@ -418,7 +419,12 @@ export async function transferirParaGente(
     }
 
     const { autor, texto } = await textosDaTransferencia(args.nomeDoAgente, args.motivo, args.codigoDaReuniao)
-    await anotarNaConversa(db, { ...args, autor, texto })
+    // 1141 (pedido do operador, 12/11/2026): "respondeu e passou a conversa"
+    // não vira anotação — a faixa da trilha já diz "Conversa marcada como
+    // pendente · pelo agente de IA <nome>" (o UPDATE acima, com a origem) e o
+    // aviso na tela (1139) avisa quem recebe. Os OUTROS motivos são avisos que
+    // pedem algo da equipe (áudio, teto, resposta retida…) e ficam anotação.
+    if (args.motivo !== 'agente_passou') await anotarNaConversa(db, { ...args, autor, texto })
     // 1139: o aviso no sino (e a caixinha na tela) para quem o agente manda
     // avisar. Só aqui, com a transferência FEITA: `nada_mudou` (já pausada,
     // encerrada) não avisa. Nunca lança.
@@ -988,28 +994,25 @@ async function passar(
   }
 
   // `pipeline_id` e `stage_id` num UPDATE só (a trilha da 912 conta a troca
-  // de funil numa linha).
-  const { data: movidos, error } = await db
-    .from('deals')
-    .update({ pipeline_id: etapa.pipelineId, stage_id: etapa.id })
-    .eq('id', turno.deal_id)
-    .eq('account_id', turno.account_id)
-    .eq('stage_id', turno.stage_id)
-    .eq('status', 'open')
-    .select('id')
+  // de funil numa linha), com a origem do agente (1141): a faixa "Avançou de
+  // X para Y · pelo agente de IA <nome>" é o registro da passagem — sem
+  // anotação (pedido do operador, 12/11/2026); a resposta seguinte já sai com
+  // o selo do agente de destino.
+  const { data: movidos, error } = await marcarOrigem(
+    db
+      .from('deals')
+      .update({ pipeline_id: etapa.pipelineId, stage_id: etapa.id })
+      .eq('id', turno.deal_id)
+      .eq('account_id', turno.account_id)
+      .eq('stage_id', turno.stage_id)
+      .eq('status', 'open')
+      .select('id'),
+    { via: 'agente', ref: conferido.agente.id },
+  )
   if (error) return { status: 'falhou', erro: `mover o card falhou: ${error.message}` }
   if (!movidos || movidos.length === 0) return { status: 'transferiu', motivo: 'sentinela' }
   // A automação da etapa de destino (a boas-vindas) roda já, como a tela faz.
   void drenarEventosDeFunil().catch(() => {})
-
-  const { autor, texto } = await textosDaPassagem(conferido.agente.nome, destino.nome)
-  await anotarNaConversa(db, {
-    accountId: turno.account_id,
-    conversationId: turno.conversation_id,
-    contactId: conferido.contactId,
-    autor,
-    texto,
-  })
 
   // Alguma automação ligada escuta a etapa de destino: ELA fala desta vez, e
   // o agente responde a partir da próxima mensagem do cliente — a regra da
@@ -1632,6 +1635,7 @@ async function conduzir(
                 dealId: turno.deal_id,
                 canalId: turno.canal_id,
                 agente: { id: agente.id, nome: agente.nome },
+                dbDaTrilha: clienteDoAgente(agente.id),
                 dono,
                 tipoDeEvento: null,
               },
@@ -1700,6 +1704,8 @@ async function conduzir(
         dealId: turno.deal_id,
         canalId: turno.canal_id,
         agente: { id: agente.id, nome: agente.nome },
+        // 1141: etapa e etiqueta pelo cliente do agente (a faixa da trilha diz quem foi).
+        dbDaTrilha: clienteDoAgente(agente.id),
         dono,
         tipoDeEvento: agenda?.tipoDeEvento ?? null,
       },

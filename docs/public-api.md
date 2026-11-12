@@ -1355,7 +1355,18 @@ know:
 `anexos` is `[]` on a note with text only. Each `url` is the file's public
 address (anyone with the link can fetch it, like the other chat
 attachments); an HTML page comes with `?download=` so it downloads instead
-of opening. `editada_em` is when the note was last edited (`null` = never):
+of opening.
+
+An **AI agent** also writes notes (with `author_user_id` `null` and
+`autor_nome` "IA · <agent>"): a warning that asks the team to act (it couldn't
+hear an audio, a reply was held back, a meeting wasn't booked…) and a record
+of an action it took that has no line of its own in the contact's activity
+trail — it filled a field, created a task, ran an automation or booked a
+meeting (in the dashboard these show as a grey line in the conversation, not
+as a note). Since migration `1141` (12/11/2026), moving the deal, tagging the
+contact, handing the conversation to another agent and "replied and handed it
+to the team" no longer create notes: they are in the activity trail, credited
+to the agent. `editada_em` is when the note was last edited (`null` = never):
 in the dashboard, a note's author can edit its text and attachments — the
 `id` and `created_at` stay the same. Notes cannot be edited through this API.
 

@@ -153,11 +153,29 @@ das ações está em `ia.md` e `ia-agentes.md`.
   UPDATE da pausa em `transferirParaGente` grava `status: 'pending'` junto,
   marcado com `marcarOrigem` (`agente`): a trilha da 1083 diz quem mudou.
 - Conversa encerrada ou já pausada de vez: nada muda (o UPDATE não casa).
-  A pausa TEMPORÁRIA (`gente`/`botao`, 1138) vira a transferência, com a
-  anotação: a IA pediu gente, e a temporária a deixaria voltar em N min.
+  A pausa TEMPORÁRIA (`gente`/`botao`, 1138) vira a transferência (com a
+  anotação do motivo, menos a do `agente_passou`, 1141): a IA pediu gente, e
+  a temporária a deixaria voltar em N min.
 - A pendente continua na caixa (o filtro padrão mostra aberta e pendente). A
   IA só se cala na ENCERRADA, então "Retomar IA" não precisa reabrir; voltar
   para aberta é com a equipe.
+
+### O que a IA fez aparece como FAIXA CINZA (1141)
+
+Pedido do operador (12/11/2026), `docs/PLANO-acoes-da-ia-na-trilha.md`.
+
+- ⚠️⚠️ **Etapa e etiqueta pelo cliente do AGENTE** (`ctx.dbDaTrilha` =
+  `clienteDoAgente(agente.id)`, cabeçalhos `x-cb-via: agente` e `x-cb-ref`):
+  os gatilhos de `deals` e `contact_tags` (912, recriados na 1141) gravam
+  `details.via`/`ref_nome`, e a faixa diz "pelo agente de IA <nome>" — sem
+  anotação. A PASSAGEM move o card com `marcarOrigem` (agente) e também não
+  anota. Só a via `agente` vai para a trilha, e só sem sessão. Pinos:
+  `cliente-do-agente.test.ts` e `acoes-da-ia-na-trilha-1141.test.ts`.
+- **"Respondeu e passou" (`agente_passou`) não anota**: a faixa "Conversa
+  marcada como pendente · pelo agente de IA" (1083) diz, e o aviso (1139)
+  avisa com o mesmo texto. Os outros motivos seguem anotação.
+- Campo, tarefa, automação e reunião anotam com o TIPO `acao_da_ia` (faixa
+  cinza no fio; `anotacoes.md`). O `deal.*` segue `system` (limite).
 
 ### A transferência AVISA a equipe (1139)
 
