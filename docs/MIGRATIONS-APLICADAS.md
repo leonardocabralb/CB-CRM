@@ -2139,3 +2139,21 @@ nome da época em que foram aplicadas.
   Conferida na produção: os nove tipos no CHECK, a tabela vazia (o ciclo da
   conferência foi desfeito), RLS ligada sem policy, `anon`/`authenticated`
   sem leitura nem EXECUTE, `service_role` com os dois.
+- **1141_cb_ia_acoes_na_trilha** — as AÇÕES do agente de IA saem das
+  anotações (pedido do operador de 12/11/2026): a coluna
+  `cb_conversation_notes.tipo` (`anotacao` | `acao_da_ia`, CHECK: a ação só
+  sem autor humano), o backfill das ações antigas (só o texto exato dos
+  verbos) e os gatilhos `cb_log_deal_event`/`cb_log_contact_tag_event`
+  recriados para gravar `via: agente` + o nome na trilha quando a escrita
+  vem com o cabeçalho do agente (`origin` não muda; EXECUTE fechado). PR #514.
+
+  ADITIVA, aplicada ANTES do deploy com a autorização explícita do operador
+  ("Pode implementar, gravar e mesclar", 12/11/2026), em 12/11/2026 às 15:49
+  BRT (histórico `20261112184947`), pela Management API, com o arquivo
+  idêntico ao do commit `e6a2d69b` (sha256 `3ad9727e…`), cujo replay do CI
+  passou e que o Codex revisou sem achados. Antes: o replay local do zero e
+  oito cenários com dado fictício num Postgres descartável. Conferida na
+  produção: a coluna e o CHECK, os dois gatilhos lendo
+  `cb_quem_mexeu_na_conversa`, `authenticated` sem EXECUTE, e 32 ações
+  antigas viradas `acao_da_ia` (preencheu 20, moveu 7, etiquetou 3,
+  respondeu e passou 2).

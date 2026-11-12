@@ -55,3 +55,5 @@ para Pendências da IA · pelo sistema"). Vale para todos os agentes da conta
 - 12/11/2026: migration 1141 e PR em `feat/ia-acoes-na-trilha`. Provas:
   replay local do zero (265 migrations + `verify-schema`), 8 cenários com dado
   fictício (`~/Downloads/CB-CRM/ferramentas/pg-replay/cenarios-1141/`), testes.
+- 12/11/2026 15:49 BRT: 1141 APLICADA na produção (32 ações antigas viraram
+  faixa cinza). PR #514 com CI verde e Codex sem achados.
