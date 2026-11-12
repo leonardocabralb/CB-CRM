@@ -193,7 +193,9 @@ agentes não avisa.
 - ⚠️ **Volta enquanto não lido** (D6): ao montar, os `ia_transferiu` NÃO
   lidos das últimas 24 h (`JANELA_DA_REABERTURA_MS`, até
   `TETO_NA_REABERTURA`), sem som, lidos DEPOIS de inscrever o canal (o
-  repetido cala pelo id). O X vale só naquela página.
+  repetido cala pelo id). ⚠️ O lido pelo tempo real enquanto a consulta está
+  no ar NÃO volta (`avisosParaReabrir`, o `lidos` da página): a foto diria
+  "não lido" e a caixinha ficaria presa (Codex, #511). O X vale só ali.
 - **Limites aceitos**: com "Transferir para" e sem responsável, o destino
   recebe também o "Conversa atribuída" da 0027; o resumo da porta do Meu dia
   não conta o tipo novo (o bloco de notificações mostra).

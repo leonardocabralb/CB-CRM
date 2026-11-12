@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import type { Notification } from "@/types";
 
 import {
+  avisosParaReabrir,
   caixinhaTocaOSom,
   caixinhasDaConversa,
   desdeDaReabertura,
@@ -104,6 +105,14 @@ describe("a caixinha VOLTA enquanto o aviso não é lido (D6, 12/11/2026)", () =
     const agora = Date.parse("2026-11-12T12:00:00Z");
     expect(desdeDaReabertura(agora)).toBe("2026-11-11T12:00:00.000Z");
   });
+
+  it("o mais antigo primeiro; ⚠️ o que o tempo real já disse LIDO enquanto a consulta estava no ar não volta (Codex, #511)", () => {
+    const daConsulta = [{ id: "novo" }, { id: "meio" }, { id: "velho" }];
+    expect(avisosParaReabrir(daConsulta, new Set()).map((a) => a.id)).toEqual(["velho", "meio", "novo"]);
+    expect(avisosParaReabrir(daConsulta, new Set(["meio"])).map((a) => a.id)).toEqual(["velho", "novo"]);
+    // Não mexe na lista recebida.
+    expect(daConsulta.map((a) => a.id)).toEqual(["novo", "meio", "velho"]);
+  });
 });
 
 describe("pinos da montagem", () => {
@@ -130,7 +139,10 @@ describe("pinos da montagem", () => {
     expect(consulta).toMatch(/\.is\("read_at", null\)/);
     expect(consulta).toMatch(/\.gte\("created_at", desdeDaReabertura\(Date\.now\(\)\)\)/);
     expect(consulta).toMatch(/\.limit\(TETO_NA_REABERTURA\)/);
-    expect(hook).toMatch(/mostrar\(aviso, false\)/);
+    expect(hook).toMatch(/avisosParaReabrir\(\(data \?\? \[\]\) as Notification\[\], lidos\)\) mostrar\(aviso, false\)/);
+    // O UPDATE guarda o lido ANTES de fechar, e `mostrar` o recusa.
+    expect(hook).toMatch(/lidos\.add\(aviso\.id\);\s*if \(abertas\.has\(aviso\.id\)\) fechar\(aviso\.id\);/);
+    expect(hook).toMatch(/const mostrar = \(aviso: Notification, comSom: boolean\) => \{\s*if \(lidos\.has\(aviso\.id\)\) return;/);
     // O que chega pelo tempo real é novo: toca.
     expect(hook).toMatch(/mostrar\(aviso, true\)/);
   });

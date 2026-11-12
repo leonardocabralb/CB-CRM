@@ -33,6 +33,20 @@ export function desdeDaReabertura(agoraMs: number): string {
   return new Date(agoraMs - JANELA_DA_REABERTURA_MS).toISOString();
 }
 
+/**
+ * Os avisos lidos na abertura que voltam a abrir a caixinha, na ordem de
+ * MOSTRAR (o mais antigo primeiro: o sonner põe o último no topo). ⚠️ Fora os
+ * que o tempo real já disse LIDOS enquanto a consulta estava no ar (outra
+ * aba, outro aparelho): a foto da consulta diria "não lido", e a caixinha
+ * ficaria presa — nenhum UPDATE novo viria para fechá-la (Codex, #511).
+ */
+export function avisosParaReabrir<T extends { id: string }>(
+  maisRecentesPrimeiro: readonly T[],
+  lidosNoCaminho: ReadonlySet<string>,
+): T[] {
+  return [...maisRecentesPrimeiro].reverse().filter((a) => !lidosNoCaminho.has(a.id));
+}
+
 /** O `id` da caixinha no sonner: um por aviso, com prefixo próprio. */
 export function idDaCaixinha(avisoId: string): string {
   return `ia:${avisoId}`;

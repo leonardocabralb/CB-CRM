@@ -10,6 +10,7 @@ import { avisoPossivelNoAparelho, usePreferenciaDeAviso } from "@/hooks/use-brow
 import { EVENTO_ABRIR_CONVERSA, EVENTO_CONVERSA_ABERTA } from "@/lib/inbox/url";
 import {
   abaEmFoco,
+  avisosParaReabrir,
   caixinhaTocaOSom,
   caixinhasDaConversa,
   desdeDaReabertura,
@@ -85,6 +86,10 @@ export function useAvisoDaIaNaTela(): void {
     let cancelado = false;
     // As caixinhas abertas: id do aviso → conversa.
     const abertas = new Map<string, string | null>();
+    // Os avisos da IA que já se sabe LIDOS nesta página (o clique, o UPDATE do
+    // tempo real): nunca reabrem — nem a foto da consulta da abertura, que
+    // pode ter saído antes da leitura (Codex, #511).
+    const lidos = new Set<string>();
 
     const fechar = (avisoId: string) => {
       abertas.delete(avisoId);
@@ -103,6 +108,7 @@ export function useAvisoDaIaNaTela(): void {
     };
 
     const abrir = (aviso: Notification) => {
+      lidos.add(aviso.id);
       fechar(aviso.id);
       void marcarLido(aviso.id);
       const rota = rotaDoAviso(aviso);
@@ -115,6 +121,7 @@ export function useAvisoDaIaNaTela(): void {
     };
 
     const mostrar = (aviso: Notification, comSom: boolean) => {
+      if (lidos.has(aviso.id)) return;
       const { ctx, preferencia: pref } = vivoRef.current;
       const silencio = silencioDoSino({
         aviso,
@@ -162,9 +169,13 @@ export function useAvisoDaIaNaTela(): void {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
         (payload) => {
-          // Lido por outro caminho (o sino, o pop-up, outra aba): a caixinha sai.
+          // Lido por outro caminho (o sino, o pop-up, outra aba): a caixinha
+          // sai — e o id fica guardado, para a consulta da abertura ainda no
+          // ar não a reabrir com a foto de antes da leitura.
           const aviso = payload.new as Notification;
-          if (aviso.read_at && abertas.has(aviso.id)) fechar(aviso.id);
+          if (!aviso.read_at || aviso.type !== TIPO_DO_AVISO_DA_IA) return;
+          lidos.add(aviso.id);
+          if (abertas.has(aviso.id)) fechar(aviso.id);
         },
       )
       .subscribe();
@@ -197,8 +208,7 @@ export function useAvisoDaIaNaTela(): void {
         console.warn("[useAvisoDaIaNaTela] avisos não lidos não carregados:", error.message);
         return;
       }
-      // O mais antigo primeiro: o sonner põe o último no topo da pilha.
-      for (const aviso of [...((data ?? []) as Notification[])].reverse()) mostrar(aviso, false);
+      for (const aviso of avisosParaReabrir((data ?? []) as Notification[], lidos)) mostrar(aviso, false);
     })();
 
     return () => {
