@@ -42,6 +42,13 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  * `conduz_fechamento` — SÓ booleano (outra forma = 400 `corpo_invalido`).
  * Ligado, as regras do sistema desse agente trocam `sem_preco` e
  * `sem_compromisso` pelas do fechamento (`regras-do-sistema.ts`).
+ *
+ * 1131: o agente vem com `frasesAutorizadas`, e o `PATCH` aceita
+ * `frases_autorizadas` — a lista INTEIRA de textos, cada um numa linha só e
+ * aparado com 1 a 400 caracteres, no máximo 10, sem repetir (sem caixa);
+ * outra forma = 400 `corpo_invalido` (`lerFrasesAutorizadasDoCorpo`). Com a
+ * lista preenchida, as regras do sistema desse agente ganham a exceção das
+ * frases e terminam com a lista.
  */
 export async function GET(_request: Request, { params }: Contexto) {
   try {

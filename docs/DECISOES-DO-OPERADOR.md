@@ -133,13 +133,19 @@ qualquer uma é pergunta ao operador.
   (28/08/2026; 1047). O modelo é do módulo (Radar) e, com os agentes, de
   cada agente (D1 de `docs/PLANO-agentes-de-ia.md`).
 - Agentes de IA, regras do sistema: as 12 valem para todo agente e nada as
-  desliga (27/09/2026). A ÚNICA variação é "Conduz o fechamento", por agente
+  desliga (27/09/2026). Uma variação é "Conduz o fechamento", por agente
   e desligada por padrão (08/11/2026, 1128): troca "não fala de preço" e "não
   aceita proposta" por honorários SÓ como escritos (sem negociar) e convite a
   assinar pelo link escrito, com a contratação confirmada só pela assinatura;
   as outras dez ficam (`ia-regras-do-sistema.md`). Pedido de desconto ou
   outra condição: recusa delicada, como as instruções mandam, e a equipe só
   se o cliente insistir (08/11/2026, noite).
+- Agentes de IA, frases autorizadas (decisão 50=c de 04/10/2026, confirmada
+  em 09/11/2026; 1131): a outra variação, por agente — até 10 frases EXATAS
+  do escritório que o agente pode dizer mesmo citando custo ou resultado
+  passado (este, só como experiência do escritório, nunca como promessa);
+  fora delas as regras valem iguais, e a lista vazia não muda uma letra
+  (`ia-regras-do-sistema.md`).
 - Agente de IA que passa a conversa para a equipe a deixa PENDENTE, como o
   robô (09/11/2026; `ia-agentes-turno.md`).
 - Agentes de IA, revisão de 09/11/2026: (1) com cards abertos em mais de um

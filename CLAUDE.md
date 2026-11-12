@@ -574,7 +574,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 - `.claude/rules/ia-agentes.md` — o que cada agente de IA vê (acesso, blocos)
   e a base de conhecimento por agente (1052); a resposta cortada pelo teto.
 - `.claude/rules/ia-regras-do-sistema.md` — as 12 regras do sistema, a trava
-  do pedido vazado e "Conduz o fechamento" por agente (1128).
+  do pedido vazado, "Conduz o fechamento" (1128) e as frases autorizadas
+  (1131), por agente.
 - `.claude/rules/ia-retomada.md` — a retomada do agente quando o cliente não
   responde (1056): a fila, a cadência, o que a para e os lembretes.
 - `.claude/rules/ia-pausa.md` — a pausa temporária da IA (1138): N da conta,

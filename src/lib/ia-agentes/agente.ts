@@ -39,6 +39,10 @@ export const LIMITES = {
   itensPorAcao: 50,
   /** Tipos de evento do Calendly em "Marcar reunião" (F5): UM — o que o agente oferece. */
   tiposDeEvento: 1,
+  /** Frases autorizadas por agente (1131): o MESMO teto do CHECK da coluna. */
+  frasesAutorizadas: 10,
+  /** Caracteres de UMA frase autorizada (1131), já numa linha só e aparada. */
+  fraseAutorizada: 400,
 } as const
 
 /**
@@ -188,6 +192,14 @@ export interface IaAgente {
    * (`regrasDoSistema`). Falso = as regras de sempre.
    */
   conduzFechamento: boolean
+  /**
+   * As FRASES AUTORIZADAS (1131, decisão do operador 50=c de 04/10/2026,
+   * confirmada em 09/11/2026): frases exatas, escritas pelo escritório, que o
+   * agente pode dizer mesmo citando custo ou resultado — as regras do sistema
+   * ganham a exceção e terminam com a lista (`regrasDoSistema`). Vazia = as
+   * regras de sempre.
+   */
+  frasesAutorizadas: string[]
   /** Quando foi LIGADO pela última vez (gatilho da 1049); nulo = nunca. D27. */
   ativadoEm: string | null
   arquivadoEm: string | null
@@ -211,7 +223,7 @@ export type AgenteComEtapas = IaAgente & { etapas: EtapaDoAgente[] }
 
 /** Colunas lidas: nomeadas, nunca `*` (uma coluna sem GRANT derrubaria a consulta). */
 export const COLUNAS_DO_AGENTE =
-  'id, account_id, nome, descricao, instrucoes, regras, provedor, modelo, ativo, conexoes, horario, teto_respostas, pode_passar_para, transferir_para, acesso, ferramentas, retomada, conduz_fechamento, ativado_em, arquivado_em, created_at, updated_at'
+  'id, account_id, nome, descricao, instrucoes, regras, provedor, modelo, ativo, conexoes, horario, teto_respostas, pode_passar_para, transferir_para, acesso, ferramentas, retomada, conduz_fechamento, frases_autorizadas, ativado_em, arquivado_em, created_at, updated_at'
 
 function ehProvedor(v: unknown): v is AiProvider {
   return v === 'openai' || v === 'anthropic' || v === 'gemini'
@@ -276,6 +288,55 @@ export function blocoMarcado(acesso: AcessoDoAgente, bloco: BlocoDoAcesso): bool
   return bloco === 'campos' ? acesso.campos.length > 0 : acesso[bloco]
 }
 
+/**
+ * Uma FRASE AUTORIZADA (1131) numa linha só: espaço, tabulação e quebra de
+ * linha viram UM espaço, e as pontas saem. O pedido lista uma frase por linha
+ * — uma quebra dentro da frase a partiria. A rota grava assim
+ * (`lerFrasesAutorizadasDoCorpo`), o bloco das regras monta assim e a tela
+ * compara assim (`frasesDoTexto`).
+ */
+export function normalizarFrase(frase: string): string {
+  return frase.replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * Lê as `frases_autorizadas` guardadas (1131) — parse, nunca `as`. Só a lista
+ * de textos não vazios vale (aparados); qualquer outra forma — inclusive um
+ * item que não é texto, ou vazio — vira lista VAZIA: as frases liberam o
+ * agente a falar de custo e de resultado, então a dúvida fecha (as regras de
+ * sempre). Nunca lança.
+ */
+export function lerFrasesAutorizadas(v: unknown): string[] {
+  if (!Array.isArray(v)) return []
+  const frases = v.map((f) => (typeof f === 'string' ? f.trim() : ''))
+  return frases.every((f) => f.length > 0) ? frases : []
+}
+
+/**
+ * As `frases_autorizadas` do PATCH (1131), ESTRITAS: uma lista de textos,
+ * cada um numa linha só (`normalizarFrase`) com 1 a `LIMITES.fraseAutorizada`
+ * caracteres, no máximo `LIMITES.frasesAutorizadas`, sem repetir (sem caixa).
+ * `null` = forma inválida (a rota responde 400 `corpo_invalido`): descartar em
+ * silêncio tiraria do agente uma frase que o administrador acabou de
+ * escrever. Lista vazia vale (tira todas). A tela confere com esta mesma
+ * função antes do Salvar.
+ */
+export function lerFrasesAutorizadasDoCorpo(v: unknown): string[] | null {
+  if (!Array.isArray(v) || v.length > LIMITES.frasesAutorizadas) return null
+  const frases: string[] = []
+  const vistas = new Set<string>()
+  for (const item of v) {
+    if (typeof item !== 'string') return null
+    const frase = normalizarFrase(item)
+    if (frase.length === 0 || frase.length > LIMITES.fraseAutorizada) return null
+    const chave = frase.toLowerCase()
+    if (vistas.has(chave)) return null
+    vistas.add(chave)
+    frases.push(frase)
+  }
+  return frases
+}
+
 /** Lê o `horario` guardado; forma estranha vira nulo (= sempre), nunca exceção. */
 export function lerHorario(v: unknown): Horario | null {
   if (!v || typeof v !== 'object') return null
@@ -313,6 +374,8 @@ export function lerLinhaDoAgente(linha: Record<string, unknown>): IaAgente | nul
     retomada: lerRetomada(linha.retomada),
     // Só o booleano `true` liga (a coluna é NOT NULL; do JSON, "true" e 1 não).
     conduzFechamento: linha.conduz_fechamento === true,
+    // Ausente (antes da 1131) ou fora da forma = nenhuma frase.
+    frasesAutorizadas: lerFrasesAutorizadas(linha.frases_autorizadas),
     ativadoEm: typeof linha.ativado_em === 'string' ? linha.ativado_em : null,
     arquivadoEm: typeof linha.arquivado_em === 'string' ? linha.arquivado_em : null,
     createdAt: typeof linha.created_at === 'string' ? linha.created_at : '',
@@ -341,6 +404,8 @@ export interface AlteracaoDoAgente {
   retomada?: ConfigDaRetomada
   /** "Conduz o fechamento" (1128). */
   conduzFechamento?: boolean
+  /** As frases autorizadas (1131): a lista INTEIRA, na ordem. */
+  frasesAutorizadas?: string[]
   /** Ids das etapas em que atua (D24). Não é coluna do agente: vai para `cb_ia_agente_etapas`. */
   etapas?: string[]
 }
@@ -428,6 +493,13 @@ export function lerAlteracao(corpo: unknown, criacao: boolean): LeituraDaAlterac
     // verdadeiro em silêncio.
     if (typeof c.conduz_fechamento !== 'boolean') return { ok: false, codigo: 'corpo_invalido' }
     v.conduzFechamento = c.conduz_fechamento
+  }
+  if ('frases_autorizadas' in c) {
+    // ESTRITO, como o `conduz_fechamento`: as frases liberam o agente a falar
+    // de custo e de resultado — forma inválida recusa, nunca vira outra lista.
+    const frases = lerFrasesAutorizadasDoCorpo(c.frases_autorizadas)
+    if (!frases) return { ok: false, codigo: 'corpo_invalido' }
+    v.frasesAutorizadas = frases
   }
   if ('conexoes' in c) {
     const ids = lerIds(c.conexoes)
@@ -535,6 +607,8 @@ export function aplicarAlteracao<A extends IaAgente>(agente: A, a: AlteracaoDoAg
     ...(a.retomada !== undefined ? { retomada: a.retomada } : {}),
     // Muda o PEDIDO (as regras do sistema): o Playground testa o do rascunho.
     ...(a.conduzFechamento !== undefined ? { conduzFechamento: a.conduzFechamento } : {}),
+    // Também muda o PEDIDO (as exceções e a lista no fim das regras do sistema).
+    ...(a.frasesAutorizadas !== undefined ? { frasesAutorizadas: a.frasesAutorizadas } : {}),
   }
 }
 
@@ -557,6 +631,7 @@ export function colunasDaAlteracao(a: AlteracaoDoAgente): Record<string, unknown
   if (a.ferramentas !== undefined) c.ferramentas = a.ferramentas
   if (a.retomada !== undefined) c.retomada = a.retomada
   if (a.conduzFechamento !== undefined) c.conduz_fechamento = a.conduzFechamento
+  if (a.frasesAutorizadas !== undefined) c.frases_autorizadas = a.frasesAutorizadas
   return c
 }
 

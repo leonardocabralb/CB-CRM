@@ -10,7 +10,7 @@ import { CANARIO_DAS_REGRAS } from './regras-do-sistema'
 // ============================================================
 
 const AGORA = new Date('2026-09-28T13:00:00Z')
-const BASE = { instrucoes: 'Você faz a triagem.', regras: ['Nunca prometa resultado.'], conduzFechamento: false, agora: AGORA }
+const BASE = { instrucoes: 'Você faz a triagem.', regras: ['Nunca prometa resultado.'], conduzFechamento: false, frasesAutorizadas: [], agora: AGORA }
 
 describe('montarPedidoDaRetomada', () => {
   const p = montarPedidoDaRetomada({ ...BASE, retomada: { tentativa: 2, de: 6, semResposta: '1 hour' } })

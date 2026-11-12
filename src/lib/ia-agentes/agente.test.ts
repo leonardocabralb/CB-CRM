@@ -11,9 +11,12 @@ import {
   lerFerramentas,
   lerDocumentosPedidos,
   lerEtapaDoAgente,
+  lerFrasesAutorizadas,
+  lerFrasesAutorizadasDoCorpo,
   lerHorario,
   lerLinhaDoAgente,
   LIMITES,
+  normalizarFrase,
   planoDasEtapas,
   TIPOS_DE_ACAO,
   type IaAgente,
@@ -150,6 +153,77 @@ describe('"Conduz o fechamento" (1128) — a opção por agente', () => {
     expect(r.ok && r.valor).not.toHaveProperty('conduzFechamento')
     const criacao = lerAlteracao({ nome: 'A', provedor: 'gemini', modelo: 'm' }, true)
     expect(criacao.ok && colunasDaAlteracao(criacao.valor)).not.toHaveProperty('conduz_fechamento')
+  })
+})
+
+describe('as FRASES AUTORIZADAS (1131) — a lista por agente', () => {
+  const base = { id: ID, account_id: ID, provedor: 'gemini' }
+  const recusa = { ok: false, codigo: 'corpo_invalido' }
+
+  it('a linha: só a lista de textos não vazios vale (aparados); ausente (antes da 1131) = nenhuma', () => {
+    expect(lerLinhaDoAgente({ ...base, frases_autorizadas: [' Frase um. ', 'Frase dois.'] })?.frasesAutorizadas).toEqual([
+      'Frase um.',
+      'Frase dois.',
+    ])
+    expect(lerLinhaDoAgente(base)?.frasesAutorizadas).toEqual([])
+    expect(lerFrasesAutorizadas([])).toEqual([])
+  })
+
+  it('⚠️ qualquer outra forma vira lista VAZIA (a dúvida fecha: as regras de sempre), nunca exceção', () => {
+    for (const v of [null, 'Frase.', 7, {}, ['Frase.', 1], ['Frase.', ''], ['Frase.', '   '], [null]]) {
+      expect(lerFrasesAutorizadas(v), JSON.stringify(v)).toEqual([])
+    }
+  })
+
+  it('PATCH: a lista INTEIRA, cada frase numa linha só e aparada; vira a coluna frases_autorizadas', () => {
+    const r = lerAlteracao({ frases_autorizadas: ['  A primeira reunião\nnão tem custo.  ', 'Outra   frase.'] }, false)
+    expect(r).toEqual({ ok: true, valor: { frasesAutorizadas: ['A primeira reunião não tem custo.', 'Outra frase.'] } })
+    if (r.ok) {
+      expect(colunasDaAlteracao(r.valor)).toEqual({
+        frases_autorizadas: ['A primeira reunião não tem custo.', 'Outra frase.'],
+      })
+    }
+    // Lista vazia vale: tira todas.
+    expect(lerAlteracao({ frases_autorizadas: [] }, false)).toEqual({ ok: true, valor: { frasesAutorizadas: [] } })
+  })
+
+  it('PATCH: até 10 frases, de 1 a 400 caracteres cada', () => {
+    const dez = Array.from({ length: LIMITES.frasesAutorizadas }, (_, i) => `Frase ${i}.`)
+    expect(lerAlteracao({ frases_autorizadas: dez }, false)).toEqual({ ok: true, valor: { frasesAutorizadas: dez } })
+    expect(lerAlteracao({ frases_autorizadas: [...dez, 'Mais uma.'] }, false)).toEqual(recusa)
+    const longa = 'x'.repeat(LIMITES.fraseAutorizada)
+    expect(lerAlteracao({ frases_autorizadas: [` ${longa} `] }, false)).toEqual({ ok: true, valor: { frasesAutorizadas: [longa] } })
+    expect(lerAlteracao({ frases_autorizadas: [`${longa}x`] }, false)).toEqual(recusa)
+    expect(LIMITES.frasesAutorizadas).toBe(10)
+    expect(LIMITES.fraseAutorizada).toBe(400)
+  })
+
+  it('⚠️ PATCH ESTRITO: vazia, repetida (sem caixa nem espaço) ou fora da forma RECUSA — nunca descarta em silêncio', () => {
+    for (const v of [
+      [''],
+      ['   '],
+      ['Sem custo.', 'sem custo.'],
+      ['Sem custo.', ' Sem  custo. '],
+      ['Sem custo.', 7],
+      'Sem custo.',
+      null,
+      {},
+    ]) {
+      expect(lerAlteracao({ frases_autorizadas: v }, false), JSON.stringify(v)).toEqual(recusa)
+      expect(lerFrasesAutorizadasDoCorpo(v), JSON.stringify(v)).toBeNull()
+    }
+  })
+
+  it('sem a chave no corpo, a coluna não se toca (e a criação nasce sem frases pelo DEFAULT da 1131)', () => {
+    const r = lerAlteracao({ instrucoes: 'x' }, false)
+    expect(r.ok && r.valor).not.toHaveProperty('frasesAutorizadas')
+    const criacao = lerAlteracao({ nome: 'A', provedor: 'gemini', modelo: 'm' }, true)
+    expect(criacao.ok && colunasDaAlteracao(criacao.valor)).not.toHaveProperty('frases_autorizadas')
+  })
+
+  it('normalizarFrase: uma linha só, um espaço entre as palavras, sem as pontas', () => {
+    expect(normalizarFrase('  A primeira\r\nreunião \t não tem custo.  ')).toBe('A primeira reunião não tem custo.')
+    expect(normalizarFrase(' \n ')).toBe('')
   })
 })
 
@@ -433,6 +507,7 @@ describe('aplicarAlteracao — o RASCUNHO do Playground por cima do salvo (DC4, 
     ferramentas: {},
     retomada: { ativa: false, cadencia: [15, 60], janela: { inicio: '08:00', fim: '21:00' } },
     conduzFechamento: false,
+    frasesAutorizadas: [],
     ativadoEm: null,
     arquivadoEm: null,
     createdAt: '2026-10-01T12:00:00Z',
@@ -502,6 +577,14 @@ describe('aplicarAlteracao — o RASCUNHO do Playground por cima do salvo (DC4, 
     const ligado = { ...SALVO, conduzFechamento: true }
     expect(aplicarAlteracao(ligado, rascunho({ conduz_fechamento: false })).conduzFechamento).toBe(false)
     expect(aplicarAlteracao(ligado, rascunho({ instrucoes: 'x' })).conduzFechamento).toBe(true)
+  })
+
+  it('⚠️ as frases autorizadas do rascunho ENTRAM (1131): mudam as regras do sistema do pedido testado', () => {
+    const FRASE = 'A primeira reunião com o advogado não tem custo.'
+    expect(aplicarAlteracao(SALVO, rascunho({ frases_autorizadas: [FRASE] })).frasesAutorizadas).toEqual([FRASE])
+    const comFrase = { ...SALVO, frasesAutorizadas: [FRASE] }
+    expect(aplicarAlteracao(comFrase, rascunho({ frases_autorizadas: [] })).frasesAutorizadas).toEqual([])
+    expect(aplicarAlteracao(comFrase, rascunho({ instrucoes: 'x' })).frasesAutorizadas).toEqual([FRASE])
   })
 
   it('o `horario: null` do rascunho (sempre) vale; e o teto e a transferência também entram', () => {

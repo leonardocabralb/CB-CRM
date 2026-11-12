@@ -33,6 +33,7 @@ function args(over: Partial<ArgsDoPedido> = {}): ArgsDoPedido {
     instrucoes: 'Você faz a triagem.',
     regras: ['Nunca prometa resultado.'],
     conduzFechamento: false,
+    frasesAutorizadas: [],
     agora: new Date('2026-11-09T14:05:00Z'),
     passagens: [{ nome: 'Cobrança', descricao: 'boletos' }],
     blocos: [{ bloco: 'ficha', texto: 'Name: Maria\nPhone: +55 11 90000-0000' }],
@@ -92,6 +93,21 @@ describe('o pedido em PARTES (cache do provedor)', () => {
     expect(
       fixas(args({ acoes: { ...args().acoes, marcar_reuniao: [{ id: 'x', nome: 'x', textoNoPedido: 'Fri 13/11 09:00' }] } })),
     ).toEqual(base)
+  })
+
+  it('⚠️ as FRASES AUTORIZADAS (1131) moram na parte FIXA do agente: o turno e a retomada as dividem, e a hora não as mexe', () => {
+    const frases = ['A primeira reunião com o advogado não tem custo.']
+    const turno = partesDoPedidoDoAgente(args({ frasesAutorizadas: frases }))
+    expect(turno[0].cache).toBe(true)
+    expect(turno[0].texto).toContain(`AUTHORIZED STATEMENTS (written by the office; say them only when relevant, keep their meaning, never extend them):\n- ${frases[0]}`)
+    expect(turno.slice(1).some((p) => p.texto.includes('AUTHORIZED STATEMENTS'))).toBe(false)
+    const outraHora = partesDoPedidoDoAgente(args({ frasesAutorizadas: frases, agora: new Date('2026-11-12T09:41:00Z') }))
+    expect(outraHora.filter((p) => p.cache)).toEqual(turno.filter((p) => p.cache))
+    const retomada = partesDoPedidoDaRetomada({
+      ...args({ frasesAutorizadas: frases, passagens: undefined, acoes: undefined, agenda: undefined }),
+      retomada: { tentativa: 1, de: 3, semResposta: '2 hours' },
+    })
+    expect(retomada[0]).toEqual(turno[0])
   })
 
   it('a ordem nova: instruções e regras, ações, e SÓ DEPOIS a data, os blocos, a base e a agenda', () => {

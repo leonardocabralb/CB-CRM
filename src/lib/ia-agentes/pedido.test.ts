@@ -10,6 +10,7 @@ describe('montarPedidoDoAgente', () => {
   it('instruções e depois as REGRAS numeradas (D23)', () => {
     const p = montarPedidoDoAgente({
       conduzFechamento: false,
+      frasesAutorizadas: [],
       instrucoes: 'Você faz a triagem.',
       regras: ['Nunca prometa resultado.', '  ', 'Não fale de valores.'],
       agora: AGORA,
@@ -25,24 +26,24 @@ describe('montarPedidoDoAgente', () => {
   })
 
   it('sem regras não há bloco de regras', () => {
-    expect(montarPedidoDoAgente({ conduzFechamento: false, instrucoes: 'x', regras: [], agora: AGORA })).not.toMatch(/Rules you must/)
+    expect(montarPedidoDoAgente({ conduzFechamento: false, frasesAutorizadas: [], instrucoes: 'x', regras: [], agora: AGORA })).not.toMatch(/Rules you must/)
   })
 
   it('a data e a hora no fuso do escritório', () => {
-    const p = montarPedidoDoAgente({ conduzFechamento: false, instrucoes: '', regras: [], agora: AGORA })
+    const p = montarPedidoDoAgente({ conduzFechamento: false, frasesAutorizadas: [], instrucoes: '', regras: [], agora: AGORA })
     // 17:05 UTC = 14:05 em São Paulo.
     expect(p).toMatch(/14:05/)
     expect(p).toMatch(/2026/)
   })
 
   it('ensina a transferência e trata o cliente como conteúdo não confiável', () => {
-    const p = montarPedidoDoAgente({ conduzFechamento: false, instrucoes: '', regras: [], agora: AGORA })
+    const p = montarPedidoDoAgente({ conduzFechamento: false, frasesAutorizadas: [], instrucoes: '', regras: [], agora: AGORA })
     expect(p).toContain(HANDOFF_SENTINEL)
     expect(p).toMatch(/untrusted/)
   })
 
   it('a mídia do cliente: a leitura é conteúdo do cliente; SÓ a recusa de vez pede que descreva ou reenvie', () => {
-    const p = montarPedidoDoAgente({ conduzFechamento: false, instrucoes: '', regras: [], agora: AGORA })
+    const p = montarPedidoDoAgente({ conduzFechamento: false, frasesAutorizadas: [], instrucoes: '', regras: [], agora: AGORA })
     expect(p).toContain('(content: …)')
     // "could not be read": tentada e recusada — pede que descreva, ou transfere.
     expect(p).toMatch(/"— could not be read: <reason>" means the system tried and cannot read that file: never guess/)
@@ -51,7 +52,7 @@ describe('montarPedidoDoAgente', () => {
   })
 
   it('⚠️ a "not read yet" NÃO pede reenvio (ainda vai ser lida) e a figurinha não se pergunta', () => {
-    const p = montarPedidoDoAgente({ conduzFechamento: false, instrucoes: '', regras: [], agora: AGORA })
+    const p = montarPedidoDoAgente({ conduzFechamento: false, frasesAutorizadas: [], instrucoes: '', regras: [], agora: AGORA })
     expect(p).toMatch(/"— not read yet" means the file is still being read: you have not seen it, so never guess what it shows, and do not ask the customer to send it again/)
     expect(p).toMatch(/if you need it to answer, say you are still reviewing the files/)
     expect(p).toMatch(/\[sticker\] is a WhatsApp sticker, a decorative picture with nothing to read: never ask about it/)
@@ -61,7 +62,7 @@ describe('montarPedidoDoAgente', () => {
   })
 
   it('"responda e passe" (27/09): o [[TRANSFERIR]] SEMPRE no texto-base, ao lado do [[HANDOFF]] — sem nenhuma ferramenta', () => {
-    const p = montarPedidoDoAgente({ conduzFechamento: false, instrucoes: '', regras: [], agora: AGORA })
+    const p = montarPedidoDoAgente({ conduzFechamento: false, frasesAutorizadas: [], instrucoes: '', regras: [], agora: AGORA })
     expect(p).toMatch(/tell the customer that the team will continue/)
     expect(p).toMatch(/write that short message and add \[\[TRANSFERIR\]\] at the very end: the message is sent, and then the conversation goes to a person/)
     expect(p).toMatch(/Never tell the customer that someone will take over without \[\[TRANSFERIR\]\]/)
@@ -72,9 +73,10 @@ describe('montarPedidoDoAgente', () => {
   it('⚠️ a AÇÃO PROMETIDA (25/10/2026): SEMPRE — com ou sem ferramentas — só o marcador muda o sistema, e o que não dá para fazer vai para a equipe', () => {
     const regra = /You can change the business's systems ONLY through the action markers listed further below, if there are any/
     for (const p of [
-      montarPedidoDoAgente({ conduzFechamento: false, instrucoes: 'Crie uma tarefa para o Leonardo.', regras: [], agora: AGORA }),
+      montarPedidoDoAgente({ conduzFechamento: false, frasesAutorizadas: [], instrucoes: 'Crie uma tarefa para o Leonardo.', regras: [], agora: AGORA }),
       montarPedidoDoAgente({
         conduzFechamento: false,
+        frasesAutorizadas: [],
         instrucoes: 'x',
         regras: [],
         agora: AGORA,
@@ -88,13 +90,13 @@ describe('montarPedidoDoAgente', () => {
       expect(p).toMatch(/tell the customer the team will take care of it and add \[\[TRANSFERIR\]\] at the very end/)
     }
     // Sem ferramenta, a regra não inventa a seção das ações nem nomeia marcador de ação.
-    const semNada = montarPedidoDoAgente({ conduzFechamento: false, instrucoes: 'x', regras: [], agora: AGORA })
+    const semNada = montarPedidoDoAgente({ conduzFechamento: false, frasesAutorizadas: [], instrucoes: 'x', regras: [], agora: AGORA })
     expect(semNada).not.toContain('Actions you can take')
     expect(semNada).not.toMatch(/\[\[(?:MOVER|ETIQUETAR|TIRAR|CAMPO|TAREFA|AUTOMACAO|REUNIAO)/)
   })
 
   it('trechos da base entram por último, numerados', () => {
-    const p = montarPedidoDoAgente({ conduzFechamento: false, instrucoes: 'a', regras: ['b'], agora: AGORA, conhecimento: ['T1', 'T2'] })
+    const p = montarPedidoDoAgente({ conduzFechamento: false, frasesAutorizadas: [], instrucoes: 'a', regras: ['b'], agora: AGORA, conhecimento: ['T1', 'T2'] })
     expect(p.indexOf('[1] T1')).toBeGreaterThan(p.indexOf('1. b'))
     expect(p).toContain('[2] T2')
   })
@@ -102,6 +104,7 @@ describe('montarPedidoDoAgente', () => {
   it('F3: os blocos do cliente vêm DEPOIS das passagens e ANTES da base, como dado e não instrução', () => {
     const p = montarPedidoDoAgente({
       conduzFechamento: false,
+      frasesAutorizadas: [],
       instrucoes: 'a',
       regras: ['b'],
       agora: AGORA,
@@ -124,8 +127,8 @@ describe('montarPedidoDoAgente', () => {
   })
 
   it('F3: sem blocos (nada marcado), nenhuma seção do cliente', () => {
-    expect(montarPedidoDoAgente({ conduzFechamento: false, instrucoes: 'x', regras: [], agora: AGORA, blocos: [] })).not.toContain('What you know')
-    expect(montarPedidoDoAgente({ conduzFechamento: false, instrucoes: 'x', regras: [], agora: AGORA })).not.toContain('What you know')
+    expect(montarPedidoDoAgente({ conduzFechamento: false, frasesAutorizadas: [], instrucoes: 'x', regras: [], agora: AGORA, blocos: [] })).not.toContain('What you know')
+    expect(montarPedidoDoAgente({ conduzFechamento: false, frasesAutorizadas: [], instrucoes: 'x', regras: [], agora: AGORA })).not.toContain('What you know')
   })
 })
 
@@ -135,6 +138,7 @@ describe('a PASSAGEM (D25)', () => {
   it('lista os agentes numerados, com a descrição, e ensina o [[PASSAR:n]]', () => {
     const p = montarPedidoDoAgente({
       conduzFechamento: false,
+      frasesAutorizadas: [],
       instrucoes: 'Triagem.',
       regras: [],
       agora,
@@ -152,6 +156,7 @@ describe('a PASSAGEM (D25)', () => {
   it('⚠️ a passagem leva as ações que não mexem no card (25/10/2026): campo, etiqueta e tarefa ANTES; mover, automação e reunião nunca', () => {
     const p = montarPedidoDoAgente({
       conduzFechamento: false,
+      frasesAutorizadas: [],
       instrucoes: 'Qualificação.',
       regras: [],
       agora,
@@ -165,8 +170,8 @@ describe('a PASSAGEM (D25)', () => {
   })
 
   it('sem agentes para passar, o pedido não fala de passagem', () => {
-    expect(montarPedidoDoAgente({ conduzFechamento: false, instrucoes: 'x', regras: [], agora })).not.toContain('PASSAR')
-    expect(montarPedidoDoAgente({ conduzFechamento: false, instrucoes: 'x', regras: [], agora, passagens: [] })).not.toContain('PASSAR')
+    expect(montarPedidoDoAgente({ conduzFechamento: false, frasesAutorizadas: [], instrucoes: 'x', regras: [], agora })).not.toContain('PASSAR')
+    expect(montarPedidoDoAgente({ conduzFechamento: false, frasesAutorizadas: [], instrucoes: 'x', regras: [], agora, passagens: [] })).not.toContain('PASSAR')
   })
 
   it('lerPassagem: o marcador exato, com espaço ou caixa diferentes, e no meio do texto', () => {
@@ -188,6 +193,7 @@ describe('as AÇÕES junto com a resposta (F4, D28)', () => {
   it('lista as opções NUMERADAS com os NOMES — nunca os ids — e ensina os marcadores', () => {
     const p = montarPedidoDoAgente({
       conduzFechamento: false,
+      frasesAutorizadas: [],
       instrucoes: 'Triagem.',
       regras: [],
       agora,
@@ -223,6 +229,7 @@ describe('as AÇÕES junto com a resposta (F4, D28)', () => {
   it('cada campo diz o FORMATO do valor (data, número, lista com as opções, e-mail, texto)', () => {
     const p = montarPedidoDoAgente({
       conduzFechamento: false,
+      frasesAutorizadas: [],
       instrucoes: 'x',
       regras: [],
       agora,
@@ -245,10 +252,10 @@ describe('as AÇÕES junto com a resposta (F4, D28)', () => {
   })
 
   it('sem ações liberadas, o pedido não fala de ações', () => {
-    expect(montarPedidoDoAgente({ conduzFechamento: false, instrucoes: 'x', regras: [], agora })).not.toContain('[[MOVER')
-    expect(montarPedidoDoAgente({ conduzFechamento: false, instrucoes: 'x', regras: [], agora, acoes: {} })).not.toContain('Actions you can take')
+    expect(montarPedidoDoAgente({ conduzFechamento: false, frasesAutorizadas: [], instrucoes: 'x', regras: [], agora })).not.toContain('[[MOVER')
+    expect(montarPedidoDoAgente({ conduzFechamento: false, frasesAutorizadas: [], instrucoes: 'x', regras: [], agora, acoes: {} })).not.toContain('Actions you can take')
     expect(
-      montarPedidoDoAgente({ conduzFechamento: false, instrucoes: 'x', regras: [], agora, acoes: { etiquetar: [] } }),
+      montarPedidoDoAgente({ conduzFechamento: false, frasesAutorizadas: [], instrucoes: 'x', regras: [], agora, acoes: { etiquetar: [] } }),
     ).not.toContain('Actions you can take')
   })
 })
@@ -264,7 +271,7 @@ describe('MARCAR REUNIÃO (F5): os horários e as regras', () => {
   }
 
   it('os horários NUMERADOS no fuso do escritório, com o dia da semana PARA O MODELO, sem o ISO, com o marcador e as regras', () => {
-    const p = montarPedidoDoAgente({ conduzFechamento: false, instrucoes: 'x', regras: [], agora, acoes: HORARIOS, agenda: { lida: true, temEmail: true } })
+    const p = montarPedidoDoAgente({ conduzFechamento: false, frasesAutorizadas: [], instrucoes: 'x', regras: [], agora, acoes: HORARIOS, agenda: { lida: true, temEmail: true } })
     expect(p).toContain('[[REUNIAO:n]]')
     expect(p).toContain('1. Mon 28/09 15:15\n2. Tue 29/09 10:00')
     // O `nome` (o que gente lê) não vai ao modelo; o ISO também não.
@@ -277,7 +284,7 @@ describe('MARCAR REUNIÃO (F5): os horários e as regras', () => {
   })
 
   it('⚠️ a reunião só existe COM o marcador: dizer que marcou/confirmou sem ele é proibido; horário escolhido = o marcador DELE', () => {
-    const p = montarPedidoDoAgente({ conduzFechamento: false, instrucoes: 'x', regras: [], agora, acoes: HORARIOS, agenda: { lida: true, temEmail: true } })
+    const p = montarPedidoDoAgente({ conduzFechamento: false, frasesAutorizadas: [], instrucoes: 'x', regras: [], agora, acoes: HORARIOS, agenda: { lida: true, temEmail: true } })
     expect(p).toMatch(/The meeting exists ONLY if your reply includes the marker \[\[REUNIAO:n\]\]/)
     expect(p).toMatch(/Never say that the meeting is booked, scheduled, confirmed or rescheduled without that marker in the same reply/)
     expect(p).toMatch(/When the customer has chosen one of the listed times, your reply MUST include \[\[REUNIAO:n\]\] with the number of that time/)
@@ -285,12 +292,12 @@ describe('MARCAR REUNIÃO (F5): os horários e as regras', () => {
     expect(p).toMatch(/If the customer gave their full name in the conversation, add it to the marker as \[\[REUNIAO:n=Full Name\]\]/)
     expect(p).toMatch(/Never make up, guess or complete a name/)
     // Sem horários (leitura que falhou), a regra não aparece: não há marcador a pôr.
-    const semHorario = montarPedidoDoAgente({ conduzFechamento: false, instrucoes: 'x', regras: [], agora, acoes: {}, agenda: { lida: false, temEmail: true } })
+    const semHorario = montarPedidoDoAgente({ conduzFechamento: false, frasesAutorizadas: [], instrucoes: 'x', regras: [], agora, acoes: {}, agenda: { lida: false, temEmail: true } })
     expect(semHorario).not.toMatch(/The meeting exists ONLY/)
   })
 
   it('⚠️ os números valem SÓ para esta resposta: casar o DIA e a HORA com a lista atual; fora dela, dizer que não está mais livre — nunca marcar outro', () => {
-    const p = montarPedidoDoAgente({ conduzFechamento: false, instrucoes: 'x', regras: [], agora, acoes: HORARIOS, agenda: { lida: true, temEmail: true } })
+    const p = montarPedidoDoAgente({ conduzFechamento: false, frasesAutorizadas: [], instrucoes: 'x', regras: [], agora, acoes: HORARIOS, agenda: { lida: true, temEmail: true } })
     expect(p).toMatch(/numbers are valid only for the markers of THIS reply/)
     expect(p).toMatch(/list is read again for every reply/)
     expect(p).toMatch(/Match the DAY and the TIME the customer chose against the list above/)
@@ -298,7 +305,7 @@ describe('MARCAR REUNIÃO (F5): os horários e as regras', () => {
   })
 
   it('a lista é uma AMOSTRA (até 3 por dia): pedido de outro dia/hora = dizer quais dias têm vaga, em vez de "não há"', () => {
-    const p = montarPedidoDoAgente({ conduzFechamento: false, instrucoes: 'x', regras: [], agora, acoes: HORARIOS, agenda: { lida: true, temEmail: true } })
+    const p = montarPedidoDoAgente({ conduzFechamento: false, frasesAutorizadas: [], instrucoes: 'x', regras: [], agora, acoes: HORARIOS, agenda: { lida: true, temEmail: true } })
     expect(p).toMatch(/sample of the free times \(up to 3 per day\)/)
     expect(p).toMatch(/tell them which days have free times \(the days in the list\)/)
     expect(p).toMatch(/instead of saying there are none/)
@@ -307,6 +314,7 @@ describe('MARCAR REUNIÃO (F5): os horários e as regras', () => {
   it('⚠️ cliente que JÁ tem reunião: nenhum horário nem marcador; a data, e o link de remarcar DELA', () => {
     const p = montarPedidoDoAgente({
       conduzFechamento: false,
+      frasesAutorizadas: [],
       instrucoes: 'x',
       regras: [],
       agora,
@@ -330,6 +338,7 @@ describe('MARCAR REUNIÃO (F5): os horários e as regras', () => {
   it('cliente que já tem reunião SEM link de remarcar: transferir para mudar', () => {
     const p = montarPedidoDoAgente({
       conduzFechamento: false,
+      frasesAutorizadas: [],
       instrucoes: 'x',
       regras: [],
       agora,
@@ -342,12 +351,13 @@ describe('MARCAR REUNIÃO (F5): os horários e as regras', () => {
   })
 
   it('sem e-mail: pede; com o campo de e-mail liberado, grava pelo número DELE e marca na mesma resposta', () => {
-    const semCampo = montarPedidoDoAgente({ conduzFechamento: false, instrucoes: 'x', regras: [], agora, acoes: HORARIOS, agenda: { lida: true, temEmail: false } })
+    const semCampo = montarPedidoDoAgente({ conduzFechamento: false, frasesAutorizadas: [], instrucoes: 'x', regras: [], agora, acoes: HORARIOS, agenda: { lida: true, temEmail: false } })
     expect(semCampo).toContain('Customer e-mail on file: no.')
     expect(semCampo).toMatch(/ask for it, do not book/)
     expect(semCampo).toContain(HANDOFF_SENTINEL)
     const comCampo = montarPedidoDoAgente({
       conduzFechamento: false,
+      frasesAutorizadas: [],
       instrucoes: 'x',
       regras: [],
       agora,
@@ -365,7 +375,7 @@ describe('MARCAR REUNIÃO (F5): os horários e as regras', () => {
   })
 
   it('⚠️ leitura que falhou: diz que não há horários agora, sem o marcador — e manda o link de remarcar', () => {
-    const p = montarPedidoDoAgente({ conduzFechamento: false, instrucoes: 'x', regras: [], agora, acoes: {}, agenda: { lida: false, temEmail: true } })
+    const p = montarPedidoDoAgente({ conduzFechamento: false, frasesAutorizadas: [], instrucoes: 'x', regras: [], agora, acoes: {}, agenda: { lida: false, temEmail: true } })
     expect(p).toMatch(/free times are not available right now/)
     expect(p).toMatch(/Do not offer or promise any specific time/)
     expect(p).toMatch(/reschedule link from the meeting information above/)
@@ -377,6 +387,7 @@ describe('MARCAR REUNIÃO (F5): os horários e as regras', () => {
   it('lida e sem nenhum horário livre nos 7 dias: diz isso, sem o marcador', () => {
     const p = montarPedidoDoAgente({
       conduzFechamento: false,
+      frasesAutorizadas: [],
       instrucoes: 'x',
       regras: [],
       agora,
@@ -390,14 +401,14 @@ describe('MARCAR REUNIÃO (F5): os horários e as regras', () => {
   })
 
   it('reunião desligada: nada sobre reunião', () => {
-    const p = montarPedidoDoAgente({ conduzFechamento: false, instrucoes: 'x', regras: [], agora, acoes: {}, agenda: null })
+    const p = montarPedidoDoAgente({ conduzFechamento: false, frasesAutorizadas: [], instrucoes: 'x', regras: [], agora, acoes: {}, agenda: null })
     expect(p).not.toMatch(/Booking/)
   })
 })
 
 describe('as falas da EQUIPE (1138)', () => {
   it('o pedido explica o rótulo da equipe, no pedaço FIXO do agente (o cache não muda)', () => {
-    const partes = partesDoPedidoDoAgente({ conduzFechamento: false, instrucoes: 'x', regras: [], agora: AGORA })
+    const partes = partesDoPedidoDoAgente({ conduzFechamento: false, frasesAutorizadas: [], instrucoes: 'x', regras: [], agora: AGORA })
     const fixo = partes[0]
     expect(fixo.cache).toBe(true)
     expect(fixo.texto).toContain(`Business messages that start with ${ROTULO_DA_EQUIPE} were written by a person from the team`)

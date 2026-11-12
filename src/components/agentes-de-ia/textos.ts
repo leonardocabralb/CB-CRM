@@ -140,6 +140,8 @@ export function rotuloDaChaveDoRascunho(t: ReturnType<typeof useTranslations>, c
       return t('detalhe.retomada');
     case 'conduz_fechamento':
       return t('campo.conduzFechamento');
+    case 'frases_autorizadas':
+      return t('campo.frasesAutorizadas');
     default:
       return null;
   }

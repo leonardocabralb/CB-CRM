@@ -7,7 +7,8 @@
 //  1. FIXA do agente — a frase do PAPEL, as REGRAS DO SISTEMA (27/09/2026,
 //     `regras-do-sistema.ts`: valem para todo agente, antes de tudo o que o
 //     administrador escreve, e nada na configuração as desliga — "Conduz o
-//     fechamento", 1128, só troca duas delas), o texto-base (fixo, para o
+//     fechamento", 1128, só troca duas delas, e as frases autorizadas, 1131,
+//     dão exceção a duas e entram no fim do bloco), o texto-base (fixo, para o
 //     MODELO — por isso em inglês, como o de `buildSystemPrompt`; a regra
 //     "responda no idioma do cliente" cuida do português; com o `[[HANDOFF]]`
 //     e o `[[TRANSFERIR]]`, "responda e passe", e a regra de que só o MARCADOR
@@ -327,6 +328,14 @@ export interface ArgsDoPedido {
    * rascunho) — um chamador que o esquecesse não compila.
    */
   conduzFechamento: boolean
+  /**
+   * As FRASES AUTORIZADAS (1131): preenchida, `sem_preco` (ou `honorarios`) e
+   * `sem_promessa` ganham a exceção e o bloco das regras termina com a lista —
+   * na parte FIXA do agente (o cache). OBRIGATÓRIO, como o `conduzFechamento`:
+   * turno, retomada e Playground passam a do agente (no Playground, a do
+   * rascunho); vazia = as regras de sempre, sem uma letra a mais.
+   */
+  frasesAutorizadas: readonly string[]
   agora: Date
   fuso?: string
   /** Os agentes para quem este pode passar a conversa (D25), na ordem da numeração. */
@@ -357,8 +366,13 @@ export interface ArgsDoPedido {
 export function partesDoPedidoDoAgente(args: ArgsDoPedido): ParteDoPedido[] {
   // As regras do sistema vêm logo depois do papel, antes de tudo: nenhum
   // argumento desta função as tira do pedido (o `conduzFechamento` só troca
-  // duas delas, na mesma posição).
-  const doAgente = [PAPEL, blocoDasRegrasDoSistema({ conduzFechamento: args.conduzFechamento }), ...TEXTO_BASE]
+  // duas delas, na mesma posição; as `frasesAutorizadas` dão exceção a duas e
+  // fecham o bloco com a lista).
+  const doAgente = [
+    PAPEL,
+    blocoDasRegrasDoSistema({ conduzFechamento: args.conduzFechamento, frasesAutorizadas: args.frasesAutorizadas }),
+    ...TEXTO_BASE,
+  ]
 
   const instrucoes = args.instrucoes.trim()
   if (instrucoes) {

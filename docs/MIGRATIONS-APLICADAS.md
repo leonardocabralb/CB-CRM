@@ -1973,6 +1973,22 @@ nome da época em que foram aplicadas.
   cada), `anon` sem EXECUTE, `service_role` executa e lê a trilha; nenhum
   agente, mensagem ou turno de conferência ficou.
 
+- **1131_cb_ia_agente_frases_autorizadas** — `frases_autorizadas` (`text[]`,
+  NOT NULL, padrão `'{}'`) em `cb_ia_agentes`, com o CHECK
+  `cb_ia_agentes_frases_autorizadas_teto` (até 10): frases exatas do
+  escritório que o agente pode dizer mesmo citando custo ou resultado passado
+  (`.claude/rules/ia-regras-do-sistema.md`). PR #485.
+
+  ADITIVA, ANTES do deploy: o app novo pede a coluna em `COLUNAS_DO_AGENTE`;
+  o antigo não a lê. Autorização do operador em 09/11/2026 ("Aplique a 1131",
+  à pergunta de aplicar a 1131 em produção com o CI verde), aplicada em
+  09/11/2026 (histórico `20261109162031`) pela Management API, com o arquivo
+  idêntico ao do commit `12392885` (sha256 `48635e8f…`), cujo replay do CI
+  ("Apply to a clean database") passou. Também o replay LOCAL completo (255
+  migrations + `verify-schema.sql`, aplicada duas vezes). Conferida: a coluna
+  em `text[]`, NOT NULL, padrão `'{}'`; o CHECK de até 10; os 25 agentes com a
+  lista vazia; `service_role` grava, `anon` não lê a tabela.
+
 - **1132_cb_lixeira_de_anotacoes** — `apagada_em`, `apagada_por` (FK para
   `auth.users`, `ON DELETE SET NULL`) e `apagada_por_nome` em
   `cb_conversation_notes`, o CHECK `cb_conversation_notes_apagada_sem_fixar_ck`

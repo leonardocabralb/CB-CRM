@@ -327,6 +327,7 @@ describe('rotuloDaChaveDoRascunho — a lista "o que mudou" do Playground (DC4)'
       podePassarPara: [],
       etapas: [],
       conduzFechamento: false,
+      frasesAutorizadas: [],
     } as unknown as IaAgente
     const tudo = alteracoesDoRascunho(salvo, {
       nome: 'B',
@@ -343,6 +344,7 @@ describe('rotuloDaChaveDoRascunho — a lista "o que mudou" do Playground (DC4)'
       podePassarPara: ['p'],
       etapas: ['e'],
       conduzFechamento: true,
+      frasesAutorizadas: 'A primeira reunião não tem custo.',
     })
     for (const chave of [...Object.keys(tudo), 'acesso', 'ferramentas', 'retomada']) {
       expect(rotuloDaChaveDoRascunho(t, chave), chave).not.toBeNull()

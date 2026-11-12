@@ -4,11 +4,11 @@ paths:
   - "src/lib/ia-agentes/pedido*"
   - "src/components/agentes-de-ia/regras-do-sistema*"
   - "src/components/agentes-de-ia/configuracao-do-agente.tsx"
-  - "supabase/migrations/1128_cb_ia_agente_conduz_fechamento.sql"
-  - "supabase/migrations/agente-conduz-fechamento-1128.test.ts"
+  - "supabase/migrations/11*_cb_ia_agente_*.sql"
+  - "supabase/migrations/agente-*-11*.test.ts"
 ---
 
-# Agentes de IA — regras do sistema e "Conduz o fechamento"
+# Agentes de IA — regras do sistema, "Conduz o fechamento" e frases autorizadas
 
 Plano: `docs/PLANO-agentes-de-ia.md` (Estado). O resto dos agentes está em
 `ia.md`, `ia-agentes.md` e `ia-agentes-turno.md`.
@@ -21,8 +21,9 @@ Plano: `docs/PLANO-agentes-de-ia.md` (Estado). O resto dos agentes está em
   cliente nem acesso ao sistema, e o resto. Entram no pedido logo depois da
   frase do papel e ANTES do texto-base, das instruções, das regras do agente,
   dos blocos, da base e das ações — e dizem que valem acima de tudo isso.
-  Nada na configuração as DESLIGA; a única variação é "Conduz o fechamento"
-  (abaixo). Turno, retomada e Playground mandam o mesmo bloco. A tela as
+  Nada na configuração as DESLIGA; as variações, por agente, são "Conduz o
+  fechamento" e as frases autorizadas (abaixo). Turno, retomada e Playground
+  mandam o mesmo bloco. A tela as
   mostra só para ler (cartão acima das Instruções; uma chave por `id`,
   cobrada nos dois dicionários).
 - ⚠️ **A trava do pedido vazado** (`vazouOPedido`): o CANÁRIO do cabeçalho
@@ -93,3 +94,46 @@ assinado (o webhook do ZapSign move o card).
   nunca aceitar proposta). O agente não sabe se o cliente assinou: depois da
   assinatura o card muda de etapa e o agente deixa de atender (D24), a menos
   que ele também esteja na etapa do contrato assinado.
+
+### Frases autorizadas (1131, decisão do operador 50=c de 04/10/2026, confirmada em 09/11/2026)
+
+O agente do Bancário precisa dizer frases EXATAS do escritório que as regras
+barravam: "A primeira reunião com o advogado não tem custo." (`sem_preco`) e o
+resultado passado em gestão de passivo, com a ressalva (`sem_promessa`).
+
+- ⚠️⚠️ **Lista POR AGENTE, vazia por padrão** (`cb_ia_agentes.frases_autorizadas`,
+  `text[] NOT NULL DEFAULT '{}'`, CHECK de até 10 = `LIMITES.frasesAutorizadas`).
+  Leitura (`lerFrasesAutorizadas`): só a lista de textos não vazios vale;
+  qualquer outra forma vira `[]` (a dúvida fecha). `PATCH` ESTRITO
+  (`lerFrasesAutorizadasDoCorpo`): cada frase numa linha só e aparada
+  (`normalizarFrase`), 1 a 400 caracteres, até 10, sem repetir (sem caixa);
+  fora disso, 400 `corpo_invalido`. ⚠️ **Deploy DEPOIS da 1131**
+  (`COLUNAS_DO_AGENTE` pede a coluna).
+- ⚠️⚠️ **Lista VAZIA = o bloco não muda uma letra** (teste). Preenchida,
+  NA MESMA POSIÇÃO (`EXCECAO_DAS_FRASES`): `sem_preco` — ou `honorarios`, com
+  o fechamento — ganha no fim a exceção do CUSTO (as frases, escritas pelo
+  escritório, podem ser ditas como estão, mesmo citando custo; fora delas a
+  regra vale igual) e `sem_promessa` a do RESULTADO (o resultado passado das
+  frases, como está, sempre como experiência do escritório, nunca como
+  promessa ou estimativa para este cliente). O bloco termina com
+  `AUTHORIZED STATEMENTS (…):` e uma frase por linha — na parte FIXA do
+  pedido (o cache, `ia-cache-do-pedido.md`).
+- **`frasesAutorizadas` é argumento OBRIGATÓRIO** de `montarPedidoDoAgente`
+  (a retomada herda), como o `conduzFechamento`: o turno passa a do agente, o
+  Playground a do RASCUNHO (`aplicarAlteracao`; fora de
+  `NAO_MUDAM_A_RESPOSTA`). Pino `frases-autorizadas.chamadores.test.ts`.
+- **As travas** (teste): repetir uma frase não é pedido vazado, nem equipe,
+  ação ou reunião prometida; o link escrito numa frase está no pedido (não é
+  link inventado; outro link é). O cabeçalho da lista em MAIÚSCULAS
+  (`AUTHORIZED STATEMENTS`, `FRASES AUTORIZADAS`) é pedido vazado.
+- **A tela**: campo "Frases autorizadas" (uma por linha) logo abaixo de
+  "Conduz o fechamento", conferido pela MESMA função da rota (vermelho e
+  Salvar travado); mudou, aviso em âmbar ANTES do Salvar; o cartão mostra as
+  exceções e a lista do RASCUNHO. No Playground, a chave em "o que mudou".
+- **Limites conhecidos**: (1) frase que cite HONORÁRIOS é dita mesmo com o
+  fechamento desligado — a exceção é "mesmo citando custo"; o que continua
+  proibido é falar de honorários FORA das frases. (2) A trava do pedido
+  vazado não conhece as frases: frase com "PASSAR", "MOVER", "TRANSFERIR",
+  "HANDOFF" ou "REUNIAO" (sem acento) em MAIÚSCULAS, ou com "SYSTEM RULES",
+  seria RETIDA toda vez que o agente a dissesse (o turno transfere). Escrever
+  em caixa normal.
