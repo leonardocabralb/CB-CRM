@@ -8,7 +8,14 @@ import { useTranslations } from "next-intl";
  * equipe (1139, decisões D3/D4 do operador): o cartão INTEIRO abre a
  * conversa; o X só fecha (o aviso continua no sino, não lido). Desenhada
  * por `useAvisoDaIaNaTela` num `toast.custom` sem prazo — o sonner não estiliza
- * toast próprio, então as cores são as dos tokens do popover, nos dois temas.
+ * toast próprio.
+ *
+ * DESTAQUE ÂMBAR (D5 do operador, 12/11/2026): a versão discreta, igual aos
+ * outros toasts, passava despercebida. Âmbar, e não vermelho: vermelho no CRM
+ * é falha ("não enviada"). Toda passagem tem o MESMO destaque (D7). ⚠️ O
+ * `dark:` está inerte (`ui.md`): cada cor vale nos DOIS temas — o fundo é o
+ * do popover com um véu âmbar translúcido, e o texto âmbar é o `amber-700`
+ * (4,90 no claro, 4,17 no escuro).
  */
 export function CaixinhaDaIa({
   titulo,
@@ -24,30 +31,30 @@ export function CaixinhaDaIa({
   const t = useTranslations("AvisoDaIaNaTela");
   return (
     // Sem `role` próprio: o sonner já anuncia cada toast ao leitor de tela.
-    <div className="relative w-full rounded-lg border border-border bg-popover text-popover-foreground shadow-lg">
+    <div className="relative w-full overflow-hidden rounded-lg border-2 border-amber-500 bg-popover text-popover-foreground shadow-xl">
       <button
         type="button"
         onClick={onAbrir}
-        className="flex w-full min-w-0 items-start gap-3 rounded-lg p-3 pr-10 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex w-full min-w-0 items-start gap-3 bg-amber-500/10 p-3.5 pr-10 text-left transition-colors hover:bg-amber-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
       >
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-          <Bot className="size-4" aria-hidden />
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white">
+          <Bot className="size-5" aria-hidden />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold text-foreground">{titulo}</span>
+          <span className="block text-[15px] font-semibold leading-snug text-foreground">{titulo}</span>
           {corpo ? (
-            <span className="mt-0.5 line-clamp-3 whitespace-pre-line text-xs text-muted-foreground">{corpo}</span>
+            <span className="mt-1 line-clamp-3 whitespace-pre-line text-sm text-foreground/80">{corpo}</span>
           ) : null}
-          <span className="mt-1.5 block text-xs font-medium text-primary">{t("abrir")}</span>
+          <span className="mt-2 block text-sm font-semibold text-amber-700 dark:text-amber-300">{t("abrir")} →</span>
         </span>
       </button>
       <button
         type="button"
         onClick={onFechar}
         aria-label={t("fechar")}
-        className="absolute right-2 top-2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="absolute right-2 top-2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-amber-500/20 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
       >
-        <X className="size-3.5" aria-hidden />
+        <X className="size-4" aria-hidden />
       </button>
     </div>
   );

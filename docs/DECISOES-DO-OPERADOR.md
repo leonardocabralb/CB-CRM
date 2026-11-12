@@ -173,7 +173,10 @@ qualquer uma é pergunta ao operador.
   ou fechar; recebem as pessoas marcadas em cada agente e sempre o
   responsável (ninguém marcado = dono, admins e quem atende o número); o
   texto diz o cliente e os campos que o agente preencheu ao passar (a
-  "Pendência da IA"), senão o motivo (`ia-agentes-turno.md`).
+  "Pendência da IA"), senão o motivo. Em 12/11: destaque âmbar, o mesmo
+  para toda passagem (ligação não é mais urgente), e a caixinha VOLTA ao
+  abrir o CRM enquanto o aviso não é lido (últimas 24 h)
+  (`ia-agentes-turno.md`).
 - Agente de IA fora do horário: a mensagem espera e ele responde quando o
   horário abrir, se ninguém da equipe respondeu antes; o padrão da Anthropic
   é o Haiku 5.5, e o seletor mostra os modelos da chave (25/10/2026).

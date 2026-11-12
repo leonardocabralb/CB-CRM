@@ -8,8 +8,11 @@ import type { Notification } from "@/types";
 import {
   caixinhaTocaOSom,
   caixinhasDaConversa,
+  desdeDaReabertura,
   idDaCaixinha,
+  JANELA_DA_REABERTURA_MS,
   popUpDoSistemaCalaPelaCaixinha,
+  TETO_NA_REABERTURA,
   TIPO_DO_AVISO_DA_IA,
 } from "./aviso-da-ia";
 import { popUpDoSino, silencioDoSino } from "./aviso-do-sino";
@@ -94,6 +97,15 @@ describe("o que fecha a caixinha (D3)", () => {
   });
 });
 
+describe("a caixinha VOLTA enquanto o aviso não é lido (D6, 12/11/2026)", () => {
+  it("as últimas 24 h, no máximo 5 de uma vez", () => {
+    expect(JANELA_DA_REABERTURA_MS).toBe(24 * 60 * 60 * 1000);
+    expect(TETO_NA_REABERTURA).toBe(5);
+    const agora = Date.parse("2026-11-12T12:00:00Z");
+    expect(desdeDaReabertura(agora)).toBe("2026-11-11T12:00:00.000Z");
+  });
+});
+
 describe("pinos da montagem", () => {
   const SRC = path.join(__dirname, "../..");
   const ler = (rel: string) => fs.readFileSync(path.join(SRC, rel), "utf8");
@@ -108,6 +120,19 @@ describe("pinos da montagem", () => {
     expect(hook).toMatch(/duration: Infinity/);
     expect(hook).toMatch(/event: "UPDATE"/);
     expect(hook).toMatch(/window\.addEventListener\(EVENTO_CONVERSA_ABERTA, aoAbrirConversa\);/);
+  });
+
+  it("D6: ao montar, lê os avisos da IA NÃO lidos da PRÓPRIA pessoa, das últimas 24 h, e os mostra SEM som", () => {
+    const hook = ler("hooks/use-aviso-da-ia-na-tela.tsx");
+    const consulta = hook.slice(hook.indexOf('.from("notifications")\n        .select("*")'));
+    expect(consulta).toMatch(/\.eq\("user_id", userId\)/);
+    expect(consulta).toMatch(/\.eq\("type", TIPO_DO_AVISO_DA_IA\)/);
+    expect(consulta).toMatch(/\.is\("read_at", null\)/);
+    expect(consulta).toMatch(/\.gte\("created_at", desdeDaReabertura\(Date\.now\(\)\)\)/);
+    expect(consulta).toMatch(/\.limit\(TETO_NA_REABERTURA\)/);
+    expect(hook).toMatch(/mostrar\(aviso, false\)/);
+    // O que chega pelo tempo real é novo: toca.
+    expect(hook).toMatch(/mostrar\(aviso, true\)/);
   });
 
   it("o pop-up do sistema confere a caixinha ANTES de exibir", () => {

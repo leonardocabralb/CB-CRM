@@ -12,7 +12,9 @@ import {
   abaEmFoco,
   caixinhaTocaOSom,
   caixinhasDaConversa,
+  desdeDaReabertura,
   idDaCaixinha,
+  TETO_NA_REABERTURA,
   TIPO_DO_AVISO_DA_IA,
 } from "@/lib/notifications/aviso-da-ia";
 import { silencioDoSino } from "@/lib/notifications/aviso-do-sino";
@@ -47,6 +49,10 @@ function conversaAVista(): string | null {
  * Fica até a pessoa agir: clicar abre a conversa e marca o aviso lido; o X só
  * fecha. Some também quando o aviso é lido por outro caminho (sino, pop-up,
  * outra aba) e quando a conversa é aberta na caixa de entrada.
+ *
+ * Ao montar (abrir o CRM, recarregar), voltam as dos avisos ainda NÃO lidos
+ * das últimas 24 h (D6 do operador, 12/11/2026), sem som — não são novos. O X
+ * vale só naquela página: recarregada, a caixinha volta até o aviso ser lido.
  */
 export function useAvisoDaIaNaTela(): void {
   const { user, profile, perfilDeAcesso } = useAuth();
@@ -76,6 +82,7 @@ export function useAvisoDaIaNaTela(): void {
   useEffect(() => {
     if (!userId) return;
     const supabase = createClient();
+    let cancelado = false;
     // As caixinhas abertas: id do aviso → conversa.
     const abertas = new Map<string, string | null>();
 
@@ -107,7 +114,7 @@ export function useAvisoDaIaNaTela(): void {
       }
     };
 
-    const mostrar = (aviso: Notification) => {
+    const mostrar = (aviso: Notification, comSom: boolean) => {
       const { ctx, preferencia: pref } = vivoRef.current;
       const silencio = silencioDoSino({
         aviso,
@@ -122,7 +129,7 @@ export function useAvisoDaIaNaTela(): void {
       // O som sai daqui só quando o pop-up do sistema não vai sair — senão
       // tocariam os dois (`caixinhaTocaOSom`).
       const popUpPossivel = pref.sino && getNotificationPermission() === "granted" && avisoPossivelNoAparelho();
-      if (caixinhaTocaOSom({ somNoSino: pref.somNoSino, abaEmFoco: abaEmFoco(), popUpPossivel })) {
+      if (comSom && caixinhaTocaOSom({ somNoSino: pref.somNoSino, abaEmFoco: abaEmFoco(), popUpPossivel })) {
         tocarSomDoAviso();
       }
 
@@ -148,7 +155,7 @@ export function useAvisoDaIaNaTela(): void {
         (payload) => {
           const aviso = payload.new as Notification;
           if (aviso.type !== TIPO_DO_AVISO_DA_IA) return;
-          mostrar(aviso);
+          mostrar(aviso, true);
         },
       )
       .on(
@@ -171,7 +178,31 @@ export function useAvisoDaIaNaTela(): void {
     };
     window.addEventListener(EVENTO_CONVERSA_ABERTA, aoAbrirConversa);
 
+    // D6: os avisos da IA ainda NÃO lidos das últimas 24 h voltam a abrir a
+    // caixinha — depois de inscrever o canal, para nenhum INSERT cair no vão
+    // (o repetido, o `silencioDoSino` cala pelo id). O `user_id` vai ESCRITO na
+    // consulta (a RLS também recorta). Falha = só o sino, como antes.
+    void (async () => {
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("type", TIPO_DO_AVISO_DA_IA)
+        .is("read_at", null)
+        .gte("created_at", desdeDaReabertura(Date.now()))
+        .order("created_at", { ascending: false })
+        .limit(TETO_NA_REABERTURA);
+      if (cancelado) return;
+      if (error) {
+        console.warn("[useAvisoDaIaNaTela] avisos não lidos não carregados:", error.message);
+        return;
+      }
+      // O mais antigo primeiro: o sonner põe o último no topo da pilha.
+      for (const aviso of [...((data ?? []) as Notification[])].reverse()) mostrar(aviso, false);
+    })();
+
     return () => {
+      cancelado = true;
       window.removeEventListener(EVENTO_CONVERSA_ABERTA, aoAbrirConversa);
       supabase.removeChannel(canal);
       // Sem o ouvinte (saiu, trocou de login), a caixinha não teria quem a
