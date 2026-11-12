@@ -13,6 +13,8 @@ import {
   corpoDaAcao,
   lerProximo,
   quantoFalta,
+  esperaParaReler,
+  TETO_DA_RELEITURA_MS,
   horaDaVolta,
   erroDaResposta,
   FaixaDaIa,
@@ -486,6 +488,19 @@ describe('quantoFalta', () => {
     expect(quantoFalta(EM, Date.parse(EM) - (26 * 60) * 60_000)).toEqual({ dias: 1, horas: 2, minutos: 0 });
     expect(quantoFalta(EM, Date.parse(EM))).toBeNull();
     expect(quantoFalta(EM, Date.parse(EM) + 1)).toBeNull();
+  });
+});
+
+describe('esperaParaReler — quando a faixa pergunta de novo', () => {
+  it('20 s depois da hora marcada; 15 s escrevendo; 1 min com a hora vencida', () => {
+    expect(esperaParaReler(EM, Date.parse(EM) - 60_000)).toBe(80_000);
+    expect(esperaParaReler(null, AGORA)).toBe(15_000);
+    expect(esperaParaReler(EM, Date.parse(EM) + 1)).toBe(60_000);
+  });
+
+  it('⚠️ passo a mais de 12 h: relê em 12 h, nunca desliga (Codex, #515)', () => {
+    expect(esperaParaReler(EM, Date.parse(EM) - 48 * 3_600_000)).toBe(TETO_DA_RELEITURA_MS);
+    expect(TETO_DA_RELEITURA_MS).toBe(12 * 3_600_000);
   });
 });
 

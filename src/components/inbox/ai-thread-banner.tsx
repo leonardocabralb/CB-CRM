@@ -332,19 +332,13 @@ export function AiThreadBanner({ conversationId, iaAgenteId, disabled, pausadaPo
 
   // O próximo passo muda sem nenhuma prop mudar (a resposta sai, o
   // follow-up é enviado e o seguinte é armado, a pré-armação da equipe se
-  // resolve — Codex, #515): pergunta de novo logo depois da hora marcada
-  // (20 s de folga para o cron), a cada 15 s enquanto a IA escreve, e a cada
-  // minuto se a hora passou e a fila ainda não andou.
+  // resolve — Codex, #515): pergunta de novo sozinha (`esperaParaReler`).
   useEffect(() => {
     if (!tipoDoProximo) return;
-    let espera = 15_000;
-    if (emDoProximo) {
-      const falta = Date.parse(emDoProximo) - Date.now();
-      espera = falta > 0 ? falta + 20_000 : 60_000;
-    }
-    // Longe demais: o relógio do navegador não segura um timer de dias.
-    if (espera > 12 * 3_600_000) return;
-    const id = window.setTimeout(() => setRecarga((n) => n + 1), espera);
+    const id = window.setTimeout(
+      () => setRecarga((n) => n + 1),
+      esperaParaReler(tipoDoProximo === "agora" ? null : emDoProximo, Date.now()),
+    );
     return () => window.clearTimeout(id);
   }, [tipoDoProximo, emDoProximo, lidoEm]);
 
@@ -404,6 +398,23 @@ export function horaDaVolta(iso: string, lidoEm?: number): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/** O teto da espera da releitura: um follow-up de 48 h relê a cada 12 h. */
+export const TETO_DA_RELEITURA_MS = 12 * 3_600_000;
+
+/**
+ * Daqui a quanto a faixa pergunta de novo: 20 s depois da hora marcada (a
+ * folga do cron), 15 s enquanto a IA escreve (`em` nulo), 1 min com a hora
+ * vencida e a fila parada — e nunca mais que 12 h (Codex, #515: sem o teto,
+ * o passo a mais de 12 h desligava a releitura, e a faixa ficava dizendo "a
+ * qualquer momento" sobre um follow-up que já tinha saído).
+ */
+export function esperaParaReler(em: string | null, agora: number): number {
+  if (!em) return 15_000;
+  const falta = Date.parse(em) - agora;
+  if (!Number.isFinite(falta) || falta <= 0) return 60_000;
+  return Math.min(falta + 20_000, TETO_DA_RELEITURA_MS);
 }
 
 /** Quanto falta até `iso`, em minutos inteiros (para cima); nulo = já passou. */

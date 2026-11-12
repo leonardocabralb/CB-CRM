@@ -133,8 +133,9 @@ agente errar em silêncio.
   agendado"). Leitura da fila que falha = 500, como o resto da rota.
 - **A faixa pergunta de novo sozinha** (o passo muda sem prop nenhuma mudar):
   20 s depois da hora marcada, a cada 15 s enquanto a IA escreve, a cada
-  minuto com a hora vencida; nada além de 12 h. A contagem anda por um tique
-  de 30 s em estado (nunca `Date.now()` no render).
+  minuto com a hora vencida, e com teto de 12 h (`esperaParaReler`): sem o
+  teto, o passo distante desligava a releitura (Codex, #515). A contagem anda
+  por um tique de 30 s em estado (nunca `Date.now()` no render).
 
 ### Qual card decide o agente (decisão do operador, 09/11/2026)
 
