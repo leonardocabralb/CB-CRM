@@ -278,7 +278,12 @@ entregando em ~1 s). A remontagem semanal e a sentinela os pegam sozinhas
   `computador_fora`.
 - **Computador para um número NOVO (D17, 4e):** a tela não cria contêiner —
   é aqui. Conferir a memória antes (cada um ocupa ~0,8–1 GiB parado e ~1
-  núcleo em ligação; a VPS tem 2 núcleos, D8). Depois: `criar-maquina.sh
+  núcleo em ligação; a VPS tem 2 núcleos, D8). ⚠️ Número com MUITAS
+  conversas passa de 1,5 GiB na primeira sincronização (a Trabalhista -
+  Comercial chegou a 2 GiB): grave `<pasta>/memoria` com `2560m` ANTES de
+  criar, senão o Chrome morre em laço (acima). Com os dois de hoje, um
+  TERCEIRO computador já não cabe com folga nesta VPS (~2,7 GB livres; no
+  pior caso, ~0,8 GB): é a hora de aumentar a máquina. Depois: `criar-maquina.sh
   <nome> <imagem> http://crm_crm:3000` (o `<nome>` em `[a-z0-9-]`), a linha em
   `cb_computadores_de_ligacao` (conta, conexão, `nome`, `endereco`
   `http://ligacoes-<nome>:8080`; nasce DESLIGADA), `docker start
