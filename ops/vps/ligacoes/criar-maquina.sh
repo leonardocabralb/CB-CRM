@@ -21,6 +21,13 @@
 # --restart unless-stopped respeita o stop, inclusive depois de um reinício
 # da VPS. A remontagem semanal (atualizar-maquinas.sh) usa este script e
 # devolve o contêiner ao estado em que o achou.
+#
+# O teto de memória é 1536m; a máquina que precisa de mais o põe no arquivo
+# <pasta>/memoria (ex.: 2560m), que este script lê a cada recriação — também
+# na remontagem semanal. Medido em 13/11/2026: o WhatsApp Web da Trabalhista -
+# Comercial, com muitas conversas, passou de 1,1 GB só na aba ao sincronizar,
+# e o sistema matava o Chrome em laço com o teto de 1536m (a máquina nunca
+# ficava pronta); com 2560m, pico de 2 GB e ~1,7 GB depois de sincronizar.
 set -eu
 
 NOME="${1:-}"
@@ -36,6 +43,11 @@ for caminho in "$PASTA/perfil" "$PASTA/gravacoes"; do
 done
 [ -f /root/crm.env ] || { echo "falta /root/crm.env" >&2; exit 1; }
 [ -f "$SECCOMP" ] || { echo "falta $SECCOMP" >&2; exit 1; }
+MEMORIA=1536m
+if [ -f "$PASTA/memoria" ]; then
+  MEMORIA="$(tr -d ' \t\r\n' < "$PASTA/memoria")"
+  expr "$MEMORIA" : '[1-9][0-9]*m$' >/dev/null || { echo "memória inválida em $PASTA/memoria: '$MEMORIA' (ex.: 2560m)" >&2; exit 1; }
+fi
 
 # Num subshell, como o `stack deploy` o carrega: as outras chaves não saem dele.
 SEGREDO_DO_CRM="$(set -a; . /root/crm.env; printf %s "${LIGACOES_SEGREDO:-}")"
@@ -59,7 +71,7 @@ docker create --name "ligacoes-$NOME" --hostname "ligacoes-$NOME" \
   --security-opt "seccomp=$SECCOMP" \
   --security-opt no-new-privileges \
   --cap-drop ALL --cap-add SYS_CHROOT \
-  --memory 1536m --memory-swap 1536m --cpus 2 --cpu-shares 256 --pids-limit 1024 --shm-size 256m \
+  --memory "$MEMORIA" --memory-swap "$MEMORIA" --cpus 2 --cpu-shares 256 --pids-limit 1024 --shm-size 256m \
   -v "$PASTA/perfil:/perfil" -v "$PASTA/gravacoes:/gravacoes" \
   --env-file "$PASTA/segredo.env" \
   -e "LIGACOES_COMPUTADOR=$NOME" -e "LIGACOES_URL_DO_CRM=$URL_DO_CRM" -e TELA=800x600 \
