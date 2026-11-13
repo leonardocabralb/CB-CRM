@@ -198,6 +198,31 @@ próprio em `previdenciario/segredo.env`. Rollback = recriar com a
 recarrega e o sinal de vida na hora em que o WhatsApp muda; o CRM, sem a
 etiqueta, só deixa de filtrar).
 
+⚠️ **Computador de ligações `ligacoes-trabalhista-comercial` (desde
+12/11/2026, pedido do operador):** o da conexão Trabalhista - Comercial, pela
+receita "Computador para um número NOVO" abaixo — a mesma imagem
+(`20261111-11`), `criar-maquina.sh trabalhista-comercial … http://crm_crm:3000`,
+pasta `/root/ligacoes/trabalhista-comercial/` (as mesmas três entradas da
+Previdenciário), a linha em `cb_computadores_de_ligacao` gravada DESLIGADA e o
+contêiner LIGADO (`docker start`). O operador ligou o interruptor e leu o QR
+com o celular do número em 13/11/2026 (10:55 BRT).
+⚠️ **Com o teto padrão (1536m) ela nunca ficou pronta:** a primeira
+sincronização do WhatsApp Web de um número com muitas conversas passou de
+1,1 GB só na aba, e o sistema matava o Chrome (`Memory cgroup out of memory:
+Killed process … (chrome)` no `dmesg`); a máquina reiniciava a cada 20–40 s
+("a aba do WhatsApp travou"), sem ligar nem tocar. Conserto: o teto POR
+MÁQUINA no arquivo `trabalhista-comercial/memoria` (`2560m`), que o
+`criar-maquina.sh` lê a cada recriação, também na remontagem semanal (a
+Previdenciário segue com o padrão). Com 2560m: pico de 2 GB na sincronização,
+~1,7 GB depois, nenhum reinício; recriada pelo script às 14:05 UTC, voltou
+conectada em 8 s, sem QR. Os dois computadores LIGADOS ocupam ~2,8 GiB, e a
+VPS ficou com ~2 GB livres; duas ligações simultâneas, ~2 núcleos (a VPS tem
+2; o peso 256 deixa o CRM e a Evolution passarem na frente — durante a
+sincronização, com a máquina a 160%, as conexões do WhatsApp seguiram
+entregando em ~1 s). A remontagem semanal e a sentinela os pegam sozinhas
+(todo `ligacoes-*`; todo computador ligado). O script anterior ficou em
+`/root/ligacoes/criar-maquina.sh.anterior`.
+
 - **Pastas** (`/root/ligacoes`, 700): `imagem/` (cópia do subprojeto, de onde
   a imagem é montada), `criar-maquina.sh` (= `ops/vps/ligacoes/`),
   `previdenciario/segredo.env` (600, gravado pelo `criar-maquina.sh`: o
@@ -253,7 +278,12 @@ etiqueta, só deixa de filtrar).
   `computador_fora`.
 - **Computador para um número NOVO (D17, 4e):** a tela não cria contêiner —
   é aqui. Conferir a memória antes (cada um ocupa ~0,8–1 GiB parado e ~1
-  núcleo em ligação; a VPS tem 2 núcleos, D8). Depois: `criar-maquina.sh
+  núcleo em ligação; a VPS tem 2 núcleos, D8). ⚠️ Número com MUITAS
+  conversas passa de 1,5 GiB na primeira sincronização (a Trabalhista -
+  Comercial chegou a 2 GiB): grave `<pasta>/memoria` com `2560m` ANTES de
+  criar, senão o Chrome morre em laço (acima). Com os dois de hoje, um
+  TERCEIRO computador já não cabe com folga nesta VPS (~2,7 GB livres; no
+  pior caso, ~0,8 GB): é a hora de aumentar a máquina. Depois: `criar-maquina.sh
   <nome> <imagem> http://crm_crm:3000` (o `<nome>` em `[a-z0-9-]`), a linha em
   `cb_computadores_de_ligacao` (conta, conexão, `nome`, `endereco`
   `http://ligacoes-<nome>:8080`; nasce DESLIGADA), `docker start
