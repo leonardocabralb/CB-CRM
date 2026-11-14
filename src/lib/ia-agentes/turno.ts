@@ -129,7 +129,7 @@ import { generateReply } from '@/lib/ai/generate'
 import { AiError, mensagemSeguraDeAiError, type AiConfig, type AiUsage } from '@/lib/ai/types'
 import { logAiUsage } from '@/lib/ai/usage'
 import { drenarEventosDeFunil } from '@/lib/automations/drain-events'
-import { etapaTemQuemFale } from '@/lib/automations/engine'
+import { etapaTemQuemFale, PASSOS_QUE_CALAM_O_AGENTE } from '@/lib/automations/engine'
 import { recusaComprovada } from '@/lib/automations/retentativa'
 import { donoDaConta } from '@/lib/cb-channels/resolve-inbound'
 import {
@@ -574,9 +574,16 @@ async function haEnvioIncertoDoRoboDepois(db: SupabaseClient, turno: LinhaDoTurn
  * ainda não terminaram (sem `finalizado_em` nem marca de interrupção — o
  * índice parcial da 1005): `nenhuma`; `espera_longa`, quando alguma está
  * PARADA num "Aguardar" (ou na retentativa) que acorda depois de
- * `ESPERA_CURTA_DO_FUNIL_MS`; senão `rodando` (roda agora, ou a espera é
- * curta). A filha (`run_automation`) e a da etiqueta (`tag_added`) que a
- * ouvinte disparou também contam: o registro delas é próprio. LANÇA em erro.
+ * `ESPERA_CURTA_DO_FUNIL_MS` e a automação dela FALA (`algumaFala`); senão
+ * `rodando` (roda agora, ou a espera é curta). A filha (`run_automation`) e a
+ * da etiqueta (`tag_added`) que a ouvinte disparou também contam: o registro
+ * delas é próprio. LANÇA em erro.
+ *
+ * A espera longa de automação que NÃO fala não é a resposta que vem depois:
+ * o "15 dias sem conversa" das etapas do Trabalhista só mexe em etiqueta,
+ * conversa e card, e calava a IA para a cliente que volta da Recuperação
+ * (revisão do PR #520, 14/11/2026). A execução parada SÓ nela conta como
+ * terminada; o que ela fizer ao acordar, dias depois, não é desta mensagem.
  */
 async function execucoesVivasDepois(
   db: SupabaseClient,
@@ -586,7 +593,7 @@ async function execucoesVivasDepois(
 ): Promise<'nenhuma' | 'rodando' | 'espera_longa'> {
   const { data: vivas, error } = await db
     .from('automation_logs')
-    .select('id')
+    .select('id, automation_id')
     .eq('account_id', turno.account_id)
     .eq('contact_id', contactId)
     .is('finalizado_em', null)
@@ -594,20 +601,47 @@ async function execucoesVivasDepois(
     .gt('created_at', new Date(gravadaMs).toISOString())
     .limit(EXECUCOES_VIVAS_LIDAS)
   if (error) throw new Error(`leitura das execuções vivas falhou: ${error.message}`)
-  const ids = ((vivas ?? []) as Array<{ id: string }>).map((v) => v.id)
-  if (ids.length === 0) return 'nenhuma'
+  const execucoes = (vivas ?? []) as Array<{ id: string; automation_id: string | null }>
+  if (execucoes.length === 0) return 'nenhuma'
   const { data: fila, error: erroDaFila } = await db
     .from('automation_pending_executions')
-    .select('status, run_at')
-    .in('log_id', ids)
+    .select('log_id, status, run_at')
+    .in('log_id', execucoes.map((v) => v.id))
     .in('status', ['pending', 'running'])
   if (erroDaFila) throw new Error(`leitura da fila das automações falhou: ${erroDaFila.message}`)
+  const linhas = (fila ?? []) as Array<{ log_id: string; status: string; run_at: string | null }>
   const limite = gravadaMs + ESPERA_CURTA_DO_FUNIL_MS
-  const longa = ((fila ?? []) as Array<{ status: string; run_at: string | null }>).some((f) => {
+  const longa = (f: { status: string; run_at: string | null }) => {
     const acorda = Date.parse(f.run_at ?? '')
     return f.status === 'pending' && (!Number.isFinite(acorda) || acorda > limite)
-  })
-  return longa ? 'espera_longa' : 'rodando'
+  }
+  const automacaoDe = new Map(execucoes.map((v) => [v.id, v.automation_id]))
+  const dasLongas = new Set(linhas.filter(longa).map((f) => automacaoDe.get(f.log_id) ?? null))
+  // Sem a automação (apagada) não se sabe se fala: o lado de calar.
+  if (dasLongas.has(null)) return 'espera_longa'
+  if (dasLongas.size > 0 && (await algumaFala(db, [...dasLongas] as string[]))) return 'espera_longa'
+  // Só esperas longas de quem não fala: a execução parada SÓ nelas não segura.
+  const paradaSoNaLonga = (id: string) => {
+    const delas = linhas.filter((f) => f.log_id === id)
+    return delas.length > 0 && delas.every(longa)
+  }
+  return execucoes.some((v) => !paradaSoNaLonga(v.id)) ? 'rodando' : 'nenhuma'
+}
+
+/**
+ * Alguma destas automações tem passo que FALA com o contato? A régua do motor
+ * para a E4 (`PASSOS_QUE_CALAM_O_AGENTE`: envio, robô, outra automação),
+ * em qualquer ramo — o lado de calar. LANÇA em erro.
+ */
+async function algumaFala(db: SupabaseClient, automacoes: string[]): Promise<boolean> {
+  const { data, error } = await db
+    .from('automation_steps')
+    .select('id')
+    .in('automation_id', automacoes)
+    .in('step_type', [...PASSOS_QUE_CALAM_O_AGENTE])
+    .limit(1)
+  if (error) throw new Error(`leitura dos passos das automações falhou: ${error.message}`)
+  return (data?.length ?? 0) > 0
 }
 
 /**
@@ -625,11 +659,13 @@ async function execucoesVivasDepois(
  *     vai rodar;
  *  2. evento drenado (ou criado) DEPOIS do gatilho, numa etapa com quem
  *     escute → as execuções do contato que nasceram depois do gatilho: parada
- *     num "Aguardar" longo → descarta (ela fala depois, a regra de sempre do
- *     "Aguardar"); rodando, ou espera curta → reagenda (o envio que ainda não
- *     voltou do provedor não tem linha em `messages` — é o registro vivo que o
- *     mostra); terminada com envio INCERTO → descarta. A que JÁ falou é a
- *     saída do robô, que `conferir` olha antes (e a reserva, por último);
+ *     num "Aguardar" longo de automação que FALA → descarta (ela fala depois,
+ *     a regra de sempre do "Aguardar"; a que não fala — o "15 dias sem
+ *     conversa" — não segura); rodando, ou espera curta → reagenda (o envio
+ *     que ainda não voltou do provedor não tem linha em `messages` — é o
+ *     registro vivo que o mostra); terminada com envio INCERTO → descarta.
+ *     A que JÁ falou é a saída do robô, que `conferir` olha antes (e a
+ *     reserva, por último);
  *  3. nada disso → `null`: a ouvinte terminou sem falar, ou nem rodou (fora do
  *     escopo, de outra conexão) — a IA responde.
  * Por que esperar o dreno basta agora (a passagem diz que não bastava, Codex

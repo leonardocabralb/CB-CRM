@@ -89,8 +89,13 @@ das ações está em `ia.md` e `ia-agentes.md`.
     execuções do contato nascidas depois do gatilho e vivas
     (`automation_logs` sem `finalizado_em` nem `interrompida_em`, índice da
     1005): parada na fila além de `ESPERA_CURTA_DO_FUNIL_MS` (60 s do
-    gatilho) = descarta (`ERRO_DO_FUNIL_QUE_ESPERA`: o "Aguardar" longo e a
-    retentativa falam depois); rodando ou espera curta = reagenda; envio
+    gatilho) numa automação que FALA (`PASSOS_QUE_CALAM_O_AGENTE` do motor,
+    em qualquer ramo; sem automação, conta como fala) = descarta
+    (`ERRO_DO_FUNIL_QUE_ESPERA`: o "Aguardar" longo e a retentativa falam
+    depois); a parada SÓ em espera longa de quem não fala conta como
+    terminada (o "15 dias sem conversa" do Trabalhista só mexe em etiqueta,
+    conversa e card, e calava a IA para quem volta da Recuperação — revisão
+    do PR #520); rodando ou espera curta = reagenda; envio
     `incerto` do robô na conexão = descarta (`ERRO_DO_FUNIL_INCERTO`, a
     régua do motor); senão responde. A que JÁ falou é a saída do robô
     (`haSaidaDoRoboDepois`, antes) e a reserva.
@@ -108,7 +113,13 @@ das ações está em `ia.md` e `ia-agentes.md`.
 - **Limites aceitos**: fora da janela (dreno parado, execução morta) o turno
   responde, e a ouvinte que acordar depois fala também; execução de OUTRA
   origem nascida depois do gatilho (equipe etiquetou, Calendly) também
-  segura — o lado de calar.
+  segura — o lado de calar. A régua de fala é da AUTOMAÇÃO, não do que falta
+  rodar: com um ramo que fala, a espera longa num ramo que não fala também
+  cala (o lado de calar). E o áudio da EQUIPE ainda transcrevendo segura o
+  turno até sobrarem `RESERVA_DA_GERACAO_MS` (30 s) para gerar, abaixo do
+  teto de 45 s: medido no Sonnet do Trabalhista (86 turnos, 7 dias), p95 de
+  12,8 s e máximo de 17,7 s o turno inteiro — com um modelo mais lento, o
+  estouro tenta uma vez mais (revisão do PR #520).
 
 ### FORA DO HORÁRIO o turno ESPERA a abertura
 

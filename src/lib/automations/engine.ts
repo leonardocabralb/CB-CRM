@@ -56,8 +56,11 @@ import { prepararMidiaDoPasso } from './midia-do-passo';
  * cliente (F2 dos agentes, E4): os que falam com o contato, e — por
  * conservadorismo — os que iniciam um robô ou outra automação, que podem
  * falar. O "Aguardar" conta à parte (quem espera, fala depois).
+ * EXPORTADA para o turno do agente: a execução do funil PARADA numa espera
+ * longa só o cala se a automação dela tiver um destes passos
+ * (`execucoesVivasDepois`, `ia-agentes/turno.ts`).
  */
-const PASSOS_QUE_CALAM_O_AGENTE: ReadonlySet<string> = new Set([
+export const PASSOS_QUE_CALAM_O_AGENTE: ReadonlySet<string> = new Set([
   ...PASSOS_QUE_FALAM_COM_O_CONTATO,
   'run_flow',
   'run_automation',

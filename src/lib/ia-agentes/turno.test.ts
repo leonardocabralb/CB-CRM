@@ -2571,7 +2571,17 @@ describe('executarTurno — a volta de "Não Respondeu": a IA responde quando a 
     expect(engineSendText).not.toHaveBeenCalled()
   })
 
+  /** Os passos da saudação: o ramo "não" CUMPRIMENTA (o envio que a cala). */
+  function saudacaoQueFala(): void {
+    banco.tabelas.automation_steps = [
+      { id: 'passo-condicao', automation_id: SAUDACAO, step_type: 'condition' },
+      { id: 'passo-tira-etiqueta', automation_id: SAUDACAO, step_type: 'remove_tag' },
+      { id: 'passo-ola', automation_id: SAUDACAO, step_type: 'send_message' },
+    ]
+  }
+
   it('⚠️ a saudação PARADA num "Aguardar" longo (fala depois): descarta — a IA não fala por cima', async () => {
+    saudacaoQueFala()
     banco.tabelas.cb_automation_events[0].processado_em = haMs(5_000)
     banco.tabelas.automation_logs = [execucao()]
     banco.tabelas.automation_pending_executions = [
@@ -2586,6 +2596,7 @@ describe('executarTurno — a volta de "Não Respondeu": a IA responde quando a 
   })
 
   it('a RETENTATIVA do envio da saudação na fila, para daqui a 5 min, também é fala depois: descarta', async () => {
+    saudacaoQueFala()
     banco.tabelas.cb_automation_events[0].processado_em = haMs(5_000)
     banco.tabelas.automation_logs = [execucao()]
     banco.tabelas.automation_pending_executions = [
@@ -2595,6 +2606,88 @@ describe('executarTurno — a volta de "Não Respondeu": a IA responde quando a 
     await executarTurno(TURNO)
 
     expect(turno()).toMatchObject({ status: 'descartado', erro: ERRO_DO_FUNIL_QUE_ESPERA })
+  })
+
+  // A revisão do PR #520 (14/11/2026), medido na produção: a "Volta da
+  // Recuperação" move o card para a etapa do agente, e a ouvinte de lá ("15
+  // dias sem conversa") abre com uma espera de 15 dias e depois só mexe em
+  // etiqueta, conversa e card. Parada nela, calava a IA, e ninguém respondia
+  // a cliente que voltou. Dados fictícios.
+  describe('a espera longa de automação que NÃO fala ("15 dias sem conversa")', () => {
+    const QUINZE_DIAS = 'auto-15-dias-sem-conversa'
+
+    function quinzeDiasParado(p: Linha = {}): void {
+      banco.tabelas.automations.push({
+        id: QUINZE_DIAS,
+        account_id: CONTA,
+        trigger_type: 'deal_stage_changed',
+        trigger_config: { stage_ids: [ETAPA], parar_ao_sair: true },
+        is_active: true,
+      })
+      banco.tabelas.automation_steps = [
+        { id: 'p-espera', automation_id: QUINZE_DIAS, step_type: 'wait' },
+        { id: 'p-condicao', automation_id: QUINZE_DIAS, step_type: 'condition' },
+        { id: 'p-tira', automation_id: QUINZE_DIAS, step_type: 'remove_tag' },
+        { id: 'p-poe', automation_id: QUINZE_DIAS, step_type: 'add_tag' },
+        { id: 'p-encerra', automation_id: QUINZE_DIAS, step_type: 'close_conversation' },
+        { id: 'p-move', automation_id: QUINZE_DIAS, step_type: 'move_deal_stage' },
+      ]
+      banco.tabelas.cb_automation_events[0].processado_em = haMs(5_000)
+      banco.tabelas.automation_logs = [execucao({ id: 'log-15-dias', automation_id: QUINZE_DIAS, ...p })]
+      banco.tabelas.automation_pending_executions = [
+        { id: 'espera-15-dias', log_id: 'log-15-dias', status: 'pending', run_at: daquiMs(15 * DIA) },
+      ]
+    }
+
+    it('⚠️ O CASO: parada nos 15 dias, sem passo que fale — a IA RESPONDE', async () => {
+      quinzeDiasParado()
+
+      await executarTurno(TURNO)
+
+      expect(turno().status).toBe('respondeu')
+      expect(engineSendText).toHaveBeenCalledTimes(1)
+    })
+
+    it('com OUTRA execução ainda rodando (a saudação, sem espera): reagenda', async () => {
+      quinzeDiasParado()
+      banco.tabelas.automation_logs.push(execucao())
+
+      await executarTurno(TURNO)
+
+      expect(turno()).toMatchObject({ status: 'aguardando', rodando_desde: null })
+      expect(generateReply).not.toHaveBeenCalled()
+    })
+
+    it.each(['send_message', 'send_media', 'run_flow', 'run_automation'])(
+      'a mesma espera numa automação com `%s` (fala, ou pode falar, depois): descarta',
+      async (passo) => {
+        quinzeDiasParado()
+        banco.tabelas.automation_steps.push({ id: 'p-fala', automation_id: QUINZE_DIAS, step_type: passo })
+
+        await executarTurno(TURNO)
+
+        expect(turno()).toMatchObject({ status: 'descartado', erro: ERRO_DO_FUNIL_QUE_ESPERA })
+        expect(engineSendText).not.toHaveBeenCalled()
+      },
+    )
+
+    it('execução sem automação (apagada): não se sabe se fala — descarta', async () => {
+      quinzeDiasParado({ automation_id: null })
+
+      await executarTurno(TURNO)
+
+      expect(turno()).toMatchObject({ status: 'descartado', erro: ERRO_DO_FUNIL_QUE_ESPERA })
+    })
+
+    it('a leitura dos passos que FALHA dentro da janela: reagenda (na dúvida, a automação fala)', async () => {
+      quinzeDiasParado()
+      banco.falhas.push({ tabela: 'automation_steps', op: 'select', erro: { message: 'timeout' } })
+
+      await executarTurno(TURNO)
+
+      expect(turno().status).toBe('aguardando')
+      expect(generateReply).not.toHaveBeenCalled()
+    })
   })
 
   it('"Aguardar" CURTO antes da condição: reagenda; acordada, ela só tira a etiqueta — e a IA responde', async () => {
