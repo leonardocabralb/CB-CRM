@@ -64,12 +64,15 @@ export interface DonoDoTurno {
   stageId: string
 }
 
+/** O que as réguas de dono leem de um turno vivo. */
+export type DonoDoTurnoVivo = Pick<TurnoVivo, 'erro' | 'ia_agente_id' | 'deal_id' | 'stage_id'>
+
 /** A pré-armação do follow-up da equipe: a marca e nenhum dono ainda. */
-const ehPreArmacao = (l: TurnoVivo) =>
+export const ehPreArmacao = (l: DonoDoTurnoVivo) =>
   l.erro === ERRO_DA_ARMACAO_PELA_EQUIPE && l.ia_agente_id == null && l.deal_id == null && l.stage_id == null
 
 /** A régua da conferência do motor: o MESMO agente, card e etapa da decisão de agora. */
-const doDono = (l: TurnoVivo, dono: DonoDoTurno) =>
+export const doDono = (l: DonoDoTurnoVivo, dono: DonoDoTurno) =>
   l.ia_agente_id === dono.agenteId && l.deal_id === dono.dealId && l.stage_id === dono.stageId
 
 const instante = (v: unknown): string | null =>

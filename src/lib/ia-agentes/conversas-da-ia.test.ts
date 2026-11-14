@@ -53,10 +53,14 @@ const fatos = (patch: Partial<FatosDasConversas> = {}): FatosDasConversas => ({
   contatosQueSaoConexao: new Set(),
   cardsPorContato: new Map([['k1', [card()]]]),
   agentePorEtapa: new Map([['etapaDaIa', agente()]]),
-  comTurnoVivo: new Set(),
+  turnosVivos: new Map(),
   cardDaTransferencia: new Map(),
   ...patch,
 })
+
+/** Um turno vivo de `c1`, do dono de agora (agente ag1, card d1, etapa da IA) por padrão. */
+const vivo = (patch: Record<string, unknown> = {}) =>
+  new Map([['c1', [{ erro: null, ia_agente_id: 'ag1', deal_id: 'd1', stage_id: 'etapaDaIa', ...patch }]]])
 
 const atendidas = (f: FatosDasConversas) => [...classificarConversasDaIa(f).atendimento]
 const pendentes = (f: FatosDasConversas) => [...classificarConversasDaIa(f).pendencias]
@@ -86,12 +90,32 @@ describe('Atendimento da IA: a regra do motor', () => {
   it('pausa permanente (transferência, desativada, automação) nunca é atendimento, nem com turno vivo', () => {
     for (const motivo of ['transferencia', 'desativada', 'automacao']) {
       const c = conversa({ pausada: true, pausadaPor: motivo, pausadaEm: DEPOIS })
-      expect(atendidas(fatos({ conversas: [c], comTurnoVivo: new Set(['c1']) }))).toEqual([])
+      expect(atendidas(fatos({ conversas: [c], turnosVivos: vivo() }))).toEqual([])
     }
   })
 
-  it('turno vivo (follow-up na fila) conta mesmo sem o card na etapa da IA', () => {
-    expect(atendidas(fatos({ cardsPorContato: new Map(), comTurnoVivo: new Set(['c1']) }))).toEqual(['c1'])
+  it('turno vivo do DONO de agora conta mesmo quando a régua neutra diria não (a IA escrevendo agora)', () => {
+    // A conexão da conversa mudou para uma que o agente não atende: a régua
+    // diz "não", mas o turno do mesmo agente, card e etapa está rodando.
+    expect(atendidas(fatos({ conversas: [conversa({ canalId: 'outro' })], turnosVivos: vivo() }))).toEqual(['c1'])
+  })
+
+  it('a pré-armação do follow-up da equipe (ainda sem dono) conta com o agente ligado', () => {
+    const preArmacao = vivo({ erro: 'armar a partir da fala da equipe', ia_agente_id: null, deal_id: null, stage_id: null })
+    expect(atendidas(fatos({ conversas: [conversa({ canalId: 'outro' })], turnosVivos: preArmacao }))).toEqual(['c1'])
+  })
+
+  it('⚠️ turno vivo de OUTRO dono não conta: o motor o descarta no vencimento (até 48 h de ✨ falso)', () => {
+    // O agente desligado às pressas: o follow-up armado ainda na fila.
+    expect(
+      atendidas(fatos({ agentePorEtapa: new Map([['etapaDaIa', agente({ ativo: false })]]), turnosVivos: vivo() })),
+    ).toEqual([])
+    // O card saiu da etapa da IA (para uma etapa de gente): o turno é da etapa antiga.
+    expect(
+      atendidas(fatos({ cardsPorContato: new Map([['k1', [card({ stageId: 'etapaDeGente' })]]]), turnosVivos: vivo() })),
+    ).toEqual([])
+    // Sem card nenhum.
+    expect(atendidas(fatos({ cardsPorContato: new Map(), turnosVivos: vivo() }))).toEqual([])
   })
 
   it('encerrada, grupo, Instagram e contato que é número da conta ficam de fora', () => {

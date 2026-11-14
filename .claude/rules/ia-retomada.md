@@ -42,6 +42,9 @@ faz, em `.claude/rules/ia-agentes.md`. ⚠️ "Retomada" aqui é o FOLLOW-UP; o
   transferência e a automação param a série. O follow-up que SAI levanta a
   pausa (`cb_ia_voltar_da_pausa`, logo antes da reserva; `alguem_escreveu`
   descarta): a cliente que responde a ele é respondida pela IA na hora (P7).
+  ⚠️ Levantada e NADA saiu (a reserva recusou, o envio falhou ou ficou
+  incerto): a pausa `gente` VOLTA (`devolverPausaDaEquipe`, cercada pela
+  conversa sem pausa) — senão a próxima mensagem era respondida em 8 s.
   O pedido ganha a linha "a última foi da equipe" (`daEquipe`, parte
   VARIÁVEL, pela `sender_type` da âncora) SÓ na 1ª tentativa: da 2ª em
   diante a última fala é o follow-up da própria IA.

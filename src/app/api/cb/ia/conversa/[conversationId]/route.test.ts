@@ -220,7 +220,8 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
         pausaTemporaria: false,
         voltaAposMin: 0,
         voltaEm: null,
-        proximo: null,
+        // Ninguém atende: a fila nem é lida, e `proximo` vem AUSENTE (nulo
+        // faria a faixa reler a cada 2 min).
         motivo: 'card_antigo',
         naoAtende: { agente: { id: 'ag-1', nome: 'Triagem' }, motivo: 'card_antigo' },
       })
@@ -278,7 +279,6 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
         'pausaTemporaria',
         'pausada',
         'pausadaPor',
-        'proximo',
         'voltaAposMin',
         'voltaEm',
       ])
@@ -316,7 +316,13 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
       const espera = consultas.find((c) => c.tabela === 'cb_ia_turnos')!
       expect(espera.filtros).toContainEqual(['eq', 'account_id', 'conta-1'])
       expect(espera.filtros).toContainEqual(['eq', 'status', 'aguardando'])
-      expect(espera.filtros).toContainEqual(['eq', 'erro', 'aguardando a equipe responder'])
+      // A espera da equipe OU a da abertura do horário (a resposta reagendada
+      // para as 08:00 continua sendo a volta).
+      expect(espera.filtros).toContainEqual([
+        'in',
+        'erro',
+        ['aguardando a equipe responder', 'fora do horário do agente: responde quando o horário abrir'],
+      ])
     })
 
     it('sem mensagem esperando: temporária, sem a hora', async () => {
@@ -411,7 +417,8 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
         { tipo: 'retomada', status: 'aguardando', executar_apos: '2026-11-12T18:00:00Z', tentativa: 1, tentativas: 3, erro: null, ...DONO },
       ]
       banco.conversations = { ...(banco.conversations as object), status: 'closed' }
-      expect((await (await chamar()).json()).proximo).toBeNull()
+      // AUSENTE, não nulo: a faixa não relê sozinha uma conversa sem agente.
+      expect('proximo' in (await (await chamar()).json())).toBe(false)
       expect(turnosVivos()).toHaveLength(0)
     })
 
@@ -422,7 +429,7 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
       ]
       for (const motivo of ['transferencia', 'desativada', 'automacao']) {
         banco.conversations = { ...(banco.conversations as object), ai_autoreply_disabled: true, ia_pausada_por: motivo }
-        expect((await (await chamar()).json()).proximo).toBeNull()
+        expect('proximo' in (await (await chamar()).json())).toBe(false)
       }
     })
 

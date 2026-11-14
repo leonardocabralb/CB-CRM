@@ -48,7 +48,15 @@ Decisões do operador de 11/11/2026 (P1–P7 de
   contrário**: o "Desligar IA" da automação (`set_ai`) e a transferência
   (`transferirParaGente`, que então anota e deixa pendente) casam também com
   `gente`/`botao` — senão a IA voltaria em N min depois de pedir gente ou de
-  a automação desligá-la (revisão do PR, 11/11/2026).
+  a automação desligá-la (revisão do PR, 11/11/2026). ⚠️ E o "Ligar IA" seguinte DEVOLVE a temporária
+  que o "Desligar" cobriu (`ia_pausa_antes_da_automacao`, 1144, com o relógio
+  recomeçando): a dupla desligar + ligar apagava a pausa de quem estava na
+  conversa (D26), e a IA respondia em 8 s.
+- ⚠️ **A 1138 NÃO converteu as pausas do BOTÃO de antes dela**: a dica
+  dizia que só o botão religava a IA, e o deploy as tornou temporárias (as
+  `gente` viraram temporárias de propósito). Pausa `botao` com `ia_pausada_em`
+  anterior à 1138 é desse caso (o Atlas as converte em `desativada` na
+  própria migration).
 - O "Retomar IA" ANTECIPA o turno que esperava a equipe
   (`anteciparEsperaDaEquipe`, para `now()`, e o dispara): a dica promete
   "agora, sem esperar".

@@ -2118,12 +2118,26 @@ describe('set_ai — a pausa com MOTIVO (1049, D26)', () => {
     expect(conversas[0].filters).toContainEqual(['or', 'expr', 'ai_autoreply_disabled.eq.false,ia_pausada_por.in.(gente,botao)']);
   });
 
+  it('⚠️ desligar por cima da TEMPORÁRIA guarda o motivo dela; sem pausa, nada a guardar', async () => {
+    h.state.conversaLida = { ai_autoreply_disabled: true, ia_pausada_por: 'gente' };
+    await rodar(false);
+    expect(escritasNaConversa()[0].payload).toMatchObject({
+      ia_pausada_por: 'automacao',
+      ia_pausa_antes_da_automacao: 'gente',
+    });
+  });
+
   it('ligar desfaz a pausa por AUTOMAÇÃO, com a condição no próprio UPDATE, e não zera o teto', async () => {
     h.state.conversaLida = { ai_autoreply_disabled: true, ia_pausada_por: 'automacao' };
     await rodar(true);
     const conversas = escritasNaConversa();
     expect(conversas).toHaveLength(1);
-    expect(conversas[0].payload).toEqual({ ai_autoreply_disabled: false, ia_pausada_por: null, ia_pausada_em: null });
+    expect(conversas[0].payload).toEqual({
+      ai_autoreply_disabled: false,
+      ia_pausada_por: null,
+      ia_pausada_em: null,
+      ia_pausa_antes_da_automacao: null,
+    });
     expect(conversas[0].filters).toContainEqual(['eq', 'ia_pausada_por', 'automacao']);
     expect(conversas[0].filters).toContainEqual(['eq', 'ai_autoreply_disabled', true]);
     expect(passos()).toContainEqual(expect.objectContaining({ status: 'success', detail: 'IA ligada na conversa' }));
@@ -2140,6 +2154,29 @@ describe('set_ai — a pausa com MOTIVO (1049, D26)', () => {
       );
     }
   );
+
+  it('⚠️ ligar DEVOLVE a pausa de gente que o desligar cobriu (D26), com o relógio recomeçando', async () => {
+    // Uma advogada na conversa (`gente`), e a automação desliga e liga: a IA
+    // não pode responder em 8 s — volta a esperar os N min da pausa de gente.
+    h.state.conversaLida = {
+      ai_autoreply_disabled: true,
+      ia_pausada_por: 'automacao',
+      ia_pausa_antes_da_automacao: 'gente',
+    };
+    await rodar(true);
+    const conversas = escritasNaConversa();
+    expect(conversas).toHaveLength(1);
+    expect(conversas[0].payload).toMatchObject({ ia_pausada_por: 'gente', ia_pausa_antes_da_automacao: null });
+    expect(conversas[0].payload).not.toHaveProperty('ai_autoreply_disabled');
+    expect(typeof (conversas[0].payload as Record<string, unknown>).ia_pausada_em).toBe('string');
+    expect(conversas[0].filters).toContainEqual(['eq', 'ia_pausada_por', 'automacao']);
+    expect(passos()).toContainEqual(
+      expect.objectContaining({
+        status: 'success',
+        detail: 'IA segue pausada: voltou a pausa de gente de antes da automação (gente)',
+      })
+    );
+  });
 
   it('ligar com a IA já ligada: nada a escrever', async () => {
     h.state.conversaLida = { ai_autoreply_disabled: false, ia_pausada_por: null };

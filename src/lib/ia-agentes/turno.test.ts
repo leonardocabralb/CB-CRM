@@ -1527,6 +1527,19 @@ describe('transferirParaGente', () => {
     expect(conversa()).toMatchObject({ status: 'pending', ia_pausada_por: 'transferencia' })
   })
 
+  it('1141: "respondeu e passou" na conversa ABERTA não vira anotação — a trilha diz a passagem', async () => {
+    await expect(transferirParaGente(banco as never, { ...args, motivo: 'agente_passou' })).resolves.toBe('transferiu')
+    expect(conversa().status).toBe('pending')
+    expect(notas()).toHaveLength(0)
+  })
+
+  it('⚠️ 1141: "respondeu e passou" na conversa JÁ pendente vira anotação — a trilha não grava situação igual', async () => {
+    // O "Retomar IA" não mexe na situação: a conversa transferida antes segue pendente.
+    conversa().status = 'pending'
+    await expect(transferirParaGente(banco as never, { ...args, motivo: 'agente_passou' })).resolves.toBe('transferiu')
+    expect(notas()).toHaveLength(1)
+  })
+
   it.each(['gente', 'botao'])(
     'a conversa na pausa TEMPORÁRIA (%s, 1138): a IA pediu gente — a pausa vira a transferência (permanente), anotada',
     async (pausadaPor) => {
@@ -3813,12 +3826,46 @@ describe('executarTurno — a pausa TEMPORÁRIA (1138)', () => {
     expect(voltas()).toHaveLength(0)
   })
 
-  it('N da conta: 30 min seguram a mensagem de 20 min atrás', async () => {
+  it('N da conta: 30 min seguram a mensagem de 20 min atrás — o turno espera a VOLTA, antes do áudio e das mídias', async () => {
     banco.tabelas.ai_configs = [{ account_id: CONTA, channel_id: null, ia_volta_apos_min: 30 }]
     pausada('gente', 20 * MIN)
     await executarTurno(TURNO)
+    // A volta = a âncora mais NOVA (a espera da cliente, há 20 min; a pausa é
+    // de 21 min atrás) + 30 min: daqui a 10 min.
+    expect(turno()).toMatchObject({ status: 'aguardando', erro: ERRO_DA_ESPERA_DA_EQUIPE })
+    expect(Date.parse(turno().executar_apos as string)).toBe(Date.parse(conversa().aguardando_desde as string) + 30 * MIN)
+    // Cedo: nem chega à função (que decidiria o mesmo, sob a trava).
+    expect(voltas()).toHaveLength(0)
+  })
+
+  it('⚠️ o "Pausar" no meio da rajada (cedo): o áudio nem é tentado — a pausa da equipe não vira transferência', async () => {
+    Object.assign(banco.tabelas.messages.find((m) => m.id === GATILHO)!, { content_type: 'audio', content_text: null })
+    vi.mocked(transcreverAudio).mockResolvedValue({ status: 'recusada', erro: 'áudio ilegível' })
+    pausada('botao', 10_000, 5_000)
+    await executarTurno(TURNO)
+    expect(transcreverAudio).not.toHaveBeenCalled()
     expect(turno().status).toBe('aguardando')
-    expect(voltas()[0].args.p_minutos).toBe(30)
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'botao' })
+  })
+
+  it('⚠️ a foto mandada durante a pausa é LIDA na volta (o teto das mídias conta da volta, não da mensagem)', async () => {
+    Object.assign(banco.tabelas.messages.find((m) => m.id === GATILHO)!, {
+      content_type: 'image',
+      content_text: 'segue o holerite',
+      media_type: 'image/jpeg',
+    })
+    vi.mocked(lerMidia).mockImplementation(async (_db, { messageId }) => {
+      Object.assign(banco.tabelas.messages.find((m) => m.id === messageId)!, { transcricao: 'Holerite de outubro', transcricao_status: 'pronta' })
+      return { status: 'pronta', texto: 'Holerite de outubro' }
+    })
+    // O turno roda NA volta (o cron o pega 10 s depois dela): a foto tem 15
+    // min, bem além do teto contado da mensagem — e dentro do contado da volta.
+    pausada('gente', 15 * MIN + 10_000)
+    await executarTurno(TURNO)
+    expect(lerMidia).toHaveBeenCalledWith(banco, { accountId: CONTA, messageId: GATILHO })
+    expect(turno().status).toBe('respondeu')
+    const enviada = vi.mocked(generateReply).mock.calls[0][0].messages as Array<{ content: string }>
+    expect(enviada.at(-1)?.content).toBe('[image] segue o holerite\n(content: Holerite de outubro)')
   })
 
   it('a leitura da configuração que FALHA: o turno falha e a conversa continua pausada (o lado que não fala)', async () => {
@@ -4558,6 +4605,15 @@ describe('a RETOMADA (1056)', () => {
       // A fala da equipe chega ao modelo ROTULADA, sem o nome da pessoa.
       expect(pedido.messages.some((m) => m.content.includes('[Team member] Me manda o holerite'))).toBe(true)
       expect(retomadas()).toMatchObject([{ tentativa: 2, mensagem_gatilho_id: EQUIPE, ia_agente_id: AGENTE }])
+    })
+
+    it('⚠️ o follow-up que LEVANTOU a pausa e não saiu (a reserva recusou) a DEVOLVE: nada chegou à cliente', async () => {
+      comPreArmacao(20 * MIN)
+      banco.rpcs.cb_ia_reservar_envio = () => ({ data: 'teto', error: null })
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA).status).toBe('sem_resposta')
+      // Sem a devolução, a próxima mensagem da cliente era respondida em 8 s.
+      expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'gente' })
     })
 
     it('com o "Pausar" (botao) a série depois da equipe não roda', async () => {
