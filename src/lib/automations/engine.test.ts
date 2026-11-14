@@ -7020,8 +7020,8 @@ describe('valoresParaPrevia — a prévia usa as funções do envio e só lê', 
 
 // ------------------------------------------------------------
 // "Enviar arquivo" do ACERVO (09/11/2026): o passo escolhe um item do acervo
-// de mídias (`acervo_id`), e o motor o COPIA a cada envio — como o nó "Enviar
-// mídia" do robô. O passo antigo (arquivo subido no passo, `url`) segue igual.
+// de mídias (`acervo_id`), e o motor manda a cópia CONGELADA dele, uma por
+// item — como o nó "Enviar mídia" do robô. O passo antigo (arquivo subido no passo, `url`) segue igual.
 // ------------------------------------------------------------
 
 describe('"Enviar arquivo": o arquivo subido no passo ou um item do ACERVO (09/11/2026)', () => {

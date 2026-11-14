@@ -2011,7 +2011,7 @@ export interface SendMediaStepConfig {
    * URL pública que o WhatsApp busca no momento do envio.
    *
    * Com `acervo_id`, guarda a URL do item só para a tela mostrar o arquivo: o
-   * motor NÃO a usa — ele copia o item a cada envio.
+   * motor NÃO a usa — ele manda a cópia CONGELADA do item (uma por item).
    */
   url: string;
   /**

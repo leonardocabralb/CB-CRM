@@ -271,6 +271,8 @@
       "searchingInMessages": "Searching inside messages...",
       "stageFilterUnavailable": "Stages could not be loaded — the pipeline/stage filter is not being applied.",
       "searchInMessagesFailed": "Could not search inside messages. Only names and numbers were searched.",
+      "searchingGroupMembers": "Also searching by the names of group members...",
+      "searchGroupMembersFailed": "Could not search by the names of group members. Groups only match by their own name.",
       "searchHitCount": "{n, plural, =1 {1 msg} other {# msgs}}",
       "deletedRef": "(deleted)",
       "savedFilters": "Saved",
