@@ -6570,13 +6570,16 @@ describe('add_tag: a fala da automação de tag_added sobe para quem disparou (E
 });
 
 // ============================================================
-// E4, a fala ADIADA do funil: "Mover card" e "Criar negócio" só gravam um
-// evento; a automação de `deal_stage_changed` que escuta a etapa de destino
-// fala DEPOIS, no dreno — e o agente já teria respondido a mesma mensagem. O
-// passo conta como fala quando alguma automação LIGADA dispararia para a
-// etapa (`triggerMatches`), e só se o card mudou ou nasceu.
+// E4, a fala ADIADA do funil (revista em 14/11/2026): "Mover card" e "Criar
+// negócio" só gravam um evento; a automação de `deal_stage_changed` que escuta
+// a etapa de destino roda DEPOIS, no dreno — e pode não mandar nada (a
+// saudação da "Entrada Avulsa" do Trabalhista, pelo ramo da etiqueta "Não
+// Respondeu", só tira a etiqueta). Contada como fala, ela calava o agente de
+// IA e a cliente que voltava ficava sem resposta. O passo NÃO conta mais:
+// quem confere o que a ouvinte fez é o turno do agente (`esperaPeloFunil`,
+// testado em `ia-agentes/turno.test.ts`).
 // ============================================================
-describe('mover card / criar negócio: a fala adiada do funil conta (E4)', () => {
+describe('mover card / criar negócio: a fala adiada do funil NÃO conta como fala (E4, 14/11/2026)', () => {
   function automacao(id: string, trigger_type: string, trigger_config: Record<string, unknown>, is_active = true) {
     return { id, account_id: ACCOUNT, user_id: 'u1', name: id, trigger_type, trigger_config, is_active };
   }
@@ -6596,104 +6599,79 @@ describe('mover card / criar negócio: a fala adiada do funil conta (E4)', () =>
   const mover = { step_type: 'move_deal_stage', step_config: { stage_id: 'etapa-destino' } };
   const criar = { step_type: 'create_deal', step_config: { pipeline_id: 'p1', stage_id: 'etapa-destino', title: 'Novo' } };
 
-  const disparar = () =>
-    dispararAutomacoes({ accountId: ACCOUNT, triggerType: 'new_message_received', contactId: 'c1', context: {} });
+  const disparar = (context: Record<string, unknown> = {}) =>
+    dispararAutomacoes({ accountId: ACCOUNT, triggerType: 'new_message_received', contactId: 'c1', context });
 
-  /** O card aberto do contato, na etapa dada (o "Mover" o acha pela busca e relê a etapa por id). */
+  /** O card aberto do contato, na etapa dada (o "Mover" o acha pela busca). */
   function cardEm(stage_id: string) {
     h.state.dealPorStatus = { open: { id: 'd-1', stage_id } };
   }
 
-  it('MOVER: alguém escuta a etapa de destino e o card muda de etapa → fala', async () => {
-    cardEm('etapa-lead');
-    montar(mover, [automacao('a-boas-vindas', 'deal_stage_changed', { stage_ids: ['etapa-destino'] })]);
-
-    const r = await disparar();
-
-    expect(h.state.rpcMover).toHaveLength(1);
-    expect(r.falou).toBe(true);
-  });
-
-  it('MOVER: o card JÁ estava na etapa (sem evento) → não é fala', async () => {
-    cardEm('etapa-destino');
-    montar(mover, [automacao('a-boas-vindas', 'deal_stage_changed', { stage_ids: ['etapa-destino'] })]);
+  it('⚠️ MOVER para a etapa que alguém escuta (a volta de "Não Respondeu"): NÃO é fala — e nem relê o card', async () => {
+    cardEm('etapa-nao-respondeu');
+    montar(mover, [automacao('a-saudacao', 'deal_stage_changed', { stage_ids: ['etapa-destino'] })]);
 
     const r = await disparar();
 
     expect(h.state.rpcMover).toHaveLength(1);
     expect(r.falou).toBeFalsy();
-  });
-
-  it('MOVER: ninguém escuta a etapa de destino (só outra etapa) → não é fala, e a etapa de antes nem é lida', async () => {
-    cardEm('etapa-lead');
-    montar(mover, [automacao('a-outra', 'deal_stage_changed', { stage_ids: ['etapa-outra'] })]);
-
-    const r = await disparar();
-
-    expect(r.falou).toBeFalsy();
-    // Só a busca do card aberto (com `status`); a releitura por id não acontece.
+    // Só a busca do card aberto (com `status`): a etapa de ANTES não é mais lida.
     expect(h.state.dealSelects.every((f) => f.some(([op, k]) => op === 'eq' && k === 'status'))).toBe(true);
   });
 
-  it('automação DESLIGADA que escuta a etapa não conta', async () => {
-    cardEm('etapa-lead');
-    montar(mover, [automacao('a-desligada', 'deal_stage_changed', { stage_ids: ['etapa-destino'] }, false)]);
-
-    const r = await disparar();
-
-    expect(r.falou).toBeFalsy();
-  });
-
-  it('lista de etapas VAZIA = qualquer etapa (a régua do motor) → fala', async () => {
-    cardEm('etapa-lead');
+  it('lista de etapas VAZIA (escuta TODA etapa): também não é fala', async () => {
+    cardEm('etapa-nao-respondeu');
     montar(mover, [automacao('a-qualquer', 'deal_stage_changed', { stage_ids: [] })]);
 
     const r = await disparar();
 
-    expect(r.falou).toBe(true);
+    expect(r.falou).toBeFalsy();
   });
 
-  it('erro ao conferir quem escuta → conta como fala (o agente cala)', async () => {
+  it('o motor nem pergunta quem escuta a etapa: a leitura das ouvintes que FALHARIA não cala nada', async () => {
     const calado = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
-      cardEm('etapa-lead');
+      cardEm('etapa-nao-respondeu');
       montar(mover, []);
       h.state.erroPorGatilho = { deal_stage_changed: 'timeout do PostgREST' };
 
       const r = await disparar();
 
-      expect(r.falou).toBe(true);
+      expect(h.state.rpcMover).toHaveLength(1);
+      expect(r.falou).toBeFalsy();
+      expect(calado).not.toHaveBeenCalledWith(expect.stringContaining('quem escuta a etapa'), expect.anything());
     } finally {
       calado.mockRestore();
     }
   });
 
-  it('CRIAR: o card nasce na etapa que alguém escuta → fala', async () => {
+  it('CRIAR: o card nasce na etapa que alguém escuta — não é fala', async () => {
     montar(criar, [automacao('a-boas-vindas', 'deal_stage_changed', { stage_ids: ['etapa-destino'] })]);
 
     const r = await disparar();
 
     expect(h.state.dealInserts).toHaveLength(1);
+    expect(r.falou).toBeFalsy();
+  });
+
+  it('o que FALA continua contando: a mensagem depois do "Mover", na mesma automação, cala o agente', async () => {
+    vi.mocked(engineSendText).mockReset();
+    vi.mocked(engineSendText).mockResolvedValue({ whatsapp_message_id: 'm-oi' });
+    cardEm('etapa-nao-respondeu');
+    montar(mover, [automacao('a-saudacao', 'deal_stage_changed', { stage_ids: ['etapa-destino'] })]);
+    h.state.steps.push({
+      id: 's-oi',
+      automation_id: 'a-mae',
+      position: 1,
+      parent_step_id: null,
+      step_type: 'send_message',
+      step_config: { text: 'Que bom que voltou!' },
+    });
+
+    const r = await disparar({ conversation_id: 'conv-1' });
+
+    expect(engineSendText).toHaveBeenCalledTimes(1);
     expect(r.falou).toBe(true);
-  });
-
-  it('CRIAR: o contato já tinha card (nada nasceu) → não é fala', async () => {
-    h.state.dealExistente = { id: 'd-antigo' };
-    montar(criar, [automacao('a-boas-vindas', 'deal_stage_changed', { stage_ids: ['etapa-destino'] })]);
-
-    const r = await disparar();
-
-    expect(h.state.dealInserts).toHaveLength(0);
-    expect(r.falou).toBeFalsy();
-  });
-
-  it('CRIAR: ninguém escuta a etapa → não é fala', async () => {
-    montar(criar, []);
-
-    const r = await disparar();
-
-    expect(h.state.dealInserts).toHaveLength(1);
-    expect(r.falou).toBeFalsy();
   });
 });
 

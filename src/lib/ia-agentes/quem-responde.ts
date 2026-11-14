@@ -16,7 +16,9 @@
 //      abre turno (`abreTurno`, e o toque em botão) → ninguém;
 //   1. o robô consumiu a mensagem → ninguém;
 //   2. uma automação desta mensagem FALOU (ou vai falar) com o contato
-//      (`ResultadoDoDisparo.falou`, E4) → ninguém;
+//      (`ResultadoDoDisparo.falou`, E4) → ninguém. A fala ADIADA do funil
+//      (card criado ou movido para etapa que automação escuta) não entra
+//      aqui: o turno espera o dreno e confere (`esperaPeloFunil`, `turno.ts`);
 //   3. conversa encerrada, ou pausada (D26: gente respondeu, o botão, a
 //      transferência, uma automação) → ninguém — MENOS a pausa TEMPORÁRIA que
 //      quem chama declara (`pausaTemporaria`, 1138: `gente`/`botao` com N > 0

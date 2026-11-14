@@ -54,9 +54,9 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
 - **Agente de IA nas duas ingestões de cliente** (F2a, `ia.md`): o tipo que o
   webhook da Meta não lê é gravado com `PREFIXO_DE_TIPO_NAO_SUPORTADO`
   (`quem-responde.ts`), a mesma constante com que `abreTurno` o recusa — nunca
-  o literal. E a etapa que `routeContactToPipeline` devolve (card CRIADO) passa
-  por `etapaTemQuemFale` antes de `aoChegarMensagemDoCliente` (pino
-  `pipeline-routing.chamadores.test.ts`).
+  o literal. O card que `routeContactToPipeline` CRIA não cala o agente (E4
+  revista em 14/11/2026): o turno confere a boas-vindas (`esperaPeloFunil`;
+  pino `pipeline-routing.chamadores.test.ts`).
 - **Ligação** (1044): `src/lib/whatsapp/ligacoes/registrar.ts` — a faixa da
   ligação no fio, sem texto e sem motor; regras próprias em `ligacoes.md`.
 - **Núcleo de envio**: `sendMessageToConversation` (`send-message.ts`) —

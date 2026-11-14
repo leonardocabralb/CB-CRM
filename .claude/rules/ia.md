@@ -265,14 +265,13 @@ ingestões), `fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron
 - ⚠️⚠️ **A ordem das regras É a regra** (`quemResponde`): fora do alcance
   (grupo, Instagram, número da conta) → não abre turno → robô → automação FALOU (E4:
   `ResultadoDoDisparo.falou`, em TODOS os gatilhos da mensagem, com o
-  `tag_added` aninhado e a fala ADIADA do funil — card criado ou movido para
-  etapa que automação ligada escuta, `etapaTemQuemFale`) → encerrada → pausada
-  → sem card → etapa sem agente → desligado → fora da conexão → card antigo.
-- ⚠️ **O card que o FUNIL cria na ingestão também é fala adiada**
-  (`routeContactToPipeline` devolve a etapa; pino
-  `pipeline-routing.chamadores.test.ts`). Na mensagem SEGUINTE da rajada,
-  `conferir` REAGENDA enquanto há `deal_stage_changed` não drenado em etapa
-  com quem fale (`funilAindaVaiFalar`); no vão do dreno, só a reserva pega.
+  `tag_added` aninhado) → encerrada → pausada → sem card → etapa sem agente →
+  desligado → fora da conexão → card antigo.
+- ⚠️⚠️ **A fala ADIADA do funil NÃO cala a entrada** (E4 revista em
+  14/11/2026): card criado ou movido para etapa que automação escuta (passo do
+  motor, roteador) não é `falou`. O turno espera o dreno e confere o que a
+  ouvinte FEZ (`esperaPeloFunil`): `ia-agentes-turno.md`; pino
+  `pipeline-routing.chamadores.test.ts`.
 - ⚠️⚠️ **UMA régua de conteúdo, `abreTurno`, na entrada E no turno** (E9/E10):
   figurinha, localização, botão, texto sem nada visível e o rótulo montado com
   `PREFIXO_DE_TIPO_NAO_SUPORTADO` (recusado pelo COMEÇO) não abrem turno.
@@ -305,9 +304,9 @@ ingestões), `fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron
   `open`) e `drenarEventosDeFunil()`, sem anotação; e, se NENHUMA automação
   ligada escuta a etapa de destino (`etapaTemQuemFale`), turno do destino com
   `veio_de_passagem` sobre a MESMA mensagem, sem espera — com automação
-  escutando, ELA fala e o destino responde a próxima mensagem (a regra E4 da
-  entrada; esperar pelo dreno não basta, porque o evento é reivindicado antes
-  de a automação rodar e um "Aguardar" a faria falar DEPOIS); este termina
+  escutando, ELA fala e o destino responde a próxima mensagem (a E4 de antes
+  de 14/11, mantida só aqui: a ouvinte que não fala deixa a mensagem sem
+  resposta — limite aceito); este termina
   `passou` ANTES de o novo ser reivindicado (um `rodando` por conversa). Passagem de
   passagem, n inválido, destino sem etapa ou UPDATE que não casa = transfere.
   Escritor de etapa sem `auth.uid()` (trilha `sistema` com o agente,

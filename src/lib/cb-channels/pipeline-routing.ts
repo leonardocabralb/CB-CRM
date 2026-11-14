@@ -51,12 +51,10 @@
 // card que já existia, corrida perdida, falha). ⚠️ NOSSO (F2 dos agentes de
 // IA, E4): o card novo entra na fila do funil (`deal_stage_changed`), e a
 // automação de boas-vindas que escuta a etapa de entrada roda DEPOIS, no
-// dreno — com o agente de IA já tendo feito a triagem da mesma mensagem:
-// duas respostas ao cliente. As DUAS ingestões de cliente (webhook da Meta e
-// `persistInboundMessage`) somam o retorno ao `automacaoFalou` por
-// `etapaTemQuemFale` (a régua do passo "Criar negócio" do motor). Os outros
-// chamadores ignoram o retorno: na saída de gente não há agente para calar,
-// e o Instagram não tem agente (D1).
+// dreno. Até 14/11/2026 as duas ingestões de cliente somavam este retorno ao
+// `automacaoFalou` e calavam o agente de IA; hoje nenhum chamador o usa — o
+// turno do agente espera o dreno e confere o que a boas-vindas fez
+// (`esperaPeloFunil`, `ia-agentes/turno.ts`), porque ela pode não mandar nada.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js';

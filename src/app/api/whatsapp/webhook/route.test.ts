@@ -1283,29 +1283,14 @@ describe('os fatos da mensagem vão para o agente de IA', () => {
     expect(abreTurno({ tipo: fatos.tipo, texto: fatos.texto, mime: fatos.mime })).toBe(false)
   })
 
-  describe('⚠️ E4: o card que o funil ACABOU de criar conta como fala se a etapa de entrada tem automação', () => {
-    it('card novo numa etapa com automação escutando: o agente cala', async () => {
+  // ⚠️ E4 revista em 14/11/2026: a boas-vindas da etapa do card NOVO roda
+  // depois, no dreno, e pode não mandar nada. Ela NÃO cala mais o agente na
+  // entrada: o turno espera o dreno e confere (`esperaPeloFunil`, provado em
+  // `ia-agentes/turno.test.ts`).
+  describe('⚠️ E4: o card que o funil ACABOU de criar não cala o agente (quem confere é o turno)', () => {
+    it('card novo numa etapa com automação escutando: o agente segue, e a rota nem pergunta quem escuta', async () => {
       vi.mocked(routeContactToPipeline).mockResolvedValueOnce('etapa-lead')
-      h.etapaTemQuemFale.mockResolvedValueOnce(true)
-
-      await runWebhook()
-
-      expect(h.etapaTemQuemFale).toHaveBeenCalledWith(expect.anything(), 'acc-1', 'etapa-lead')
-      expect(h.aoChegarMensagemDoCliente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: true }))
-    })
-
-    it('card novo numa etapa SEM automação escutando: o agente segue', async () => {
-      vi.mocked(routeContactToPipeline).mockResolvedValueOnce('etapa-lead')
-      h.etapaTemQuemFale.mockResolvedValueOnce(false)
-
-      await runWebhook()
-
-      expect(h.etapaTemQuemFale).toHaveBeenCalledTimes(1)
-      expect(h.aoChegarMensagemDoCliente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: false }))
-    })
-
-    it('contato que JÁ tinha card (o roteador não criou nada): não conta, e nem consulta', async () => {
-      vi.mocked(routeContactToPipeline).mockResolvedValueOnce(null)
+      h.etapaTemQuemFale.mockResolvedValue(true)
 
       await runWebhook()
 
@@ -1313,24 +1298,12 @@ describe('os fatos da mensagem vão para o agente de IA', () => {
       expect(h.aoChegarMensagemDoCliente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: false }))
     })
 
-    it('a conferência que LANÇA conta como fala (o lado de uma resposta só)', async () => {
-      vi.mocked(routeContactToPipeline).mockResolvedValueOnce('etapa-lead')
-      h.etapaTemQuemFale.mockRejectedValueOnce(new Error('rede caiu'))
-      const erro = vi.spyOn(console, 'error').mockImplementation(() => {})
-
-      await runWebhook()
-
-      expect(h.aoChegarMensagemDoCliente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: true }))
-      erro.mockRestore()
-    })
-
-    it('uma automação da mensagem já falou: a etapa nem é consultada', async () => {
+    it('uma automação da mensagem que FALOU continua calando, com card novo ou não', async () => {
       vi.mocked(routeContactToPipeline).mockResolvedValueOnce('etapa-lead')
       h.dispararAutomacoes.mockResolvedValue({ ...DISPARO, falou: true })
 
       await runWebhook()
 
-      expect(h.etapaTemQuemFale).not.toHaveBeenCalled()
       expect(h.aoChegarMensagemDoCliente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: true }))
     })
   })

@@ -74,6 +74,42 @@ das ações está em `ia.md` e `ia-agentes.md`.
   1109 descarta o turno (a passagem não tem `mensagem_enviada_id`) e as ações
   feitas somem do registro do turno (as anotações delas ficam).
 
+### A fala ADIADA do funil: o turno espera o dreno e confere (14/11/2026)
+
+- ⚠️⚠️ Medido no Trabalhista (13/11/2026): a automação de "nova mensagem"
+  moveu o card de "Não Respondeu" para a etapa do agente, cuja saudação
+  (`deal_stage_changed`) só tira a etiqueta de quem volta — e a entrada, que
+  contava o "Mover" como fala (E4), não abriu turno: ninguém respondeu. O
+  "Mover card", o "Criar negócio" e o card novo do roteador NÃO são mais
+  `falou` (motor e ingestões não perguntam `etapaTemQuemFale`); o turno nasce
+  e `esperaPeloFunil` (no `conferir`, antes de gerar e de enviar) decide,
+  dentro de `JANELA_DO_AUDIO_MS` do gatilho:
+  - evento do contato NÃO drenado em etapa com quem escute → reagenda;
+  - drenado ou criado DEPOIS do gatilho em etapa com quem escute → as
+    execuções do contato nascidas depois do gatilho e vivas
+    (`automation_logs` sem `finalizado_em` nem `interrompida_em`, índice da
+    1005): parada na fila além de `ESPERA_CURTA_DO_FUNIL_MS` (60 s do
+    gatilho) = descarta (`ERRO_DO_FUNIL_QUE_ESPERA`: o "Aguardar" longo e a
+    retentativa falam depois); rodando ou espera curta = reagenda; envio
+    `incerto` do robô na conexão = descarta (`ERRO_DO_FUNIL_INCERTO`, a
+    régua do motor); senão responde. A que JÁ falou é a saída do robô
+    (`haSaidaDoRoboDepois`, antes) e a reserva.
+- ⚠️ **Por que o dreno basta agora** (a passagem diz que não bastava, Codex
+  #309): o registro da execução nasce logo depois de o evento ser
+  reivindicado e fica vivo até ela terminar, parada inclusive. Sobra o vão
+  reivindicação → registro (milissegundos): a 2ª conferência, depois da
+  geração, e a reserva o cobrem; só um banco travado por segundos ali passa.
+- ⚠️ `processado_em` é do relógio do APP (o dreno); `criado_em` e
+  `gravada_em`, do banco: o `.or()` usa os dois, com o ISO do JS (o do
+  PostgREST traz `+00:00`, e o `+` não vai cru no filtro).
+- **O turno da passagem** só espera o não drenado: a triagem já conferiu o
+  funil desta mensagem, e o que nasceu depois são as ações dela (o limite
+  acima). A passagem em si mantém a E4 antiga (`ia.md`).
+- **Limites aceitos**: fora da janela (dreno parado, execução morta) o turno
+  responde, e a ouvinte que acordar depois fala também; execução de OUTRA
+  origem nascida depois do gatilho (equipe etiquetou, Calendly) também
+  segura — o lado de calar.
+
 ### FORA DO HORÁRIO o turno ESPERA a abertura
 
 - ⚠️⚠️ Antes terminava `fora_do_horario` e a mensagem da noite nunca era

@@ -72,41 +72,54 @@ describe('abre negócio: os caminhos decididos por gente', () => {
 });
 
 // ============================================================
-// E4 dos agentes de IA: o card NOVO conta como fala.
+// E4 dos agentes de IA, revista em 14/11/2026: o card NOVO NÃO cala o agente.
 //
 // O card que o roteador cria entra na fila do funil (`deal_stage_changed`), e
-// a automação de boas-vindas da etapa de entrada fala DEPOIS, no dreno — com
-// o agente de IA já tendo feito a triagem da mesma mensagem. As DUAS ingestões
-// de cliente somam a etapa devolvida ao `automacaoFalou` (`etapaTemQuemFale`)
-// ANTES de entregar os fatos à entrada do agente. Mock nenhum pega "esqueci de
-// usar o retorno": o teste de comportamento dubla o roteador E o motor.
+// a automação de boas-vindas da etapa de entrada roda DEPOIS, no dreno — e
+// pode não mandar nada (uma condição, outra conexão). Até 14/11 as duas
+// ingestões somavam a etapa devolvida ao `automacaoFalou` e o agente calava
+// só por existir quem escutasse: o mesmo defeito que deixou sem resposta a
+// cliente que voltava de "Não Respondeu" (o "Mover card" da automação). Quem
+// confere o que a boas-vindas fez é o TURNO (`esperaPeloFunil`). Devolver a
+// consulta às ingestões traz o defeito de volta sem quebrar teste de
+// comportamento nenhum (eles dublam o roteador e o motor): este pino lê o
+// fonte.
 // ============================================================
-describe('as ingestões de cliente somam o card novo ao que calou o agente', () => {
+describe('as ingestões de cliente NÃO calam o agente pelo card novo (quem confere é o turno)', () => {
   const INGESTOES = [
     { arquivo: 'lib/whatsapp/inbound-store.ts', inicio: 'export async function persistInboundMessage' },
     { arquivo: 'app/api/whatsapp/webhook/route.ts', inicio: 'async function processMessage' },
   ];
 
   for (const { arquivo, inicio } of INGESTOES) {
-    it(`${arquivo}: roteador → etapaTemQuemFale(etapa devolvida) → entrada do agente`, () => {
+    it(`${arquivo}: o roteador roda ANTES da entrada do agente, e o retorno dele não vira "falou"`, () => {
       const src = fonte(arquivo);
       const de = src.indexOf(inicio);
       expect(de).toBeGreaterThan(-1);
       const corpo = src.slice(de);
       const funil = corpo.indexOf('routeContactToPipeline(');
-      const conta = corpo.indexOf('etapaTemQuemFale(', funil);
       const entrada = corpo.indexOf('aoChegarMensagemDoCliente(');
       expect(funil).toBeGreaterThan(-1);
-      expect(conta).toBeGreaterThan(funil);
-      expect(entrada).toBeGreaterThan(conta);
-      // O retorno do roteador é GUARDADO e é ele que vai à consulta.
-      const guardado = corpo.slice(0, funil).match(/const\s+(\w+)\s*=\s*await\s*$/);
-      expect(guardado).not.toBeNull();
-      expect(corpo.slice(conta, entrada)).toContain(guardado![1]);
-      // …e o resultado vai para o MESMO `automacaoFalou` que a entrada recebe.
-      expect(corpo.slice(funil, entrada)).toMatch(/automacaoFalou\s*=\s*await\s+etapaTemQuemFale\(/);
+      expect(entrada).toBeGreaterThan(funil);
+      expect(src).not.toContain('etapaTemQuemFale');
+      // O `automacaoFalou` que a entrada recebe vem SÓ do que as automações
+      // da mensagem fizeram (`disparo.falou`), nunca do roteador.
+      expect(corpo.slice(funil, entrada)).not.toMatch(/automacaoFalou\s*=/);
     });
   }
+
+  it('quem confere a fala adiada é o turno do agente (`esperaPeloFunil`, com a régua do motor)', () => {
+    const src = fonte('lib/ia-agentes/turno.ts');
+    const de = src.indexOf('async function esperaPeloFunil');
+    expect(de).toBeGreaterThan(-1);
+    const corpo = src.slice(de, src.indexOf('\nasync function ', de + 1));
+    expect(corpo).toContain('etapaTemQuemFale(');
+    expect(corpo).toContain("from('cb_automation_events')");
+    expect(corpo).toContain('execucoesVivasDepois(');
+    // E é chamada pela conferência (antes de gerar e antes de enviar).
+    const conferir = src.slice(src.indexOf('async function conferir('));
+    expect(conferir.slice(0, conferir.indexOf('\n}\n'))).toContain('esperaPeloFunil(');
+  });
 
   it('celular pareado, núcleo de envio e Instagram ignoram o retorno — não há agente a calar ali', () => {
     for (const arquivo of ['lib/whatsapp/send-message.ts', 'lib/instagram/persistir.ts']) {
