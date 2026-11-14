@@ -1025,7 +1025,8 @@ function SendMediaForm({
 
   const escolherDoAcervo = (item: MediaLibraryItem) => {
     // O TIPO vem do item (o operador escolhe "qualquer arquivo"); a URL fica
-    // só para a tela mostrar — o motor copia o item a cada envio. Áudio perde
+    // só para a tela mostrar — o motor manda a cópia congelada do item (uma
+    // por item). Áudio perde
     // a legenda: a nota de voz não leva texto (932).
     // O seletor mostra o acervo INTEIRO: quem estava em "Áudio" e tocou num
     // PDF vê o passo virar "Documento" — dito, não em silêncio.

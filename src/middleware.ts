@@ -34,29 +34,33 @@ export async function middleware(request: NextRequest) {
   // token (até 1 h), não na próxima navegação; o banco já aceitava esse
   // token até vencer.
   //
-  // `sessaoIncerta`: o login não respondeu (5xx/rede, `AuthRetryableFetchError`)
+  // `loginForaDoAr`: o login não respondeu (5xx/rede, `AuthRetryableFetchError`)
   // ao renovar o token ou ao buscar as chaves (o cache delas vence a cada
-  // 10 min). Não é "saiu": a tela abre e o navegador renova sozinho; a API
-  // segue até a rota, que confere o login por conta própria (`requireRole`/
-  // `getUser`; pino no `middleware.test.ts`). Sem isso, as chaves fora do ar
-  // por um instante dariam 401 a todo envio, mesmo com o login respondendo.
+  // 10 min). Não é "saiu": a tela abre; a API segue até a rota, que confere o
+  // login por conta própria (`requireRole`/`getUser`; pino no
+  // `middleware.test.ts`). Sem isso, as chaves fora do ar por um instante
+  // dariam 401 a todo envio, mesmo com o login respondendo.
+  //
+  // `conferenciaLancou`: erro que não é da biblioteca (a WebCrypto recusando a
+  // chave, um cookie corrompido). Só a TELA abre — ela lê sob a RLS, que
+  // confere o token a cada leitura. A API recusa: um cookie FORJADO, com
+  // qualquer texto no lugar do token, faz a biblioteca lançar, e tratá-lo como
+  // incerto tiraria o 401 do middleware de qualquer visitante.
   let logado = false
-  let sessaoIncerta = false
+  let loginForaDoAr = false
+  let conferenciaLancou = false
   try {
     const { data, error } = await supabase.auth.getClaims()
     logado = Boolean(data?.claims?.sub)
     if (!logado && error && isAuthRetryableFetchError(error)) {
-      sessaoIncerta = true
+      loginForaDoAr = true
       console.warn('[middleware] o login não respondeu; sessão incerta neste pedido:', error.status)
     }
   } catch (err) {
-    // Só erro que não é da biblioteca chega aqui (a WebCrypto recusando a
-    // chave, um cookie corrompido); quem não tem cookie de sessão nunca passa
-    // por este ramo. O token ainda é conferido pelo banco a cada leitura da
-    // tela.
     console.error('[middleware] a conferência da sessão lançou:', err)
-    sessaoIncerta = true
+    conferenciaLancou = true
   }
+  const telaIncerta = loginForaDoAr || conferenciaLancou
 
   // getClaims() transparently refreshes an expired access token, which
   // ROTATES the refresh token and writes the new cookies onto
@@ -111,14 +115,14 @@ export async function middleware(request: NextRequest) {
   // se chamar `/marcar/<token>`, nunca `/agendar/<token>`: esta linha mandaria
   // o cliente, que não tem login, para a tela de login.
   const protectedPaths = ['/dashboard', '/meu-dia', '/radar', '/inbox', '/contacts', '/agenda', '/reunioes', '/pipelines', '/broadcasts', '/automations', '/flows', '/agents', '/notifications', '/tarefas', '/settings']
-  if (!logado && !sessaoIncerta && protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
+  if (!logado && !telaIncerta && protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return withRefreshedCookies(NextResponse.redirect(url))
   }
 
   // API routes that need auth (not webhooks)
-  if (!logado && !sessaoIncerta && request.nextUrl.pathname.startsWith('/api/whatsapp/') &&
+  if (!logado && !loginForaDoAr && request.nextUrl.pathname.startsWith('/api/whatsapp/') &&
       !request.nextUrl.pathname.includes('/webhook')) {
     return withRefreshedCookies(
       NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
