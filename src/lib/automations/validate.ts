@@ -157,7 +157,8 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       break
     case 'send_media': {
       // NOSSO (09/11/2026): o arquivo é o subido no passo (`url`) OU um item
-      // do acervo (`acervo_id`, copiado a cada envio). Se o item ainda existe
+      // do acervo (`acervo_id`, mandado pela cópia congelada do item, uma
+      // por item). Se o item ainda existe
       // é do banco — `validateAcervoForActivation`, na rota.
       if (!nonEmpty(c.url) && !nonEmpty(c.acervo_id)) {
         issues.push({ path: `${path}.url`, message: 'a file is required', codigo: 'midia_sem_arquivo' })

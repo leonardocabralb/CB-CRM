@@ -218,14 +218,20 @@ real do grupo, e a busca acha o grupo pelo nome das pessoas.
   e do topo do painel ("Nome · N participantes"), rotulado na aba Informações
   e no `title` da linha da lista (a linha não tem espaço para os dois).
 - ⚠️ **A busca por participante só conhece os nomes que o CRM GUARDA**
-  (`cb_nomes_nos_grupos`): as fichas ligadas (1117) e o nome com que cada um
-  escreveu no grupo (`messages.group_sender_name`). Quem nunca escreveu e não
-  tem ficha não é achado — a lista inteira não é guardada (D4, acima). É a
+  (`cb_nomes_nos_grupos`, 1142): as fichas ligadas (1117) e o nome com que cada um
+  escreveu no grupo (`messages.group_sender_name`), nas ÚLTIMAS 1000
+  mensagens com nome de cada grupo (o teto de `nomes-dos-participantes.ts`).
+  Quem só escreveu antes delas, ou nunca, e não tem ficha não é achado — a
+  lista inteira não é guardada (D4, acima). ⚠️ Sem o teto, a RPC lia todo o
+  histórico dos grupos a cada busca e chegava aos 8 s do `authenticated`. É a
   terceira fonte do OU da busca (`participanteQueCasa`, `inbox-lista.md`).
-- ⚠️ **Os nomes só são lidos com TERMO de busca** (`useNomesNosGrupos`): a
-  lista recarrega ~1.500 vezes por dia e o banco já esteve no teto de
-  conexões. Lidos uma vez; a volta à aba (`resyncToken`) faz a próxima busca
-  reler. `null` não recorta nada, só deixa de somar.
+- ⚠️ **Os nomes só são lidos com TERMO de busca e grupo na conta**
+  (`useNomesNosGrupos`): a lista recarrega ~1.500 vezes por dia e o banco já
+  esteve no teto de conexões. Lidos uma vez; a volta à aba (`resyncToken`)
+  relê — na hora, com termo na caixa. `null` não recorta nada, só deixa de
+  somar. ⚠️ A lista DIZ "buscando" e "falhou" ao lado da busca (`carregando`/
+  `falhou` do hook; a primeira que falha tenta de novo em 30 s): sem isso, o
+  grupo achado só pelo participante sumia com "Nenhuma conversa".
 - A linha do grupo achado SÓ pelo participante troca a prévia por
   "Participante: Fulano" (antes do trecho do corpo das mensagens): sem isso o
   grupo apareceria no resultado sem dizer por quê.

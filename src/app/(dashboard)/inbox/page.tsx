@@ -46,6 +46,7 @@ import { comMensagemNova } from "@/lib/inbox/ordem-da-lista";
 import {
   comBolhaPublicada,
   comLinhaDoTempoReal,
+  comMensagemAtualizada,
 } from "@/lib/inbox/bolhas-otimistas";
 import { reinseridaPelaRestauracao } from "@/lib/contacts/lixeira";
 import {
@@ -1273,11 +1274,11 @@ function InboxPageInner() {
     setMessages((prev) => comBolhaPublicada(prev, msg));
   }, []);
 
+  // A renomeada para um id que já está na lista (`pintarFalha` depois do
+  // INSERT do tempo real) não vira a segunda linha com o mesmo id.
   const handleUpdateMessage = useCallback(
     (id: string, updates: Partial<Message>) => {
-      setMessages((prev) =>
-        prev.map((m) => (m.id === id ? { ...m, ...updates } : m))
-      );
+      setMessages((prev) => comMensagemAtualizada(prev, id, updates));
     },
     []
   );

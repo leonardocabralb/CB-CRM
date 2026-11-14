@@ -5,6 +5,7 @@ import type { Message } from '@/types';
 import {
   comBolhaPublicada,
   comLinhaDoTempoReal,
+  comMensagemAtualizada,
   ehOtimista,
 } from './bolhas-otimistas';
 
@@ -32,9 +33,8 @@ const otimista = (id: string, p: Partial<Message> = {}) =>
 const minha = (id: string, p: Partial<Message> = {}) =>
   msg(id, { sender_id: EU, ...p });
 const ids = (lista: Message[]) => lista.map((m) => m.id);
-/** O `onUpdateMessage` da página: troca por id, sem acrescentar. */
-const atualizar = (lista: Message[], id: string, u: Partial<Message>) =>
-  lista.map((m) => (m.id === id ? { ...m, ...u } : m));
+/** O `onUpdateMessage` das duas telas que montam o fio. */
+const atualizar = comMensagemAtualizada;
 
 describe('ehOtimista', () => {
   it('reconhece o id provisório do fio', () => {
@@ -272,6 +272,88 @@ describe('comLinhaDoTempoReal', () => {
   it('a mesma linha duas vezes devolve a MESMA lista', () => {
     const lista = [minha('real-1')];
     expect(comLinhaDoTempoReal(lista, minha('real-1'), EU)).toBe(lista);
+  });
+});
+
+describe('comLinhaDoTempoReal — a tentativa gravada já renomeada na tela', () => {
+  it('a linha do BANCO vence a otimista renomeada para o id dela', () => {
+    // `pintarFalha` deu à otimista o `mensagem_id` da resposta 502; o INSERT
+    // dela chega depois, com o carimbo e o texto do banco.
+    const naTela = otimista('tentativa-1', {
+      status: 'failed',
+      nao_saiu: true,
+      sender_id: EU,
+      created_at: '2026-10-25T12:05:00.000Z',
+      content_text: 'oi',
+    });
+    const doBanco = minha('tentativa-1', {
+      status: 'failed',
+      nao_saiu: true,
+      created_at: '2026-10-25T12:00:01.000Z',
+      gravada_em: '2026-10-25T12:00:01.000Z',
+      content_text: '*Ana:*\noi',
+    });
+    const depois = comLinhaDoTempoReal([naTela], doBanco, EU);
+    expect(depois).toEqual([doBanco]);
+  });
+
+  it('⚠️ duas em voo, e a tentativa que não saiu chega ANTES da resposta, sem texto igual: nenhuma é trocada às cegas, e a resposta tira a otimista dela — sem dois ids (achado do Codex)', () => {
+    let lista = [
+      otimista('temp-1', { content_text: 'primeira' }),
+      otimista('temp-2', { content_text: 'segunda' }),
+    ];
+    const doBanco = minha('tentativa-2', {
+      status: 'failed',
+      nao_saiu: true,
+      gravada_em: '2026-10-25T12:00:01.000Z',
+      content_text: '*Ana:*\nsegunda',
+    });
+    lista = comLinhaDoTempoReal(lista, doBanco, EU);
+    // A `temp-1` é de OUTRO envio, ainda em voo: fica.
+    expect(ids(lista)).toEqual(['temp-1', 'temp-2', 'tentativa-2']);
+    // A resposta 502 da rota: `pintarFalha` renomeia a `temp-2` para o id gravado.
+    lista = atualizar(lista, 'temp-2', { id: 'tentativa-2', status: 'failed', nao_saiu: true, sender_id: EU });
+    expect(ids(lista)).toEqual(['temp-1', 'tentativa-2']);
+    expect(lista[1]).toBe(doBanco);
+  });
+
+  it('uma só em voo: a tentativa sem texto igual troca a única, como antes', () => {
+    const doBanco = minha('tentativa-1', { status: 'failed', nao_saiu: true, content_text: '*Ana:*\noi' });
+    expect(ids(comLinhaDoTempoReal([otimista('temp-1', { content_text: 'oi' })], doBanco, EU))).toEqual([
+      'tentativa-1',
+    ]);
+  });
+
+  it('a mesma linha do banco duas vezes: a MESMA lista', () => {
+    const doBanco = minha('tentativa-1', { gravada_em: '2026-10-25T12:00:01.000Z' });
+    const lista = [doBanco];
+    expect(comLinhaDoTempoReal(lista, { ...doBanco }, EU)).toBe(lista);
+  });
+});
+
+describe('comMensagemAtualizada', () => {
+  it('troca por id, sem acrescentar', () => {
+    const lista = [otimista('temp-1'), msg('real-1')];
+    expect(comMensagemAtualizada(lista, 'temp-1', { status: 'sent' })).toEqual([
+      { ...lista[0], status: 'sent' },
+      lista[1],
+    ]);
+    expect(ids(comMensagemAtualizada(lista, 'nao-existe', { status: 'sent' }))).toEqual(['temp-1', 'real-1']);
+  });
+
+  it('a resposta que chega ANTES do INSERT renomeia a otimista (o INSERT a troca depois)', () => {
+    const lista = [otimista('temp-1')];
+    expect(ids(comMensagemAtualizada(lista, 'temp-1', { id: 'tentativa-1', status: 'failed' }))).toEqual([
+      'tentativa-1',
+    ]);
+  });
+
+  it('⚠️ renomear para um id que JÁ está na lista: a linha do banco fica e a otimista sai', () => {
+    const doBanco = minha('tentativa-1', { status: 'failed', nao_saiu: true });
+    const lista = [otimista('temp-1'), doBanco];
+    expect(comMensagemAtualizada(lista, 'temp-1', { id: 'tentativa-1', status: 'failed' })).toEqual([doBanco]);
+    // A otimista que já saiu (o INSERT a trocou): a MESMA lista.
+    expect(comMensagemAtualizada([doBanco], 'temp-1', { id: 'tentativa-1' })).toEqual([doBanco]);
   });
 });
 

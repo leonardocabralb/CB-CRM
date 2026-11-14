@@ -230,7 +230,12 @@ fora terminavam `falhou` (E8) sem ninguém saber. `alarme-da-ia.ts`.
 - ⚠️⚠️ **UM episódio por (conta, PROVEDOR)** (`cb_ia_alarmes`, fechada ao
   navegador): a chave e os créditos são do provedor. "Abre / lembra (6 h) /
   só conta" decide `cb_ia_registrar_falha` SOB TRAVA — nunca decidir em TS
-  (duas falhas juntas abririam dois avisos; provado com duas sessões).
+  (duas falhas juntas abririam dois avisos; provado com duas sessões). ⚠️ O
+  episódio PARADO há mais de 24 h sem falha nova é fechado na próxima: ela
+  abre um NOVO (1145; o agente trocou de provedor, e só uma geração boa dele
+  fecharia o velho — a falha de semanas depois chegava como "Continua").
+  Sem histerese no "voltou": o provedor que oscila manda pares
+  abriu/voltou.
 - **Quem chama é o `encerrar` do turno e da retomada**: `falhou` com
   `andamento.falhaDaIa` (sem chave, ilegível, só da base e o `catch` da
   geração, com `motivoDaFalhaDaIa`) registra; `andamento.gerou` fecha

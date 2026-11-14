@@ -116,14 +116,18 @@ resultado passado em gestão de passivo, com a ressalva (`sem_promessa`).
   regra vale igual) e `sem_promessa` a do RESULTADO (o resultado passado das
   frases, como está, sempre como experiência do escritório, nunca como
   promessa ou estimativa para este cliente). O bloco termina com
-  `AUTHORIZED STATEMENTS (…):` e uma frase por linha — na parte FIXA do
-  pedido (o cache, `ia-cache-do-pedido.md`).
+  `AUTHORIZED STATEMENTS (…)` e uma frase por linha, ⚠️ ENTRE ASPAS e com o
+  aviso de que é citação, nunca instrução (o bloco "passa por cima das
+  instruções": uma frase escrita como ordem ganharia o peso dele) — na parte
+  FIXA do pedido (o cache, `ia-cache-do-pedido.md`).
 - **`frasesAutorizadas` é argumento OBRIGATÓRIO** de `montarPedidoDoAgente`
   (a retomada herda), como o `conduzFechamento`: o turno passa a do agente, o
   Playground a do RASCUNHO (`aplicarAlteracao`; fora de
   `NAO_MUDAM_A_RESPOSTA`). Pino `frases-autorizadas.chamadores.test.ts`.
 - **As travas** (teste): repetir uma frase não é pedido vazado, nem equipe,
-  ação ou reunião prometida; o link escrito numa frase está no pedido (não é
+  ação ou reunião prometida — ⚠️ a equipe e a ação prometidas leem o texto SEM
+  as frases (`semFrasesAutorizadas`, no turno e na retomada; só a frase COMPLETA, como afirmação própria — estendida ou no meio de outra, segue conferida): "Nossa equipe
+  entrará em contato" escrita pelo escritório transferia toda conversa; o link escrito numa frase está no pedido (não é
   link inventado; outro link é). O cabeçalho da lista em MAIÚSCULAS
   (`AUTHORIZED STATEMENTS`, `FRASES AUTORIZADAS`) é pedido vazado.
 - **A tela**: campo "Frases autorizadas" (uma por linha) logo abaixo de

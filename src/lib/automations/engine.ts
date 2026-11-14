@@ -182,7 +182,7 @@ import {
 } from '@/lib/atlas/passos-do-atlas';
 import { escreverAnotacaoDaAutomacao, lerMarcados } from '@/lib/notes/anotacao-da-automacao';
 import { textosDaAnotacaoDaAutomacao } from '@/lib/ia-agentes/textos-do-servidor';
-import { MOTIVOS_TEMPORARIOS } from '@/lib/ia-agentes/pausa';
+import { MOTIVOS_TEMPORARIOS, ehMotivoTemporario } from '@/lib/ia-agentes/pausa';
 
 /** O motivo do `send_to_number` recusado, na frase que o registro mostra. */
 const POR_QUE_O_NUMERO_NAO_SERVE: Record<MotivoDoTelefone, string> = {
@@ -2553,7 +2553,7 @@ async function runStep(
       // é justamente o dia em que ninguém vai lembrar desta regra.
       const { data: conv, error: convErr } = await db
         .from('conversations')
-        .select('group_id, ai_autoreply_disabled, ia_pausada_por')
+        .select('group_id, ai_autoreply_disabled, ia_pausada_por, ia_pausa_antes_da_automacao')
         .eq('id', conversationId)
         .eq('account_id', args.automation.account_id)
         .maybeSingle();
@@ -2569,16 +2569,24 @@ async function runStep(
       // da automação seria ignorado e a IA voltaria em N min. Ligar desfaz SÓ a
       // pausa por `automacao`: a de gente, do botão e da transferência foram
       // decisões de gente sobre aquela conversa e só o "Retomar IA" as desfaz
-      // (D26). Ligar NÃO zera o teto (o teto é contado pelas respostas do
-      // agente desde que o card entrou na etapa ou alguém clicou "Retomar") e
-      // não solta o responsável humano.
+      // (D26). ⚠️ Por isso a temporária que o "Desligar" cobre fica guardada
+      // (`ia_pausa_antes_da_automacao`, 1144) e o "Ligar" a DEVOLVE: senão a
+      // dupla desligar + ligar apagava a pausa de quem estava na conversa.
+      // Ligar NÃO zera o teto (o teto é contado pelas respostas do agente
+      // desde que o card entrou na etapa ou alguém clicou "Retomar") e não
+      // solta o responsável humano.
       if (!cfg.enabled) {
+        const temporaria =
+          conv.ai_autoreply_disabled === true && ehMotivoTemporario(conv.ia_pausada_por)
+            ? conv.ia_pausada_por
+            : null;
         const { error: upErr } = await db
           .from('conversations')
           .update({
             ai_autoreply_disabled: true,
             ia_pausada_por: 'automacao',
             ia_pausada_em: new Date().toISOString(),
+            ia_pausa_antes_da_automacao: temporaria,
           })
           .eq('id', conversationId)
           .eq('account_id', args.automation.account_id)
@@ -2591,16 +2599,30 @@ async function runStep(
       if (conv.ia_pausada_por !== 'automacao') {
         return `IA segue pausada: a pausa foi de gente (${conv.ia_pausada_por ?? 'botao'})`;
       }
+      // A pausa de gente que o "Desligar" cobriu VOLTA, com o relógio
+      // recomeçando: a IA retoma só se a cliente esperar os N min, como antes.
+      const devolver = ehMotivoTemporario(conv.ia_pausa_antes_da_automacao)
+        ? conv.ia_pausa_antes_da_automacao
+        : null;
       // A condição vai no próprio UPDATE: a foto acima é de instantes atrás.
+      // Um objeto só, literal: com `devolver` a pausa fica (o WHERE já exige
+      // `true`), só trocando o motivo e o relógio.
       const { error: upErr } = await db
         .from('conversations')
-        .update({ ai_autoreply_disabled: false, ia_pausada_por: null, ia_pausada_em: null })
+        .update({
+          ai_autoreply_disabled: devolver !== null,
+          ia_pausada_por: devolver,
+          ia_pausada_em: devolver ? new Date().toISOString() : null,
+          ia_pausa_antes_da_automacao: null,
+        })
         .eq('id', conversationId)
         .eq('account_id', args.automation.account_id)
         .eq('ai_autoreply_disabled', true)
         .eq('ia_pausada_por', 'automacao');
       if (upErr) throw new Error(`set_ai falhou: ${upErr.message}`);
-      return 'IA ligada na conversa';
+      return devolver
+        ? `IA segue pausada: voltou a pausa de gente de antes da automação (${devolver})`
+        : 'IA ligada na conversa';
     }
 
     case 'send_media': {

@@ -62,10 +62,13 @@ export function useConversasDaIa(
   useEffect(() => {
     if (!ativa || !accountId) return;
     let cancelado = false;
+    // A leitura anterior que ainda está no ar é CANCELADA (a releitura do
+    // minuto, a volta à aba): sem isso, as duas corriam juntas no servidor.
+    const controle = new AbortController();
     void (async () => {
       let lido: ConversasDaIaNaTela | null = null;
       try {
-        const resposta = await fetch("/api/cb/ia/conversas", { cache: "no-store" });
+        const resposta = await fetch("/api/cb/ia/conversas", { cache: "no-store", signal: controle.signal });
         if (resposta.ok) lido = lerRespostaDasConversasDaIa(await resposta.json());
       } catch {
         lido = null;
@@ -79,6 +82,7 @@ export function useConversasDaIa(
     })();
     return () => {
       cancelado = true;
+      controle.abort();
     };
   }, [ativa, accountId, versao, resyncToken]);
 

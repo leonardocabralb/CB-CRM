@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/ai/admin-client'
 import { getCurrentAccount, toErrorResponse } from '@/lib/auth/account'
 import { ehInstagram } from '@/lib/cb-channels/transporte'
+import { ERRO_DA_ESPERA_DO_HORARIO } from '@/lib/ia-agentes/horario'
 import { ehMotivoTemporario, ERRO_DA_ESPERA_DA_EQUIPE, lerVoltaAposMin } from '@/lib/ia-agentes/pausa'
 import {
   canalDaIaNaConversa,
@@ -41,11 +42,15 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  *     da equipe a IA volta; 0 = desligado (toda pausa até o "Retomar IA").
  *   - `pausaTemporaria` — a pausa VOLTA sozinha (`gente`/`botao` com N > 0).
  *   - `voltaEm` — quando o turno que espera a equipe vai rodar (o pendente
- *     marcado `ERRO_DA_ESPERA_DA_EQUIPE`); nulo = nenhuma mensagem esperando.
+ *     marcado `ERRO_DA_ESPERA_DA_EQUIPE`, ou `ERRO_DA_ESPERA_DO_HORARIO` se
+ *     ele foi reagendado para a abertura); nulo = nenhuma mensagem esperando.
  *   - `proximo` — o PRÓXIMO PASSO da IA (pedido do operador, 12/11/2026):
  *     escrevendo agora, a resposta na fila ou o follow-up agendado
- *     (`proximoPassoDaIa`); nulo = nada na fila. Só com agente atendendo e a
- *     IA ativa ou na pausa que volta sozinha.
+ *     (`proximoPassoDaIa`); nulo = leu a fila e nada há nela. Só com agente
+ *     atendendo e a IA ativa ou na pausa que volta sozinha. ⚠️ AUSENTE quando
+ *     a fila não foi lida (ninguém atende, pausa permanente): a faixa lê o
+ *     nulo como "fila vazia com agente" e relê a cada 2 min — em toda
+ *     conversa aberta, até numa conta sem agente nenhum.
  *   - `motivo` — por que `agente` é nulo (o `MotivoDeNinguem` do motor).
  *   - `naoAtende` — `{ agente: { id, nome }, motivo }` quando a etapa do card
  *     TEM agente, mas ele não atende esta conversa (desligado, sem a conexão,
@@ -183,7 +188,11 @@ export async function GET(_request: Request, { params }: Contexto) {
         .eq('conversation_id', conversationId)
         .eq('status', 'aguardando')
         .eq('tipo', 'resposta')
-        .eq('erro', ERRO_DA_ESPERA_DA_EQUIPE)
+        // A marca da espera da EQUIPE ou a da ABERTURA do horário: a resposta
+        // que esperava os N min e caiu fora do horário é reagendada para a
+        // abertura com a outra marca — sem ela, a faixa dizia "volta se o
+        // cliente esperar N min" com a resposta já na fila para as 08:00.
+        .in('erro', [ERRO_DA_ESPERA_DA_EQUIPE, ERRO_DA_ESPERA_DO_HORARIO])
         .order('executar_apos', { ascending: true })
         .limit(1)
       if (erroEspera) return falhou('espera da equipe', erroEspera.message)
@@ -195,7 +204,8 @@ export async function GET(_request: Request, { params }: Contexto) {
     // armado seria descartado no vencimento. O follow-up só atravessa a
     // pausa `gente` (`ia-retomada.md`).
     let proximo: ProximoPasso | null = null
-    if (decisao.quem === 'agente' && (!pausada || pausaTemporaria)) {
+    const leAFila = decisao.quem === 'agente' && (!pausada || pausaTemporaria)
+    if (leAFila) {
       const { data: vivos, error: erroVivos } = await db
         .from('cb_ia_turnos')
         .select(COLUNAS_DO_PROXIMO_PASSO)
@@ -219,7 +229,7 @@ export async function GET(_request: Request, { params }: Contexto) {
       pausaTemporaria,
       voltaAposMin,
       voltaEm,
-      proximo,
+      ...(leAFila ? { proximo } : {}),
       motivo,
       naoAtende,
     })

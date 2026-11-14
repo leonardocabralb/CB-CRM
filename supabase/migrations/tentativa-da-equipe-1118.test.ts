@@ -50,6 +50,55 @@ function reservaAnterior(): string {
   return vigente!;
 }
 
+/** O texto de uma migration sem comentários, num espaço só e minúsculo. */
+function compactar(texto: string): string {
+  return texto
+    .split('\n')
+    .map((l) => l.replace(/--.*$/, ''))
+    .join('\n')
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
+/**
+ * A ÚLTIMA definição em TODAS as migrations — a que vale hoje, inclusive
+ * depois desta. É ela que um porte futuro pode estragar recriando o corpo de
+ * uma versão antiga (o acidente que esta migration conta).
+ */
+function vigente(abre: RegExp, fim: (texto: string, i: number) => number): string {
+  let corpo: string | null = null;
+  for (const f of fs.readdirSync(DIR).filter((f) => /^\d{4}_.*\.sql$/.test(f)).sort()) {
+    const texto = compactar(fs.readFileSync(path.join(DIR, f), 'utf8'));
+    let ultima = -1;
+    for (const m of texto.matchAll(new RegExp(abre.source, 'g'))) ultima = m.index ?? -1;
+    if (ultima >= 0) corpo = texto.slice(ultima, fim(texto, ultima));
+  }
+  expect(corpo).not.toBeNull();
+  return corpo!;
+}
+
+describe('1118 — o que vale HOJE (a última definição, em qualquer migration)', () => {
+  it('a reserva: o ramo da EQUIPE conta só o que saiu', () => {
+    // Só o RAMO: o `not m.nao_saiu` em outro lugar da função (o corpo da
+    // 1080 o tem e não filtra este ramo) não prova nada.
+    const corpo = vigente(/create or replace function public\.cb_ia_reservar_envio\(/, (t, i) =>
+      t.indexOf('$$;', t.indexOf('as $$', i)),
+    );
+    const fimDoRamo = corpo.indexOf("return 'equipe_respondeu'");
+    const ramo = corpo.slice(corpo.lastIndexOf('if exists', fimDoRamo), fimDoRamo);
+    expect(fimDoRamo).toBeGreaterThan(-1);
+    expect(ramo).toContain("m.sender_type = 'agent'");
+    expect(ramo).toContain('and not m.nao_saiu');
+  });
+
+  it('o gatilho da pausa por gente ignora a tentativa que não saiu', () => {
+    const corpo = vigente(/create (or replace )?trigger cb_pausa_ia_por_gente_trigger /, (t, i) =>
+      t.indexOf(';', i),
+    );
+    expect(corpo).toContain('(not new.nao_saiu)');
+  });
+});
+
 describe('1118 — a pausa por gente', () => {
   const i = compacto.indexOf('create or replace trigger cb_pausa_ia_por_gente_trigger');
   const gatilho = compacto.slice(i, compacto.indexOf(';', i));

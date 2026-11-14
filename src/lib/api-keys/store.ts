@@ -13,6 +13,8 @@
 
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 
+import { PREFIXO_DA_CHAVE_RESTRITA } from './keys';
+
 /** Shape of an `api_keys` row as the auth path consumes it. */
 export interface ApiKeyRow {
   id: string;
@@ -47,12 +49,17 @@ export interface ApiKeyRow {
 export async function findActiveKeyByHash(
   hash: string
 ): Promise<ApiKeyRow | null> {
+  // ⚠️ As DUAS formas do hash: a chave restrita (funcionário ou recortada por
+  // funil) é gravada com `PREFIXO_DA_CHAVE_RESTRITA` pelo gatilho da 1143, e
+  // é isso que a deixa PARADA numa imagem de antes desta versão (que procura
+  // só o hash puro) em vez de aberta para a conta inteira. Uma chave tem uma
+  // forma só: no máximo uma linha volta.
   const { data, error } = await supabaseAdmin()
     .from('api_keys')
     .select(
       'id, account_id, created_by, name, scopes, expires_at, revoked_at, membro_user_id, funis'
     )
-    .eq('key_hash', hash)
+    .in('key_hash', [hash, `${PREFIXO_DA_CHAVE_RESTRITA}${hash}`])
     .maybeSingle();
 
   if (error) {

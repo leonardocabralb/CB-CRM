@@ -27,7 +27,10 @@ export async function lerNomesNosGrupos(
       .rpc('cb_nomes_nos_grupos', { p_conta: conta })
       .order('group_id')
       .range(de, de + PAGINA - 1);
-    if (error) return null;
+    if (error) {
+      console.warn('[grupos] não deu para ler os nomes de quem está nos grupos:', error.message);
+      return null;
+    }
     const linhas = (data ?? []) as { group_id: string; nomes: string[] | null }[];
     for (const l of linhas) {
       if (l.group_id && Array.isArray(l.nomes)) mapa.set(l.group_id, l.nomes);

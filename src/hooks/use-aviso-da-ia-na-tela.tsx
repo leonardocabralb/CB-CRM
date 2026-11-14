@@ -225,11 +225,16 @@ export function useAvisoDaIaNaTela(): void {
       });
 
     // A conversa aberta na caixa de entrada (pela lista, pelo sino…): quem
-    // está nela não precisa mais da caixinha.
+    // está nela não precisa mais da caixinha. ⚠️ E conta como DISPENSADA, como
+    // o X: a releitura de cada reconexão do tempo real (`SUBSCRIBED`) a
+    // reabria, para quem já tinha agido. O aviso segue não lido no sino.
     const aoAbrirConversa = (e: Event) => {
       const conversaId = (e as CustomEvent<unknown>).detail;
       if (typeof conversaId !== "string") return;
-      for (const avisoId of caixinhasDaConversa(abertas, conversaId)) fechar(avisoId);
+      for (const avisoId of caixinhasDaConversa(abertas, conversaId)) {
+        dispensadas.add(avisoId);
+        fechar(avisoId);
+      }
     };
     window.addEventListener(EVENTO_CONVERSA_ABERTA, aoAbrirConversa);
 

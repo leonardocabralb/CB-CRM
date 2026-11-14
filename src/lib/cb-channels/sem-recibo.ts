@@ -136,20 +136,29 @@ interface LinhaDoEnvio {
  * acender — ou apagava com os recibos ainda parados. O envio recente sem
  * recibo não muda a resposta (não é maduro nem confirmado), então nem é lido.
  *
+ * ⚠️ E uma TERCEIRA, só com um episódio aberto há mais de 24 h
+ * (`desdeDoEpisodioIso`): o envio confirmado mais novo entre o começo dele e
+ * a janela das 24 h. É a PROVA do fim que a janela não vê — o episódio da
+ * sexta, cujos envios ganham o recibo na segunda sem envio novo, ficava
+ * "sem prova" e repetia o "Continua" a cada 24 h. Ela não muda a régua (o
+ * envio de mais de 24 h está fora das 3 h e não é o último confirmado).
+ *
  * ⚠️ O grupo sai NA CONSULTA: `conversations!inner` com `contact_id` não
  * nulo (conversa de grupo não tem contato), o mesmo embutido com filtro que
  * o webhook da Evolution usa (`conversations.account_id`). Com o embutido
  * LEFT e o filtro em JS, o grupo ocupava o teto.
  *
- * O índice `messages_canal_e_data_idx` (1120) serve as duas: sem ele, a busca
+ * O índice `messages_canal_e_data_idx` (1120) serve as três: sem ele, a busca
  * varre todas as mensagens da conexão (973 ms medidos).
  */
 export async function lerEnviosRecentes(
   db: SupabaseClient,
   channelId: string,
   agoraMs: number,
+  desdeDoEpisodioIso: string | null = null,
 ): Promise<EnvioRecente[] | null> {
   const corteDoMaduro = new Date(agoraMs - IDADE_MINIMA_DO_ENVIO_MS).toISOString();
+  const inicioDaJanela = new Date(agoraMs - JANELA_DA_LEITURA_MS).toISOString();
   const envios = () =>
     db
       .from('messages')
@@ -160,25 +169,39 @@ export async function lerEnviosRecentes(
       .eq('nao_saiu', false)
       .neq('status', 'failed')
       .not('conversations.contact_id', 'is', null);
+  const provaAntiga = () =>
+    desdeDoEpisodioIso !== null && Date.parse(desdeDoEpisodioIso) < Date.parse(inicioDaJanela)
+      ? envios()
+          .gte('created_at', desdeDoEpisodioIso)
+          .lt('created_at', inicioDaJanela)
+          .in('status', ['delivered', 'read'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+      : Promise.resolve({ data: [], error: null });
   try {
-    const [novo, maduros] = await Promise.all([
+    const [novo, maduros, antiga] = await Promise.all([
       envios()
         .gte('created_at', corteDoMaduro)
         .in('status', ['delivered', 'read'])
         .order('created_at', { ascending: false })
         .limit(1),
       envios()
-        .gte('created_at', new Date(agoraMs - JANELA_DA_LEITURA_MS).toISOString())
+        .gte('created_at', inicioDaJanela)
         .lt('created_at', corteDoMaduro)
         .order('created_at', { ascending: false })
         .limit(ENVIOS_LIDOS_POR_CONEXAO),
+      provaAntiga(),
     ]);
-    const falha = novo.error ?? maduros.error;
+    const falha = novo.error ?? maduros.error ?? antiga.error;
     if (falha) {
       console.warn('[sem-recibo] não leu os envios:', falha.message);
       return null;
     }
-    const linhas = [...(novo.data ?? []), ...(maduros.data ?? [])] as unknown as LinhaDoEnvio[];
+    const linhas = [
+      ...(novo.data ?? []),
+      ...(maduros.data ?? []),
+      ...(antiga.data ?? []),
+    ] as unknown as LinhaDoEnvio[];
     return linhas.map((linha) => ({
       criadoEm: linha.created_at,
       status: linha.status ?? '',

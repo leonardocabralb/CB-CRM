@@ -3534,8 +3534,8 @@ function canalDoPasso(cfg: Record<string, unknown>): string | null {
  *    pública gravada na config. **Não há coleta de lixo** — o mesmo objeto
  *    serve toda execução da automação, para sempre; apagá-lo no envio (como a
  *    mensagem agendada faz) quebraria a automação a partir do segundo disparo;
- *  - um item do ACERVO (`acervo_id`), que o motor COPIA a cada envio
- *    (`midia-do-passo.ts`): a URL do item fica na config só para a tela, e o
+ *  - um item do ACERVO (`acervo_id`), que o motor manda pela cópia
+ *    CONGELADA do item, uma por item (`midia-do-passo.ts`): a URL do item fica na config só para a tela, e o
  *    TIPO segue o do item, como no nó "Enviar mídia" do robô.
  */
 function EditorDeMidia({

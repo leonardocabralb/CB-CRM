@@ -173,9 +173,11 @@ class ConsultaFalsa implements PromiseLike<{ data: unknown; error: { message: st
     const casa = (l: Linha) => this.filtros.every((f) => f(l));
     switch (this.op) {
       case 'select': {
+        // O PostgREST corta em 1000 linhas sem avisar (`max_rows`), com ou
+        // sem `limit` maior: o dublê também, senão a leitura sem página passa.
         const achadas = linhas
           .filter(casa)
-          .slice(this.inicio, this.inicio + this.limite)
+          .slice(this.inicio, this.inicio + Math.min(this.limite, 1000))
           .map((l) => ({ ...l }));
         this.banco.depoisDeLer[this.tabela]?.();
         return { data: achadas, error: null };
@@ -312,6 +314,42 @@ describe('avisarAlarmesDeConexao — o passo do ciclo', () => {
     expect(membros?.filtros).toContain('is:suspenso_em=null');
   });
 
+  it('⚠️ mais de 1000 PERFIS: a leitura pagina, e o perfil depois do milésimo segue recortando (não vira "vê tudo") — achado do Codex', async () => {
+    const banco = montarBanco();
+    // Ordem de chave: os mil de `p…` vêm antes de `so-c1` e `so-m1`.
+    banco.tabelas.cb_perfis_de_acesso = [
+      ...Array.from({ length: 1000 }, (_, i) => perfil(`p${String(i).padStart(4, '0')}`, ['m1'])),
+      ...banco.tabelas.cb_perfis_de_acesso,
+    ];
+    lerEnviosRecentes.mockImplementation(async (_db: unknown, canal: string, agora: number) =>
+      canal === 'c1' ? travada(agora) : [],
+    );
+    await avisarAlarmesDeConexao(banco as unknown as SupabaseClient, AGORA);
+    // `atende-m1` vê só a m1: o alarme da c1 não é dele.
+    expect(avisos(banco).map((a) => a.user_id).sort()).toEqual(['atende-c1', 'dono']);
+  });
+
+  it('⚠️ mais de 1000 MEMBROS: a leitura pagina, e quem vem depois do milésimo também é avisado — achado do Codex', async () => {
+    const banco = montarBanco();
+    const comId = (l: Linha, i: number) => ({ id: `b${i}`, ...l });
+    banco.tabelas.profiles = [
+      ...Array.from({ length: 1000 }, (_, i) => ({
+        id: `a${String(i).padStart(4, '0')}`,
+        user_id: `outro-${i}`,
+        account_id: 'conta-1',
+        account_role: 'agent',
+        perfil_id: 'so-m1',
+        suspenso_em: null,
+      })),
+      ...banco.tabelas.profiles.map(comId),
+    ];
+    lerEnviosRecentes.mockImplementation(async (_db: unknown, canal: string, agora: number) =>
+      canal === 'c1' ? travada(agora) : [],
+    );
+    await avisarAlarmesDeConexao(banco as unknown as SupabaseClient, AGORA);
+    expect(avisos(banco).map((a) => a.user_id).sort()).toEqual(['atende-c1', 'dono']);
+  });
+
   it('um aviso por EPISÓDIO: o ciclo seguinte, ainda aceso, não repete', async () => {
     const banco = montarBanco();
     lerEnviosRecentes.mockImplementation(async (_db: unknown, canal: string, agora: number) =>
@@ -417,7 +455,17 @@ describe('avisarAlarmesDeConexao — o passo do ciclo', () => {
     lerEnviosRecentes.mockImplementation(async (_db: unknown, canal: string, agora: number) =>
       canal === 'c1' ? [envio(agora, 2, 'z', 'delivered'), ...travada(agora)] : [],
     );
+    // A 1ª prova só começa a FIRMAR (histerese): nada vai ao sino ainda, e o
+    // começo do episódio vai à leitura (a prova pode ser mais velha que 24 h).
     await avisarAlarmesDeConexao(banco as unknown as SupabaseClient, AGORA);
+    expect(avisos(banco)).toEqual([]);
+    expect(estadoDe(banco, 'c1', 'sem_recibo')?.normalizou_em).toBe(iso(AGORA));
+    expect(lerEnviosRecentes).toHaveBeenCalledWith(expect.anything(), 'c1', AGORA, desde);
+
+    // Uma hora depois, sem envio novo: a prova firmou, e o "Normalizou" sai.
+    lerEnviosRecentes.mockImplementation(async () => []);
+    const depois = AGORA + 61 * MIN;
+    await avisarAlarmesDeConexao(banco as unknown as SupabaseClient, depois);
     expect(avisos(banco).map((a) => a.user_id).sort()).toEqual(['atende-c1', 'dono']);
     expect(String(avisos(banco)[0].title)).toMatch(/^Normalizou — /);
     expect(estadoDe(banco, 'c1', 'sem_recibo')).toBeUndefined();
@@ -508,8 +556,9 @@ describe('avisarAlarmesDeConexao — o passo do ciclo', () => {
         channel_id: 'c1',
         tipo: 'sem_recibo',
         desde: iso(AGORA - 3 * 60 * MIN),
-        avisado_em: iso(AGORA - 60 * MIN),
-        normalizou_em: null,
+        avisado_em: iso(AGORA - 2 * 60 * MIN),
+        // A prova de pé há mais de uma hora (firme): fecha neste ciclo.
+        normalizou_em: iso(AGORA - 70 * MIN),
         devido_em: null,
         detalhe: {},
       },

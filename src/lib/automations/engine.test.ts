@@ -2118,12 +2118,26 @@ describe('set_ai — a pausa com MOTIVO (1049, D26)', () => {
     expect(conversas[0].filters).toContainEqual(['or', 'expr', 'ai_autoreply_disabled.eq.false,ia_pausada_por.in.(gente,botao)']);
   });
 
+  it('⚠️ desligar por cima da TEMPORÁRIA guarda o motivo dela; sem pausa, nada a guardar', async () => {
+    h.state.conversaLida = { ai_autoreply_disabled: true, ia_pausada_por: 'gente' };
+    await rodar(false);
+    expect(escritasNaConversa()[0].payload).toMatchObject({
+      ia_pausada_por: 'automacao',
+      ia_pausa_antes_da_automacao: 'gente',
+    });
+  });
+
   it('ligar desfaz a pausa por AUTOMAÇÃO, com a condição no próprio UPDATE, e não zera o teto', async () => {
     h.state.conversaLida = { ai_autoreply_disabled: true, ia_pausada_por: 'automacao' };
     await rodar(true);
     const conversas = escritasNaConversa();
     expect(conversas).toHaveLength(1);
-    expect(conversas[0].payload).toEqual({ ai_autoreply_disabled: false, ia_pausada_por: null, ia_pausada_em: null });
+    expect(conversas[0].payload).toEqual({
+      ai_autoreply_disabled: false,
+      ia_pausada_por: null,
+      ia_pausada_em: null,
+      ia_pausa_antes_da_automacao: null,
+    });
     expect(conversas[0].filters).toContainEqual(['eq', 'ia_pausada_por', 'automacao']);
     expect(conversas[0].filters).toContainEqual(['eq', 'ai_autoreply_disabled', true]);
     expect(passos()).toContainEqual(expect.objectContaining({ status: 'success', detail: 'IA ligada na conversa' }));
@@ -2140,6 +2154,34 @@ describe('set_ai — a pausa com MOTIVO (1049, D26)', () => {
       );
     }
   );
+
+  it('⚠️ ligar DEVOLVE a pausa de gente que o desligar cobriu (D26), com o relógio recomeçando', async () => {
+    // Uma advogada na conversa (`gente`), e a automação desliga e liga: a IA
+    // não pode responder em 8 s — volta a esperar os N min da pausa de gente.
+    h.state.conversaLida = {
+      ai_autoreply_disabled: true,
+      ia_pausada_por: 'automacao',
+      ia_pausa_antes_da_automacao: 'gente',
+    };
+    await rodar(true);
+    const conversas = escritasNaConversa();
+    expect(conversas).toHaveLength(1);
+    // A pausa FICA: `true` de novo, sob o WHERE que já exige `true`.
+    expect(conversas[0].payload).toMatchObject({
+      ai_autoreply_disabled: true,
+      ia_pausada_por: 'gente',
+      ia_pausa_antes_da_automacao: null,
+    });
+    expect(typeof (conversas[0].payload as Record<string, unknown>).ia_pausada_em).toBe('string');
+    expect(conversas[0].filters).toContainEqual(['eq', 'ia_pausada_por', 'automacao']);
+    expect(conversas[0].filters).toContainEqual(['eq', 'ai_autoreply_disabled', true]);
+    expect(passos()).toContainEqual(
+      expect.objectContaining({
+        status: 'success',
+        detail: 'IA segue pausada: voltou a pausa de gente de antes da automação (gente)',
+      })
+    );
+  });
 
   it('ligar com a IA já ligada: nada a escrever', async () => {
     h.state.conversaLida = { ai_autoreply_disabled: false, ia_pausada_por: null };
@@ -7020,8 +7062,8 @@ describe('valoresParaPrevia — a prévia usa as funções do envio e só lê', 
 
 // ------------------------------------------------------------
 // "Enviar arquivo" do ACERVO (09/11/2026): o passo escolhe um item do acervo
-// de mídias (`acervo_id`), e o motor o COPIA a cada envio — como o nó "Enviar
-// mídia" do robô. O passo antigo (arquivo subido no passo, `url`) segue igual.
+// de mídias (`acervo_id`), e o motor manda a cópia CONGELADA dele, uma por
+// item — como o nó "Enviar mídia" do robô. O passo antigo (arquivo subido no passo, `url`) segue igual.
 // ------------------------------------------------------------
 
 describe('"Enviar arquivo": o arquivo subido no passo ou um item do ACERVO (09/11/2026)', () => {

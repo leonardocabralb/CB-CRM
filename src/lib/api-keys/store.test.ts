@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
   resultado: { data: null as unknown, error: null as unknown },
+  filtros: [] as string[],
 }));
 
 vi.mock('@/lib/flows/admin-client', () => ({
@@ -15,7 +16,14 @@ vi.mock('@/lib/flows/admin-client', () => ({
     const c: Record<string, unknown> = {};
     c.from = () => c;
     c.select = () => c;
-    c.eq = () => c;
+    c.eq = (coluna: string, valor: unknown) => {
+      h.filtros.push(`${coluna} = ${String(valor)}`);
+      return c;
+    };
+    c.in = (coluna: string, valores: unknown[]) => {
+      h.filtros.push(`${coluna} in ${valores.map(String).join(',')}`);
+      return c;
+    };
     c.maybeSingle = async () => h.resultado;
     return c;
   },
@@ -35,6 +43,17 @@ const LINHA = {
 
 beforeEach(() => {
   h.resultado = { data: null, error: null };
+  h.filtros = [];
+});
+
+describe('findActiveKeyByHash — as duas formas do hash (1143)', () => {
+  it('procura o hash puro E o da chave restrita, na mesma leitura', async () => {
+    h.resultado = { data: LINHA, error: null };
+    await findActiveKeyByHash('abc123');
+    expect(h.filtros).toContain('key_hash in abc123,restrita-abc123');
+    // A imagem de antes desta versão procura só o puro: a restrita fica parada.
+    expect(h.filtros).not.toContain('key_hash = abc123');
+  });
 });
 
 describe('findActiveKeyByHash', () => {

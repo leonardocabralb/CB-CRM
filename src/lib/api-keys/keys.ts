@@ -59,6 +59,16 @@ export function generateApiKey(): GeneratedApiKey {
 }
 
 /**
+ * O prefixo do hash da chave RESTRITA (1143, funcionário ou recortada por
+ * funil): o gatilho `cb_api_keys_hash_da_restrita` o põe no `key_hash` de
+ * toda chave com `membro_user_id` ou `funis`, e o CHECK
+ * `api_keys_hash_da_restrita` segura as duas formas. A imagem de antes desta
+ * versão procura só o hash puro: a restrita fica PARADA, nunca aberta.
+ * Espelho do SQL — pino `chave-restrita-1143.test.ts`.
+ */
+export const PREFIXO_DA_CHAVE_RESTRITA = 'restrita-';
+
+/**
  * Deterministic SHA-256 of a plaintext key. Used at auth time to
  * look up the matching `api_keys` row by `key_hash`. Pure — same
  * input always produces the same output.

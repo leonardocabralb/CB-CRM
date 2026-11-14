@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   OPCOES_DE_VALIDADE_DIAS,
+  acoesDaChave,
   VALIDADE_MAXIMA_DIAS,
   ehChaveSoDeLeitura,
   escritaProibida,
@@ -15,6 +16,18 @@ import { API_SCOPES, ehEscopoDeLeitura } from './scopes';
 const AGORA = Date.parse('2026-11-04T12:00:00Z');
 const UUID_A = '11111111-1111-4111-8111-111111111111';
 const UUID_B = '22222222-2222-4222-8222-222222222222';
+
+describe('acoesDaChave (o que a lista oferece ao admin)', () => {
+  it('a ATIVA se edita e se revoga', () => {
+    expect(acoesDaChave('active')).toEqual({ editar: true, revogar: true });
+  });
+  it('⚠️ a VENCIDA se edita (é como se renova a validade sem trocar o segredo) e não se revoga — achado do Codex', () => {
+    expect(acoesDaChave('expired')).toEqual({ editar: true, revogar: false });
+  });
+  it('a REVOGADA não volta: nem editar, nem revogar de novo', () => {
+    expect(acoesDaChave('revoked')).toEqual({ editar: false, revogar: false });
+  });
+});
 
 describe('lerValidade', () => {
   it('ausente = não mexer; null = sem validade', () => {
@@ -91,11 +104,22 @@ describe('escritaProibida (decisão do operador: chave de funcionário e recorta
     expect(escritaProibida(daConta, ['messages:send', 'contacts:write'])).toBeNull();
   });
 
-  it('todo escopo é de leitura OU de escrita pelo sufixo (sem terceiro caso)', () => {
-    const leitura = API_SCOPES.filter(ehEscopoDeLeitura);
-    expect(leitura.length).toBeGreaterThan(5);
-    for (const s of API_SCOPES) {
-      if (!ehEscopoDeLeitura(s)) expect(s.endsWith(':read'), s).toBe(false);
-    }
+  it('a chave só de leitura leva EXATAMENTE estes escopos (escopo novo decide aqui)', () => {
+    // A régua é o sufixo `:read`; o que a chave de funcionário e a recortada
+    // carregam é esta lista. Um escopo novo de escrita com nome que termine
+    // em `:read`, ou um de leitura com outro nome, reprova até alguém decidir.
+    expect([...API_SCOPES].filter(ehEscopoDeLeitura).sort()).toEqual([
+      'automations:read',
+      'channels:read',
+      'contacts:read',
+      'conversations:read',
+      'custom_fields:read',
+      'deals:read',
+      'meetings:read',
+      'messages:read',
+      'notes:read',
+      'scheduled:read',
+      'tasks:read',
+    ]);
   });
 });

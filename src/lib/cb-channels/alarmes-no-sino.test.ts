@@ -8,6 +8,7 @@ import type { PerfilDeAcesso } from '@/lib/perfis/tipos';
 import {
   DURACAO_DO_ATRASO_NO_SINO_MS,
   DURACAO_DO_QR_NO_SINO_MS,
+  FIRMEZA_DA_PROVA_MS,
   LEMBRETE_MS,
   SEM_SINAL_NO_SINO_MS,
   TIPOS_DO_ALARME,
@@ -192,9 +193,35 @@ describe('decidir — (c) envios sem recibo', () => {
     expect(decidir('sem_recibo', aNoite.depois, naoSei, AGORA, true).motivo).toBe('passou');
   });
 
-  it('o "Normalizou" de um aviso que já saiu vai a qualquer hora', () => {
+  it('o "Normalizou" de um aviso que já saiu vai a qualquer hora — com a prova FIRME', () => {
     const avisado = estado({ avisadoEmIso: iso(AGORA - H) });
-    expect(decidir('sem_recibo', avisado, normal, AGORA, false).motivo).toBe('normalizou');
+    // A 1ª prova só começa a contar (histerese): nada vai ao sino ainda.
+    const firmando = decidir('sem_recibo', avisado, normal, AGORA, false);
+    expect(firmando.motivo).toBeNull();
+    expect(firmando.depois?.normalizouEmIso).toBe(normal.fimIso);
+    // Com a prova de pé há FIRMEZA_DA_PROVA_MS, sai mesmo fora do horário útil.
+    const firme = estado({ avisadoEmIso: iso(AGORA - 2 * H), normalizouEmIso: iso(AGORA - FIRMEZA_DA_PROVA_MS) });
+    expect(decidir('sem_recibo', firme, normal, AGORA, false).motivo).toBe('normalizou');
+  });
+
+  it('⚠️ histerese: recibos em LOTE (a queda a cada ~50 min) não viram pares de novo/normalizou', () => {
+    // Avisado às 9h; o lote de recibos chega às 9h40 (prova), e a queda
+    // seguinte acende às 10h20 — antes de a prova firmar.
+    const avisado = estado({ desdeIso: iso(AGORA - 3 * H), avisadoEmIso: iso(AGORA - 3 * H) });
+    const prova = decidir('sem_recibo', avisado, { tipo: 'normal', fimIso: iso(AGORA - 40 * MIN) }, AGORA - 40 * MIN, true);
+    expect(prova.motivo).toBeNull();
+    const reacendeu = decidir('sem_recibo', prova.depois, aceso, AGORA, true);
+    // O MESMO episódio: nenhum aviso novo, a prova anulada, o aviso de antes fica.
+    expect(reacendeu.motivo).toBeNull();
+    expect(reacendeu.depois?.normalizouEmIso).toBeNull();
+    expect(reacendeu.depois?.avisadoEmIso).toBe(iso(AGORA - 3 * H));
+  });
+
+  it('os alarmes do computador de ligações não firmam: a prova fecha na hora, como antes', () => {
+    const avisado = estado({ desdeIso: iso(AGORA - 2 * H), avisadoEmIso: iso(AGORA - H) });
+    const normal: Medicao = { tipo: 'normal', fimIso: iso(AGORA - MIN) };
+    expect(decidir('computador_qr', avisado, normal, AGORA, true).motivo).toBe('normalizou');
+    expect(decidir('computador_fora', avisado, normal, AGORA, true).motivo).toBe('normalizou');
   });
 });
 
@@ -248,7 +275,10 @@ describe('decidir — (b) atraso: o âmbar aceso por 30 min (D5)', () => {
     const avisado = estado({ avisadoEmIso: iso(AGORA - LEMBRETE_MS) });
     expect(decidir('atraso', avisado, amber, AGORA, false).motivo).toBe('lembrete');
     expect(decidir('atraso', avisado, naoSei, AGORA, false).motivo).toBe('sem_prova');
-    expect(decidir('atraso', avisado, normal, AGORA, false).motivo).toBe('normalizou');
+    // A prova firma antes do "Normalizou" (histerese), também no (b).
+    expect(decidir('atraso', avisado, normal, AGORA, false).motivo).toBeNull();
+    const firme = estado({ avisadoEmIso: iso(AGORA - LEMBRETE_MS), normalizouEmIso: iso(AGORA - FIRMEZA_DA_PROVA_MS) });
+    expect(decidir('atraso', firme, normal, AGORA, false).motivo).toBe('normalizou');
   });
 
   it('o aviso devido e recusado que normaliza → passou, a qualquer hora', () => {
@@ -266,12 +296,18 @@ describe('decidir — o que vale para os dois', () => {
     expect(p.depois?.normalizouEmIso).toBeNull();
   });
 
-  it('a prova guardada (o aviso dela foi recusado) sai mesmo sem medição nova, com a hora em que foi vista', () => {
-    const guardado = estado({ avisadoEmIso: iso(AGORA - H), normalizouEmIso: iso(AGORA - 20 * MIN) });
-    const p = decidir('atraso', guardado, naoSei, AGORA, true);
+  it('a prova guardada sai mesmo sem medição nova, quando FIRME, com a hora em que foi vista', () => {
+    // Firmando (20 min): espera; "não sei" não a anula.
+    const firmando = estado({ avisadoEmIso: iso(AGORA - H), normalizouEmIso: iso(AGORA - 20 * MIN) });
+    const espera = decidir('atraso', firmando, naoSei, AGORA, true);
+    expect(espera.motivo).toBeNull();
+    expect(espera.depois?.normalizouEmIso).toBe(iso(AGORA - 20 * MIN));
+    // Firme (ou o aviso dela foi recusado no ciclo de antes): sai.
+    const firme = estado({ avisadoEmIso: iso(AGORA - 2 * H), normalizouEmIso: iso(AGORA - FIRMEZA_DA_PROVA_MS - 5 * MIN) });
+    const p = decidir('atraso', firme, naoSei, AGORA, true);
     expect(p.motivo).toBe('normalizou');
     expect(p.depois).toBeNull();
-    expect(p.seFalhar?.normalizouEmIso).toBe(iso(AGORA - 20 * MIN));
+    expect(p.seFalhar?.normalizouEmIso).toBe(iso(AGORA - FIRMEZA_DA_PROVA_MS - 5 * MIN));
   });
 
   it('"não sei" ou "normal" sem episódio aberto não fazem nada', () => {

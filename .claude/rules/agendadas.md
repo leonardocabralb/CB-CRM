@@ -31,7 +31,8 @@ anexos, em `.claude/rules/midia.md`. O texto antigo, com a história, está em
 - ⚠️ **A rota carrega também, no `after()` (`rodarManutencaoDoCiclo`), os
   ALARMES DE CONEXÃO no sino** (1122, `.claude/rules/canais.md`), **as
   TAREFAS RECORRENTES** (1074), **a limpeza da Lixeira de contatos** (1097:
-  o vencimento e a fila de arquivos, `.claude/rules/deploy.md`), **a poda do
+  o vencimento e a fila de arquivos, `.claude/rules/deploy.md`), **o
+  vencimento da lixeira de anotações** (1132, `anotacoes.md`), **a poda do
   conteúdo dos turnos da IA** (1110, `ia-central.md`) **e, das ligações pelo
   CRM, a poda das gravações aos 180 dias e a retomada das transcrições**
   (1136, `ligacoes-transcricao.md`): tirá-la do

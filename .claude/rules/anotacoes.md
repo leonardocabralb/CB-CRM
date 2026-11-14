@@ -160,10 +160,11 @@ a régua das três pontas), `arquivo-do-anexo.ts` (a leitura no armazenamento),
   nome. Erro ao ler perfil ou conversa = 500, nunca 403/404 (raiz, 8b).
 - ⚠️⚠️ **O que SAI da anotação vai para a fila de arquivos** (gatilho
   `cb_anexos_da_anotacao_para_a_fila`, AFTER DELETE OR UPDATE OF anexos,
-  SECURITY DEFINER): apagar pela tela, o CASCADE da conversa, do contato ou
-  da conta, SQL à mão e o anexo tirado numa edição. A drenagem (`midia.md`)
+  SECURITY DEFINER): o vencimento da lixeira de anotações (apagar pela tela
+  só MARCA, 1132, e não enfileira), o CASCADE da conversa, do contato ou da
+  conta, SQL à mão e o anexo tirado numa edição. A drenagem (`midia.md`)
   apaga em até ~15 min, se ninguém mais cita (`cb_arquivos_citados` conta os
-  anexos das anotações vivas). ⚠️ Só com o WHEN do sinal `cb.lixeira` e
+  anexos de toda anotação que existe, inclusive a da lixeira). ⚠️ Só com o WHEN do sinal `cb.lixeira` e
   declarado nos `calados` de `cb_lixeira_tratamento()`: mover a ficha para a
   Lixeira NÃO enfileira (a fotografia guarda os anexos; saem no "Excluir
   agora" ou no vencimento). Sem o WHEN, o arquivo sumiria com a ficha na
@@ -329,5 +330,8 @@ quem apagou e quando. `src/lib/notes/lixeira.ts` (puro),
   que NÃO existe (apagada antes da 1132, vencida, ficha na Lixeira) = o `body`
   do aviso (até 280 caracteres), sem autoria. Leitura que falhou = "não sei":
   o aviso fica como era. A leitura é carimbada com a CHAVE dos ids — o mapa
-  velho diria "apagada" sobre a anotação de um aviso novo. O clique segue
+  velho diria "apagada" sobre a anotação de um aviso novo. ⚠️ Relê a cada
+  lista nova, ao voltar para o app e a cada minuto com a aba à vista: a
+  lixeira não escreve em `notifications`, e a apagada por outra pessoa com a
+  página aberta nunca chegaria ao aviso. O clique segue
   `rotaDoAviso` (o salto não acha a âncora e só abre a conversa).

@@ -35,6 +35,7 @@ import { FUSO_PADRAO } from '@/lib/agenda/fuso';
 import type { AccountRole } from '@/lib/auth/roles';
 import { cortarSemPartir } from '@/lib/notes/anexos';
 import type { PerfilDeAcesso } from '@/lib/perfis/tipos';
+import { buscarPorChave, PAGINA } from '@/lib/supabase/paginar';
 
 import {
   decidir,
@@ -89,6 +90,7 @@ interface LinhaDoComputador {
 const TIPOS_DO_COMPUTADOR = ['computador_fora', 'computador_qr'] as const;
 
 interface LinhaDoMembro {
+  id: string;
   user_id: string | null;
   account_role: AccountRole | null;
   perfil_id: string | null;
@@ -175,23 +177,38 @@ async function lerComputadores(admin: SupabaseClient): Promise<Map<string, Linha
   return new Map(((data ?? []) as LinhaDoComputador[]).map((c) => [c.channel_id, c]));
 }
 
-/** Os membros ATIVOS da conta, com o perfil real de cada um. `null` = falhou. */
+/**
+ * Os membros ATIVOS da conta, com o perfil real de cada um. `null` = falhou.
+ *
+ * ⚠️ As duas leituras são PAGINADAS por chave: cortadas em 1000 pelo
+ * PostgREST, o membro de fora nunca era avisado, e o perfil de fora virava
+ * `null` — que `destinatarios` lê como "vê todas as conexões", e o alarme ia
+ * a quem o perfil não deixa ver a conexão.
+ */
 async function lerMembros(admin: SupabaseClient, accountId: string): Promise<MembroDaConta[] | null> {
   const [perfis, membros] = await Promise.all([
-    admin.from('cb_perfis_de_acesso').select(COLUNAS_DO_PERFIL).eq('account_id', accountId),
-    admin
-      .from('profiles')
-      .select('user_id, account_role, perfil_id')
-      .eq('account_id', accountId)
-      .is('suspenso_em', null),
+    buscarPorChave<PerfilDeAcesso>((depoisDe) => {
+      let consulta = admin.from('cb_perfis_de_acesso').select(COLUNAS_DO_PERFIL).eq('account_id', accountId);
+      if (depoisDe) consulta = consulta.gt('id', depoisDe);
+      return consulta.order('id', { ascending: true }).limit(PAGINA);
+    }),
+    buscarPorChave<LinhaDoMembro>((depoisDe) => {
+      let consulta = admin
+        .from('profiles')
+        .select('id, user_id, account_role, perfil_id')
+        .eq('account_id', accountId)
+        .is('suspenso_em', null);
+      if (depoisDe) consulta = consulta.gt('id', depoisDe);
+      return consulta.order('id', { ascending: true }).limit(PAGINA);
+    }),
   ]);
-  const falha = perfis.error ?? membros.error;
-  if (falha) {
-    console.warn('[alarmes] não leu os membros da conta:', falha.message);
+  if (perfis.linhas === null || membros.linhas === null) {
+    const falha = perfis.linhas === null ? perfis : membros;
+    console.warn('[alarmes] não leu os membros da conta:', falha.erro?.message ?? falha.motivo);
     return null;
   }
-  const porId = new Map(((perfis.data ?? []) as PerfilDeAcesso[]).map((p) => [p.id, p]));
-  return ((membros.data ?? []) as LinhaDoMembro[])
+  const porId = new Map(perfis.linhas.map((p) => [p.id, p]));
+  return membros.linhas
     .filter((m): m is LinhaDoMembro & { user_id: string } => !!m.user_id)
     .map((m) => ({
       userId: m.user_id,
@@ -405,7 +422,9 @@ async function avaliarConexao(conta: Conta, canal: LinhaDoCanal): Promise<void> 
   const { ctx, estados } = conta;
   const deRecibo = estados.get(`${canal.id}:sem_recibo`) ?? null;
   const deAtraso = estados.get(`${canal.id}:atraso`) ?? null;
-  const envios = await lerEnviosRecentes(ctx.admin, canal.id, ctx.agoraMs);
+  // O começo do episódio aberto vai junto: com ele há mais de 24 h, a prova
+  // do fim pode estar fora da janela da régua (`lerEnviosRecentes`).
+  const envios = await lerEnviosRecentes(ctx.admin, canal.id, ctx.agoraMs, deRecibo?.desdeIso ?? null);
   await aplicar(ctx, canal, 'sem_recibo', deRecibo, medirSemRecibo(envios, deRecibo?.desdeIso ?? null, ctx.agoraMs));
   await aplicar(
     ctx,

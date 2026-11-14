@@ -54,7 +54,7 @@ import {
 import { RequireRole } from '@/components/auth/require-role';
 import { useAuth } from '@/hooks/use-auth';
 import { useMembros } from '@/hooks/use-membros';
-import { OPCOES_DE_VALIDADE_DIAS, validadeSugerida } from '@/lib/api-keys/configuracao';
+import { acoesDaChave, OPCOES_DE_VALIDADE_DIAS, validadeSugerida } from '@/lib/api-keys/configuracao';
 import {
   API_SCOPES,
   SCOPE_DESCRIPTIONS,
@@ -304,6 +304,7 @@ export function ApiKeysSettings() {
               {keys.map((k) => {
                 const status = keyStatus(k);
                 const inactive = status !== 'active';
+                const acoes = acoesDaChave(status);
                 return (
                   <li
                     key={k.id}
@@ -376,10 +377,11 @@ export function ApiKeysSettings() {
                       </p>
                     </div>
 
-                    {status === 'active' && (
+                    {acoes.editar && (
                       <RequireRole min="admin">
                         <div className="flex shrink-0 gap-2 self-start sm:self-auto">
-                          {/* NOSSO (1121): o admin edita a chave sem gerar outra. */}
+                          {/* NOSSO (1121): o admin edita a chave sem gerar outra —
+                              também a VENCIDA (`acoesDaChave`). */}
                           <Button
                             variant="outline"
                             size="sm"
@@ -388,20 +390,22 @@ export function ApiKeysSettings() {
                             <Pencil className="size-4" />
                             {t('edit')}
                           </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleRevoke(k)}
-                            disabled={revoking === k.id}
-                            className="border-red-500/40 bg-red-500/10 text-red-300 hover:border-red-500/60 hover:bg-red-500/20 hover:text-red-200"
-                          >
-                            {revoking === k.id ? (
-                              <Loader2 className="size-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="size-4" />
-                            )}
-                            {t('revoke')}
-                          </Button>
+                          {acoes.revogar && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleRevoke(k)}
+                              disabled={revoking === k.id}
+                              className="border-red-500/40 bg-red-500/10 text-red-300 hover:border-red-500/60 hover:bg-red-500/20 hover:text-red-200"
+                            >
+                              {revoking === k.id ? (
+                                <Loader2 className="size-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="size-4" />
+                              )}
+                              {t('revoke')}
+                            </Button>
+                          )}
                         </div>
                       </RequireRole>
                     )}
@@ -491,6 +495,11 @@ function KeyDialog({
 
   const recortada = funisEscolhidos.length > 0;
   const soLeitura = recortada || membro !== SEM_FUNCIONARIO;
+  // ⚠️ Desmarcar o ÚLTIMO funil de uma chave recortada a abre para a conta
+  // inteira (e, sem funcionário, solta a escrita): um clique errado nunca
+  // vira "todos" (`lerFunis`). Na edição, isso pede uma confirmação escrita.
+  const abreTodosOsFunis = editando && chave?.funis != null && !recortada;
+  const [confirmouTodosOsFunis, setConfirmouTodosOsFunis] = useState(false);
   // ⚠️ Criar sem saber os funis ou os membros criaria, sem querer, a chave
   // da conta INTEIRA (falha aberta). Na edição, o que não carregou não é
   // enviado e fica como está.
@@ -559,6 +568,10 @@ function KeyDialog({
     }
     if (!editando && !opcoesProntas) {
       toast.error(t('optionsNotLoaded'));
+      return;
+    }
+    if (abreTodosOsFunis && !confirmouTodosOsFunis) {
+      toast.error(t('pipelinesAllNeedsConfirm'));
       return;
     }
     const membroUserId = membro === SEM_FUNCIONARIO ? null : membro;
@@ -783,6 +796,16 @@ function KeyDialog({
                   </div>
                 )}
                 <p className="text-muted-foreground text-xs">{t('pipelinesHint')}</p>
+                {abreTodosOsFunis && (
+                  <label className="flex cursor-pointer items-start gap-2.5">
+                    <Checkbox
+                      checked={confirmouTodosOsFunis}
+                      onCheckedChange={(checked) => setConfirmouTodosOsFunis(checked === true)}
+                      className="mt-0.5"
+                    />
+                    <span className="text-destructive text-xs">{t('pipelinesAllConfirm')}</span>
+                  </label>
+                )}
               </div>
 
               <div className="space-y-2">

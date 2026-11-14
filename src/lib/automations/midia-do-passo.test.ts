@@ -11,8 +11,8 @@ import {
 
 // ============================================================
 // Passo "Enviar arquivo" das automações (09/11/2026): o arquivo pode vir do
-// ACERVO (`acervo_id`), copiado a cada envio, sem quebrar o passo antigo
-// (`url`, o arquivo subido no próprio passo).
+// ACERVO (`acervo_id`), pela cópia congelada do item (uma por item), sem
+// quebrar o passo antigo (`url`, o arquivo subido no próprio passo).
 // ============================================================
 
 const ITEM_ID = '00000000-0000-4000-8000-0000000000a1';

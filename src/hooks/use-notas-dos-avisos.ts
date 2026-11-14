@@ -24,11 +24,13 @@ import type { Notification } from "@/types";
  * aviso de uma anotação viva diria "apagada". Devolve `null` ("não sei")
  * enquanto a leitura da lista ATUAL não volta, e se ela falhar.
  *
- * ⚠️ RELÊ a cada lista nova de avisos (recarga, tempo real, marcar lida) e ao
- * VOLTAR para o app, não só quando os ids mudam (achado do Codex no #491): a
- * anotação apagada ou restaurada com a tela aberta deixaria o aviso dizendo o
- * contrário para sempre. Enquanto relê, o mapa anterior continua valendo —
- * os ids são os mesmos, então nada pisca.
+ * ⚠️ RELÊ a cada lista nova de avisos (recarga, tempo real, marcar lida), ao
+ * VOLTAR para o app e a cada minuto com a aba à vista, não só quando os ids
+ * mudam: a anotação apagada ou restaurada com a tela aberta deixaria o aviso
+ * dizendo o contrário para sempre. O minuto é o que pega a apagada por OUTRA
+ * pessoa com a página aberta: a lixeira só escreve em `cb_conversation_notes`,
+ * e as telas de aviso assinam só `notifications`. Enquanto relê, o mapa
+ * anterior continua valendo — os ids são os mesmos, então nada pisca.
  *
  * Os ids vão num `in` (o sino lê até 100 avisos; o Meu dia, menos): cabe na
  * URL e no teto de 1000 linhas.
@@ -45,7 +47,18 @@ export function useNotasDosAvisos(
   const [volta, setVolta] = useState(0);
   useAoVoltarParaOApp(() => setVolta((v) => v + 1));
 
-  // `avisos` e `volta` não entram no corpo: são os gatilhos da RELEITURA.
+  // O minuto: só com avisos de anotação e com a aba à vista (escondida, quem
+  // relê é a volta para o app).
+  const [tique, setTique] = useState(0);
+  useEffect(() => {
+    if (!chave) return;
+    const relogio = setInterval(() => {
+      if (document.visibilityState === "visible") setTique((n) => n + 1);
+    }, RELEITURA_DAS_NOTAS_MS);
+    return () => clearInterval(relogio);
+  }, [chave]);
+
+  // `avisos`, `volta` e `tique` não entram no corpo: são os gatilhos da RELEITURA.
   useEffect(() => {
     if (!chave) return;
     let vivo = true;
@@ -66,10 +79,13 @@ export function useNotasDosAvisos(
     return () => {
       vivo = false;
     };
-  }, [chave, avisos, volta]);
+  }, [chave, avisos, volta, tique]);
 
   if (!chave) return VAZIO;
   return lida && lida.de === chave ? lida.mapa : null;
 }
+
+/** De quanto em quanto a aba à vista relê as anotações dos avisos. */
+export const RELEITURA_DAS_NOTAS_MS = 60_000;
 
 const VAZIO: ReadonlyMap<string, LinhaDaNotaDoAviso> = new Map();

@@ -572,9 +572,13 @@ export function ConversationList({
     falhou: falhouBuscaNoTexto,
     termoAplicado,
   } = useBuscaEmMensagens(search, buscarNasMensagens);
-  // Os nomes de quem está em cada grupo (1126), lidos só quando há busca: a
-  // terceira fonte do OU da busca (`participanteQueCasa`).
-  const nomesNosGrupos = useNomesNosGrupos(search.trim() !== "", resyncToken);
+  // Os nomes de quem está em cada grupo (1126), lidos só quando há busca e a
+  // conta tem grupo: a terceira fonte do OU da busca (`participanteQueCasa`).
+  const {
+    mapa: nomesNosGrupos,
+    carregando: buscandoNosGrupos,
+    falhou: falhouBuscaNosGrupos,
+  } = useNomesNosGrupos(search.trim() !== "" && temGrupos, resyncToken);
 
   // Espelha o termo assentado para quem estiver fora da lista (o fio da
   // conversa, que precisa dele para destacar as mensagens que casaram).
@@ -1134,6 +1138,20 @@ export function ConversationList({
         {buscandoNoTexto && !falhouBuscaNoTexto && (
           <p className="px-0.5 text-[11px] text-muted-foreground">
             {t("searchingInMessages")}
+          </p>
+        )}
+        {/* A terceira fonte da busca, os nomes de quem está nos grupos
+            (1126). Sem estas linhas, "ainda lendo" e "a leitura falhou" eram
+            iguais a "nenhum grupo com esse participante". Sem interruptor: o
+            hook só lê com termo na caixa e grupo na conta. */}
+        {falhouBuscaNosGrupos && (
+          <p className="px-0.5 text-[11px] text-destructive">
+            {t("searchGroupMembersFailed")}
+          </p>
+        )}
+        {buscandoNosGrupos && (
+          <p className="px-0.5 text-[11px] text-muted-foreground">
+            {t("searchingGroupMembers")}
           </p>
         )}
         {/* Filtro de funil OU de etapa ativo com os dados por trás

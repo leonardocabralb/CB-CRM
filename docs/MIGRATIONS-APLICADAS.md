@@ -2157,3 +2157,42 @@ nome da época em que foram aplicadas.
   `cb_quem_mexeu_na_conversa`, `authenticated` sem EXECUTE, e 32 ações
   antigas viradas `acao_da_ia` (preencheu 20, moveu 7, etiquetou 3,
   respondeu e passou 2).
+- **1142_cb_nomes_nos_grupos_com_teto** — a busca por participante lê só as
+  ÚLTIMAS 1000 mensagens com nome de cada grupo (`cb_nomes_nos_grupos`
+  recriada, mesma assinatura e privilégios da 1126), pelo índice
+  `(conversation_id, created_at)` da 0941. Achado da revisão do porte ao
+  Atlas. PR #518.
+
+  Sem ordem com o deploy (a mesma RPC), aplicada com a autorização explícita
+  do operador ("Pode gravar", 14/11/2026, para 1142, 1144 e 1145), em
+  14/11/2026 às 16:37 BRT (histórico `20261114193726`), pela Management API,
+  com o arquivo idêntico ao do commit `dfb434e6` (sha256 `841c6f1c…`), cujo
+  replay do CI passou e que o Codex revisou sem achados. Antes: o replay
+  local do zero e cenários com dado fictício (o teto de 1000, as sem nome
+  fora da conta; com 200 mil mensagens, 3,9 ms contra 47 ms do corpo antigo).
+  Conferida na produção: o corpo com o teto, `anon` sem EXECUTE e
+  `authenticated` com.
+- **1144_cb_ia_pausa_antes_da_automacao** — a coluna
+  `conversations.ia_pausa_antes_da_automacao` (CHECK `gente`/`botao`): o
+  "Desligar IA" da automação guarda a pausa temporária que cobriu e o "Ligar
+  IA" a devolve. Achado da revisão do porte ao Atlas. PR #518.
+
+  ADITIVA, aplicada ANTES do deploy (o passo `set_ai` lê e grava a coluna),
+  com a mesma autorização, em 14/11/2026 às 16:37 BRT (histórico
+  `20261114193714`), pela Management API, com o arquivo idêntico ao do commit
+  `dfb434e6` (sha256 `ea2a37dd…`). Antes: o replay local e o cenário do CHECK
+  (aceita `gente`, recusa `automacao`); `conversations` com 4.409 linhas.
+  Conferida na produção: a coluna `text`, o CHECK validado e nenhuma linha
+  com valor.
+- **1145_cb_alarme_da_ia_parado_abre_novo** — `cb_ia_registrar_falha`
+  recriada (mesma assinatura e privilégios da 1140): o episódio parado há
+  mais de 24 h sem falha nova abre um NOVO na próxima falha, em vez de
+  "Continua". Achado da revisão do porte ao Atlas. PR #518.
+
+  Sem ordem com o deploy, aplicada com a mesma autorização, em 14/11/2026 às
+  16:37 BRT (histórico `20261114193730`), pela Management API, com o arquivo
+  idêntico ao do commit `dfb434e6` (sha256 `df3c09ce…`). Antes: o replay
+  local e a conferência com uma conta fictícia (o episódio parado reabre).
+  Conferida na produção: o corpo com a regra das 24 h, `authenticated` sem
+  EXECUTE e `service_role` com, e `cb_ia_alarmes` vazia (a conferência foi
+  desfeita).
