@@ -1942,7 +1942,8 @@ export function MessageThread({
   /**
    * Pinta a otimista que falhou. Com a tentativa GRAVADA (a rota devolve
    * `mensagem_id`, 31/10/2026), ela VIRA a linha: o mesmo id (o INSERT dela
-   * pelo tempo real chega repetido e é descartado) e o autor, que liga o
+   * pelo tempo real chega repetido, e a linha do BANCO substitui esta —
+   * `comLinhaDoTempoReal`, pela `gravada_em`) e o autor, que liga o
    * "Tentar de novo" pela régua da linha gravada (`tentativaReenviavel`), e
    * SEM o arquivo, como a linha (o anexo voltou à prévia, que o apaga no
    * descarte). Se o INSERT chegou ANTES da resposta, ele já trocou a

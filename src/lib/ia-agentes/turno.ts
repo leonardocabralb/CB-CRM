@@ -2385,8 +2385,10 @@ async function conduzirRetomada(
   // ficou incerto): a pausa da equipe VOLTA. Sem isso, a conversa ficava sem
   // pausa sem nada ter saído, e a próxima mensagem dela era respondida em 8 s
   // ("o follow-up que SAI levanta a pausa", `ia-retomada.md`).
+  // O `abandonado` (a posse do turno se perdeu: outro processo, ou a conversa
+  // encerrada no meio) não devolve: quem tomou o turno decide a conversa.
   const naoSaiu = async (desfecho: Desfecho): Promise<Desfecho> => {
-    if (levantouAPausa) await devolverPausaDaEquipe(db, turno)
+    if (levantouAPausa && desfecho.status !== 'abandonado') await devolverPausaDaEquipe(db, turno)
     return desfecho
   }
 
@@ -2409,8 +2411,10 @@ async function conduzirRetomada(
 /**
  * Devolve a pausa `gente` que o follow-up da equipe levantou e não usou (ver
  * `conduzirRetomada`), com o relógio recomeçando agora. CERCADA: só a
- * conversa que segue sem pausa — quem pausou ou desativou no meio vence. Não
- * lança: o desfecho do turno já está decidido.
+ * conversa que segue sem pausa e ABERTA — quem pausou ou desativou no meio
+ * vence, e a encerrada no meio (o gatilho da 1109 zera a pausa) não ganha uma
+ * pausa que seguraria a IA quando a cliente voltar. Não lança: o desfecho do
+ * turno já está decidido.
  */
 async function devolverPausaDaEquipe(db: SupabaseClient, turno: LinhaDoTurno): Promise<void> {
   const { error } = await db
@@ -2419,6 +2423,7 @@ async function devolverPausaDaEquipe(db: SupabaseClient, turno: LinhaDoTurno): P
     .eq('id', turno.conversation_id)
     .eq('account_id', turno.account_id)
     .eq('ai_autoreply_disabled', false)
+    .neq('status', 'closed')
   if (error) console.warn('[ia-agentes] devolver a pausa da equipe falhou:', error.message)
 }
 

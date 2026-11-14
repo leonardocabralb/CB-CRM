@@ -4654,6 +4654,17 @@ describe('a RETOMADA (1056)', () => {
       expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'gente' })
     })
 
+    it('⚠️ encerrada entre a volta e a reserva: a pausa NÃO volta (seguraria a IA quando a cliente voltar)', async () => {
+      comPreArmacao(20 * MIN)
+      banco.rpcs.cb_ia_reservar_envio = () => {
+        conversa().status = 'closed'
+        return { data: 'teto', error: null }
+      }
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA).status).toBe('sem_resposta')
+      expect(conversa()).toMatchObject({ status: 'closed', ai_autoreply_disabled: false })
+    })
+
     it('com o "Pausar" (botao) a série depois da equipe não roda', async () => {
       comPreArmacao(20 * MIN, 'botao')
       await executarTurno(RETOMADA)
