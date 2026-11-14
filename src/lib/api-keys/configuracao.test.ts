@@ -91,11 +91,22 @@ describe('escritaProibida (decisão do operador: chave de funcionário e recorta
     expect(escritaProibida(daConta, ['messages:send', 'contacts:write'])).toBeNull();
   });
 
-  it('todo escopo é de leitura OU de escrita pelo sufixo (sem terceiro caso)', () => {
-    const leitura = API_SCOPES.filter(ehEscopoDeLeitura);
-    expect(leitura.length).toBeGreaterThan(5);
-    for (const s of API_SCOPES) {
-      if (!ehEscopoDeLeitura(s)) expect(s.endsWith(':read'), s).toBe(false);
-    }
+  it('a chave só de leitura leva EXATAMENTE estes escopos (escopo novo decide aqui)', () => {
+    // A régua é o sufixo `:read`; o que a chave de funcionário e a recortada
+    // carregam é esta lista. Um escopo novo de escrita com nome que termine
+    // em `:read`, ou um de leitura com outro nome, reprova até alguém decidir.
+    expect([...API_SCOPES].filter(ehEscopoDeLeitura).sort()).toEqual([
+      'automations:read',
+      'channels:read',
+      'contacts:read',
+      'conversations:read',
+      'custom_fields:read',
+      'deals:read',
+      'meetings:read',
+      'messages:read',
+      'notes:read',
+      'scheduled:read',
+      'tasks:read',
+    ]);
   });
 });

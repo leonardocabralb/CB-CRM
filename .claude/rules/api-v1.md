@@ -77,6 +77,17 @@ Decisões do operador (04/11/2026): `docs/PLANO-chave-por-funcionario.md`.
   então o corte de `is_account_member` (1067) não a alcança sozinho. Fora =
   401 (como revogada); leitura que falha = 500. A FK é CASCADE de propósito:
   com SET NULL, apagar o login viraria a chave da conta inteira.
+- ⚠️⚠️ **A chave RESTRITA (funcionário ou funis) guarda o hash com
+  `PREFIXO_DA_CHAVE_RESTRITA`** (`restrita-`, gatilho
+  `cb_api_keys_hash_da_restrita` para todo escritor + CHECK): a imagem de
+  antes da 1143 procura só o hash puro e a deixa PARADA (401) ao voltar a
+  imagem, em vez de aberta para a conta inteira (e o funcionário removido
+  com a chave de volta). Migration 1143 aplicada DEPOIS do deploy. `findActiveKeyByHash`
+  procura as DUAS formas; leitor novo de `key_hash` também. Pino
+  `chave-restrita-1143.test.ts` (o prefixo do TS = o do SQL).
+- **Tirar o recorte de uma chave na edição pede confirmação escrita** (o
+  último funil desmarcado abre a conta inteira e, sem funcionário, solta a
+  escrita): um clique errado nunca vira "todos".
 - ⚠️⚠️ **Recorte DEFAULT-DENY**: chave com `funis` só passa em rota que
   declara `requireApiKey(…, { aceitaRecorte: true })`; o resto é 403
   `restricted_key`. Lista vazia FECHA (403), nunca abre (o CHECK da 1121 a

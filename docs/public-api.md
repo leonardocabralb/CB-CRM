@@ -145,7 +145,7 @@ may be reworded.
 | Status | `code`         | Meaning                                          |
 | ------ | -------------- | ------------------------------------------------ |
 | 401    | `unauthorized` | Missing / malformed / unknown / revoked / expired key |
-| 403    | `forbidden`    | Valid key, but missing the required scope        |
+| 403    | `forbidden`    | Valid key, but missing the required scope — or a [read-only key](#keys-for-a-team-member-limited-to-pipelines) (a team member's or pipeline-limited) trying to write |
 | 403    | `restricted_key` | A key [limited to pipelines](#keys-for-a-team-member-limited-to-pipelines) on an endpoint that does not accept it |
 | 429    | `rate_limited` | Per-key rate limit exceeded                      |
 | 400    | `bad_request`  | Malformed input                                  |

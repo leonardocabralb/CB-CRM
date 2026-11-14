@@ -491,6 +491,11 @@ function KeyDialog({
 
   const recortada = funisEscolhidos.length > 0;
   const soLeitura = recortada || membro !== SEM_FUNCIONARIO;
+  // ⚠️ Desmarcar o ÚLTIMO funil de uma chave recortada a abre para a conta
+  // inteira (e, sem funcionário, solta a escrita): um clique errado nunca
+  // vira "todos" (`lerFunis`). Na edição, isso pede uma confirmação escrita.
+  const abreTodosOsFunis = editando && chave?.funis != null && !recortada;
+  const [confirmouTodosOsFunis, setConfirmouTodosOsFunis] = useState(false);
   // ⚠️ Criar sem saber os funis ou os membros criaria, sem querer, a chave
   // da conta INTEIRA (falha aberta). Na edição, o que não carregou não é
   // enviado e fica como está.
@@ -559,6 +564,10 @@ function KeyDialog({
     }
     if (!editando && !opcoesProntas) {
       toast.error(t('optionsNotLoaded'));
+      return;
+    }
+    if (abreTodosOsFunis && !confirmouTodosOsFunis) {
+      toast.error(t('pipelinesAllNeedsConfirm'));
       return;
     }
     const membroUserId = membro === SEM_FUNCIONARIO ? null : membro;
@@ -783,6 +792,16 @@ function KeyDialog({
                   </div>
                 )}
                 <p className="text-muted-foreground text-xs">{t('pipelinesHint')}</p>
+                {abreTodosOsFunis && (
+                  <label className="flex cursor-pointer items-start gap-2.5">
+                    <Checkbox
+                      checked={confirmouTodosOsFunis}
+                      onCheckedChange={(checked) => setConfirmouTodosOsFunis(checked === true)}
+                      className="mt-0.5"
+                    />
+                    <span className="text-destructive text-xs">{t('pipelinesAllConfirm')}</span>
+                  </label>
+                )}
               </div>
 
               <div className="space-y-2">
