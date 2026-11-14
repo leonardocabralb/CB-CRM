@@ -7530,6 +7530,7 @@
       "desconhecido": "Could not check right now which keys the account has.",
       "semAudio": "This account has no Gemini or OpenAI key, and Anthropic does not take audio: the customer's audio will not be heard, and a conversation with audio goes to the team.",
       "limiteAudio": "Audio: Gemini, otherwise OpenAI. Anthropic does not take audio.",
+      "audioDaEquipe": "Team voice notes: the most recent ones in the conversation are also transcribed (team photos and documents are not), so the agent neither repeats nor contradicts what the team explained. If a transcription is not ready in time, the agent only sees that a voice note was sent: the reply to the customer is never held up by it.",
       "limiteFormatos": "HEIC photos (the iPhone's) are only read when the reader is Gemini; GIFs, only when the reader is not Gemini.",
       "limitePlanilha": "Only Gemini reads Word, Excel and PowerPoint (only the first sheet of a spreadsheet). No provider reads other files (zip, text…): the agent asks the customer to describe the content or resend it in another format.",
       "limiteVideo": "Videos are not watched: the agent only sees that a video arrived, with its caption.",

@@ -71,9 +71,10 @@ agente errar em silêncio.
   Leitura de chave que falha = `leitores: null` ("não se sabe"), nunca
   "ninguém". Sem Gemini nem OpenAI: âmbar — áudio não será ouvido.
 - Mudou a ordem ou o que cada provedor lê (`leitores.ts`, `transcrever.ts`,
-  `contexto.ts`)? O texto `IaAgentes.midia.*` muda junto (HEIC só Gemini; GIF
-  não Gemini; Office só Gemini, da planilha só a 1ª aba; zip/texto ninguém;
-  vídeo não é assistido).
+  `contexto.ts`, o áudio da equipe em `turno.ts`)? O texto `IaAgentes.midia.*`
+  muda junto (HEIC só Gemini; GIF não Gemini; Office só Gemini, da planilha só
+  a 1ª aba; zip/texto ninguém; vídeo não é assistido; da equipe, só o áudio,
+  `midia.audioDaEquipe` — sem número digitado no dicionário).
 
 ### Avisos ANTES de salvar
 

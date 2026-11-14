@@ -126,13 +126,12 @@ A IA lê as conversas dos últimos 7 dias e grava `cb_conversation_insights`
 
 ### Transcrição de áudio (943): função ÚNICA, Gemini (senão OpenAI), chave BYO
 
-`transcrever.ts` (testado), `POST /api/cb/transcricao/[messageId]`, colunas
-`transcricao_*` em `messages`. A MESMA função idempotente serve ao botão da
-bolha, ao Radar e ao agente de IA.
+`transcrever.ts`, `POST /api/cb/transcricao/[messageId]`, colunas
+`transcricao_*` em `messages`. A MESMA função idempotente serve à bolha, ao
+Radar e ao agente de IA (cliente e equipe).
 
 - ⚠️ **As MESMAS colunas guardam a LEITURA de imagem/PDF**
   (`ler-midia.ts`): leitor de `transcricao*` filtra `audio` (Radar incluso).
-
 - **A transcrição NUNCA vai para `content_text`**: o escrito e o ouvido diferem,
   e sobrescrever é irreversível.
 - ⚠️ **O cadeado `UPDATE…RETURNING` não é opcional**: no deploy há dois

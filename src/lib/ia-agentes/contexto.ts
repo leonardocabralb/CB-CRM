@@ -21,7 +21,10 @@
 //    teto por turno). O agente NÃO pede reenvio — ela ainda vai ser lida.
 //    Sem essa distinção, a quarta foto de uma rajada virava "mande de novo".
 // A figurinha é `[sticker]` (nada a ler — `ehFigurinha`, a régua da
-// entrada). A mídia da EQUIPE fica só com o rótulo: ninguém a lê.
+// entrada). A imagem e o documento da EQUIPE ficam só com o rótulo: ninguém
+// os lê. O ÁUDIO da equipe sim (14/11/2026): o turno o manda transcrever
+// (`ouvirAudiosDaEquipe`, `turno.ts`) e ele entra como o do cliente, pela
+// transcrição — com o rótulo da equipe, abaixo; sem ela, o rótulo do áudio.
 //
 // ⚠️ A ligação pelo CRM TRANSCRITA (4d, D11) entra como NOTA no papel de
 // usuário ("not a message from the customer", a forma de
@@ -85,9 +88,12 @@ export const ROTULO_DA_EQUIPE = '[Team member]'
 
 /**
  * A fala é da EQUIPE (gente)? A régua da pausa por gente (1049/1118):
- * `agent` com `sender_id` ou do celular, sem `ia_agente_id`.
+ * `agent` com `sender_id` ou do celular, sem `ia_agente_id`. É também a régua
+ * de quais áudios o turno manda ouvir como da equipe (`turno.ts`).
  */
-export function ehFalaDaEquipe(m: MensagemDoContexto): boolean {
+export function ehFalaDaEquipe(
+  m: Pick<MensagemDoContexto, 'sender_type' | 'sender_id' | 'from_device' | 'ia_agente_id'>,
+): boolean {
   return m.sender_type === 'agent' && (!!m.sender_id || m.from_device === true) && !m.ia_agente_id
 }
 

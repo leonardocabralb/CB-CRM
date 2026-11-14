@@ -395,4 +395,14 @@ describe('o Radar só usa `transcricao*` de ÁUDIO (27/09/2026)', () => {
     const trecho = fonte.slice(inicio, fonte.indexOf(')', fonte.indexOf('transcricao_status === null', inicio)))
     expect(trecho).toContain("m.content_type === 'audio'")
   })
+
+  it('e só o áudio do CLIENTE (14/11/2026): o da equipe quem manda ouvir é o agente de IA, nunca o ciclo do Radar', () => {
+    // O ciclo passa por toda conversa com o Radar ligado a cada 15 min: ouvir
+    // a equipe aqui pagaria a transcrição de áudios que agente nenhum vai ler.
+    // O que o agente já transcreveu o Radar só LÊ (o mapa acima, de graça).
+    const inicio = fonte.indexOf('const audiosPendentes')
+    const trecho = fonte.slice(inicio, fonte.indexOf(')', fonte.indexOf('transcricao_status === null', inicio)))
+    expect(trecho).toContain("m.sender_type === 'customer'")
+    expect(fonte.match(/transcreverAudio\(/g) ?? []).toHaveLength(1)
+  })
 })

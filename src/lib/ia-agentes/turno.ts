@@ -113,6 +113,9 @@
 //    abertura de hoje (`aberturaDeHoje`), e o teto de respostas por minuto da
 //    conta o devolve à fila (em vez de `sem_resposta`): a fila da noite vence
 //    toda na abertura.
+//  - O ÁUDIO da EQUIPE (14/11/2026) vira texto como o do cliente, mas NUNCA
+//    segura a resposta: até 3 por rodada, espera curta, sem reagendar; o que
+//    não ficou pronto a tempo vai com o rótulo (`ouvirAudiosDaEquipe`).
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -154,7 +157,7 @@ import {
 import { type IaAgente, PRAZO_DA_GERACAO_MS } from './agente'
 import { lerAgendaDoAgente } from './agenda'
 import { consultaDaUltimaMensagem, PRAZO_DO_EMBEDDING_MS } from './conhecimento'
-import { ehNotaDoSistema, lerConversaDaConexao, terminarNoCliente } from './contexto'
+import { ehFalaDaEquipe, ehNotaDoSistema, lerConversaDaConexao, terminarNoCliente } from './contexto'
 import {
   agendarDisparo,
   enfileirarTurno,
@@ -1068,6 +1071,101 @@ async function prepararMidias(
 }
 
 // ------------------------------------------------------------
+// O áudio da EQUIPE (14/11/2026)
+// ------------------------------------------------------------
+
+/** Quantos áudios da EQUIPE a rodada manda ouvir: os MAIS NOVOS ainda sem transcrição. */
+export const AUDIOS_DA_EQUIPE_POR_TURNO = 3
+/**
+ * O que a espera pelo áudio da equipe deixa para a GERAÇÃO, além do embedding
+ * e do envio: os 30 s que ela tinha antes de 09/11/2026 (hoje o teto é
+ * `PRAZO_DA_GERACAO_MS`, 45 s). Com o prazo de 60 s do turno, a espera acaba
+ * ~12 s depois da reivindicação — e a resposta ao cliente nunca perde o prazo
+ * por causa do áudio da equipe.
+ */
+export const RESERVA_DA_GERACAO_MS = 30_000
+
+interface LinhaDoAudioDaEquipe {
+  id: string
+  sender_type: string
+  sender_id: string | null
+  from_device: boolean | null
+  ia_agente_id: string | null
+  content_type: string
+  transcricao_status: string | null
+}
+
+/**
+ * Os áudios da EQUIPE entre as mensagens que vão ao modelo (a MESMA janela de
+ * `lerConversaDaConexao`, só desta conexão) viram texto pela MESMA função do
+ * áudio do cliente (`transcreverAudio`: cadeado, 3 tentativas, custo em
+ * `ai_usage_log` no modo `transcricao`) e entram no contexto como
+ * `[Team member] [audio message, transcribed] …` (`contexto.ts`). Decisão do
+ * operador (14/11/2026): a equipe explica o caso à cliente quase sempre por
+ * áudio, e a IA, que via só o rótulo, fazia o follow-up às cegas ("Conseguiu
+ * ouvir as explicações?") e podia contradizer a equipe.
+ *
+ * ⚠️⚠️ NUNCA segura a resposta, e nunca REAGENDA o turno:
+ *  - no máximo `AUDIOS_DA_EQUIPE_POR_TURNO` por rodada, os mais novos (`pronta`
+ *    e `recusada` ficam de fora: lida, e o irreversível), em PARALELO;
+ *  - com `esperar`, o turno espera por eles só até sobrar
+ *    `RESERVA_DA_GERACAO_MS` para gerar (além do embedding e do envio); sem
+ *    `esperar` (a retomada que só reagendou), manda ouvir e segue;
+ *  - o que não ficou pronto a tempo SEGUE em segundo plano — não é abortado: a
+ *    transcrição fica gravada e o próximo turno a lê de graça (o cadeado
+ *    impede pagar de novo) — e ESTE turno vê o rótulo, como antes;
+ *  - não marca `andamento.transcreveu` (o que deixa a prévia do prazo
+ *    reagendar), e a falha (`falhou`, `recusada`, sem chave) só deixa o rótulo.
+ *    A leitura da janela que falha também: melhor esforço.
+ * A imagem e o documento da equipe continuam sem leitura (`prepararMidias`).
+ */
+async function ouvirAudiosDaEquipe(
+  db: SupabaseClient,
+  turno: LinhaDoTurno,
+  inicio: number,
+  esperar: boolean,
+): Promise<void> {
+  if (!turno.canal_id) return
+  const { data, error } = await db
+    .from('messages')
+    .select('id, sender_type, sender_id, from_device, ia_agente_id, content_type, transcricao_status')
+    .eq('conversation_id', turno.conversation_id)
+    .eq('channel_id', turno.canal_id)
+    .is('deleted_at', null)
+    // A MESMA janela de `lerConversaDaConexao`: o que não saiu (1080) não vai
+    // ao modelo, e empurraria a janela para trás.
+    .eq('nao_saiu', false)
+    .order('created_at', { ascending: false })
+    .limit(aiContextMessageLimit())
+  if (error) {
+    console.error('[ia-agentes] ler os áudios da equipe falhou; seguem com o rótulo:', turno.id, error.message)
+    return
+  }
+  // Mais novos primeiro (a ordem da consulta).
+  const aOuvir = ((data ?? []) as LinhaDoAudioDaEquipe[])
+    .filter((m) => m.content_type === 'audio' && ehFalaDaEquipe(m))
+    .filter((m) => m.transcricao_status !== 'pronta' && m.transcricao_status !== 'recusada')
+    .slice(0, AUDIOS_DA_EQUIPE_POR_TURNO)
+  if (aOuvir.length === 0) return
+
+  // `allSettled` nunca rejeita: o que segue em segundo plano não vira erro solto.
+  const ouvindo = Promise.allSettled(
+    aOuvir.map((m) => transcreverAudio(db, { accountId: turno.account_id, messageId: m.id })),
+  )
+  const espera =
+    PRAZO_DO_TURNO_MS - (Date.now() - inicio) - RESERVA_DO_ENVIO_MS - PRAZO_DO_EMBEDDING_MS - RESERVA_DA_GERACAO_MS
+  if (!esperar || espera <= 0) return
+  let prazo: ReturnType<typeof setTimeout> | undefined
+  await Promise.race([
+    ouvindo,
+    new Promise<void>((resolve) => {
+      prazo = setTimeout(resolve, espera)
+    }),
+  ])
+  clearTimeout(prazo)
+}
+
+// ------------------------------------------------------------
 // A passagem (D25)
 // ------------------------------------------------------------
 
@@ -1462,6 +1560,13 @@ async function conduzir(
   if (audio) return audio
   const midias = await prepararMidias(db, turno, gatilho, desde, inicio, andamento)
   if (midias) return midias
+  // O áudio da EQUIPE (14/11/2026): DEPOIS do áudio e das mídias do cliente (a
+  // prioridade é dele) e só dentro do teto da espera das mídias, contado como
+  // em `prepararMidias` (do gatilho, ou da abertura/volta). Nunca reagenda.
+  const doGatilho = Date.parse(gatilho.gravada_em ?? '')
+  if (Number.isFinite(doGatilho) && Date.now() - desdeAEspera(doGatilho, andamento) < TETO_DA_ESPERA_DAS_MIDIAS_MS) {
+    await ouvirAudiosDaEquipe(db, turno, inicio, true)
+  }
 
   const conversa = await lerConversaDaConexao(db, {
     conversationId: turno.conversation_id,
@@ -2364,6 +2469,14 @@ async function conduzirRetomada(
   const daEquipe = ancora.sender_type === 'agent' && tentativa === 1
 
   const primeira = await conferirRetomada(db, turno, ancora.gravada_em, { reprogramar: true })
+  // O áudio da EQUIPE (14/11/2026), com a retomada valendo: na que vai gerar,
+  // esperando (com o teto de `ouvirAudiosDaEquipe`); na que só não venceu
+  // ainda, sem esperar — a pré-armação, 30 s depois da fala da equipe, já
+  // manda ouvi-la, e o follow-up a encontra pronta. Sem o teto do gatilho: a
+  // retomada não tem cliente esperando, e a âncora é antiga por definição.
+  if (primeira.ok || primeira.desfecho.status === 'reagendar') {
+    await ouvirAudiosDaEquipe(db, turno, inicio, primeira.ok)
+  }
   if (!primeira.ok) return primeira.desfecho
   const { agente } = primeira
   andamento.agente = agente

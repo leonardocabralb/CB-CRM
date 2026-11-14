@@ -36,7 +36,10 @@ const LEITORES: [string, number][] = [
   ['lib/automations/sem-conversa.ts', 2],
   ['lib/ia-agentes/contexto.ts', 1],
   ['lib/ai/context.ts', 1],
-  ['lib/ia-agentes/turno.ts', 2],
+  // O robô depois do gatilho, a janela das mídias do cliente e, desde
+  // 14/11/2026, a dos áudios da EQUIPE (`ouvirAudiosDaEquipe`) — as duas
+  // janelas são a MESMA de `lerConversaDaConexao` (contexto.ts).
+  ['lib/ia-agentes/turno.ts', 3],
   ['lib/ia-agentes/retomada-fatos.ts', 1],
   ['lib/cb-radar/worker.ts', 1],
   ['hooks/use-radar.ts', 1],

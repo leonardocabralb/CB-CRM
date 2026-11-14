@@ -246,8 +246,8 @@ uma AÇÃO a mais do protocolo da F4 (`marcar_reuniao`, `[[REUNIAO:n]]`).
 # Agentes de IA — mídia do cliente (imagem e documento, 27/09 e 08/11/2026)
 
 Plano: `docs/PLANO-agentes-de-ia.md` (Estado, "Leitura de imagem e PDF").
-`src/lib/transcricao/ler-midia.ts` (I/O) e `leitores.ts` (puro), os dois
-testados; `prepararMidias` em `turno.ts`; `contexto.ts` e `pedido.ts`.
+`src/lib/transcricao/ler-midia.ts` (I/O) e `leitores.ts` (puro);
+`prepararMidias` em `turno.ts`; `contexto.ts` e `pedido.ts`.
 
 - ⚠️⚠️ **A leitura vira TEXTO, uma vez, gravado na mensagem** — nas colunas
   `transcricao*` da 943 (sem migration). O agente recebe o texto, com
@@ -322,7 +322,8 @@ testados; `prepararMidias` em `turno.ts`; `contexto.ts` e `pedido.ts`.
   (nunca tentada, falha passageira, além das 5): o agente NÃO pede reenvio,
   pode dizer que ainda está vendo os arquivos. Sem essa separação, a quarta
   foto de uma rajada virava "mande de novo". A figurinha é `[sticker]` e o
-  pedido manda nunca perguntar dela. A mídia da EQUIPE fica só com o rótulo.
+  pedido manda nunca perguntar dela. Da EQUIPE, só o ÁUDIO é ouvido
+  (`ia-agentes-turno.md`).
 - **No pedido**, a leitura entra com teto de 4.000 caracteres (a gravada vai
   a 12.000). O retrato do turno (`cb_ia_turnos.contexto`) NÃO guarda as
   mensagens: nada muda nele.

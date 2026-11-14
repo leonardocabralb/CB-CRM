@@ -260,7 +260,8 @@ export function SeletorDeModelo({
 }
 
 /**
- * Quem lê a mídia do cliente NESTA conta, e o que ninguém lê.
+ * Quem lê a mídia do cliente NESTA conta, e o que ninguém lê (e, desde
+ * 14/11/2026, que o áudio da EQUIPE também é ouvido — `turno.ts`).
  * `leitores`: `undefined` = carregando (não afirma nada); `null` = não se
  * sabe (a leitura das chaves falhou — diz isso, nunca "ninguém").
  * `compacto`: a linha curta do "Novo agente".
@@ -312,6 +313,7 @@ export function QuemLeAMidia({
       {aviso}
       <ul className="list-disc space-y-0.5 pl-4 text-muted-foreground">
         <li>{t('midia.limiteAudio')}</li>
+        <li>{t('midia.audioDaEquipe')}</li>
         <li>{t('midia.limiteFormatos')}</li>
         <li>{t('midia.limitePlanilha')}</li>
         <li>{t('midia.limiteVideo')}</li>

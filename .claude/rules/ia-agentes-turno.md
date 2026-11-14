@@ -182,6 +182,39 @@ das ações está em `ia.md` e `ia-agentes.md`.
   na retomada, como no Playground (`provedor_so_da_base`) — antes ela ia ao
   chat e falhava como chave recusada.
 
+### O ÁUDIO da EQUIPE vira texto (decisão do operador, 14/11/2026)
+
+A equipe explica o caso à cliente quase sempre por áudio, e a IA via só o
+rótulo: fazia o follow-up às cegas ("Conseguiu ouvir as explicações?") e podia
+contradizer a equipe. `ouvirAudiosDaEquipe` (`turno.ts`).
+
+- ⚠️⚠️ **A MESMA `transcreverAudio` do áudio do cliente** (cadeado, 3
+  tentativas, custo no modo `transcricao`) nos áudios da equipe
+  (`ehFalaDaEquipe`: CRM ou celular, sem `ia_agente_id`) da MESMA janela de
+  `lerConversaDaConexao`, só desta conexão. No contexto, como o do cliente, com
+  o `[Team member]`. Foto e documento da equipe seguem sem leitura. O Radar
+  segue OUVINDO só o cliente (pino em `cb-radar/worker.test.ts`) e LÊ, de
+  graça, o que o agente transcreveu; a bolha e a API v1 também o mostram.
+- ⚠️⚠️ **NUNCA segura a resposta nem reagenda** (decisão do operador): até 3
+  por rodada (`AUDIOS_DA_EQUIPE_POR_TURNO`, os mais novos fora de `pronta` e
+  `recusada`), em PARALELO; o turno espera só até sobrar
+  `RESERVA_DA_GERACAO_MS` (30 s) para gerar, além do embedding e do envio
+  (~12 s do turno). O que não acabou SEGUE em segundo plano — abortado,
+  gastaria tentativa — e fica gravado para o próximo turno; este vê o rótulo.
+  Não marca `transcreveu`; falha, sem chave ou leitura que falha = o rótulo.
+- **No turno de resposta, DEPOIS do áudio e das mídias do cliente** (a
+  prioridade é dele) e dentro do `TETO_DA_ESPERA_DAS_MIDIAS_MS`
+  (`desdeAEspera`). O áudio do cliente que transfere ou reagenda sai antes: o
+  da equipe fica para a rodada seguinte.
+- **Na retomada, depois de `conferirRetomada`**: a que vai gerar espera (o
+  mesmo teto de tempo); a que só reagendou — a PRÉ-ARMAÇÃO, 30 s depois da fala
+  da equipe — manda ouvir SEM esperar, e o follow-up, minutos depois, encontra
+  o texto pronto. Sem o teto do gatilho: a âncora é antiga por definição. A
+  retomada que não vale (descartada, pausada) não manda ouvir nada.
+- **Limite aceito**: áudio longo sem pré-armação (retomada desligada, ou a
+  cliente respondeu antes dos 30 s) pode não ficar pronto na 1ª resposta
+  depois dele — vai o rótulo, e a seguinte o lê.
+
 ### A transferência deixa a conversa PENDENTE
 
 - Pedido do operador (09/11/2026): quem a IA passa para a equipe precisa de

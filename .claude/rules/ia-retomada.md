@@ -48,6 +48,11 @@ faz, em `.claude/rules/ia-agentes.md`. ⚠️ "Retomada" aqui é o FOLLOW-UP; o
   O pedido ganha a linha "a última foi da equipe" (`daEquipe`, parte
   VARIÁVEL, pela `sender_type` da âncora) SÓ na 1ª tentativa: da 2ª em
   diante a última fala é o follow-up da própria IA.
+- ⚠️ **O ÁUDIO da equipe é ouvido depois de `conferirRetomada`** (14/11/2026):
+  a pré-armação, que só reagenda, manda transcrever SEM esperar, e o follow-up
+  encontra o texto pronto; a que gera espera pouco, nunca reagenda por ele
+  (`ia-agentes-turno.md`). Sem isso, o follow-up perguntava "conseguiu ouvir as
+  explicações?" sem saber o que a equipe disse.
 - ⚠️⚠️ **Arma com o card e a etapa de AGORA** (revisão de 09/11/2026): a
   própria resposta pode ter movido o card (`mover_etapa`); armada com a etapa
   do começo do turno, ela era descartada SEMPRE no vencimento ("o card mudou

@@ -161,7 +161,7 @@ describe('montarConversa — o que o agente lê', () => {
     expect(m.content).not.toMatch(/Integrações|chave/)
   })
 
-  it('a mídia da EQUIPE fica só com o rótulo: ninguém a lê, e "not read yet" nela faria o agente dizer que ainda está olhando', () => {
+  it('a IMAGEM e o DOCUMENTO da EQUIPE ficam só com o rótulo: ninguém os lê, e "not read yet" neles faria o agente dizer que ainda está olhando', () => {
     expect(
       montarConversa([
         { sender_type: 'agent', content_type: 'image', content_text: 'segue o boleto' },
@@ -223,6 +223,21 @@ describe('montarConversa — a fala da EQUIPE vai rotulada (1138, decisão do op
 
   it('vazia continua fora (o rótulo sozinho não é fala)', () => {
     expect(montarConversa([linha({ sender_id: 'membro-1', content_text: '  ' })])).toEqual([])
+  })
+
+  it('o ÁUDIO da equipe entra pela TRANSCRIÇÃO, com o rótulo (14/11/2026); sem ela, o rótulo do áudio, como antes', () => {
+    const audio = { content_type: 'audio', content_text: null }
+    expect(
+      montarConversa([
+        linha({ ...audio, sender_id: 'membro-1', transcricao: 'Maria, o prazo é de 30 dias.', transcricao_status: 'pronta' }),
+        linha({ ...audio, from_device: true, transcricao: 'Já protocolamos.', transcricao_status: 'pronta' }),
+        linha({ ...audio, sender_id: 'membro-1', transcricao: null, transcricao_status: 'falhou' }),
+      ]),
+    ).toEqual([
+      { role: 'assistant', content: `${ROTULO_DA_EQUIPE} [audio message, transcribed] Maria, o prazo é de 30 dias.` },
+      { role: 'assistant', content: `${ROTULO_DA_EQUIPE} [audio message, transcribed] Já protocolamos.` },
+      { role: 'assistant', content: `${ROTULO_DA_EQUIPE} [audio message, not transcribed]` },
+    ])
   })
 })
 
