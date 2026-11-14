@@ -158,6 +158,12 @@ qualquer uma é pergunta ao operador.
   não zera (1130, `ia.md`); (3) a resposta que move o card para a etapa de
   OUTRO agente (ou sem agente) não arma retomada; para outra etapa do mesmo,
   arma com ela (`ia-retomada.md`).
+- Agente de IA × automação do funil (14/11/2026, a volta de "Não Respondeu"
+  no Trabalhista ficava sem resposta): o card movido ou criado para etapa com
+  automação escutando NÃO cala mais a IA — ela espera a automação rodar e
+  responde se ela terminar sem mandar nada; se a automação falou, ou vai
+  falar depois de um "Aguardar" longo, a IA cala (`ia-agentes-turno.md`). A
+  passagem entre agentes mantém a regra de antes.
 - A automação que o agente de IA executa fala EM NOME dele e não para a
   retomada dele; o disparo por evento nunca leva a marca (09/11/2026: no
   Trabalhista, o vídeo e o link da assinatura saem por automação, com o link

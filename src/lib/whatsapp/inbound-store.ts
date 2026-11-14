@@ -17,7 +17,7 @@ import { routeContactToPipeline } from '@/lib/cb-channels/pipeline-routing';
 import { reopenClosedConversation } from '@/lib/conversations/reopen';
 import { marcarOrigem } from '@/lib/conversations/origem-da-escrita';
 import { reivindicarPrimeiraMensagem } from '@/lib/conversations/primeira-mensagem';
-import { dispararAutomacoes, etapaTemQuemFale } from '@/lib/automations/engine';
+import { dispararAutomacoes } from '@/lib/automations/engine';
 import { cancelarEsperasPorResposta } from '@/lib/automations/parar-se-responder';
 import { dispatchInboundToFlows } from '@/lib/flows/engine';
 import { aoChegarMensagemDoCliente } from '@/lib/ia-agentes/entrada';
@@ -644,7 +644,12 @@ export async function persistInboundMessage(
   // uma conversa por contato — o cliente que muda de número nunca dispararia.
   // `routeContactToPipeline` nunca lança e sai no primeiro SELECT quando a
   // conexão não tem funil configurado.
-  const etapaDoCardNovo = await routeContactToPipeline({
+  // ⚠️ NOSSO (E4 dos agentes de IA, revista em 14/11/2026): o card que o funil
+  // cria aqui entra na fila (`deal_stage_changed`), e a boas-vindas da etapa de
+  // entrada roda DEPOIS, no dreno. Isso NÃO cala o agente: ela pode não mandar
+  // nada, e quem confere o que ela fez é o turno (`esperaPeloFunil`). Gêmeo do
+  // webhook da Meta.
+  await routeContactToPipeline({
     db,
     accountId: m.accountId,
     channelId: m.channelId ?? null,
@@ -652,18 +657,6 @@ export async function persistInboundMessage(
     contactName: contact.name ?? null,
     conversationId: conversation.id,
   });
-  // ⚠️ NOSSO (E4 dos agentes de IA): o card que o funil ACABOU de criar entra
-  // na fila (`deal_stage_changed`), e a automação de boas-vindas da etapa de
-  // entrada fala DEPOIS, no dreno — com o agente já tendo feito a triagem da
-  // mesma mensagem. Conta como fala, pela régua do passo "Criar negócio" do
-  // motor (erro de leitura = fala). Só com card novo: o contato que já tinha
-  // card não paga consulta nenhuma. Gêmeo do webhook da Meta.
-  if (etapaDoCardNovo && !automacaoFalou) {
-    automacaoFalou = await etapaTemQuemFale(db, m.accountId, etapaDoCardNovo).catch((err) => {
-      console.error('[inbound-store] quem escuta a etapa do card novo não pôde ser conferido:', err);
-      return true;
-    });
-  }
 
   // O agente de IA (F2 do docs/PLANO-agentes-de-ia.md, 5.3): DEPOIS do robô,
   // das automações e do funil, com os fatos desta mensagem — quem decide se

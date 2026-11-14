@@ -39,9 +39,12 @@
 //    (`veio_de_passagem`) responde à MESMA mensagem. Esse não passa de novo:
 //    se tentar, transfere para gente. Com automação ligada escutando a etapa
 //    de destino, ELA fala e o turno do destino não nasce (E4).
-//  - Evento de funil ainda não drenado cuja etapa tem automação escutando
-//    REAGENDA o turno (a boas-vindas da etapa ainda vai sair), por até
-//    `JANELA_DO_AUDIO_MS` contada do gatilho (`funilAindaVaiFalar`).
+//  - A FALA ADIADA DO FUNIL (E4, revista em 14/11/2026): o card criado ou
+//    movido para etapa com automação escutando NÃO cala mais a entrada. O
+//    turno espera o dreno e confere o que a automação FEZ (`esperaPeloFunil`),
+//    por até `JANELA_DO_AUDIO_MS` contada do gatilho: evento não drenado ou
+//    execução dela ainda rodando = reagenda; parada num "Aguardar" longo ou
+//    envio incerto = descarta; terminou sem falar = responde.
 //  - O que o agente VÊ além da conversa (F3): os blocos de acesso marcados e
 //    os trechos da base DELE, lidos UMA vez por turno, antes de gerar
 //    (`lerOQueOAgenteVe`). Bloco que não se lê vai como "unavailable", base
@@ -516,55 +519,190 @@ async function haSaidaDoRoboDepois(db: SupabaseClient, turno: LinhaDoTurno, gati
   return (data?.length ?? 0) > 0
 }
 
-/** Teto da leitura dos eventos de funil pendentes do contato. */
+/** Teto da leitura dos eventos de funil do contato (os pendentes e os drenados depois do gatilho). */
 const EVENTOS_PENDENTES_LIDOS = 20
+/** Teto da leitura das execuções de automação ainda vivas do contato. */
+const EXECUCOES_VIVAS_LIDAS = 20
+/**
+ * Até onde, contado do `gravada_em` do gatilho, a espera de uma automação do
+ * funil é CURTA: o turno espera ela acordar e confere o que a automação fez
+ * (o "Aguardar 5 s" antes da saudação). Mais longa, é a automação que fala
+ * DEPOIS (um follow-up): a IA cala nesta mensagem, como sempre calou com
+ * "Aguardar" (E4). A folga até o fim da janela (`JANELA_DO_AUDIO_MS`, 2 min)
+ * é para o laço rápido do agendador acordar a espera (~15 s, até ~65 s com o
+ * ciclo lento) e o turno reagendado (10 s) ver o que ela fez.
+ */
+export const ESPERA_CURTA_DO_FUNIL_MS = 60_000
+/** O desfecho do turno quando a automação do funil vai falar depois de uma espera longa. */
+export const ERRO_DO_FUNIL_QUE_ESPERA = 'uma automação do funil vai falar depois de um "Aguardar"'
+/** O desfecho do turno quando o envio de uma automação do funil falhou sem recusa comprovada. */
+export const ERRO_DO_FUNIL_INCERTO = 'o envio de uma automação do funil pode ter saído (incerto)'
 
 /**
- * FALA ADIADA DO FUNIL NA RAJADA (E4). "Mover card", "Criar negócio", o
- * roteador de funil e a PASSAGEM só gravam um evento em
- * `cb_automation_events`; a automação da etapa de destino — a boas-vindas —
- * roda DEPOIS, no dreno. Há evento deste CONTATO ainda não drenado cuja etapa
- * tem quem escute? O turno REAGENDA, e na volta, drenado o evento, a saída da
- * automação o descarta (`haSaidaDoRoboDepois`, e a reserva).
+ * O envio do ROBÔ ou de uma AUTOMAÇÃO nesta conversa, POR ESTA CONEXÃO, depois
+ * do gatilho, que falhou SEM recusa comprovada (`nao_saiu` com o motivo
+ * `incerto`, `envio-que-falhou.ts`): pode ter chegado ao cliente. A pergunta
+ * é "pode ter saído?", não "alguém falou?" (essa ignora a tentativa,
+ * `haSaidaDoRoboDepois`) — a mesma conta do motor, em que a falha sem recusa
+ * comprovada CONTA como fala (E4).
+ */
+async function haEnvioIncertoDoRoboDepois(db: SupabaseClient, turno: LinhaDoTurno, gatilho: Gatilho): Promise<boolean> {
+  if (!gatilho.gravada_em || !turno.canal_id) return false
+  const { data, error } = await db
+    .from('messages')
+    .select('id')
+    .eq('conversation_id', turno.conversation_id)
+    .eq('channel_id', turno.canal_id)
+    .eq('sender_type', 'bot')
+    .is('ia_agente_id', null)
+    .is('deleted_at', null)
+    .eq('nao_saiu', true)
+    .eq('error_title', 'incerto')
+    .gt('gravada_em', gatilho.gravada_em)
+    .limit(1)
+  if (error) throw new Error(`leitura do envio incerto do robô falhou: ${error.message}`)
+  return (data?.length ?? 0) > 0
+}
+
+/**
+ * As execuções de automação deste CONTATO que nasceram depois do gatilho e
+ * ainda não terminaram (sem `finalizado_em` nem marca de interrupção — o
+ * índice parcial da 1005): `nenhuma`; `espera_longa`, quando alguma está
+ * PARADA num "Aguardar" (ou na retentativa) que acorda depois de
+ * `ESPERA_CURTA_DO_FUNIL_MS`; senão `rodando` (roda agora, ou a espera é
+ * curta). A filha (`run_automation`) e a da etiqueta (`tag_added`) que a
+ * ouvinte disparou também contam: o registro delas é próprio. LANÇA em erro.
+ */
+async function execucoesVivasDepois(
+  db: SupabaseClient,
+  turno: LinhaDoTurno,
+  contactId: string,
+  gravadaMs: number,
+): Promise<'nenhuma' | 'rodando' | 'espera_longa'> {
+  const { data: vivas, error } = await db
+    .from('automation_logs')
+    .select('id')
+    .eq('account_id', turno.account_id)
+    .eq('contact_id', contactId)
+    .is('finalizado_em', null)
+    .is('interrompida_em', null)
+    .gt('created_at', new Date(gravadaMs).toISOString())
+    .limit(EXECUCOES_VIVAS_LIDAS)
+  if (error) throw new Error(`leitura das execuções vivas falhou: ${error.message}`)
+  const ids = ((vivas ?? []) as Array<{ id: string }>).map((v) => v.id)
+  if (ids.length === 0) return 'nenhuma'
+  const { data: fila, error: erroDaFila } = await db
+    .from('automation_pending_executions')
+    .select('status, run_at')
+    .in('log_id', ids)
+    .in('status', ['pending', 'running'])
+  if (erroDaFila) throw new Error(`leitura da fila das automações falhou: ${erroDaFila.message}`)
+  const limite = gravadaMs + ESPERA_CURTA_DO_FUNIL_MS
+  const longa = ((fila ?? []) as Array<{ status: string; run_at: string | null }>).some((f) => {
+    const acorda = Date.parse(f.run_at ?? '')
+    return f.status === 'pending' && (!Number.isFinite(acorda) || acorda > limite)
+  })
+  return longa ? 'espera_longa' : 'rodando'
+}
+
+/**
+ * A FALA ADIADA DO FUNIL (E4, revista em 14/11/2026). "Mover card", "Criar
+ * negócio", o roteador de funil e a PASSAGEM só gravam um evento em
+ * `cb_automation_events`; a automação que escuta a etapa de destino roda
+ * DEPOIS, no dreno — e pode falar, ou NÃO: a ouvinte da etapa tem condição
+ * (a saudação que só tira a etiqueta de quem volta de "Não Respondeu"), recorte
+ * de conexão ou de etapa, "não repetir". Até 14/11 a ENTRADA calava o agente
+ * só por existir quem escutasse a etapa, e a cliente que voltava ficava sem
+ * resposta nenhuma (medido no Trabalhista). Agora o turno nasce, e aqui espera
+ * o dreno e confere o que ela FEZ:
+ *  1. evento deste contato ainda NÃO drenado, numa etapa com quem escute
+ *     (`etapaTemQuemFale`, a régua `triggerMatches`) → reagenda: ela ainda
+ *     vai rodar;
+ *  2. evento drenado (ou criado) DEPOIS do gatilho, numa etapa com quem
+ *     escute → as execuções do contato que nasceram depois do gatilho: parada
+ *     num "Aguardar" longo → descarta (ela fala depois, a regra de sempre do
+ *     "Aguardar"); rodando, ou espera curta → reagenda (o envio que ainda não
+ *     voltou do provedor não tem linha em `messages` — é o registro vivo que o
+ *     mostra); terminada com envio INCERTO → descarta. A que JÁ falou é a
+ *     saída do robô, que `conferir` olha antes (e a reserva, por último);
+ *  3. nada disso → `null`: a ouvinte terminou sem falar, ou nem rodou (fora do
+ *     escopo, de outra conexão) — a IA responde.
+ * Por que esperar o dreno basta agora (a passagem diz que não bastava, Codex
+ * #309): o evento é reivindicado ANTES de a automação rodar, mas o registro
+ * dela nasce logo depois e fica vivo até ela terminar — inclusive parada num
+ * "Aguardar" ou na retentativa. Sobra o vão entre a reivindicação e o
+ * registro (a leitura de escopo, milissegundos): a 2ª conferência, segundos
+ * depois da geração, e a reserva o cobrem; só um banco travado por segundos
+ * exatamente ali o deixaria passar (limite aceito).
+ *
+ * O turno da PASSAGEM (`veio_de_passagem`) só olha o item 1: ele nasce da
+ * triagem, que acabou de passar por esta mesma conferência para a MESMA
+ * mensagem; o que nasceu depois são as ações da própria triagem
+ * (`ACOES_COM_A_PASSAGEM`), com a regra delas (`ia-agentes-turno.md`).
  *
  * Só dentro de `JANELA_DO_AUDIO_MS` contada do `gravada_em` do gatilho:
- * passada a janela o dreno falhou, e o cliente não pode ficar sem resposta.
- * Leitura que falha DENTRO dela = reagenda. `true` = reagendar.
+ * passada a janela o dreno falhou (ou a execução morreu), e o cliente não pode
+ * ficar sem resposta. Leitura que falha DENTRO dela = reagenda ("na dúvida, a
+ * automação fala"). `null` = segue.
  */
-async function funilAindaVaiFalar(
+async function esperaPeloFunil(
   db: SupabaseClient,
   turno: LinhaDoTurno,
   contactId: string | null,
   gatilho: Gatilho,
-): Promise<boolean> {
-  if (!contactId || !gatilho.gravada_em) return false
+): Promise<Desfecho | null> {
+  if (!contactId || !gatilho.gravada_em) return null
   const gravada = Date.parse(gatilho.gravada_em)
-  if (!Number.isFinite(gravada) || Date.now() - gravada >= JANELA_DO_AUDIO_MS) return false
+  if (!Number.isFinite(gravada) || Date.now() - gravada >= JANELA_DO_AUDIO_MS) return null
+  // O carimbo em ISO do JS: o do PostgREST traz `+00:00`, e o `+` não pode ir
+  // cru dentro do `.or()`.
+  const depoisDoGatilho = new Date(gravada).toISOString()
   try {
     const { data, error } = await db
       .from('cb_automation_events')
-      .select('to_stage_id')
+      .select('to_stage_id, processado_em')
       .eq('account_id', turno.account_id)
       .eq('contact_id', contactId)
       .eq('tipo', 'deal_stage_changed')
-      .is('processado_em', null)
+      // O drenado depois do gatilho pelo relógio do DRENO (`processado_em`) e
+      // o criado depois dele pelo do banco (`criado_em`, o mesmo do gatilho).
+      .or(`processado_em.is.null,processado_em.gt.${depoisDoGatilho},criado_em.gt.${depoisDoGatilho}`)
+      .order('criado_em', { ascending: false })
       .limit(EVENTOS_PENDENTES_LIDOS)
     if (error) {
-      console.error('[ia-agentes] leitura dos eventos de funil pendentes falhou (reagenda):', error.message)
-      return true
+      console.error('[ia-agentes] leitura dos eventos de funil falhou (reagenda):', error.message)
+      return { status: 'reagendar' }
     }
-    const etapas = new Set(
-      ((data ?? []) as Array<{ to_stage_id: string | null }>)
-        .map((e) => e.to_stage_id)
-        .filter((e): e is string => typeof e === 'string'),
-    )
-    for (const etapa of etapas) {
-      if (await etapaTemQuemFale(db, turno.account_id, etapa)) return true
+    const eventos = (data ?? []) as Array<{ to_stage_id: string | null; processado_em: string | null }>
+    const etapasDe = (drenados: boolean) =>
+      new Set(
+        eventos
+          .filter((e) => (e.processado_em !== null) === drenados)
+          .map((e) => e.to_stage_id)
+          .filter((e): e is string => typeof e === 'string'),
+      )
+    for (const etapa of etapasDe(false)) {
+      if (await etapaTemQuemFale(db, turno.account_id, etapa)) return { status: 'reagendar' }
     }
-    return false
+    if (turno.veio_de_passagem) return null
+    let ouvida = false
+    for (const etapa of etapasDe(true)) {
+      if (await etapaTemQuemFale(db, turno.account_id, etapa)) {
+        ouvida = true
+        break
+      }
+    }
+    if (!ouvida) return null
+    const vivas = await execucoesVivasDepois(db, turno, contactId, gravada)
+    if (vivas === 'espera_longa') return { status: 'descartado', erro: ERRO_DO_FUNIL_QUE_ESPERA }
+    if (vivas === 'rodando') return { status: 'reagendar' }
+    if (await haEnvioIncertoDoRoboDepois(db, turno, gatilho)) {
+      return { status: 'descartado', erro: ERRO_DO_FUNIL_INCERTO }
+    }
+    return null
   } catch (err) {
     console.error('[ia-agentes] conferir a fala adiada do funil falhou (reagenda):', err)
-    return true
+    return { status: 'reagendar' }
   }
 }
 
@@ -655,10 +793,10 @@ async function conferir(
     return { ok: false, desfecho: { status: 'descartado', erro: 'o robô ou uma automação respondeu' } }
   }
   // Depois da saída do robô, de propósito: a automação que JÁ falou descarta
-  // (final); a que ainda vai falar só adia.
-  if (await funilAindaVaiFalar(db, turno, leitura.contactId, gatilho)) {
-    return { ok: false, desfecho: { status: 'reagendar' } }
-  }
+  // (final); a do funil que ainda roda (ou acorda logo) adia, e a que espera
+  // um "Aguardar" longo descarta (`esperaPeloFunil`).
+  const doFunil = await esperaPeloFunil(db, turno, leitura.contactId, gatilho)
+  if (doFunil) return { ok: false, desfecho: doFunil }
   return {
     ok: true,
     contactId: leitura.contactId,
@@ -1050,10 +1188,13 @@ async function passar(
   void drenarEventosDeFunil().catch(() => {})
 
   // Alguma automação ligada escuta a etapa de destino: ELA fala desta vez, e
-  // o agente responde a partir da próxima mensagem do cliente — a regra da
-  // entrada (E4). Esperar pelo dreno não basta: o evento é reivindicado antes
-  // de a automação rodar, e um "Aguardar" ou a retentativa do envio faria a
-  // boas-vindas sair DEPOIS da resposta do agente (Codex, #309).
+  // o agente responde a partir da próxima mensagem do cliente — a regra que a
+  // entrada seguia até 14/11/2026 (E4), mantida aqui: a automação que não
+  // manda nada deixa a mensagem sem resposta (limite aceito). A entrada passou
+  // a esperar o dreno e conferir o que a automação fez (`esperaPeloFunil`); o
+  // turno do destino não confere as execuções que nascem depois do gatilho
+  // (as ações da triagem estão entre elas), e o "Aguardar" ou a retentativa
+  // da boas-vindas sairia DEPOIS da resposta dele (Codex, #309).
   if (await etapaTemQuemFale(db, turno.account_id, etapa.id)) return { status: 'passou' }
 
   const novo = await enfileirarTurno(db, {
