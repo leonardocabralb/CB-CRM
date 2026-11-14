@@ -178,9 +178,8 @@ qualquer uma é pergunta ao operador.
   da cliente a reabre. Param como antes: card ganho, perdido ou em etapa sem
   agente, agente desligado, cliente ou equipe que escreve (pelas regras de
   hoje), e a pausa que já os parava (Pausar, Desativar, transferência,
-  automação). Encerrar continua
-  limpando a pausa e o teto, e a resposta pendente da IA sai
-  (`ia-retomada.md`).
+  automação). Encerrar continua limpando a pausa e o teto, e a resposta
+  pendente da IA sai (`ia-retomada.md`).
 - IA que passa a conversa para a equipe AVISA (11/11/2026; 1139): no sino e
   numa caixinha clicável dentro do CRM, que fica até alguém abrir a conversa
   ou fechar; recebem as pessoas marcadas em cada agente e sempre o
