@@ -131,6 +131,14 @@ Decisões do operador de 11/11/2026 (P1–P7 de
   ignorância. "A IA volta A PARTIR DE <hora>" (fora do horário ela espera a
   abertura), no idioma de quem olha, com o dia quando não é hoje
   (`horaDaVolta`).
+- ⚠️ **O [Desativar IA] pergunta antes** (operador, 14/11/2026: a equipe
+  desativava sem saber que os follow-ups param): o botão só ABRE o aviso
+  (`clicarNoDesativar`; estado do próprio botão, some com ele), que recomenda
+  o Pausar com o N. "Pausar em vez disso" (o principal, com o foco) = o
+  `{ paused: true }`; "Desativar mesmo assim" = o `permanente`; "Cancelar", o
+  X e o Esc, nada. Na pausa temporária o principal é "Manter a pausa" e NÃO
+  chama a rota: o Pausar trocaria a `gente` por `botao`, e a retomada só
+  atravessa a `gente`. N = 0: sem Desativar, sem aviso.
 - A aba Turnos diz "aguardando a equipe responder · a IA volta <quando>" e
   traduz `a equipe respondeu` (`ERROS_GRAVADOS_PELO_BANCO`).
 

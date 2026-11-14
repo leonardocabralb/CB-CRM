@@ -1,8 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Sparkles, Pause, Undo2, Loader2, CircleSlash } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { EVENTO_EXECUCOES } from "@/lib/execucoes/aviso";
 import { MOTIVOS_DA_PAUSA, type MotivoDaPausa } from "@/lib/ia-agentes/pausa";
 import {
@@ -51,7 +60,9 @@ import { useTranslations } from "next-intl";
 //   - nada      → não desenha
 //
 // Pausar, Desativar e Retomar vão pela rota `POST /api/ai/autoreply/[id]`,
-// que NÃO mexe no responsável humano.
+// que NÃO mexe no responsável humano. O [Desativar IA] pergunta antes
+// (pedido do operador, 14/11/2026): o aviso diz que desativar para os
+// follow-ups automáticos e recomenda o Pausar (`clicarNoDesativar`).
 // ============================================================
 
 // A lista dos motivos é a do motor (1138): o motivo é chave MONTADA
@@ -225,6 +236,31 @@ export function corpoDaAcao(acao: AcaoDaFaixa): { paused: boolean; permanente?: 
     case "retomar":
       return { paused: false };
   }
+}
+
+/**
+ * Os cliques do "Desativar IA" e do aviso que ele abre (pedido do operador,
+ * 14/11/2026: a equipe desativava sem saber que os follow-ups automáticos
+ * param, e não usava o Pausar).
+ */
+export type CliqueNoDesativar = "desativarIa" | "pausarEmVez" | "desativarMesmoAssim" | "cancelar";
+
+/**
+ * O que cada clique faz. O botão da faixa só ABRE o aviso: nada vai à rota
+ * antes de uma escolha. "Pausar em vez disso" é o Pausar da faixa. Na pausa
+ * temporária (`pausada`) a IA já está pausada, e o principal vira "Manter a
+ * pausa", que só fecha: o `{ paused: true }` trocaria a pausa `gente` por
+ * `botao`, e a retomada só atravessa a `gente` (`ia-retomada.md`) — os
+ * follow-ups parariam, o contrário do que o aviso promete.
+ */
+export function clicarNoDesativar(
+  clique: CliqueNoDesativar,
+  pausada: boolean,
+  efeitos: { mostrarAviso: (aberto: boolean) => void; aoPausar: () => void; aoDesativar: () => void },
+): void {
+  efeitos.mostrarAviso(clique === "desativarIa");
+  if (clique === "desativarMesmoAssim") efeitos.aoDesativar();
+  else if (clique === "pausarEmVez" && !pausada) efeitos.aoPausar();
 }
 
 /** Qual frase do dicionário explica a recusa da rota. Nunca o `error` cru (inglês). */
@@ -530,6 +566,7 @@ export function FaixaDaIa({
   agora?: number;
   busy: boolean;
   aoPausar: () => void;
+  /** Só depois do aviso ("Desativar mesmo assim"): o botão da faixa o abre. */
   aoDesativar: () => void;
   aoRetomar: () => void;
 }) {
@@ -568,9 +605,14 @@ export function FaixaDaIa({
           {t("resume")}
         </BannerButton>
         {faixa.volta ? (
-          <BannerButton onClick={aoDesativar} busy={busy} icon={CircleSlash} title={t("desativarDica")}>
-            {t("desativar")}
-          </BannerButton>
+          <DesativarComAviso
+            key="pausada"
+            minutos={faixa.volta.minutos}
+            pausada
+            busy={busy}
+            aoPausar={aoPausar}
+            aoDesativar={aoDesativar}
+          />
         ) : null}
       </Banner>
     );
@@ -605,11 +647,105 @@ export function FaixaDaIa({
         {t("pausar")}
       </BannerButton>
       {temporario ? (
-        <BannerButton onClick={aoDesativar} busy={busy} icon={CircleSlash} title={t("desativarDica")}>
-          {t("desativar")}
-        </BannerButton>
+        <DesativarComAviso
+          key="atendendo"
+          minutos={faixa.minutos ?? 0}
+          pausada={false}
+          busy={busy}
+          aoPausar={aoPausar}
+          aoDesativar={aoDesativar}
+        />
       ) : null}
     </Banner>
+  );
+}
+
+/**
+ * O "Desativar IA" e o aviso dele. O aviso é estado DESTE botão: some com ele
+ * quando a faixa deixa de oferecer o Desativar (alguém desativou, a conversa
+ * trocou — a faixa da outra nasce vazia, `estado` carimbado) e nunca reabre
+ * sozinho. A `key` de cada estado o fecha também quando a faixa passa de
+ * "atendendo" a "pausada" (a equipe respondeu): os botões do aviso mudariam
+ * de lugar debaixo do clique.
+ */
+function DesativarComAviso({
+  minutos,
+  pausada,
+  busy,
+  aoPausar,
+  aoDesativar,
+}: {
+  minutos: number;
+  pausada: boolean;
+  busy: boolean;
+  aoPausar: () => void;
+  aoDesativar: () => void;
+}) {
+  const t = useTranslations("Inbox.aiBanner");
+  const [aberto, setAberto] = useState(false);
+  const clicar = (clique: CliqueNoDesativar) =>
+    clicarNoDesativar(clique, pausada, { mostrarAviso: setAberto, aoPausar, aoDesativar });
+  return (
+    <>
+      <BannerButton onClick={() => clicar("desativarIa")} busy={busy} icon={CircleSlash} title={t("desativarDica")}>
+        {t("desativar")}
+      </BannerButton>
+      <AvisoAoDesativar aberto={aberto} minutos={minutos} pausada={pausada} aoClicar={clicar} />
+    </>
+  );
+}
+
+/**
+ * O aviso do "Desativar IA": desativar é permanente e para os follow-ups
+ * automáticos; recomenda o Pausar, com o N da conta. Na pausa temporária
+ * (`pausada`), o principal é "Manter a pausa" e não há "Cancelar" (seria o
+ * mesmo botão). Fechar pelo X, pelo Esc ou clicando fora = "Cancelar".
+ */
+export function AvisoAoDesativar({
+  aberto,
+  minutos,
+  pausada,
+  aoClicar,
+}: {
+  aberto: boolean;
+  /** O N da conta: > 0, senão a faixa nem oferece o Desativar. */
+  minutos: number;
+  pausada: boolean;
+  aoClicar: (clique: Exclude<CliqueNoDesativar, "desativarIa">) => void;
+}) {
+  const t = useTranslations("Inbox.aiBanner");
+  // O foco abre no PRINCIPAL, não no primeiro botão: na pausa temporária o
+  // primeiro é "Desativar mesmo assim", e um Enter a mais desativaria sem ler.
+  const principal = useRef<HTMLButtonElement>(null);
+  return (
+    <Dialog open={aberto} onOpenChange={(abrir) => !abrir && aoClicar("cancelar")}>
+      <DialogContent className="sm:max-w-lg" initialFocus={principal}>
+        <DialogHeader>
+          <DialogTitle>{t("avisoDesativar.titulo")}</DialogTitle>
+          <DialogDescription>
+            {t("avisoDesativar.texto")}
+            <span className="mt-2 block">
+              {pausada
+                ? t("avisoDesativar.naPausa", { minutos })
+                : t("avisoDesativar.recomendaPausar", { minutos })}
+            </span>
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          {pausada ? null : (
+            <Button variant="outline" onClick={() => aoClicar("cancelar")}>
+              {t("avisoDesativar.cancelar")}
+            </Button>
+          )}
+          <Button variant="destructive" onClick={() => aoClicar("desativarMesmoAssim")}>
+            {t("avisoDesativar.desativar")}
+          </Button>
+          <Button ref={principal} onClick={() => aoClicar("pausarEmVez")}>
+            {pausada ? t("avisoDesativar.manterPausa") : t("avisoDesativar.pausar")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

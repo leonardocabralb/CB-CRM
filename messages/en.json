@@ -1111,6 +1111,16 @@
       "voltaAs": "The AI comes back from {hora} on if no one on the team replies.",
       "voltaSeEsperar": "Comes back on its own if the customer waits {minutos} min without a reply from the team.",
       "retomarAgoraDica": "Hands the conversation back to the AI now, without waiting.",
+      "avisoDesativar": {
+        "titulo": "Turn off the AI in this conversation?",
+        "texto": "Turning it off is permanent: the AI no longer answers and the automatic follow-ups stop until someone clicks \"Resume AI\".",
+        "recomendaPausar": "If you are only taking over the conversation for now, use \"Pause\": the AI comes back on its own if the customer waits {minutos} min without a reply from the team, and keeps sending the follow-ups.",
+        "naPausa": "The current pause is already temporary: the AI comes back on its own if the customer waits {minutos} min without a reply from the team, and keeps sending the follow-ups.",
+        "pausar": "Pause instead",
+        "manterPausa": "Keep the pause",
+        "desativar": "Turn off anyway",
+        "cancelar": "Cancel"
+      },
       "motivo": {
         "gente": "someone on the team replied",
         "botao": "paused by someone on the team",

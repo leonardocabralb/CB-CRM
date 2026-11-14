@@ -1104,6 +1104,16 @@
       "voltaAs": "A IA volta a partir de {hora} se ninguém da equipe responder.",
       "voltaSeEsperar": "Volta sozinha se o cliente esperar {minutos} min sem resposta da equipe.",
       "retomarAgoraDica": "Devolve a conversa à IA agora, sem esperar.",
+      "avisoDesativar": {
+        "titulo": "Desativar a IA nesta conversa?",
+        "texto": "Desativar é permanente: a IA não responde mais e os follow-ups automáticos param até alguém clicar em \"Retomar IA\".",
+        "recomendaPausar": "Se você só vai assumir a conversa agora, use \"Pausar\": a IA volta sozinha se o cliente esperar {minutos} min sem resposta da equipe e continua os follow-ups.",
+        "naPausa": "A pausa de agora já é temporária: a IA volta sozinha se o cliente esperar {minutos} min sem resposta da equipe e continua os follow-ups.",
+        "pausar": "Pausar em vez disso",
+        "manterPausa": "Manter a pausa",
+        "desativar": "Desativar mesmo assim",
+        "cancelar": "Cancelar"
+      },
       "motivo": {
         "gente": "alguém da equipe respondeu",
         "botao": "pausada por alguém da equipe",
