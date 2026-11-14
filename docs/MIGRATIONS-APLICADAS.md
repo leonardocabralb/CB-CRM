@@ -2213,3 +2213,25 @@ nome da época em que foram aplicadas.
   ligado, `authenticated` sem EXECUTE, a conferência sem sobra; a única
   chave restrita (de funcionário, de teste, revogada desde 04/11) ganhou o
   prefixo.
+- **1146_cb_ia_follow_up_depois_de_encerrar** — o follow-up da IA atravessa
+  o ENCERRAMENTO (decisão do operador de 14/11/2026): `cb_encerrar_limpa_ia`
+  (corpo da 1130) não descarta a retomada que seguiria — a pausa de antes é
+  uma que ela atravessa (nenhuma, ou a `gente` com N > 0) e o card continua
+  aberto na etapa do MESMO agente, ligado, com a conexão e a retomada ligada
+  (a pré-armação da equipe, com um card do contato numa etapa assim) —, e
+  `cb_ia_reservar_envio` (corpo da 1134) deixa só a RETOMADA sair com a
+  conversa encerrada, sem reabri-la. Mesmas assinaturas e privilégios.
+  PR #520.
+
+  ADITIVA, aplicada ANTES do deploy com a autorização do operador ("já pode
+  fazer toda a publicação: merge, abertura de PR, revisão, teste e publicação
+  na main", 14/11/2026), em 14/11/2026 às 19:05 BRT (histórico
+  `20261114220542`), pela Management API, com o arquivo idêntico ao do commit
+  `51710f20` (sha256 `85a0e3b7…`), cujo replay do CI passou. Antes: o replay
+  local do zero e os cenários no Postgres local (encerrar sob RLS e como
+  `service_role`, a reserva com os tipos do PostgREST, a mensagem da IA na
+  encerrada sem reabrir). Conferida na produção: a conferência com dado
+  passou (as duas funções chamadas e desfeitas), o corpo das duas idêntico ao
+  do arquivo (md5), `cb_encerrar_limpa_ia` SECURITY DEFINER com o gatilho
+  ligado, `anon`/`authenticated` sem EXECUTE e `service_role` com, e nenhuma
+  sobra da conferência.
