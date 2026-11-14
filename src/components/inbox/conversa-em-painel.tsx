@@ -45,6 +45,7 @@ import { avisarExecucoesMudaram } from "@/lib/execucoes/aviso";
 import {
   comBolhaPublicada,
   comLinhaDoTempoReal,
+  comMensagemAtualizada,
 } from "@/lib/inbox/bolhas-otimistas";
 import {
   CONVERSATION_SELECT,
@@ -397,9 +398,7 @@ function ConversaCarregada({
           setMessages((prev) => comBolhaPublicada(prev, msg))
         }
         onUpdateMessage={(id, updates) =>
-          setMessages((prev) =>
-            prev.map((m) => (m.id === id ? { ...m, ...updates } : m)),
-          )
+          setMessages((prev) => comMensagemAtualizada(prev, id, updates))
         }
         // O fio já gravou no banco; aqui só se espelha, como na página.
         onStatusChange={(_, status) =>

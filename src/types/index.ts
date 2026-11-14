@@ -839,6 +839,12 @@ export interface Message {
   message_id?: string;
   status: MessageStatus;
   created_at: string;
+  /**
+   * Quando o BANCO gravou a linha (1003; `now()` no INSERT, nula na carga de
+   * histórico). A bolha OTIMISTA da tela nunca tem: é o que separa a linha do
+   * banco da otimista já renomeada para o id dela (`comLinhaDoTempoReal`).
+   */
+  gravada_em?: string | null;
   reply_to_message_id?: string;
   /**
    * Only set when `content_type === 'interactive'` — the stable id of
@@ -2011,7 +2017,7 @@ export interface SendMediaStepConfig {
    * URL pública que o WhatsApp busca no momento do envio.
    *
    * Com `acervo_id`, guarda a URL do item só para a tela mostrar o arquivo: o
-   * motor NÃO a usa — ele copia o item a cada envio.
+   * motor NÃO a usa — ele manda a cópia CONGELADA do item (uma por item).
    */
   url: string;
   /**

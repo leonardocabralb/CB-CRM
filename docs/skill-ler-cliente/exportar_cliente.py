@@ -51,6 +51,20 @@ UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 LOCAL = re.compile(r"^http://(localhost|127\.0\.0\.1)(:\d+)?(/|$)")  # só para teste
 AGENTE = "exportar-cliente/1.0"
 
+
+class _SemRedirecionar(urllib.request.HTTPRedirectHandler):
+    """Recusa TODO redirecionamento (vira erro HTTP 3xx). O urllib copia os
+    cabeçalhos para o destino — o `Authorization` com a chave iria junto, para
+    qualquer endereço, até de https para http —, e o download pularia para um
+    endereço que `endereco_aceito` nunca viu. A API e o armazenamento do CRM
+    respondem direto."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: D401
+        return None
+
+
+ABRIR = urllib.request.build_opener(_SemRedirecionar())
+
 try:  # horário de Brasília; sem a base de fusos (Windows), UTC-3 fixo
     from zoneinfo import ZoneInfo
 
@@ -163,7 +177,7 @@ class Api:
                 "User-Agent": AGENTE,
             })
             try:
-                with urllib.request.urlopen(pedido, timeout=60) as resposta:
+                with ABRIR.open(pedido, timeout=60) as resposta:
                     return json.loads(resposta.read().decode("utf-8"))
             except urllib.error.HTTPError as erro:
                 try:
@@ -225,7 +239,7 @@ def baixar(url: str | None, destino: str) -> str | None:
     parcial = destino + ".parcial"
     try:
         pedido = urllib.request.Request(url, headers={"User-Agent": AGENTE})
-        with urllib.request.urlopen(pedido, timeout=180) as resposta, open(parcial, "wb") as f:
+        with ABRIR.open(pedido, timeout=180) as resposta, open(parcial, "wb") as f:
             while True:
                 bloco = resposta.read(1 << 16)
                 if not bloco:

@@ -138,7 +138,8 @@ export interface SendMediaNodeConfig {
    * Public URL Meta will fetch. Uploaded via the builder's file picker.
    *
    * Com `acervo_id`, guarda a URL do item só para a tela mostrar o arquivo: o
-   * motor NÃO a usa — ele copia o item a cada envio (`prepararMidiaDoNo`).
+   * motor NÃO a usa — ele manda a cópia CONGELADA do item, uma por item
+   * (`prepararMidiaDoNo`).
    */
   media_url: string;
   /**

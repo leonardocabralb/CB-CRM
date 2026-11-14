@@ -47,7 +47,8 @@ describe('o reenvio passa pelo trilho do Enviar (compositor)', () => {
   const reenviar = trecho(composer, 'const reenviarTexto = useCallback(', 'const conversaAnteriorRef = useRef(');
 
   it('respeita a trava, retém na janela de desfazer e solta a retida anterior antes', () => {
-    expect(reenviar).toMatch(/if \(envioTravado/);
+    // `readOnly`: quem não envia (o "Ver como", o membro rebaixado) não reenvia.
+    expect(reenviar).toMatch(/if \(readOnly \|\| envioTravado/);
     expect(reenviar).toMatch(/liberarPendente\(\)/);
     expect(reenviar).toMatch(/setPendente\(/);
     expect(reenviar).toMatch(/SEGUNDOS_DESFAZER/);
@@ -89,7 +90,7 @@ describe('o reenvio passa pelo trilho do Enviar (compositor)', () => {
 describe('o fio: botão só no texto, e a mesma bolha no reenvio', () => {
   it('o botão some com o envio travado e enquanto o reenvio está retido — a otimista e a gravada', () => {
     expect(thread).toMatch(
-      /onTentarDeNovo=\{\s*!envioTravado &&\s*\(reenviaveis\.get\(msg\.id\)\?\.retida === false \|\|\s*\(msg\.id === gravadaReenviavel &&\s*reenviaveis\.get\(msg\.id\)\?\.retida !== true\)\)/,
+      /onTentarDeNovo=\{\s*(?:\/\/[^\n]*\n\s*)*podeEnviar &&\s*!envioTravado &&\s*\(reenviaveis\.get\(msg\.id\)\?\.retida === false \|\|\s*\(msg\.id === gravadaReenviavel &&\s*reenviaveis\.get\(msg\.id\)\?\.retida !== true\)\)/,
     );
   });
 
@@ -115,7 +116,9 @@ describe('o fio: botão só no texto, e a mesma bolha no reenvio', () => {
     expect(tentar).toMatch(/!r && id === gravadaReenviavel \? messages\.find/);
     // O envio assina de novo com o nome de AGORA: com o nome mudado, o
     // cliente receberia as duas assinaturas.
-    expect(tentar).toMatch(/r\?\.texto \?\? removerAssinatura\(gravada\?\.content_text\)/);
+    // Só a assinatura DE QUEM TENTOU: `removerAssinatura` comeria um
+    // `*Atenção:*` da primeira linha com a assinatura desligada.
+    expect(tentar).toMatch(/r\?\.texto \?\? removerAssinaturaDe\(gravada\?\.content_text, nomeQueAssina\)/);
     expect(tentar).toMatch(/compositorRef\.current\?\.reenviarTexto\(texto, replyToId, id\)/);
   });
 

@@ -167,16 +167,22 @@ operador).
   (`jwt_exp` 3600 s), não na próxima navegação; até lá, `/login` devolve ao
   painel. O banco (PostgREST) já aceitava o token até vencer; as rotas
   recusam na hora.
-- ⚠️ **Login que não respondeu não é "saiu"** (`sessaoIncerta`:
+- ⚠️ **Login que não respondeu não é "saiu"** (`loginForaDoAr`:
   `AuthRetryableFetchError` ao renovar o token ou ao buscar as chaves — o
-  cache delas vence a cada 10 min —, ou erro que não é da biblioteca): a
-  tela abre, e o navegador renova sozinho; a API de `/api/whatsapp/` segue
-  até a ROTA, que confere o login por conta própria. Por isso toda rota ali
-  chama `requireRole`/`getCurrentAccount`/`auth.getUser()` (ou é webhook, ou
-  só responde 410): pino no `middleware.test.ts`, que reprova rota nova sem
-  conferência.
-- ⚠️ **`getCurrentAccount` repete UMA vez e recusa com o MESMO 401**: a bolha
-  de envio lê 401 como "barrado, tente de novo" e 5xx como "pode ter saído"
+  cache delas vence a cada 10 min): a tela abre, e a API de `/api/whatsapp/`
+  segue até a ROTA, que confere o login por conta própria. Por isso todo
+  handler exportado ali chama `requireRole`/`getCurrentAccount`/
+  `auth.getUser()` (ou é webhook, ou só responde 410): pino no
+  `middleware.test.ts`, HANDLER a handler. ⚠️ Vale enquanto o token de
+  acesso ainda vale (o caso medido): o token VENCIDO se renova no navegador
+  contra o mesmo login fora do ar, e a casca manda ao `/login` quando o
+  `useAuth` desiste.
+- ⚠️ **Erro que não é da biblioteca (`conferenciaLancou`) abre só a TELA**,
+  que lê sob a RLS; a API recusa com 401. Um cookie FORJADO, com qualquer
+  texto no lugar do token, faz o `getClaims()` lançar: tratá-lo como login
+  fora do ar tiraria o 401 do middleware de qualquer visitante.
+- ⚠️ **`getCurrentAccount` repete UMA vez e recusa com o MESMO 401**: 401 é
+  "barrado, tente de novo"; 5xx a bolha de envio lê como "pode ter saído"
   (`falhaDaResposta`). Nunca trocar esse 401 por 503.
 - A renovação que falha com 5xx é repetida pela biblioteca por até ~30 s
   (espera crescente) antes de o pedido decidir — já era assim no `getUser()`.

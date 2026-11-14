@@ -1121,7 +1121,7 @@ export function MessageComposer({
   // campo é de quem está escrevendo outra coisa.
   const reenviarTexto = useCallback(
     (texto: string, replyToId: string | undefined, substitui: string) => {
-      if (envioTravado || !texto.trim()) return false;
+      if (readOnly || envioTravado || !texto.trim()) return false;
       // Já havia uma esperando: ela vai antes, como no Enviar.
       liberarPendente();
       const retida: Retida = {
@@ -1137,7 +1137,7 @@ export function MessageComposer({
       timerDesfazerRef.current = setTimeout(liberarPendente, SEGUNDOS_DESFAZER * 1000);
       return true;
     },
-    [envioTravado, liberarPendente, conversationId],
+    [readOnly, envioTravado, liberarPendente, conversationId],
   );
 
   // Trocar de conversa solta a pendente na hora.

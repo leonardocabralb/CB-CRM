@@ -95,13 +95,16 @@ passou na máquina). Por isso:
   isolado, os alarmes de conexão no sino (1122, `canais.md`) → as tarefas
   recorrentes (1074) → o vencimento da Lixeira de
   contatos (`cb_vencer_lixeira`, UM item por chamada, repetida enquanto há
-  prazo) → a poda do conteúdo dos turnos da IA (1110, `ia-central.md`) → a
-  drenagem da fila de arquivos (`midia.md`). O prazo fica abaixo
+  prazo) → o da lixeira de anotações (1132, `anotacoes.md`) → a poda do
+  conteúdo dos turnos da IA (1110, `ia-central.md`) → a poda das gravações de
+  ligação aos 180 dias (1136, `ligacoes-transcricao.md`) → a drenagem da fila
+  de arquivos (`midia.md`) → a retomada das transcrições de ligação (1136).
+  O prazo fica abaixo
   dos 10 min em que a fila recolhe o lote reivindicado e dos 15 min do laço.
   O `after()` não disputa o `-m 120` com o disparo. Tirar a rota do laço cala
-  os cinco sem erro: o sino deixa de avisar conexão travada, a Lixeira deixa
-  de vencer, o texto do cliente fica nos
-  turnos além do prazo e os arquivos ficam no bucket
+  os oito sem erro: o sino deixa de avisar conexão travada, as lixeiras
+  deixam de vencer, o texto do cliente fica nos turnos além do prazo, as
+  gravações passam dos 180 dias e os arquivos ficam no bucket
   (também os anexos das anotações apagadas, 1102).
 
 ### Ambiente do contêiner

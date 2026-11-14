@@ -145,7 +145,7 @@ may be reworded.
 | Status | `code`         | Meaning                                          |
 | ------ | -------------- | ------------------------------------------------ |
 | 401    | `unauthorized` | Missing / malformed / unknown / revoked / expired key |
-| 403    | `forbidden`    | Valid key, but missing the required scope        |
+| 403    | `forbidden`    | Valid key, but missing the required scope — or a [read-only key](#keys-for-a-team-member-limited-to-pipelines) (a team member's or pipeline-limited) trying to write |
 | 403    | `restricted_key` | A key [limited to pipelines](#keys-for-a-team-member-limited-to-pipelines) on an endpoint that does not accept it |
 | 429    | `rate_limited` | Per-key rate limit exceeded                      |
 | 400    | `bad_request`  | Malformed input                                  |
@@ -886,27 +886,20 @@ answered is `inbound`; a call answered on one of the office's phones is
 message id — it can't be replied to, reacted to or deleted. The CRM does not
 carry call audio: the row only records that the call happened.
 
-**Messages that never went out** are listed too. When someone on the team,
-an automation, a robot or an AI agent tries to send and the WhatsApp
-provider refuses it (a number without WhatsApp, a connection that was down)
-or does not answer, the attempt stays in the conversation so everyone sees
-it: `outbound`, `status: "failed"`, `whatsapp_message_id: null`, with
-`sender_type` saying who tried (`agent` for the team, `bot` for the rest).
-A delivery failure is different: that message went out, has its
+**Messages that never went out** are listed too, so the conversation shows
+the attempt. When someone on the team (from the CRM's screens), an
+automation, a robot or an AI agent tries to send and the WhatsApp provider
+refuses it (a number without WhatsApp, a connection that was down), the
+attempt stays in the conversation so everyone sees it: `outbound`,
+`status: "failed"`, `whatsapp_message_id: null`, with `sender_type` saying
+who tried (`agent` for the team, `bot` for the rest) — nothing reached the
+contact. Its `channel_id` is the number the send was tried on. An attempt
+with an uncertain outcome (the provider did not answer, a timeout) is listed
+the same way, but it may have reached the contact — check before sending it
+again. A delivery failure is different: that message went out, keeps its
 `whatsapp_message_id`, and WhatsApp reported later that it was not
-delivered. A send through this API that fails is not recorded here — the
-error response is the record.
-
-**A message an automation, robot or AI agent tried to send and that did not
-go out** (the connection was down, the number is not on WhatsApp, WhatsApp
-refused it) is listed too, so the conversation shows the attempt: an
-`outbound` row from `bot`, `status: "failed"` and `whatsapp_message_id:
-null` — nothing reached the contact. It is the only `failed` row without a
-WhatsApp id: a message that went out and was not delivered keeps its
-`whatsapp_message_id`. Its `channel_id` is the number the send was tried
-on. An attempt that failed with an uncertain outcome (a timeout) is listed the
-same way, but it may have reached the contact — check before sending it
-again.
+delivered. Not recorded here: a send through this API that fails (the error
+response is the record) and a scheduled message that fails.
 
 **Contact cards** (a contact someone shared on WhatsApp) are listed with
 `content_type: "contact"`. `content_text` carries one line per shared contact,

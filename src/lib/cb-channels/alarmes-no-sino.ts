@@ -86,6 +86,12 @@ const SINAL_FRESCO_MS = 3 * 60_000;
 export const LEMBRETE_MS = 24 * 60 * 60_000;
 
 /**
+ * Por quanto tempo a prova do fim tem de se MANTER para o episódio avisado
+ * fechar ("Normalizou"). Ver `provar` em `decidir`.
+ */
+export const FIRMEZA_DA_PROVA_MS = 60 * 60_000;
+
+/**
  * Segunda a sexta, das 8h às 20h de Brasília (P3b). ⚠️ O fuso é o padrão
  * (`FUSO_PADRAO`) em toda instalação, o mesmo limite da sentinela; feriado em
  * dia útil não está no calendário. O servidor roda em UTC: a hora sai de
@@ -199,7 +205,11 @@ export interface EstadoDoAlarme {
   desdeIso: string;
   /** Quando o sino recebeu o último aviso do episódio. Nulo = ainda não. */
   avisadoEmIso: string | null;
-  /** A prova do fim já veio e o aviso dela ainda não entrou. */
+  /**
+   * Desde quando a PROVA do fim está de pé, e o "Normalizou" ainda não saiu:
+   * firmando (`FIRMEZA_DA_PROVA_MS`), ou o aviso dele falhou e espera o ciclo
+   * seguinte. Reacender a anula.
+   */
   normalizouEmIso: string | null;
   /** O aviso ficou devido e não entrou (o sino recusou, ou não havia a quem). */
   devidoEmIso: string | null;
@@ -264,6 +274,27 @@ export function decidir(
     return { motivo: 'passou', depois: null, seFalhar: guardado };
   };
 
+  /**
+   * A prova do fim, com HISTERESE: o episódio AVISADO só fecha com a prova de
+   * pé há `FIRMEZA_DA_PROVA_MS`. A conexão que cai a cada ~50 min (o
+   * `<status>` sem ack) solta os recibos em LOTE entre as quedas: fechando no
+   * 1º recibo, cada lote virava um "Normalizou" e a queda seguinte um aviso
+   * novo — de 9 a 14 pares por dia para cada conexão, a todo owner/admin.
+   * Reacender antes de firmar é o MESMO episódio (o ramo aceso anula a
+   * prova, e o aviso já dado fica). O botão do cabeçalho sossega já com a
+   * prova (`episodioAberto`); só o sino espera. O que nunca foi avisado fecha
+   * na hora, como antes. Só os alarmes da CONEXÃO (`sem_recibo`, `atraso`)
+   * firmam: os do computador de ligações fecham com a prova, como antes.
+   */
+  const firma = tipo === 'sem_recibo' || tipo === 'atraso';
+  const provar = (e: EstadoDoAlarme, fimIso: string): Passo => {
+    const provaDesde = e.normalizouEmIso ?? fimIso;
+    if (firma && e.avisadoEmIso !== null && agoraMs - Date.parse(provaDesde) < FIRMEZA_DA_PROVA_MS) {
+      return ficar({ ...e, normalizouEmIso: provaDesde });
+    }
+    return encerrar(e, provaDesde);
+  };
+
   /** O episódio aberto, aceso ou "não sei": avisa o que estiver vencido. */
   const seguir = (e: EstadoDoAlarme, aceso: boolean): Passo => {
     if (!podeAvisar) return ficar(e);
@@ -282,10 +313,12 @@ export function decidir(
 
   if (medicao.tipo === 'aceso') {
     const vivo: EstadoDoAlarme = {
-      // O (b) e o QR contam a duração do 1º momento visto. O (c) ainda não
-      // avisado acompanha a sequência de AGORA: a linha de uma noite sem prova
-      // não empresta o "desde" dela a um episódio da manhã. Avisado, fica o
-      // dito. O computador sem sinal fica com o "desde" do episódio.
+      // O (b) conta a duração de quando a mensagem medida chegou (o `desde`
+      // da medição), guardado no 1º ciclo que a vê; o QR, do 1º momento
+      // visto. O (c) ainda não avisado acompanha a sequência de AGORA: a
+      // linha de uma noite sem prova não empresta o "desde" dela a um
+      // episódio da manhã. Avisado, fica o dito. O computador sem sinal fica
+      // com o "desde" do episódio.
       desdeIso:
         atual === null
           ? medicao.desdeIso
@@ -302,8 +335,8 @@ export function decidir(
   }
 
   if (atual === null) return ficar(null);
-  if (atual.normalizouEmIso !== null) return encerrar(atual, atual.normalizouEmIso);
-  if (medicao.tipo === 'normal') return encerrar(atual, medicao.fimIso);
+  if (atual.normalizouEmIso !== null) return provar(atual, atual.normalizouEmIso);
+  if (medicao.tipo === 'normal') return provar(atual, medicao.fimIso);
   // Não sei: só a prova encerra.
   return seguir(atual, false);
 }

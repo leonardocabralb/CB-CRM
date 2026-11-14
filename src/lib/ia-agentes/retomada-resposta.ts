@@ -17,7 +17,7 @@ import type { ChatMessage } from '@/lib/ai/types'
 
 import { acaoPrometida, equipePrometida, lerAcoes, linksInventados } from './acoes'
 import { lerPassagem, lerSemRetomada } from './pedido'
-import { vazouOPedido } from './regras-do-sistema'
+import { semFrasesAutorizadas, vazouOPedido } from './regras-do-sistema'
 
 export type ParadaDaResposta =
   /** `[[SEM_RETOMADA]]`: nada pendente. */
@@ -48,6 +48,8 @@ export function lerRespostaDaRetomada(
   handoff: boolean,
   fontes: readonly string[],
   anteriores: readonly string[] = [],
+  /** As frases autorizadas do agente (1131): não contam como promessa. */
+  frasesAutorizadas: readonly string[] = [],
 ): RespostaDaRetomada {
   if (lerSemRetomada(texto)) return { parada: 'nada_pendente' }
   const lidas = lerAcoes(texto)
@@ -56,8 +58,9 @@ export function lerRespostaDaRetomada(
   }
   if (!lidas.texto) return { parada: 'sem_texto' }
   if (vazouOPedido(lidas.texto)) return { parada: 'pedido_vazado', detalhe: lidas.texto }
-  if (equipePrometida(lidas.texto)) return { parada: 'pediu_equipe', detalhe: lidas.texto }
-  if (acaoPrometida({ texto: lidas.texto, aceitas: [], anteriores })) {
+  const semFrases = semFrasesAutorizadas(lidas.texto, frasesAutorizadas)
+  if (equipePrometida(semFrases)) return { parada: 'pediu_equipe', detalhe: lidas.texto }
+  if (acaoPrometida({ texto: semFrases, aceitas: [], anteriores })) {
     return { parada: 'acao_prometida', detalhe: lidas.texto }
   }
   const inventados = linksInventados(lidas.texto, [...fontes])

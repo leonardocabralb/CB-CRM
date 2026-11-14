@@ -133,6 +133,24 @@ export function removerAssinatura(
 }
 
 /**
+ * Tira do texto SÓ a assinatura deste nome (`prefixoDeAssinatura`), nunca
+ * qualquer `*algo:*` do começo.
+ *
+ * ⚠️ É o que o "Tentar de novo" usa para mandar de novo o texto de quem tentou
+ * (o envio assina outra vez): com a assinatura desligada, um `*Atenção:*` na
+ * primeira linha é CONTEÚDO, e `removerAssinatura` o comeria — a mensagem
+ * sairia sem a primeira linha, sem nada avisando.
+ */
+export function removerAssinaturaDe(
+  texto: string | null | undefined,
+  nome: string | null | undefined,
+): string | null | undefined {
+  if (texto === null || texto === undefined) return texto;
+  const prefixo = prefixoDeAssinatura(nome);
+  return prefixo && texto.startsWith(prefixo) ? texto.slice(prefixo.length) : texto;
+}
+
+/**
  * A assinatura que JÁ está num texto, literal (com o `\n`), ou `''`.
  *
  * ⚠️ É o que a edição usa para recolocar o prefixo, em vez de recalcular quem

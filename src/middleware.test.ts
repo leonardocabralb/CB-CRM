@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { NextRequest } from "next/server";
+import ts from "typescript";
 import { AuthApiError, AuthRetryableFetchError } from "@supabase/supabase-js";
 
 // --- Scenario knobs the mock reads -----------------------------------------
@@ -263,40 +264,112 @@ describe("middleware — o login que não respondeu não é 'saiu'", () => {
     expect(res.headers.get("location")).toBeNull();
   });
 
-  it("um erro que não é da biblioteca não derruba o pedido nem manda ao login", async () => {
-    mockLanca = new TypeError("chave recusada pela WebCrypto");
+  it("um erro que não é da biblioteca abre a TELA, mas a API recusa", async () => {
+    // ⚠️ Um cookie FORJADO (qualquer texto no lugar do token) faz o
+    // getClaims() lançar: medido com a biblioteca real, `decodeJWT` estoura um
+    // SyntaxError sem ida à rede. A tela abre (lê sob a RLS); a API, não.
+    mockLanca = new SyntaxError("Unexpected token in JSON");
     const erro = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const tela = await middleware(new NextRequest("https://app.test/inbox"));
     const api = await middleware(new NextRequest("https://app.test/api/whatsapp/send"));
 
     expect(tela.headers.get("location")).toBeNull();
-    expect(api.status).toBe(200);
+    expect(api.status).toBe(401);
     expect(erro).toHaveBeenCalled();
     erro.mockRestore();
   });
 });
 
-describe("middleware — toda rota de /api/whatsapp confere o login sozinha", () => {
-  // Com a sessão INCERTA (o login não respondeu), o middleware deixa a API
-  // seguir até a rota. Isso só é seguro porque cada rota confere o login por
-  // conta própria. Rota nova aqui sem essa conferência reprova: ou ela chama
+describe("middleware — todo handler de /api/whatsapp confere o login sozinho", () => {
+  // Com o login FORA DO AR, o middleware deixa a API seguir até a rota. Isso
+  // só é seguro porque cada HANDLER confere o login por conta própria — um
+  // `PUT` novo num arquivo cujo `GET` confere não está coberto pelo `GET`.
+  // Handler novo aqui sem essa conferência reprova: ou ele chama
   // `requireRole`/`getCurrentAccount`/`auth.getUser()`, ou é webhook (fica
-  // fora do middleware), ou é rota aposentada que só responde 410.
+  // fora do middleware), ou só responde 410 (rota aposentada).
   const raiz = join(__dirname, "app", "api", "whatsapp");
   const rotas = (readdirSync(raiz, { recursive: true }) as string[])
     .filter((caminho) => caminho.endsWith("route.ts"))
     .filter((caminho) => !caminho.includes("webhook"));
+  const VERBOS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 
-  it("acha as rotas", () => {
-    expect(rotas.length).toBeGreaterThan(5);
+  const CONFERE = /requireRole\(|getCurrentAccount\(|auth\.getUser\(/;
+
+  /**
+   * Cada handler exportado (`export async function POST`, `export const GET = …`)
+   * e se ele confere o login — no próprio corpo ou por uma função DO ARQUIVO
+   * que ele chama (`resolverAlvo` → `requireRole`), seguida de chamada em chamada.
+   */
+  function handlers(caminho: string, fonte: string): Array<{ verbo: string; confere: boolean; corpo: string }> {
+    const arquivo = ts.createSourceFile(caminho, fonte, ts.ScriptTarget.Latest, true);
+    const exportado = (no: ts.Node) =>
+      ts.canHaveModifiers(no) &&
+      (ts.getModifiers(no) ?? []).some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
+    // Todas as funções de topo do arquivo (declaradas ou em `const`), pelo nome.
+    const funcoes = new Map<string, string>();
+    const handlers: Array<{ verbo: string; corpo: string }> = [];
+    for (const no of arquivo.statements) {
+      if (ts.isFunctionDeclaration(no) && no.name) {
+        funcoes.set(no.name.text, no.getText(arquivo));
+        if (VERBOS.has(no.name.text) && exportado(no)) {
+          handlers.push({ verbo: no.name.text, corpo: no.getText(arquivo) });
+        }
+      }
+      if (ts.isVariableStatement(no)) {
+        for (const d of no.declarationList.declarations) {
+          if (!ts.isIdentifier(d.name) || !d.initializer) continue;
+          funcoes.set(d.name.text, d.getText(arquivo));
+          if (VERBOS.has(d.name.text) && exportado(no)) {
+            handlers.push({ verbo: d.name.text, corpo: d.getText(arquivo) });
+          }
+        }
+      }
+    }
+    // Quem confere: o corpo com a chamada, ou que chama quem confere.
+    const conferem = new Set([...funcoes].filter(([, corpo]) => CONFERE.test(corpo)).map(([n]) => n));
+    for (let mudou = true; mudou; ) {
+      mudou = false;
+      for (const [nome, corpo] of funcoes) {
+        if (conferem.has(nome)) continue;
+        if ([...conferem].some((c) => new RegExp(`\\b${c}\\(`).test(corpo))) {
+          conferem.add(nome);
+          mudou = true;
+        }
+      }
+    }
+    return handlers.map((h) => ({
+      ...h,
+      confere:
+        CONFERE.test(h.corpo) ||
+        [...conferem].some((c) => c !== h.verbo && new RegExp(`\\b${c}\\(`).test(h.corpo)),
+    }));
+  }
+
+  const casos = rotas.flatMap((caminho) => {
+    const fonte = readFileSync(join(raiz, caminho), "utf8");
+    return handlers(caminho, fonte).map((h) => ({ nome: `${caminho} ${h.verbo}`, ...h }));
   });
 
-  it.each(rotas)("%s", (caminho) => {
-    const fonte = readFileSync(join(raiz, caminho), "utf8");
-    const conferePorContaPropria = /requireRole\(|getCurrentAccount\(|auth\.getUser\(/.test(fonte);
-    const soAposentada = fonte.includes("status: 410") && !/supabase|createClient/i.test(fonte);
+  it("acha os handlers", () => {
+    expect(rotas.length).toBeGreaterThan(5);
+    expect(casos.length).toBeGreaterThanOrEqual(rotas.length);
+  });
 
-    expect(conferePorContaPropria || soAposentada).toBe(true);
+  it("um handler NOVO sem conferência reprova, mesmo com o vizinho conferindo", () => {
+    const fonte = [
+      "export async function GET() { await requireRole('agent'); return ok() }",
+      "export async function PUT() { return ok() }",
+      "async function alvo() { await requireRole('agent') }",
+      "export async function DELETE() { await alvo(); return ok() }",
+    ].join("\n");
+    const achados = Object.fromEntries(handlers("x.ts", fonte).map((h) => [h.verbo, h.confere]));
+    expect(achados).toEqual({ GET: true, PUT: false, DELETE: true });
+  });
+
+  it.each(casos)("$nome", ({ confere, corpo }) => {
+    const soAposentado = corpo.includes("status: 410") && !/supabase|createClient/i.test(corpo);
+
+    expect(confere || soAposentado).toBe(true);
   });
 });

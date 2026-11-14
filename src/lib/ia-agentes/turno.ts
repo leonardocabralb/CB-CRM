@@ -167,7 +167,7 @@ import { anotarNaConversa, executarAcoes, type CampoPreenchido } from './executa
 import { opcoesDoAgente } from './ferramentas'
 import { aberturaDeHoje, dentroDoHorario, ERRO_DA_ESPERA_DO_HORARIO, proximaAbertura } from './horario'
 import { juntarPartes, lerPassagem, partesDoPedidoDaRetomada, partesDoPedidoDoAgente } from './pedido'
-import { vazouOPedido } from './regras-do-sistema'
+import { semFrasesAutorizadas, vazouOPedido } from './regras-do-sistema'
 import {
   abreTurno,
   ehFigurinha,
@@ -371,6 +371,19 @@ export async function transferirParaGente(
 ): Promise<ResultadoDaTransferencia> {
   const agora = new Date().toISOString()
   try {
+    // A situação de ANTES: a trilha (1083) só grava quando a situação ou o
+    // responsável MUDAM. Na conversa que já estava pendente (o "Retomar IA" não
+    // mexe nela, e a equipe deixa conversas pendentes à mão), a passagem não
+    // deixaria linha nenhuma no fio — por isso a anotação, abaixo. A leitura
+    // que falha conta como pendente: anotar a mais é melhor que sumir.
+    const { data: antes, error: erroDeAntes } = await db
+      .from('conversations')
+      .select('status')
+      .eq('id', args.conversationId)
+      .eq('account_id', args.accountId)
+      .maybeSingle()
+    const jaPendente = erroDeAntes !== null || !antes || antes.status === 'pending'
+
     // A trilha da conversa (1083) registra a mudança para pendente em nome do agente.
     const { data: pausadas, error } = await marcarOrigem(
       db
@@ -422,9 +435,11 @@ export async function transferirParaGente(
     // 1141 (pedido do operador, 12/11/2026): "respondeu e passou a conversa"
     // não vira anotação — a faixa da trilha já diz "Conversa marcada como
     // pendente · pelo agente de IA <nome>" (o UPDATE acima, com a origem) e o
-    // aviso na tela (1139) avisa quem recebe. Os OUTROS motivos são avisos que
-    // pedem algo da equipe (áudio, teto, resposta retida…) e ficam anotação.
-    if (args.motivo !== 'agente_passou') await anotarNaConversa(db, { ...args, autor, texto })
+    // aviso na tela (1139) avisa quem recebe. ⚠️ MENOS com a conversa já
+    // pendente: aí a trilha não grava nada (ver `jaPendente`), e a passagem
+    // ficaria só no sino. Os OUTROS motivos são avisos que pedem algo da
+    // equipe (áudio, teto, resposta retida…) e ficam anotação sempre.
+    if (args.motivo !== 'agente_passou' || jaPendente) await anotarNaConversa(db, { ...args, autor, texto })
     // 1139: o aviso no sino (e a caixinha na tela) para quem o agente manda
     // avisar. Só aqui, com a transferência FEITA: `nada_mudou` (já pausada,
     // encerrada) não avisa. Nunca lança.
@@ -560,7 +575,7 @@ type Conferencia =
       card: CardDoContato
       agente: IaAgente
       /** O agente atende por cima de uma pausa TEMPORÁRIA (1138), com o N da conta: o turno a levanta. */
-      sobrePausa: { minutos: number } | null
+      sobrePausa: { minutos: number; voltaEmMs: number } | null
     }
   | { ok: false; desfecho: Desfecho }
 
@@ -649,8 +664,28 @@ async function conferir(
     contactId: leitura.contactId,
     card: leitura.card,
     agente,
-    sobrePausa: decisao.sobrePausa ? { minutos } : null,
+    sobrePausa: decisao.sobrePausa ? { minutos, voltaEmMs: voltaDaPausaEm(leitura, gatilho, minutos) } : null,
   }
+}
+
+/**
+ * Quando a pausa temporária VENCE para este gatilho: a âncora de
+ * `cb_ia_voltar_da_pausa` (1138) — a mais nova entre a 1ª mensagem sem
+ * resposta e a pausa, cada uma caindo no gatilho — mais os N min. Só para as
+ * esperas do turno e o "cedo" de antes do áudio e das mídias: quem levanta a
+ * pausa, sob a trava, continua sendo a função.
+ */
+function voltaDaPausaEm(
+  leitura: { aguardandoDesde: string | null; pausadaEm: string | null },
+  gatilho: Gatilho,
+  minutos: number,
+): number {
+  const doGatilho = Date.parse(gatilho.gravada_em ?? '')
+  const ou = (iso: string | null) => {
+    const ms = Date.parse(iso ?? '')
+    return Number.isFinite(ms) ? ms : doGatilho
+  }
+  return Math.max(ou(leitura.aguardandoDesde), ou(leitura.pausadaEm)) + minutos * 60_000
 }
 
 /**
@@ -1245,6 +1280,42 @@ async function conduzir(
 
   andamento.abertoDesde = aberturaDeHoje(agente.horario, agora)
 
+  // A IA que VOLTA da pausa temporária (1138):
+  //  · ainda CEDO (o "Pausar" apertado no meio da rajada): espera a volta
+  //    ANTES do áudio e das mídias — o áudio que não se ouve transferiria a
+  //    conversa, e a pausa temporária da equipe viraria a permanente;
+  //  · na volta, as esperas (a janela do áudio, o teto das mídias) contam da
+  //    VOLTA, como contam da abertura do horário: depois dos N min, a foto ou
+  //    o PDF da cliente já passaram do teto, e a resposta saía sem lê-los.
+  // Quem levanta a pausa, sob a trava, é `voltarDaPausa`, antes de gerar.
+  //
+  // ⚠️ Na conexão OFICIAL, a volta não passa da janela de 24 h da Meta, como a
+  // espera do horário acima (achado do Codex): com N perto de 24 h, ou o
+  // "Pausar" apertado horas depois da mensagem, a IA voltaria com a janela
+  // fechada e pagaria uma resposta que a Meta recusa. Conferida antes de
+  // reagendar E na volta, antes de levantar a pausa: termina `sem_resposta`,
+  // e a pausa e o alerta de atraso ficam com a equipe.
+  if (primeira.sobrePausa) {
+    const volta = primeira.sobrePausa.voltaEmMs
+    if (Number.isFinite(volta)) {
+      if (turno.canal_id) {
+        const fimDaJanelaMeta = await lerFimDaJanelaMeta(db, {
+          accountId: turno.account_id,
+          conversationId: turno.conversation_id,
+          canalId: turno.canal_id,
+          agora: Date.now(),
+        })
+        if (fimDaJanelaMeta !== null && Math.max(volta, Date.now()) + FOLGA_NA_JANELA_META_MS >= fimDaJanelaMeta) {
+          return { status: 'sem_resposta', erro: 'a janela de 24 h da Meta fecha antes de a IA voltar da pausa' }
+        }
+      }
+      if (Date.now() < volta) {
+        return { status: 'reagendar', executarApos: new Date(volta).toISOString(), erro: ERRO_DA_ESPERA_DA_EQUIPE }
+      }
+      andamento.abertoDesde = Math.max(andamento.abertoDesde ?? volta, volta)
+    }
+  }
+
   const desde = await inicioDaRajada(db, turno, gatilho)
   const audio = await prepararAudios(db, turno, gatilho, desde, andamento)
   if (audio) return audio
@@ -1482,7 +1553,9 @@ async function conduzir(
     !lidas.transferir &&
     !lidas.transferirDepois &&
     lerPassagem(texto) === null &&
-    equipePrometida(lidas.texto)
+    // As frases autorizadas (1131) não são promessa: "nossa equipe entrará em
+    // contato" escrita pelo escritório transferiria toda conversa que a usasse.
+    equipePrometida(semFrasesAutorizadas(lidas.texto, agente.frasesAutorizadas))
   const transferirDepois = lidas.transferirDepois || transferenciaInferida
   const linhaDaTransferencia = (r: Omit<RegistroDeAcao, 'tipo' | 'alvo'>): RegistroDeAcao => ({
     tipo: ACAO_TRANSFERIR,
@@ -1553,7 +1626,7 @@ async function conduzir(
     // para o `erro` do turno. As respostas anteriores do escritório entram:
     // repetir o que já foi feito ("sim, já anotei") não é afirmação nova.
     const prometida = acaoPrometida({
-      texto: lidas.texto,
+      texto: semFrasesAutorizadas(lidas.texto, agente.frasesAutorizadas),
       aceitas,
       anteriores: conversa.filter((m) => m.role === 'assistant').map((m) => m.content),
     })
@@ -2283,6 +2356,7 @@ async function conduzirRetomada(
     handoff,
     [pedido, ...conversa.map((m) => m.content)],
     conversa.filter((m) => m.role === 'assistant').map((m) => m.content),
+    agente.frasesAutorizadas,
   )
   if (lida.parada !== null) {
     const detalhe = lida.detalhe ? `: ${textoRetido(lida.detalhe)}` : ''
@@ -2300,9 +2374,22 @@ async function conduzirRetomada(
   // O follow-up da fala da EQUIPE (1138, P7) LEVANTA a pausa `gente` logo
   // antes da reserva: a cliente que responder a ele é respondida pela IA na
   // hora. Sob a trava da conversa; quem escreveu depois da âncora segura.
+  let levantouAPausa = false
   if (segunda.sobrePausa) {
-    const naoVoltou = desfechoDaVolta(await voltarDaPausa(db, turno, segunda.sobrePausa.minutos))
+    const volta = await voltarDaPausa(db, turno, segunda.sobrePausa.minutos)
+    const naoVoltou = desfechoDaVolta(volta)
     if (naoVoltou) return naoVoltou
+    levantouAPausa = volta.resultado === 'voltou'
+  }
+  // ⚠️ Levantou e NADA chegou à cliente (a reserva recusou, o envio falhou ou
+  // ficou incerto): a pausa da equipe VOLTA. Sem isso, a conversa ficava sem
+  // pausa sem nada ter saído, e a próxima mensagem dela era respondida em 8 s
+  // ("o follow-up que SAI levanta a pausa", `ia-retomada.md`).
+  // O `abandonado` (a posse do turno se perdeu: outro processo, ou a conversa
+  // encerrada no meio) não devolve: quem tomou o turno decide a conversa.
+  const naoSaiu = async (desfecho: Desfecho): Promise<Desfecho> => {
+    if (levantouAPausa && desfecho.status !== 'abandonado') await devolverPausaDaEquipe(db, turno)
+    return desfecho
   }
 
   // A última palavra, no banco, com a conversa travada: além das recusas do
@@ -2312,12 +2399,32 @@ async function conduzirRetomada(
     p_turno_id: turno.id,
     p_rodando_desde: turno.rodando_desde,
   })
-  if (erroReserva) return { status: 'falhou', erro: `reservar a retomada falhou: ${erroReserva.message}` }
-  if (reserva === 'pausada') return { status: 'pausado_no_meio', erro: 'pausada antes do envio' }
-  if (reserva === 'teto') return { status: 'sem_resposta', erro: 'o teto de respostas do agente foi atingido' }
-  if (reserva !== 'ok') return { status: 'descartado', erro: `a reserva recusou a retomada: ${String(reserva)}` }
+  if (erroReserva) return naoSaiu({ status: 'falhou', erro: `reservar a retomada falhou: ${erroReserva.message}` })
+  if (reserva === 'pausada') return naoSaiu({ status: 'pausado_no_meio', erro: 'pausada antes do envio' })
+  if (reserva === 'teto') return naoSaiu({ status: 'sem_resposta', erro: 'o teto de respostas do agente foi atingido' })
+  if (reserva !== 'ok') return naoSaiu({ status: 'descartado', erro: `a reserva recusou a retomada: ${String(reserva)}` })
 
-  return enviarComPosse(db, turno, andamento, { agente, contactId, dono, texto: lida.texto })
+  const enviado = await enviarComPosse(db, turno, andamento, { agente, contactId, dono, texto: lida.texto })
+  return enviado.status === 'respondeu' ? enviado : naoSaiu(enviado)
+}
+
+/**
+ * Devolve a pausa `gente` que o follow-up da equipe levantou e não usou (ver
+ * `conduzirRetomada`), com o relógio recomeçando agora. CERCADA: só a
+ * conversa que segue sem pausa e ABERTA — quem pausou ou desativou no meio
+ * vence, e a encerrada no meio (o gatilho da 1109 zera a pausa) não ganha uma
+ * pausa que seguraria a IA quando a cliente voltar. Não lança: o desfecho do
+ * turno já está decidido.
+ */
+async function devolverPausaDaEquipe(db: SupabaseClient, turno: LinhaDoTurno): Promise<void> {
+  const { error } = await db
+    .from('conversations')
+    .update({ ai_autoreply_disabled: true, ia_pausada_por: 'gente', ia_pausada_em: new Date().toISOString() })
+    .eq('id', turno.conversation_id)
+    .eq('account_id', turno.account_id)
+    .eq('ai_autoreply_disabled', false)
+    .neq('status', 'closed')
+  if (error) console.warn('[ia-agentes] devolver a pausa da equipe falhou:', error.message)
 }
 
 /**

@@ -39,6 +39,15 @@ export function validadeSugerida(temFuncionario: boolean): '90' | 'sem' {
 /** Teto de funis numa chave: a conta tem meia dúzia; o teto barra lixo. */
 export const MAXIMO_DE_FUNIS = 50;
 
+/**
+ * O que o admin pode fazer com a chave na lista. A VENCIDA se EDITA (o
+ * `PATCH` aceita toda chave não revogada): é como se renova a validade sem
+ * trocar o segredo já distribuído. Revogar, só a ativa; a revogada não volta.
+ */
+export function acoesDaChave(situacao: 'active' | 'expired' | 'revoked'): { editar: boolean; revogar: boolean } {
+  return { editar: situacao !== 'revoked', revogar: situacao === 'active' };
+}
+
 export type Leitura<T> = { ok: true; valor: T } | { ok: false; erro: string };
 
 /**

@@ -240,6 +240,9 @@ describe('semRotuloDaEquipe — o rótulo que o modelo imitou nunca chega ao cli
     ['O [Team member] disse que sim', 'O disse que sim'],
     ['**[Team member]** Oi', 'Oi'],
     ['_[Team member]_: Oi', 'Oi'],
+    // O negrito que fecha DEPOIS do ":" (sobravam os asteriscos: "** Oi").
+    ['**[Team member]:** Oi', 'Oi'],
+    ['__[Membro da equipe]:__ Oi', 'Oi'],
     ['[Membro da equipe] Oi', 'Oi'],
     ['Oi, tudo bem? Sem rótulo nenhum.', 'Oi, tudo bem? Sem rótulo nenhum.'],
   ])('em qualquer forma: %j → %j', (de, para) => {

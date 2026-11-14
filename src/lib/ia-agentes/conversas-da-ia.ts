@@ -7,8 +7,11 @@
 //    `quemResponde`, com os fatos da mensagem neutros, como a faixa do fio),
 //    inclusive por cima da pausa TEMPORÁRIA (a equipe falou e a IA volta
 //    sozinha, 1138: é o follow-up), OU há turno dela na fila ou rodando
-//    (resposta ou retomada). A pausa PERMANENTE (transferência, "Desativar
-//    IA", automação) tira daqui.
+//    (resposta ou retomada) do DONO de agora — o mesmo agente, card e etapa
+//    (ou a pré-armação, ainda sem dono), a conferência do motor: o turno de
+//    um agente desligado, ou de um card que saiu da etapa, é descartado no
+//    vencimento e não pode segurar o ✨ por até 48 h. A pausa PERMANENTE
+//    (transferência, "Desativar IA", automação) tira daqui.
 //  - PENDÊNCIAS DA IA: a IA passou a conversa para a equipe (pausa
 //    `transferencia`). Sai quando alguém encerra (a aba), aperta "Retomar IA"
 //    (a pausa some) ou TIRA o card de onde a IA o deixou — o card do turno que
@@ -25,6 +28,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { ehInstagram } from '@/lib/cb-channels/transporte'
 import { ehMotivoTemporario, lerVoltaAposMin } from '@/lib/ia-agentes/pausa'
+import { doDono, ehPreArmacao, type DonoDoTurnoVivo } from '@/lib/ia-agentes/proximo-passo'
 import {
   canalDaIaNaConversa,
   ehNumeroDeConexao,
@@ -48,6 +52,12 @@ const CARDS_ABERTOS_LIDOS = 20
 const PAGINA = 1000
 /** Tamanho dos `.in(...)` (a URL do PostgREST tem teto). */
 const LOTE_DO_IN = 150
+/**
+ * Quantas leituras por conversa (a conexão da IA, o card da transferida) vão
+ * ao banco AO MESMO TEMPO. Em série, 57 custavam 5,8 s (medido em 12/11/2026),
+ * a cada minuto e por aba aberta.
+ */
+const LEITURAS_EM_PARALELO = 8
 
 // ------------------------------------------------------------
 // A parte pura
@@ -87,8 +97,8 @@ export interface FatosDasConversas {
   cardsPorContato: ReadonlyMap<string, readonly CardAberto[]>
   /** `stage_id` → o agente da etapa (com o `desde` da etapa). */
   agentePorEtapa: ReadonlyMap<string, AgenteDaEtapa>
-  /** Conversas com turno `aguardando` ou `rodando`. */
-  comTurnoVivo: ReadonlySet<string>
+  /** Os turnos `aguardando` ou `rodando` de cada conversa, com o dono deles. */
+  turnosVivos: ReadonlyMap<string, readonly DonoDoTurnoVivo[]>
   /** conversa transferida → o card do turno que transferiu (ausente = nenhum turno com card). */
   cardDaTransferencia: ReadonlyMap<string, CardDaTransferencia | null>
 }
@@ -147,12 +157,18 @@ export function classificarConversasDaIa(f: FatosDasConversas): ConversasDaIa {
     }
     // Com N = 0 na conta a pausa temporária SEGURA (até o "Retomar IA").
     if (temporaria && f.voltaAposMin <= 0) continue
-    if (f.comTurnoVivo.has(c.id)) {
+    if (c.ehGrupo || !c.contactId) continue
+    const { card, agente } = escolherCard(f.cardsPorContato.get(c.contactId) ?? [], f.agentePorEtapa, c.canalId)
+    // O turno vivo do DONO de agora (ou a pré-armação) conta antes da régua:
+    // a IA escrevendo agora é atendimento mesmo com um fato da mensagem que
+    // a régua neutra não vê. O de outro dono, não (ver o cabeçalho).
+    const dono = card && agente && agente.ativo && !agente.arquivado
+      ? { agenteId: agente.id, dealId: card.id, stageId: card.stageId }
+      : null
+    if (dono && (f.turnosVivos.get(c.id) ?? []).some((t) => ehPreArmacao(t) || doDono(t, dono))) {
       atendimento.add(c.id)
       continue
     }
-    if (c.ehGrupo || !c.contactId) continue
-    const { card, agente } = escolherCard(f.cardsPorContato.get(c.contactId) ?? [], f.agentePorEtapa, c.canalId)
     const decisao = quemResponde({
       ehGrupo: c.ehGrupo,
       ehInstagram: c.canalId !== null && f.canaisDoInstagram.has(c.canalId),
@@ -179,6 +195,18 @@ export function classificarConversasDaIa(f: FatosDasConversas): ConversasDaIa {
 // A leitura (cliente de SERVIÇO, a conta em toda consulta). LANÇA em erro.
 // ------------------------------------------------------------
 
+/** `fazer` sobre cada item, no máximo `LEITURAS_EM_PARALELO` ao mesmo tempo; o 1º erro lança. */
+async function emParalelo<T>(itens: readonly T[], fazer: (item: T) => Promise<void>): Promise<void> {
+  let proximo = 0
+  const trabalhador = async () => {
+    while (proximo < itens.length) {
+      const item = itens[proximo++]
+      await fazer(item)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(LEITURAS_EM_PARALELO, itens.length) }, trabalhador))
+}
+
 function emLotes<T>(itens: readonly T[], tamanho = LOTE_DO_IN): T[][] {
   const lotes: T[][] = []
   for (let i = 0; i < itens.length; i += tamanho) lotes.push(itens.slice(i, i + tamanho))
@@ -199,26 +227,6 @@ type LinhaDaConversa = {
 
 export async function lerConversasDaIa(db: SupabaseClient, accountId: string): Promise<ConversasDaIa> {
   const falha = (onde: string, mensagem: string) => new Error(`[conversas-da-ia] ${onde}: ${mensagem}`)
-
-  // As conversas ATIVAS (abertas e pendentes), por CHAVE.
-  const linhas: LinhaDaConversa[] = []
-  let depoisDe: string | null = null
-  for (;;) {
-    let q = db
-      .from('conversations')
-      .select('id, contact_id, group_id, channel_id, channel_pinned, status, ai_autoreply_disabled, ia_pausada_por, ia_pausada_em')
-      .eq('account_id', accountId)
-      .neq('status', 'closed')
-      .order('id', { ascending: true })
-      .limit(PAGINA)
-    if (depoisDe) q = q.gt('id', depoisDe)
-    const { data, error } = await q
-    if (error) throw falha('conversas', error.message)
-    const pagina = (data ?? []) as LinhaDaConversa[]
-    linhas.push(...pagina)
-    if (pagina.length < PAGINA) break
-    depoisDe = pagina[pagina.length - 1].id
-  }
 
   const [{ data: canais, error: erroCanais }, { data: agentes, error: erroAgentes }, { data: etapas, error: erroEtapas }] =
     await Promise.all([
@@ -252,25 +260,75 @@ export async function lerConversasDaIa(db: SupabaseClient, accountId: string): P
     if (a) agentePorEtapa.set(e.stage_id, { ...a, desde: e.desde })
   }
 
-  // Os turnos vivos da conta (poucos: um pendente por conversa e conexão).
-  const comTurnoVivo = new Set<string>()
+  // Os turnos vivos da conta, com o DONO (a classificação só conta o do dono
+  // de agora). Paginados por CHAVE: um follow-up pendente por conversa da IA
+  // passa de 1000 numa conta grande, e o teto fixo virava 500 para sempre.
+  const turnosVivos = new Map<string, DonoDoTurnoVivo[]>()
   {
-    const { data, error } = await db
-      .from('cb_ia_turnos')
-      .select('conversation_id')
-      .eq('account_id', accountId)
-      .in('status', ['aguardando', 'rodando'])
-      .limit(PAGINA)
-    if (error) throw falha('turnos', error.message)
-    for (const t of (data ?? []) as Array<{ conversation_id: string | null }>) {
-      if (t.conversation_id) comTurnoVivo.add(t.conversation_id)
+    let depoisDe: string | null = null
+    for (;;) {
+      let q = db
+        .from('cb_ia_turnos')
+        .select('id, conversation_id, erro, ia_agente_id, deal_id, stage_id')
+        .eq('account_id', accountId)
+        .in('status', ['aguardando', 'rodando'])
+        .order('id', { ascending: true })
+        .limit(PAGINA)
+      if (depoisDe) q = q.gt('id', depoisDe)
+      const { data, error } = await q
+      if (error) throw falha('turnos', error.message)
+      const pagina = (data ?? []) as Array<DonoDoTurnoVivo & { id: string; conversation_id: string | null }>
+      for (const t of pagina) {
+        if (!t.conversation_id) continue
+        const lista = turnosVivos.get(t.conversation_id) ?? []
+        lista.push({ erro: t.erro, ia_agente_id: t.ia_agente_id, deal_id: t.deal_id, stage_id: t.stage_id })
+        turnosVivos.set(t.conversation_id, lista)
+      }
+      if (pagina.length < PAGINA) break
+      depoisDe = pagina[pagina.length - 1].id
     }
-    if ((data ?? []).length >= PAGINA) throw falha('turnos', 'turnos vivos demais')
   }
+
+  // ⚠️ Saída CEDO: sem agente ligado, sem turno vivo e sem conversa transferida
+  // ativa, ninguém é da IA — e a conta inteira de conversas não precisa ser
+  // paginada a cada minuto, em cada aba aberta (a conta sem IA pagava isso).
+  const algumAgenteLigado = [...agentePorEtapa.values()].some((a) => a.ativo && !a.arquivado)
+  if (!algumAgenteLigado && turnosVivos.size === 0) {
+    const { data: umaTransferida, error: erroTransferida } = await db
+      .from('conversations')
+      .select('id')
+      .eq('account_id', accountId)
+      .neq('status', 'closed')
+      .eq('ai_autoreply_disabled', true)
+      .eq('ia_pausada_por', 'transferencia')
+      .limit(1)
+    if (erroTransferida) throw falha('transferidas', erroTransferida.message)
+    if ((umaTransferida ?? []).length === 0) return { atendimento: new Set(), pendencias: new Set() }
+  }
+
+  // As conversas ATIVAS (abertas e pendentes), por CHAVE.
+  const linhas: LinhaDaConversa[] = []
+  let depoisDe: string | null = null
+  for (;;) {
+    let q = db
+      .from('conversations')
+      .select('id, contact_id, group_id, channel_id, channel_pinned, status, ai_autoreply_disabled, ia_pausada_por, ia_pausada_em')
+      .eq('account_id', accountId)
+      .neq('status', 'closed')
+      .order('id', { ascending: true })
+      .limit(PAGINA)
+    if (depoisDe) q = q.gt('id', depoisDe)
+    const { data, error } = await q
+    if (error) throw falha('conversas', error.message)
+    const pagina = (data ?? []) as LinhaDaConversa[]
+    linhas.push(...pagina)
+    if (pagina.length < PAGINA) break
+    depoisDe = pagina[pagina.length - 1].id
+  }
+
 
   // Só quem pode ser da IA precisa de contato e card: sem pausa permanente e
   // com contato. Sem agente ligado em etapa nenhuma, ninguém atende.
-  const algumAgenteLigado = [...agentePorEtapa.values()].some((a) => a.ativo && !a.arquivado)
   const candidatas = linhas.filter(
     (c) =>
       algumAgenteLigado &&
@@ -330,16 +388,16 @@ export async function lerConversasDaIa(db: SupabaseClient, accountId: string): P
   const aResolver = candidatas.filter((c) =>
     (cardsPorContato.get(c.contact_id as string) ?? []).some(cardQuePodeSerAtendido),
   )
-  for (const c of aResolver) {
+  await emParalelo(aResolver, async (c) => {
     canalPorConversa.set(c.id, await canalDaIaNaConversa(db, c.id, c.channel_id))
-  }
+  })
 
   // As transferidas: o card do ÚLTIMO turno com card de cada uma, até a pausa.
   // Uma leitura de UMA linha por transferida (as linhas de `cb_ia_turnos`
   // ficam: o histórico de uma conversa longa estouraria qualquer teto).
   const transferidas = linhas.filter((c) => c.ai_autoreply_disabled === true && c.ia_pausada_por === 'transferencia')
   const cardDaTransferencia = new Map<string, CardDaTransferencia | null>()
-  for (const c of transferidas) {
+  await emParalelo(transferidas, async (c) => {
     let q = db
       .from('cb_ia_turnos')
       .select('deal_id')
@@ -350,7 +408,7 @@ export async function lerConversasDaIa(db: SupabaseClient, accountId: string): P
     const { data: turnos, error } = await q.order('created_at', { ascending: false }).limit(1)
     if (error) throw falha('turno da transferida', error.message)
     const dealId = ((turnos ?? [])[0] as { deal_id?: unknown } | undefined)?.deal_id
-    if (typeof dealId !== 'string') continue
+    if (typeof dealId !== 'string') return
     const { data: deal, error: erroDeal } = await db
       .from('deals')
       .select('status, etapa_desde')
@@ -360,7 +418,7 @@ export async function lerConversasDaIa(db: SupabaseClient, accountId: string): P
     if (erroDeal) throw falha('card da transferida', erroDeal.message)
     const d = deal as { status: string; etapa_desde: string | null } | null
     cardDaTransferencia.set(c.id, d ? { status: d.status, etapaDesde: d.etapa_desde } : null)
-  }
+  })
 
   const conversas: ConversaCandidata[] = linhas.map((c) => {
     const pausada = c.ai_autoreply_disabled === true
@@ -377,7 +435,7 @@ export async function lerConversasDaIa(db: SupabaseClient, accountId: string): P
   })
 
   // Com agente ligado ou turno vivo, o N da conta decide a pausa temporária.
-  const voltaAposMin = algumAgenteLigado || comTurnoVivo.size > 0 ? await lerVoltaAposMin(db, accountId) : 0
+  const voltaAposMin = algumAgenteLigado || turnosVivos.size > 0 ? await lerVoltaAposMin(db, accountId) : 0
 
   return classificarConversasDaIa({
     conversas,
@@ -386,7 +444,7 @@ export async function lerConversasDaIa(db: SupabaseClient, accountId: string): P
     contatosQueSaoConexao,
     cardsPorContato,
     agentePorEtapa,
-    comTurnoVivo,
+    turnosVivos,
     cardDaTransferencia,
   })
 }
