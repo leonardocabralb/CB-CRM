@@ -94,10 +94,37 @@ export function comLinhaDoTempoReal(
     deTroca(m, linha) && (linha.nao_saiu !== true || m.status === 'sending');
   const texto = linha.content_text ?? '';
   let alvo = semFalhadas.findIndex((m) => serve(m) && (m.content_text ?? '') === texto);
-  if (alvo < 0) alvo = semFalhadas.findIndex(serve);
+  // ⚠️ Sem texto igual, a tentativa que NÃO SAIU só troca a otimista quando
+  // ela é a ÚNICA em voo (achado do Codex). Com duas, a troca às cegas levava
+  // a mais antiga — a de OUTRO envio, que sumia da tela —, e a resposta da
+  // rota renomeava a certa para o mesmo id (`pintarFalha`): duas bolhas com
+  // um id. Aqui a linha entra no fim, e `comMensagemAtualizada` tira a
+  // otimista dela quando a resposta chega.
+  if (alvo < 0 && (linha.nao_saiu !== true || semFalhadas.filter(serve).length === 1)) {
+    alvo = semFalhadas.findIndex(serve);
+  }
   const sem =
     alvo < 0 ? semFalhadas : semFalhadas.filter((_, i) => i !== alvo);
   return [...sem, linha];
+}
+
+/**
+ * A atualização que o fio pede (`onUpdateMessage`). ⚠️ A que RENOMEIA a
+ * otimista (`pintarFalha`: ela vira o `mensagem_id` da tentativa gravada)
+ * para um id que JÁ está na lista — o INSERT dela chegou pelo tempo real
+ * antes da resposta da rota — não cria a segunda linha com o mesmo id: a do
+ * banco fica (traz o motivo, o carimbo e o texto assinado) e a otimista sai.
+ */
+export function comMensagemAtualizada(
+  lista: Message[],
+  id: string,
+  mudancas: Partial<Message>
+): Message[] {
+  const novoId = mudancas.id;
+  if (novoId !== undefined && novoId !== id && lista.some((m) => m.id === novoId)) {
+    return lista.some((m) => m.id === id) ? lista.filter((m) => m.id !== id) : lista;
+  }
+  return lista.map((m) => (m.id === id ? { ...m, ...mudancas } : m));
 }
 
 /**
