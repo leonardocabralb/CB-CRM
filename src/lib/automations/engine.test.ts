@@ -2166,10 +2166,15 @@ describe('set_ai — a pausa com MOTIVO (1049, D26)', () => {
     await rodar(true);
     const conversas = escritasNaConversa();
     expect(conversas).toHaveLength(1);
-    expect(conversas[0].payload).toMatchObject({ ia_pausada_por: 'gente', ia_pausa_antes_da_automacao: null });
-    expect(conversas[0].payload).not.toHaveProperty('ai_autoreply_disabled');
+    // A pausa FICA: `true` de novo, sob o WHERE que já exige `true`.
+    expect(conversas[0].payload).toMatchObject({
+      ai_autoreply_disabled: true,
+      ia_pausada_por: 'gente',
+      ia_pausa_antes_da_automacao: null,
+    });
     expect(typeof (conversas[0].payload as Record<string, unknown>).ia_pausada_em).toBe('string');
     expect(conversas[0].filters).toContainEqual(['eq', 'ia_pausada_por', 'automacao']);
+    expect(conversas[0].filters).toContainEqual(['eq', 'ai_autoreply_disabled', true]);
     expect(passos()).toContainEqual(
       expect.objectContaining({
         status: 'success',

@@ -2605,13 +2605,16 @@ async function runStep(
         ? conv.ia_pausa_antes_da_automacao
         : null;
       // A condição vai no próprio UPDATE: a foto acima é de instantes atrás.
+      // Um objeto só, literal: com `devolver` a pausa fica (o WHERE já exige
+      // `true`), só trocando o motivo e o relógio.
       const { error: upErr } = await db
         .from('conversations')
-        .update(
-          devolver
-            ? { ia_pausada_por: devolver, ia_pausada_em: new Date().toISOString(), ia_pausa_antes_da_automacao: null }
-            : { ai_autoreply_disabled: false, ia_pausada_por: null, ia_pausada_em: null, ia_pausa_antes_da_automacao: null }
-        )
+        .update({
+          ai_autoreply_disabled: devolver !== null,
+          ia_pausada_por: devolver,
+          ia_pausada_em: devolver ? new Date().toISOString() : null,
+          ia_pausa_antes_da_automacao: null,
+        })
         .eq('id', conversationId)
         .eq('account_id', args.automation.account_id)
         .eq('ai_autoreply_disabled', true)
