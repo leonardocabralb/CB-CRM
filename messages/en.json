@@ -7486,7 +7486,7 @@
       "janelaInvalida": "The start must be before the end.",
       "inicio": "Window start",
       "fim": "Window end",
-      "paradas": "Follow-ups stop on their own when the customer answers, when someone from the team writes (with \"When the team replies\" on, the series starts again from the team's message) or pauses the AI, when the conversation is closed, when the deal leaves the agent's stage and near the customer's meeting: never within 30 min of a meeting reminder, and never in the 90 min before it. On an official Meta connection, also when the 24-hour window closes. If nothing is pending, the agent ends the follow-ups without sending anything — and they never hand the conversation to the team. Each follow-up counts toward the agent's reply limit.",
+      "paradas": "Follow-ups stop on their own when the customer answers, when someone from the team writes (with \"When the team replies\" on, the series starts again from the team's message) or pauses the AI, when the deal leaves the agent's stage (or is won or lost) and near the customer's meeting: never within 30 min of a meeting reminder, and never in the 90 min before it. On an official Meta connection, also when the 24-hour window closes. Closing the conversation does NOT stop them while the deal stays in the agent's stage: they go out with the conversation still closed, without reopening it, and the customer's reply reopens it. If nothing is pending, the agent ends the follow-ups without sending anything — and they never hand the conversation to the team. Each follow-up counts toward the agent's reply limit.",
       "salvo": "Follow-ups saved.",
       "tentativas": "{n, plural, one {# attempt} other {# attempts}} (up to {max})",
       "tentativasDica": "Counted from the agent's last reply that got no answer. If one is delayed (outside the window, near a meeting reminder), the next ones keep their spacing — and never go out less than 30 min after the previous one.",
@@ -7500,7 +7500,6 @@
       "para": {
         "cliente": "the customer replies",
         "equipe": "the team writes (restarts from it) or pauses the AI",
-        "encerrada": "the conversation is closed",
         "etapa": "the card leaves the agent's stage",
         "reuniao": "the customer's meeting is close"
       },

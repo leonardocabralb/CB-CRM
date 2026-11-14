@@ -459,8 +459,11 @@ export function textoDaParadaDaRetomada(t: ReturnType<typeof useTranslations>, p
  * Quando a retomada para sozinha, em chips na aba Retomada (10/11/2026): o
  * resumo à vista — o texto inteiro (`retomada.paradas`) fica ao abrir.
  * `IaAgentes.retomada.para.<p>`, chave MONTADA cobrada em `textos.test.ts`.
+ * Encerrar a conversa NÃO é parada desde a 1146 (decisão do operador de
+ * 14/11/2026): com o card na etapa do agente, a série segue com a conversa
+ * encerrada — o texto inteiro diz.
  */
-export const PARADAS_A_VISTA = ['cliente', 'equipe', 'encerrada', 'etapa', 'reuniao'] as const;
+export const PARADAS_A_VISTA = ['cliente', 'equipe', 'etapa', 'reuniao'] as const;
 
 /**
  * As seções da Configuração, na ordem da página (10/11/2026): o índice ao

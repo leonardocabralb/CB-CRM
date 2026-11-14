@@ -458,7 +458,8 @@ function montarCenario(): void {
     return { data: [{ id: t.id, executar_apos: t.executar_apos }], error: null }
   }
   // A reserva do envio (1049): só o turno e a posse; o resto o banco lê. A
-  // ordem e os nomes da recusa espelham o SQL: descartado, encerrada, pausada,
+  // ordem e os nomes da recusa espelham o SQL: descartado, encerrada (a
+  // RETOMADA passa pela encerrada, 1146), pausada,
   // card_mudou, card_fechado, agente_desligado, fora_da_conexao,
   // agente_sem_etapa, mais_nova (OUTRO pendente da conexão com gatilho mais
   // novo — a prova de que a mensagem abre turno), robo_falou, teto. O teto
@@ -469,7 +470,7 @@ function montarCenario(): void {
     const t = banco.tabelas.cb_ia_turnos.find((x) => x.id === p_turno_id)
     if (!t || t.status !== 'rodando' || t.rodando_desde !== p_rodando_desde) return r('descartado')
     const c = banco.tabelas.conversations.find((x) => x.id === t.conversation_id)
-    if (!c || c.status === 'closed') return r('encerrada')
+    if (!c || (c.status === 'closed' && t.tipo !== 'retomada')) return r('encerrada')
     if (c.ai_autoreply_disabled) return r('pausada')
     const d = banco.tabelas.deals.find((x) => x.id === t.deal_id)
     if (!d || d.stage_id !== t.stage_id) return r('card_mudou')
@@ -5264,5 +5265,116 @@ describe('a RETOMADA (1056)', () => {
         expect(transcreverAudio).not.toHaveBeenCalled()
       })
     })
+  })
+
+  describe('a conversa ENCERRADA (1146, decisão do operador de 14/11/2026)', () => {
+    /**
+     * O que o gatilho do encerramento deixa: a conversa encerrada, sem agente
+     * e sem pausa (`cb_encerrar_limpa_ia`). A retomada que ele não descartou
+     * continua na fila.
+     */
+    function encerrada(): void {
+      Object.assign(conversa(), {
+        status: 'closed',
+        ia_agente_id: null,
+        ai_autoreply_disabled: false,
+        ia_pausada_por: null,
+        ia_pausada_em: null,
+      })
+    }
+
+    it('⚠️ o atendente encerrou com o card na etapa do agente: a retomada SAI, sem reabrir a conversa, e arma a seguinte', async () => {
+      comRetomadaPendente()
+      encerrada()
+      vi.mocked(generateReply).mockResolvedValue({ text: 'Oi! Conseguiu separar os extratos?', handoff: false, usage: null })
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA).status).toBe('respondeu')
+      expect(engineSendText).toHaveBeenCalledWith(
+        expect.objectContaining({ text: 'Oi! Conseguiu separar os extratos?', iaAgenteId: AGENTE, conversationId: CONVERSA }),
+      )
+      // Continua encerrada (só a resposta da cliente reabre) e sem o agente
+      // marcado: encerrar o tirou, e o follow-up não o devolve.
+      expect(conversa()).toMatchObject({ status: 'closed', ia_agente_id: null, ai_autoreply_disabled: false })
+      // A série segue com a conversa encerrada.
+      expect(retomadas()).toMatchObject([{ tentativa: 2, mensagem_gatilho_id: ANCORA, status: 'aguardando' }])
+    })
+
+    it('⚠️ a pré-armação da fala da EQUIPE (a pergunta antes de encerrar): resolve, sai sem levantar pausa nenhuma e arma a seguinte', async () => {
+      const EQUIPE = 'msg-equipe'
+      Object.assign(banco.tabelas.messages.find((m) => m.id === GATILHO)!, { gravada_em: haMs(21 * MIN), created_at: haMs(21 * MIN) })
+      banco.tabelas.messages.push(
+        mensagem({
+          id: EQUIPE,
+          sender_type: 'agent',
+          sender_id: MEMBRO,
+          message_id: 'wamid.equipe',
+          content_text: 'Me manda o holerite, por favor.',
+          gravada_em: haMs(20 * MIN),
+          created_at: haMs(20 * MIN),
+        }),
+      )
+      banco.tabelas.cb_ia_turnos = [
+        {
+          ...turno(),
+          id: RETOMADA,
+          tipo: 'retomada',
+          tentativa: 1,
+          tentativas: 1,
+          ia_agente_id: null,
+          deal_id: null,
+          stage_id: null,
+          mensagem_gatilho_id: EQUIPE,
+          mensagem_inicial_id: EQUIPE,
+          erro: ERRO_DA_ARMACAO_PELA_EQUIPE,
+          executar_apos: haMs(1_000),
+        },
+      ]
+      // A pausa `gente` da pergunta foi apagada pelo encerramento.
+      encerrada()
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA)).toMatchObject({ status: 'respondeu', ia_agente_id: AGENTE, deal_id: CARD, stage_id: ETAPA })
+      expect(vi.mocked(generateReply).mock.calls[0][0].systemPrompt).toContain('written by a person from the team')
+      // Sem pausa a levantar (o encerramento já a tirou) e nada a devolver.
+      expect(banco.rpcChamadas.map((c) => c.nome)).not.toContain('cb_ia_voltar_da_pausa')
+      expect(conversa()).toMatchObject({ status: 'closed', ai_autoreply_disabled: false, ia_pausada_por: null })
+      expect(retomadas()).toMatchObject([{ tentativa: 2, mensagem_gatilho_id: EQUIPE, ia_agente_id: AGENTE }])
+    })
+
+    it.each<[string, () => void, string]>([
+      ['o card saiu para uma etapa SEM agente (Desqualificado, Não Respondeu)', () => { card().stage_id = 'etapa-meio' }, 'descartado'],
+      ['o card foi ganho ou perdido', () => { card().status = 'won' }, 'descartado'],
+      ['o agente foi desligado', () => { agenteLido().ativo = false }, 'descartado'],
+      ['a retomada foi desligada no agente', () => { agenteLido().retomada = retomadaLigada({ ativa: false }) }, 'descartado'],
+      ['a cliente escreveu', () => {
+        banco.tabelas.messages.push(mensagem({ id: 'msg-depois', message_id: 'wamid.depois', gravada_em: haMs(5 * MIN) }))
+      }, 'descartado'],
+      ['a equipe escreveu pelo celular', () => {
+        banco.tabelas.messages.push(mensagem({ id: 'msg-depois', sender_type: 'agent', from_device: true, gravada_em: haMs(5 * MIN) }))
+      }, 'descartado'],
+      ['a IA foi DESATIVADA depois de encerrar', () => {
+        Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: 'desativada', ia_pausada_em: haMs(MIN) })
+      }, 'pausado_no_meio'],
+    ])('a conversa encerrada não segura o resto: %s — nada sai', async (_rotulo, montar, status) => {
+      comRetomadaPendente()
+      encerrada()
+      montar()
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA).status).toBe(status)
+      expect(generateReply).not.toHaveBeenCalled()
+      expect(engineSendText).not.toHaveBeenCalled()
+      expect(retomadas()).toHaveLength(0)
+    })
+
+    it('⚠️ encerrada NO MEIO do envio (depois da última conferência): a retomada sai, mas a série acaba aqui — a pausa que o encerramento apagou não foi pesada para ela', async () => {
+      comRetomadaPendente()
+      antesDaReserva(() => {
+        conversa().status = 'closed'
+      })
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA).status).toBe('respondeu')
+      expect(retomadas()).toHaveLength(0)
+    })
+    // O turno de RESPOSTA na conversa encerrada continua recusado: "a conversa
+    // foi encerrada logo antes da reserva" e "conversa ENCERRADA", acima.
   })
 })

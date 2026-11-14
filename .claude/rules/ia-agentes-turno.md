@@ -163,6 +163,11 @@ das ações está em `ia.md` e `ia-agentes.md`.
   (`respondeu`, `falhou` ou `incerto`) — "descartado" mentia sobre uma
   resposta que estava saindo. E a conversa APAGADA com o turno vivo que já
   tem `mensagem_enviada_id` é `respondeu`, não `incerto` (`ia-central.md`).
+- ⚠️ Desde a 1146, nem a RETOMADA que seguiria (a pausa de antes que ela
+  atravessa e o card aberto na etapa do agente): ela sai com a conversa
+  encerrada, sem reabri-la (decisão do operador, 14/11/2026;
+  `ia-retomada.md`). O turno de RESPOSTA continua descartado, e o que
+  respondeu e encerrou pela automação continua sem armar série.
 
 ### Revisão de 09/11/2026 (antes de ligar os agentes)
 
@@ -226,8 +231,8 @@ contradizer a equipe. `ouvirAudiosDaEquipe` (`turno.ts`).
   anotação do motivo, menos a do `agente_passou`, 1141): a IA pediu gente, e
   a temporária a deixaria voltar em N min.
 - A pendente continua na caixa (o filtro padrão mostra aberta e pendente). A
-  IA só se cala na ENCERRADA, então "Retomar IA" não precisa reabrir; voltar
-  para aberta é com a equipe.
+  IA só se cala na ENCERRADA (a resposta; o follow-up a atravessa, 1146),
+  então "Retomar IA" não precisa reabrir; voltar para aberta é com a equipe.
 
 ### O que a IA fez aparece como FAIXA CINZA (1141)
 
