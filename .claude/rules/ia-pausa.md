@@ -139,6 +139,22 @@ Decisões do operador de 11/11/2026 (P1–P7 de
   X e o Esc, nada. Na pausa temporária o principal é "Manter a pausa" e NÃO
   chama a rota: o Pausar trocaria a `gente` por `botao`, e a retomada só
   atravessa a `gente`. N = 0: sem Desativar, sem aviso.
+- ⚠️⚠️ **ENCERRADA com o follow-up na fila (1146; operador, 14/11/2026: "É
+  bom mostrar")**: a rota devolve `encerrada` e, SÓ onde o follow-up sai (o
+  card na etapa do agente — `quemResponde` com `atravessaEncerrada` — e a
+  pausa que ele atravessa: nenhuma, ou a `gente` com N > 0), o
+  `agenteDoFollowUp` e o `proximo` lido só dos `tipo = 'retomada'` (a resposta
+  que sobrou, a reserva recusa). ⚠️ `agente` segue NULO na encerrada: a faixa
+  de antes, aberta no deploy, diria "responde nesta conversa". A faixa diz
+  "Conversa encerrada: IA · X ainda manda o follow-up, sem reabrir a
+  conversa", a linha do próximo follow-up e [Pausar] + [Desativar IA] — no
+  aviso, `pausada={false}`: o Pausar é o que para o follow-up sem desativar.
+  Os dois só gravam a pausa (a rota do botão não mudou, nunca toca a
+  situação), o follow-up para no vencimento (`pausado_no_meio`) e a faixa
+  some na hora (a rota não lê a fila sob a pausa que ele não atravessa). Sem
+  follow-up, nada — nem "pausada", nem "não atende" —, mas com o agente do
+  follow-up o `proximo` vem NULO e a faixa segue relendo (o vão do #515).
+  Ela relê também quando `status` muda.
 - A aba Turnos diz "aguardando a equipe responder · a IA volta <quando>" e
   traduz `a equipe respondeu` (`ERROS_GRAVADOS_PELO_BANCO`).
 

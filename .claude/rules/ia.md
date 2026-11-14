@@ -355,7 +355,8 @@ ingestões), `fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron
   as colunas do realtime (pausa, motivo, último agente) só a fazem perguntar de
   novo. Atendendo = "IA · X" + Pausar (+ Desativar); pausada (com agente da
   etapa ou `ia_agente_id`) = motivo + Retomar (`ia-pausa.md`); agente que não
-  atende = uma linha (`ia-tela-do-agente.md`); senão, nada. Pausar não toca
+  atende = uma linha (`ia-tela-do-agente.md`); encerrada com follow-up na fila
+  = ele + Pausar (+ Desativar), 1146; senão, nada. Pausar não toca
   `assigned_agent_id`. Motivo e status do turno são chaves MONTADAS, cobradas
   nos dois dicionários (`STATUS_DO_TURNO` lê o CHECK da 1049). A bolha mostra
   "IA · <nome>" (`nomes-dos-agentes.ts`; sem nome, "IA").

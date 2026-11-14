@@ -217,6 +217,20 @@ describe('POST /api/ai/autoreply — desativar (1138)', () => {
   })
 })
 
+describe('POST /api/ai/autoreply — na conversa ENCERRADA com follow-up na fila (1146)', () => {
+  it('Pausar e Desativar gravam SÓ a pausa: a situação não muda (nada reabre) e a fila não é tocada — o follow-up para no vencimento (`pausado_no_meio`)', async () => {
+    conversa = { id: 'conv-1', group_id: null, channel_id: 'canal-1', status: 'closed' }
+    expect((await chamar({ paused: true })).status).toBe(200)
+    expect((await chamar({ paused: true, permanente: true })).status).toBe(200)
+    expect(updates.map((u) => Object.keys(u).sort())).toEqual([
+      ['ai_autoreply_disabled', 'ia_pausada_em', 'ia_pausada_por'],
+      ['ai_autoreply_disabled', 'ia_pausada_em', 'ia_pausada_por'],
+    ])
+    expect(updates.map((u) => u.ia_pausada_por)).toEqual(['botao', 'desativada'])
+    expect(antecipadas).toHaveLength(0)
+  })
+})
+
 describe('POST /api/ai/autoreply — retomar', () => {
   it('limpa os três campos da pausa, carimba ia_retomada_em e NÃO menciona o responsável humano', async () => {
     const res = await chamar({ paused: false, assign_to_me: true })

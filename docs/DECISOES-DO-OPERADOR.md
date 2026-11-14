@@ -191,7 +191,9 @@ qualquer uma é pergunta ao operador.
   agente, agente desligado, cliente ou equipe que escreve (pelas regras de
   hoje), e a pausa que já os parava (Pausar, Desativar, transferência,
   automação). Encerrar continua limpando a pausa e o teto, e a resposta
-  pendente da IA sai (`ia-retomada.md`).
+  pendente da IA sai (`ia-retomada.md`). Na encerrada com follow-up na fila,
+  a faixa da conversa mostra o próximo e os botões "Pausar" e "Desativar
+  IA", que o param sem reabrir ("É bom mostrar"; `ia-pausa.md`).
 - O "Desativar IA" da conversa pergunta antes (14/11/2026): o aviso diz que
   desativar para os follow-ups automáticos e recomenda o "Pausar", que é o
   botão principal (`ia-pausa.md`).

@@ -82,6 +82,8 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({
       agente: { id: 'ag-1', nome: 'Triagem' },
+      encerrada: false,
+      agenteDoFollowUp: null,
       pausada: false,
       pausadaPor: null,
       // Sem a linha padrão de `ai_configs`: o padrão da conta (1138).
@@ -166,9 +168,15 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
     expect(await (await chamar()).json()).toMatchObject({ agente: null, motivo: 'card_antigo' })
   })
 
-  it('encerrada: ninguém atende (a faixa não oferece Pausar) — Codex, #309', async () => {
+  it('encerrada: a RESPOSTA não sai (Codex, #309) — fora do território de um agente, ninguém, como antes', async () => {
     banco.conversations = { ...(banco.conversations as object), status: 'closed' }
-    expect(await (await chamar()).json()).toMatchObject({ agente: null, motivo: 'encerrada' })
+    banco.cb_ia_agente_etapas = null
+    expect(await (await chamar()).json()).toMatchObject({
+      agente: null,
+      encerrada: true,
+      agenteDoFollowUp: null,
+      motivo: 'encerrada',
+    })
   })
 
   it('a conexão é a da ÚLTIMA mensagem do cliente, não a fixada na conversa — Codex, #309', async () => {
@@ -214,6 +222,8 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
       banco.cb_ia_agentes = { ...(banco.cb_ia_agentes as object), ativado_em: '2026-09-26T00:00:00Z' }
       expect(await (await chamar()).json()).toEqual({
         agente: null,
+        encerrada: false,
+        agenteDoFollowUp: null,
         pausada: false,
         pausadaPor: null,
         // Sem agente que atenda e sem pausa, o N da conta nem é lido.
@@ -274,6 +284,8 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
       const corpo = await (await chamar()).json()
       expect(Object.keys(corpo).sort()).toEqual([
         'agente',
+        'agenteDoFollowUp',
+        'encerrada',
         'motivo',
         'naoAtende',
         'pausaTemporaria',
@@ -412,13 +424,16 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
       })
     })
 
-    it('⚠️ ninguém atende (card antigo, encerrada): nem lê a fila', async () => {
+    it('⚠️ ninguém atende (card antigo, aberta ou encerrada): nem lê a fila', async () => {
       banco.cb_ia_turnos = [
         { tipo: 'retomada', status: 'aguardando', executar_apos: '2026-11-12T18:00:00Z', tentativa: 1, tentativas: 3, erro: null, ...DONO },
       ]
-      banco.conversations = { ...(banco.conversations as object), status: 'closed' }
-      // AUSENTE, não nulo: a faixa não relê sozinha uma conversa sem agente.
-      expect('proximo' in (await (await chamar()).json())).toBe(false)
+      banco.deals = { id: 'd1', stage_id: 'e1', pipeline_id: 'f1', etapa_desde: '2026-09-01T00:00:00Z' }
+      for (const status of ['open', 'closed']) {
+        banco.conversations = { ...(banco.conversations as object), status }
+        // AUSENTE, não nulo: a faixa não relê sozinha uma conversa sem agente.
+        expect('proximo' in (await (await chamar()).json())).toBe(false)
+      }
       expect(turnosVivos()).toHaveLength(0)
     })
 
@@ -447,6 +462,143 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
     it('a leitura da fila que falha é 500 (nunca "nada agendado" por ignorância)', async () => {
       banco['cb_ia_turnos:erro'] = { message: 'timeout' }
       expect((await chamar()).status).toBe(500)
+    })
+  })
+
+  describe('a conversa ENCERRADA com o follow-up da IA na fila (1146; pedido do operador, 14/11/2026)', () => {
+    const turnosVivos = () => consultas.filter((c) => c.tabela === 'cb_ia_turnos')
+    const DONO = { ia_agente_id: 'ag-1', deal_id: 'd1', stage_id: 'e1' }
+    const FOLLOW_UP = {
+      tipo: 'retomada',
+      status: 'aguardando',
+      executar_apos: '2026-11-14T18:00:00Z',
+      tentativa: 2,
+      tentativas: 5,
+      erro: null,
+      ...DONO,
+    }
+
+    beforeEach(() => {
+      banco.conversations = { ...(banco.conversations as object), status: 'closed' }
+      banco.ai_configs = { ia_volta_apos_min: 15 }
+    })
+
+    it('⚠️ o card segue na etapa do agente: o agente DO FOLLOW-UP, a marca de encerrada e o próximo follow-up (a faixa o mostra, com Pausar e Desativar)', async () => {
+      banco.cb_ia_turnos = [FOLLOW_UP]
+      expect(await (await chamar()).json()).toEqual({
+        // A RESPOSTA continua parada: `agente` nulo e o motivo, como antes — a
+        // faixa de antes, ainda aberta num navegador no deploy, não diz
+        // "responde nesta conversa".
+        agente: null,
+        encerrada: true,
+        agenteDoFollowUp: { id: 'ag-1', nome: 'Triagem' },
+        pausada: false,
+        pausadaPor: null,
+        // Nada de "volta": nenhuma mensagem do cliente espera a equipe.
+        pausaTemporaria: false,
+        voltaAposMin: 15,
+        voltaEm: null,
+        proximo: { tipo: 'retomada', em: '2026-11-14T18:00:00Z', tentativa: 2, tentativas: 5 },
+        motivo: 'encerrada',
+        naoAtende: null,
+      })
+      const leitura = turnosVivos().at(-1)!
+      expect(leitura.filtros).toContainEqual(['eq', 'account_id', 'conta-1'])
+      expect(leitura.filtros).toContainEqual(['eq', 'conversation_id', CONV])
+      expect(leitura.filtros).toContainEqual(['in', 'status', ['aguardando', 'rodando']])
+    })
+
+    it('⚠️ fila vazia (o vão entre o follow-up que saiu e o seguinte, ou a série que acabou): `proximo` NULO, nunca ausente — a faixa some, mas continua relendo (Codex, #515)', async () => {
+      const corpo = await (await chamar()).json()
+      expect(corpo).toMatchObject({ agente: null, agenteDoFollowUp: { id: 'ag-1', nome: 'Triagem' }, encerrada: true })
+      expect(corpo.proximo).toBeNull()
+    })
+
+    it('a RESPOSTA que sobrou na fila não conta (a reserva a recusa na encerrada): nem "responde", nem "agora"', async () => {
+      const resposta = { ...FOLLOW_UP, tipo: 'resposta', executar_apos: '2026-11-14T17:00:00Z', tentativa: 1, tentativas: 1 }
+      banco.cb_ia_turnos = [resposta]
+      expect((await (await chamar()).json()).proximo).toBeNull()
+      banco.cb_ia_turnos = [{ ...resposta, status: 'rodando' }]
+      expect((await (await chamar()).json()).proximo).toBeNull()
+      banco.cb_ia_turnos = [resposta, FOLLOW_UP]
+      expect((await (await chamar()).json()).proximo).toMatchObject({ tipo: 'retomada', tentativa: 2 })
+    })
+
+    it('o follow-up saindo agora; a pré-armação da fala da equipe (sem dono ainda) relê até resolver', async () => {
+      banco.cb_ia_turnos = [{ ...FOLLOW_UP, status: 'rodando' }]
+      expect((await (await chamar()).json()).proximo).toEqual({ tipo: 'agora' })
+      banco.cb_ia_turnos = [
+        {
+          ...FOLLOW_UP,
+          tentativa: 1,
+          tentativas: 1,
+          erro: 'armar a partir da fala da equipe',
+          ia_agente_id: null,
+          deal_id: null,
+          stage_id: null,
+        },
+      ]
+      expect((await (await chamar()).json()).proximo).toEqual({ tipo: 'agendando', em: '2026-11-14T18:00:00Z' })
+    })
+
+    it('⚠️ o follow-up de OUTRO dono (card movido para a etapa de outro agente) não é o próximo passo', async () => {
+      banco.cb_ia_turnos = [{ ...FOLLOW_UP, ia_agente_id: 'ag-velho', stage_id: 'e-velha' }]
+      expect((await (await chamar()).json()).proximo).toBeNull()
+    })
+
+    it('⚠️ depois do "Pausar" (`botao`) ou do "Desativar" (e nas outras pausas permanentes): sem agente e sem ler a fila — a faixa some na hora, e o follow-up para no vencimento', async () => {
+      banco.cb_ia_turnos = [FOLLOW_UP]
+      for (const motivo of ['botao', 'desativada', 'transferencia', 'automacao']) {
+        banco.conversations = { ...(banco.conversations as object), ai_autoreply_disabled: true, ia_pausada_por: motivo }
+        const corpo = await (await chamar()).json()
+        expect(corpo, motivo).toMatchObject({
+          agente: null,
+          agenteDoFollowUp: null,
+          encerrada: true,
+          pausada: true,
+          motivo: 'encerrada',
+        })
+        expect('proximo' in corpo, motivo).toBe(false)
+      }
+      expect(turnosVivos()).toHaveLength(0)
+    })
+
+    it('a pausa `gente` com N > 0 o follow-up atravessa; com N = 0, não', async () => {
+      banco.cb_ia_turnos = [FOLLOW_UP]
+      banco.conversations = { ...(banco.conversations as object), ai_autoreply_disabled: true, ia_pausada_por: 'gente' }
+      expect(await (await chamar()).json()).toMatchObject({
+        agenteDoFollowUp: { id: 'ag-1', nome: 'Triagem' },
+        pausaTemporaria: false,
+        proximo: { tipo: 'retomada', tentativa: 2 },
+      })
+      banco.ai_configs = { ia_volta_apos_min: 0 }
+      const semVolta = await (await chamar()).json()
+      expect(semVolta).toMatchObject({ agenteDoFollowUp: null, motivo: 'encerrada' })
+      expect('proximo' in semVolta).toBe(false)
+    })
+
+    it('o card fora do território do agente (sem card aberto, etapa sem agente, agente desligado): sem agente e sem fila, como antes', async () => {
+      banco.cb_ia_turnos = [FOLLOW_UP]
+      const semFaixa = async () => {
+        const corpo = await (await chamar()).json()
+        expect(corpo).toMatchObject({
+          agente: null,
+          agenteDoFollowUp: null,
+          encerrada: true,
+          motivo: 'encerrada',
+          naoAtende: null,
+        })
+        expect('proximo' in corpo).toBe(false)
+      }
+      banco.deals = null
+      await semFaixa()
+      banco.deals = { id: 'd1', stage_id: 'e1', pipeline_id: 'f1', etapa_desde: '2026-09-25T12:00:00Z' }
+      banco.cb_ia_agente_etapas = null
+      await semFaixa()
+      banco.cb_ia_agente_etapas = { stage_id: 'e1', ia_agente_id: 'ag-1', desde: '2026-09-21T12:00:00Z' }
+      banco.cb_ia_agentes = { ...(banco.cb_ia_agentes as object), ativo: false }
+      await semFaixa()
+      expect(turnosVivos()).toHaveLength(0)
     })
   })
 })

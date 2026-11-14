@@ -5351,8 +5351,11 @@ describe('a RETOMADA (1056)', () => {
       ['a equipe escreveu pelo celular', () => {
         banco.tabelas.messages.push(mensagem({ id: 'msg-depois', sender_type: 'agent', from_device: true, gravada_em: haMs(5 * MIN) }))
       }, 'descartado'],
-      ['a IA foi DESATIVADA depois de encerrar', () => {
+      ['a IA foi DESATIVADA depois de encerrar (o "Desativar" da faixa)', () => {
         Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: 'desativada', ia_pausada_em: haMs(MIN) })
+      }, 'pausado_no_meio'],
+      ['o "Pausar" da faixa depois de encerrar (`botao`: a retomada só atravessa a `gente`)', () => {
+        Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: 'botao', ia_pausada_em: haMs(MIN) })
       }, 'pausado_no_meio'],
     ])('a conversa encerrada não segura o resto: %s — nada sai', async (_rotulo, montar, status) => {
       comRetomadaPendente()
@@ -5363,6 +5366,8 @@ describe('a RETOMADA (1056)', () => {
       expect(generateReply).not.toHaveBeenCalled()
       expect(engineSendText).not.toHaveBeenCalled()
       expect(retomadas()).toHaveLength(0)
+      // Parar o follow-up nunca reabre a conversa.
+      expect(conversa().status).toBe('closed')
     })
 
     it('⚠️ encerrada NO MEIO do envio (depois da última conferência): a retomada sai, mas a série acaba aqui — a pausa que o encerramento apagou não foi pesada para ela', async () => {

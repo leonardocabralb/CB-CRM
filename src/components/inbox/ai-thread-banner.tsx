@@ -57,6 +57,11 @@ import { useTranslations } from "next-intl";
 //                 etapa quando o agente foi religado ficava em silêncio sem
 //                 rastro (medido, validação de 25/10/2026). Também vai como
 //                 segunda linha da pausada: retomar não faria ele atender.
+//   - encerrada → SÓ com o follow-up da IA na fila (1146: ele sai sem reabrir
+//                 a conversa; pedido do operador, 14/11/2026): "Conversa
+//                 encerrada: IA · <nome> ainda manda o follow-up…", a linha
+//                 do próximo follow-up e [Pausar] + [Desativar IA] — os dois
+//                 o param, e nenhum reabre a conversa. Sem follow-up, nada.
 //   - nada      → não desenha
 //
 // Pausar, Desativar e Retomar vão pela rota `POST /api/ai/autoreply/[id]`,
@@ -93,6 +98,13 @@ export interface EstadoDaIa {
    */
   proximo: ProximoDaFaixa | null;
   naoAtende: NaoAtende | null;
+  /** A conversa está ENCERRADA: a resposta não sai (`agente` nulo). */
+  encerrada: boolean;
+  /**
+   * Na ENCERRADA (1146): o agente cujo follow-up ainda sai, sem reabrir — a
+   * rota só o devolve (e o `proximo`) onde ele atravessa a pausa.
+   */
+  agenteDoFollowUp: { id: string; nome: string } | null;
 }
 
 /** O próximo passo como a faixa o lê: o da rota, ou `"nada"` na fila. */
@@ -155,6 +167,8 @@ export function lerEstadoDaIa(corpo: unknown): EstadoDaIa | null {
     voltaEm: typeof c.voltaEm === "string" && Number.isFinite(Date.parse(c.voltaEm)) ? c.voltaEm : null,
     proximo: "proximo" in c ? lerProximo(c.proximo) : null,
     naoAtende: lerNaoAtende(c.naoAtende),
+    encerrada: c.encerrada === true,
+    agenteDoFollowUp: lerAgente(c.agenteDoFollowUp),
   };
 }
 
@@ -182,6 +196,12 @@ export type Faixa =
       followUp?: FollowUpNaPausa | null;
     }
   | ({ tipo: "naoAtende" } & LinhaNaoAtende)
+  /**
+   * A conversa ENCERRADA com o follow-up da IA na fila (1146): ele sai sem
+   * reabrir. `minutos`, como na "atendendo"; `proximo`, o follow-up (ou a
+   * pré-armação ainda sem hora, `agendando`, ou "agora").
+   */
+  | { tipo: "encerrada"; agente: string; minutos: number | null; proximo: ProximoPasso }
   | null;
 
 /**
@@ -194,6 +214,16 @@ export type Faixa =
  */
 export function faixaDaIa(estado: EstadoDaIa | null, iaAgenteIdDaConversa: string | null): Faixa {
   if (!estado) return null;
+  // A ENCERRADA só tem faixa com o follow-up na fila (1146) — sem ele, nada,
+  // como antes: nem "pausada", nem "não atende" (Retomar numa conversa
+  // encerrada não devolveria o follow-up parado). A pausa já foi pesada pela
+  // rota, que só devolve o agente do follow-up onde ele a atravessa.
+  if (estado.encerrada) {
+    const agente = estado.agenteDoFollowUp;
+    return agente && estado.proximo && estado.proximo !== "nada"
+      ? { tipo: "encerrada", agente: agente.nome, minutos: estado.voltaAposMin, proximo: estado.proximo }
+      : null;
+  }
   const naoAtende = estado.naoAtende
     ? { agente: estado.naoAtende.agente.nome, motivo: estado.naoAtende.motivo }
     : null;
@@ -297,9 +327,15 @@ interface AiThreadBannerProps {
    * dizendo "volta às …" sobre o retorno que a resposta descartou.
    */
   pausadaEm?: string | null;
+  /**
+   * `conversations.status` — encerrar e reabrir mudam a faixa (1146: a
+   * encerrada só a tem com o follow-up da IA na fila), e encerrar nem sempre
+   * muda a pausa ou o último agente.
+   */
+  status?: string | null;
 }
 
-export function AiThreadBanner({ conversationId, iaAgenteId, disabled, pausadaPor, pausadaEm }: AiThreadBannerProps) {
+export function AiThreadBanner({ conversationId, iaAgenteId, disabled, pausadaPor, pausadaEm, status }: AiThreadBannerProps) {
   const t = useTranslations("Inbox.aiBanner");
   // O estado carrega DE QUAL conversa é: a faixa não remonta ao trocar de
   // conversa, e o da anterior não pode aparecer nem por um quadro.
@@ -307,9 +343,9 @@ export function AiThreadBanner({ conversationId, iaAgenteId, disabled, pausadaPo
   const [recarga, setRecarga] = useState(0);
   const [busy, setBusy] = useState(false);
 
-  // Pergunta de novo sempre que o realtime muda a pausa, o motivo ou o
-  // último agente — e depois de cada clique. A resposta de um pedido velho
-  // é descartada (`vivo`).
+  // Pergunta de novo sempre que o realtime muda a pausa, o motivo, o último
+  // agente ou a situação — e depois de cada clique. A resposta de um pedido
+  // velho é descartada (`vivo`).
   useEffect(() => {
     let vivo = true;
     void (async () => {
@@ -326,7 +362,7 @@ export function AiThreadBanner({ conversationId, iaAgenteId, disabled, pausadaPo
     return () => {
       vivo = false;
     };
-  }, [conversationId, disabled, pausadaPor, pausadaEm, iaAgenteId, recarga]);
+  }, [conversationId, disabled, pausadaPor, pausadaEm, iaAgenteId, status, recarga]);
 
   // Quem responde depende da ETAPA do card, e mover o card só muda `deals`:
   // nenhuma das props acima muda. O aviso das execuções sai quando uma tela
@@ -485,18 +521,21 @@ function textoDaContagem(t: ReturnType<typeof useTranslations>, falta: NonNullab
 }
 
 /**
- * A linha do próximo passo (atendendo). Quebra linha, nunca `truncate`: no
- * celular a hora sumiria cortada. Sem `agora`, a contagem usa a hora da
- * leitura; sem nenhum dos dois, só a hora.
+ * A linha do próximo passo (atendendo, encerrada). Quebra linha, nunca
+ * `truncate`: no celular a hora sumiria cortada. Sem `agora`, a contagem usa
+ * a hora da leitura; sem nenhum dos dois, só a hora. Na `encerrada` só há
+ * follow-up na fila: o "agora" é ele saindo, não uma resposta.
  */
 function LinhaDoProximoPasso({
   proximo,
   agora,
   lidoEm,
+  encerrada = false,
 }: {
   proximo: ProximoDaFaixa;
   agora?: number;
   lidoEm?: number;
+  encerrada?: boolean;
 }) {
   const t = useTranslations("Inbox.aiBanner");
   const relogio = agora ?? lidoEm;
@@ -507,7 +546,7 @@ function LinhaDoProximoPasso({
   if (proximo === "nada") {
     texto = t("proximo.nada");
   } else if (proximo.tipo === "agora") {
-    texto = t("proximo.agora");
+    texto = encerrada ? t("proximo.followUpAgora") : t("proximo.agora");
   } else {
     const hora = horaDaVolta(proximo.em, lidoEm);
     const falta = relogio !== undefined ? quantoFalta(proximo.em, relogio) : null;
@@ -622,6 +661,48 @@ export function FaixaDaIa({
     return (
       <Banner tone="muted">
         <LinhaNaoAtendeDaFaixa linha={faixa} />
+      </Banner>
+    );
+  }
+
+  if (faixa.tipo === "encerrada") {
+    // Os botões da "atendendo": com N > 0, o Pausar e o Desativar com o
+    // aviso; com 0, só o Pausar. Os dois param o follow-up (ele não
+    // atravessa o `botao` nem a `desativada`) e nenhum reabre a conversa.
+    const temporario = faixa.minutos !== null && faixa.minutos > 0;
+    return (
+      <Banner tone="primary">
+        <div className="min-w-0 flex-1">
+          {/* Quebra linha, nunca `truncate`: é a frase que diz que a conversa
+              está encerrada e o follow-up sai mesmo assim. */}
+          <p className="flex min-w-0 items-start gap-1.5" title={t("encerrada.dica")}>
+            <Sparkles className="mt-px h-3.5 w-3.5 flex-shrink-0 text-primary" />
+            <span className="min-w-0 font-medium text-foreground">{t("encerrada.titulo", { agente: faixa.agente })}</span>
+          </p>
+          <LinhaDoProximoPasso proximo={faixa.proximo} agora={agora} lidoEm={lidoEm} encerrada />
+        </div>
+        <BannerButton
+          onClick={aoPausar}
+          busy={busy}
+          icon={Pause}
+          title={
+            temporario
+              ? t("encerrada.pausarDica", { minutos: faixa.minutos ?? 0 })
+              : t("encerrada.pausarDicaSemVolta")
+          }
+        >
+          {t("pausar")}
+        </BannerButton>
+        {temporario ? (
+          <DesativarComAviso
+            key="encerrada"
+            minutos={faixa.minutos ?? 0}
+            pausada={false}
+            busy={busy}
+            aoPausar={aoPausar}
+            aoDesativar={aoDesativar}
+          />
+        ) : null}
       </Banner>
     );
   }

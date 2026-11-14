@@ -220,6 +220,29 @@ describe('o aviso do "Desativar IA" — na pausa TEMPORÁRIA', () => {
   });
 });
 
+describe('o aviso do "Desativar IA" — na conversa ENCERRADA com follow-up na fila (1146)', () => {
+  const encerrada = (minutos: number | null): Faixa => ({
+    tipo: 'encerrada',
+    agente: 'Triagem',
+    minutos,
+    proximo: { tipo: 'retomada', em: '2026-11-14T18:00:00Z', tentativa: 1, tentativas: 3 },
+  });
+
+  it('a faixa da encerrada também abre o aviso, fechado até o clique', () => {
+    const html = desenharFaixa(encerrada(15));
+    expect(html).toContain(banner.pausar);
+    expect(html).toContain(banner.desativar);
+    expect(dialogos.map((d) => d.open)).toEqual([false]);
+  });
+
+  it('N = 0: só o Pausar, sem Desativar nem aviso', () => {
+    const html = desenharFaixa(encerrada(0));
+    expect(html).toContain(banner.pausar);
+    expect(html).not.toContain(banner.desativar);
+    expect(dialogos).toEqual([]);
+  });
+});
+
 describe('o aviso do "Desativar IA" — o resto da faixa não muda', () => {
   it('N = 0 ou desconhecido (o Pausar já é permanente): sem Desativar, sem aviso', () => {
     for (const minutos of [0, null]) {
@@ -275,6 +298,11 @@ describe('pino estrutural: o Desativar só sai pelo aviso', () => {
   it('cada estado da faixa tem o seu Desativar (`key`): o aviso aberto FECHA quando a faixa muda, em vez de trocar os botões de lugar debaixo do clique', () => {
     expect(fonte).toMatch(/<DesativarComAviso\s+key="atendendo"/);
     expect(fonte).toMatch(/<DesativarComAviso\s+key="pausada"/);
+    expect(fonte).toMatch(/<DesativarComAviso\s+key="encerrada"/);
+  });
+
+  it('⚠️ na encerrada o principal do aviso é o "Pausar em vez disso" (`pausada={false}`): é ele que para o follow-up sem desativar a IA', () => {
+    expect(fonte).toMatch(/<DesativarComAviso\s+key="encerrada"\s+minutos=\{faixa\.minutos \?\? 0\}\s+pausada=\{false\}/);
   });
 
   it('o espelho deste teste é a ligação da faixa: Pausar e Desativar vão a `alternar`, que manda `corpoDaAcao`', () => {

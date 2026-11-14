@@ -1145,9 +1145,16 @@
         "card_antigo": "the deal was already in the stage before the agent was turned on there"
       },
       "naoAtendeDica": "It only answers deals that enter the stage after it is turned on: this conversation stays with the team.",
+      "encerrada": {
+        "titulo": "Conversation closed: AI · {agente} still sends the follow-up, without reopening it",
+        "dica": "Closing doesn't stop the follow-up while the deal is in a stage with an AI agent. If the customer replies, the conversation reopens.",
+        "pausarDica": "Cancels the scheduled follow-up without reopening the conversation. If the customer writes, the AI comes back on its own after {minutos} min without a reply from the team.",
+        "pausarDicaSemVolta": "Cancels the scheduled follow-up without reopening the conversation. The AI only replies again after someone clicks \"Resume AI\"."
+      },
       "proximo": {
         "nada": "No follow-up scheduled: replies when the customer writes.",
         "agora": "Replying now…",
+        "followUpAgora": "Sending the follow-up now…",
         "respostaJa": "Replying in a moment.",
         "resposta": "Replies from {hora}.",
         "respostaForaDoHorario": "Outside the agent's hours: replies from {hora}.",

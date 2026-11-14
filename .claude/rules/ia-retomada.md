@@ -45,8 +45,9 @@ faz, em `.claude/rules/ia-agentes.md`. ⚠️ "Retomada" aqui é o FOLLOW-UP; o
   meio do envio, a pausa apagada não foi pesada — a série acaba ali. Passo
   "Encerrar conversa" de "Não Respondeu"/"Desqualificado": o card já está na
   etapa sem agente, e o gatilho descarta. Pino
-  `follow-up-depois-de-encerrar-1146.test.ts`. Limite: a faixa da conversa
-  encerrada não mostra o próximo follow-up (a aba Turnos mostra).
+  `follow-up-depois-de-encerrar-1146.test.ts`. A faixa da encerrada mostra o
+  próximo follow-up, com Pausar e Desativar, que o param sem reabrir
+  (`ia-pausa.md`).
 - ⚠️⚠️ **A fala da EQUIPE também arma (1138, P4 e P7 do operador,
   11/11/2026)**, com a cadência do agente da etapa, contada DELA: a equipe
   pediu o holerite e a cliente sumiu → a IA cobra. Quem arma é o gatilho da

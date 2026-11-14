@@ -1138,9 +1138,16 @@
         "card_antigo": "o card já estava na etapa antes de o agente ser ligado nela"
       },
       "naoAtendeDica": "Ele só atende os cards que entram na etapa depois de ligado: esta conversa fica com a equipe.",
+      "encerrada": {
+        "titulo": "Conversa encerrada: IA · {agente} ainda manda o follow-up, sem reabrir a conversa",
+        "dica": "Encerrar não para o follow-up enquanto o card estiver numa etapa com agente de IA. Se o cliente responder, a conversa reabre.",
+        "pausarDica": "Cancela o follow-up agendado, sem reabrir a conversa. Se o cliente escrever, a IA volta sozinha depois de {minutos} min sem resposta da equipe.",
+        "pausarDicaSemVolta": "Cancela o follow-up agendado, sem reabrir a conversa. A IA só volta a responder com o \"Retomar IA\"."
+      },
       "proximo": {
         "nada": "Sem follow-up agendado: responde quando o cliente escrever.",
         "agora": "Respondendo agora…",
+        "followUpAgora": "Mandando o follow-up agora…",
         "respostaJa": "Vai responder em instantes.",
         "resposta": "Responde a partir de {hora}.",
         "respostaForaDoHorario": "Fora do horário do agente: responde a partir de {hora}.",
