@@ -82,6 +82,11 @@ Decisões do operador de 11/11/2026 (P1–P7 de
   LEVANTA a pausa e segue. A 2ª conferência é ESTRITA: pausa que aparece
   durante a geração é gente respondendo (o gatilho pausa de novo porque há
   turno vivo).
+- ⚠️ **Na conexão OFICIAL, a volta não passa da janela de 24 h da Meta**
+  (`lerFimDaJanelaMeta`, a folga da espera do horário), conferida antes de
+  reagendar e na volta: com a janela fechando antes, `sem_resposta` na hora,
+  e a pausa fica. Sem isso, o N perto de 24 h (ou o "Pausar" apertado horas
+  depois da mensagem) pagava uma resposta que a Meta recusa.
 - **`cb_ia_voltar_da_pausa`** (INVOKER, service_role): conversa travada
   (`FOR NO KEY UPDATE`), cerca de posse do turno; "gente depois do gatilho" é
   a régua do gatilho (`agent` com `sender_id` ou celular, sem

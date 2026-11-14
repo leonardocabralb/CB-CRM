@@ -3838,6 +3838,44 @@ describe('executarTurno — a pausa TEMPORÁRIA (1138)', () => {
     expect(voltas()).toHaveLength(0)
   })
 
+  it('⚠️ número OFICIAL: a janela de 24 h da Meta fecha antes da volta — `sem_resposta` já, sem reagendar nem levantar a pausa (achado do Codex)', async () => {
+    banco.tabelas.cb_channels[0].kind = 'meta'
+    banco.tabelas.ai_configs = [{ account_id: CONTA, channel_id: null, ia_volta_apos_min: 1440 }]
+    pausada('gente', 20 * MIN)
+    // A mensagem de 20 min atrás abriu a janela: fecha em 23h40; a volta, 24 h
+    // depois dela, cairia com a janela fechada.
+    conversa().janela_meta = { [CANAL]: haMs(20 * MIN) }
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({
+      status: 'sem_resposta',
+      erro: 'a janela de 24 h da Meta fecha antes de a IA voltar da pausa',
+    })
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'gente' })
+    expect(voltas()).toHaveLength(0)
+    expect(generateReply).not.toHaveBeenCalled()
+  })
+
+  it('número OFICIAL, a volta já chegou mas a janela fecha em 5 min: `sem_resposta`, a pausa fica', async () => {
+    banco.tabelas.cb_channels[0].kind = 'meta'
+    pausada('gente', 20 * MIN)
+    conversa().janela_meta = { [CANAL]: haMs(24 * 60 * MIN - 5 * MIN) }
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'sem_resposta' })
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'gente' })
+    expect(voltas()).toHaveLength(0)
+    expect(engineSendText).not.toHaveBeenCalled()
+  })
+
+  it('número OFICIAL com a volta dentro da janela: espera a volta, como a Evolution', async () => {
+    banco.tabelas.cb_channels[0].kind = 'meta'
+    banco.tabelas.ai_configs = [{ account_id: CONTA, channel_id: null, ia_volta_apos_min: 30 }]
+    pausada('gente', 20 * MIN)
+    conversa().janela_meta = { [CANAL]: haMs(20 * MIN) }
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'aguardando', erro: ERRO_DA_ESPERA_DA_EQUIPE })
+    expect(Date.parse(turno().executar_apos as string)).toBe(Date.parse(conversa().aguardando_desde as string) + 30 * MIN)
+  })
+
   it('⚠️ o "Pausar" no meio da rajada (cedo): o áudio nem é tentado — a pausa da equipe não vira transferência', async () => {
     Object.assign(banco.tabelas.messages.find((m) => m.id === GATILHO)!, { content_type: 'audio', content_text: null })
     vi.mocked(transcreverAudio).mockResolvedValue({ status: 'recusada', erro: 'áudio ilegível' })

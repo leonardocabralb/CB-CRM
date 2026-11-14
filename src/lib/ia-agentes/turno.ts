@@ -1288,12 +1288,32 @@ async function conduzir(
   //    VOLTA, como contam da abertura do horário: depois dos N min, a foto ou
   //    o PDF da cliente já passaram do teto, e a resposta saía sem lê-los.
   // Quem levanta a pausa, sob a trava, é `voltarDaPausa`, antes de gerar.
+  //
+  // ⚠️ Na conexão OFICIAL, a volta não passa da janela de 24 h da Meta, como a
+  // espera do horário acima (achado do Codex): com N perto de 24 h, ou o
+  // "Pausar" apertado horas depois da mensagem, a IA voltaria com a janela
+  // fechada e pagaria uma resposta que a Meta recusa. Conferida antes de
+  // reagendar E na volta, antes de levantar a pausa: termina `sem_resposta`,
+  // e a pausa e o alerta de atraso ficam com a equipe.
   if (primeira.sobrePausa) {
     const volta = primeira.sobrePausa.voltaEmMs
-    if (Number.isFinite(volta) && Date.now() < volta) {
-      return { status: 'reagendar', executarApos: new Date(volta).toISOString(), erro: ERRO_DA_ESPERA_DA_EQUIPE }
+    if (Number.isFinite(volta)) {
+      if (turno.canal_id) {
+        const fimDaJanelaMeta = await lerFimDaJanelaMeta(db, {
+          accountId: turno.account_id,
+          conversationId: turno.conversation_id,
+          canalId: turno.canal_id,
+          agora: Date.now(),
+        })
+        if (fimDaJanelaMeta !== null && Math.max(volta, Date.now()) + FOLGA_NA_JANELA_META_MS >= fimDaJanelaMeta) {
+          return { status: 'sem_resposta', erro: 'a janela de 24 h da Meta fecha antes de a IA voltar da pausa' }
+        }
+      }
+      if (Date.now() < volta) {
+        return { status: 'reagendar', executarApos: new Date(volta).toISOString(), erro: ERRO_DA_ESPERA_DA_EQUIPE }
+      }
+      andamento.abertoDesde = Math.max(andamento.abertoDesde ?? volta, volta)
     }
-    if (Number.isFinite(volta)) andamento.abertoDesde = Math.max(andamento.abertoDesde ?? volta, volta)
   }
 
   const desde = await inicioDaRajada(db, turno, gatilho)
