@@ -143,3 +143,7 @@ Decisões do operador de 11/11/2026 (P1–P7 de
   deploy) diz que é a equipe, para não repetir nem contradizer e seguir o que
   ela combinou. O rótulo imitado sai em `lerAcoes` (`semRotuloDaEquipe`, em
   qualquer ponto, em negrito e traduzido): nunca chega ao cliente.
+- O ÁUDIO da equipe vai TRANSCRITO (14/11/2026; `ouvirAudiosDaEquipe`, sem
+  segurar a resposta: `ia-agentes-turno.md`); sem a transcrição pronta a
+  tempo, vai o rótulo do áudio, como antes. `ehFalaDaEquipe` decide as duas
+  coisas (quem leva o rótulo e quais áudios são ouvidos): mudá-la muda ambas.

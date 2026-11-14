@@ -2,7 +2,9 @@
 // Transcrição de nota de voz — a função ÚNICA, idempotente e guardada.
 //
 // Três chamadores, uma regra: o botão da bolha (rota), o worker do Radar
-// (áudio do cliente na janela) e — no futuro — a resposta automática.
+// (áudio do cliente na janela) e o turno do agente de IA (o áudio do cliente
+// e, desde 14/11/2026, o da EQUIPE — este sem esperar o fim: a transcrição
+// pode terminar depois do turno, e é o cadeado que impede pagar duas vezes).
 // Quem chega primeiro paga a transcrição; os demais leem o que já está
 // gravado. O cadeado UPDATE…RETURNING é obrigatório: no deploy
 // (`start-first`) existem DOIS processos vivos, e só o banco impede pagar

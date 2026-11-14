@@ -257,10 +257,12 @@ import { ERRO_DA_ARMACAO_PELA_EQUIPE, ERRO_DA_ESPERA_DA_EQUIPE } from './pausa'
 import { CANARIO_DAS_REGRAS } from './regras-do-sistema'
 import { obterAgente } from './repo'
 import {
+  AUDIOS_DA_EQUIPE_POR_TURNO,
   ERRO_DA_REPETICAO,
   executarTurno,
   MIDIAS_POR_TURNO,
   nadaSaiu,
+  RESERVA_DA_GERACAO_MS,
   TETO_DA_ESPERA_DAS_MIDIAS_MS,
   transferirParaGente,
 } from './turno'
@@ -2845,6 +2847,207 @@ describe('executarTurno — imagem e PDF do cliente', () => {
 })
 
 // ------------------------------------------------------------
+// O áudio da EQUIPE (14/11/2026): a IA ouve o que a equipe explicou
+// ------------------------------------------------------------
+
+describe('executarTurno — o áudio da EQUIPE (14/11/2026)', () => {
+  const enviadas = () => vi.mocked(generateReply).mock.calls[0][0].messages as Array<{ role: string; content: string }>
+  const conversaEnviada = () => enviadas().map((m) => m.content)
+  const linha = (id: string) => banco.tabelas.messages.find((m) => m.id === id)!
+  const ouvidos = () => vi.mocked(transcreverAudio).mock.calls.map((c) => c[1].messageId)
+
+  /** O áudio da equipe (pelo CRM, por padrão), gravado há `haMsGravado` — antes da mensagem do cliente. */
+  function audioDaEquipe(id: string, haMsGravado: number, p: Linha = {}): Linha {
+    return mensagem({
+      id,
+      message_id: `wamid.${id}`,
+      sender_type: 'agent',
+      sender_id: MEMBRO,
+      content_type: 'audio',
+      content_text: null,
+      media_type: 'audio/ogg',
+      gravada_em: haMs(haMsGravado),
+      created_at: haMs(haMsGravado),
+      ...p,
+    })
+  }
+
+  /** O dublê OUVE de verdade: grava a transcrição na linha, como `transcreverAudio` faria. */
+  function ouveComo(texto: (id: string) => string): void {
+    vi.mocked(transcreverAudio).mockImplementation(async (_db, { messageId }) => {
+      Object.assign(linha(messageId), { transcricao: texto(messageId), transcricao_status: 'pronta' })
+      return { status: 'pronta', transcricao: texto(messageId) }
+    })
+  }
+
+  it.each<[string, Linha]>([
+    ['pelo CRM (`sender_id`)', {}],
+    ['pelo celular pareado (`from_device`)', { sender_id: null, from_device: true }],
+  ])('o áudio da equipe %s vira TEXTO antes de gerar: o modelo recebe a transcrição, rotulada como da equipe', async (_rotulo, p) => {
+    banco.tabelas.messages.push(audioDaEquipe('audio-equipe', 5 * 60_000, p))
+    ouveComo(() => 'Maria, já protocolamos o pedido; o prazo é de 30 dias.')
+    await executarTurno(TURNO)
+    expect(transcreverAudio).toHaveBeenCalledWith(banco, { accountId: CONTA, messageId: 'audio-equipe' })
+    expect(turno().status).toBe('respondeu')
+    expect(enviadas()).toContainEqual({
+      role: 'assistant',
+      content: '[Team member] [audio message, transcribed] Maria, já protocolamos o pedido; o prazo é de 30 dias.',
+    })
+  })
+
+  it.each<[string, Awaited<ReturnType<typeof transcreverAudio>>]>([
+    ['falhou', { status: 'falhou', erro: 'gemini fora do ar' }],
+    ['recusada', { status: 'recusada', erro: 'áudio grande demais para transcrever' }],
+    ['transcrevendo (o cadeado de outra rodada)', { status: 'transcrevendo' }],
+  ])('a transcrição %s: o turno RESPONDE com o rótulo — sem transferir, reagendar nem falhar', async (_rotulo, r) => {
+    banco.tabelas.messages.push(audioDaEquipe('audio-equipe', 5 * 60_000))
+    vi.mocked(transcreverAudio).mockResolvedValue(r)
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(conversa().ia_pausada_por).toBeNull()
+    expect(notas()).toHaveLength(0)
+    expect(conversaEnviada()).toContain('[Team member] [audio message, not transcribed]')
+  })
+
+  it('no máximo 3 por rodada, os MAIS NOVOS ainda sem transcrição — os outros seguem com o rótulo', async () => {
+    for (let i = 1; i <= 5; i++) banco.tabelas.messages.push(audioDaEquipe(`equipe-${i}`, (12 - i) * 60_000))
+    ouveComo((id) => `explicação ${id}`)
+    await executarTurno(TURNO)
+    expect(AUDIOS_DA_EQUIPE_POR_TURNO).toBe(3)
+    expect(ouvidos()).toEqual(['equipe-5', 'equipe-4', 'equipe-3'])
+    expect(turno().status).toBe('respondeu')
+    expect(conversaEnviada()).toContain('[Team member] [audio message, transcribed] explicação equipe-5')
+    expect(conversaEnviada().filter((c) => c === '[Team member] [audio message, not transcribed]')).toHaveLength(2)
+  })
+
+  it('não manda ouvir: o já transcrito, o recusado, o de outra conexão, e o áudio da IA, do robô ou sem autor (API)', async () => {
+    banco.tabelas.messages.push(
+      audioDaEquipe('ja-ouvido', 9 * 60_000, { transcricao: 'Já mandamos o contrato.', transcricao_status: 'pronta' }),
+      audioDaEquipe('recusado', 8 * 60_000, { transcricao_status: 'recusada', transcricao_erro: 'grande demais' }),
+      audioDaEquipe('outra-conexao', 7 * 60_000, { channel_id: OUTRO_CANAL }),
+      audioDaEquipe('da-ia', 6 * 60_000, { sender_type: 'bot', sender_id: null, ia_agente_id: AGENTE }),
+      audioDaEquipe('do-robo', 5 * 60_000, { sender_type: 'bot', sender_id: null }),
+      audioDaEquipe('da-api', 4 * 60_000, { sender_id: null, from_device: false }),
+    )
+    await executarTurno(TURNO)
+    expect(transcreverAudio).not.toHaveBeenCalled()
+    expect(turno().status).toBe('respondeu')
+    // O que já está transcrito (pela bolha, por um turno anterior) entra pronto.
+    expect(conversaEnviada()).toContain('[Team member] [audio message, transcribed] Já mandamos o contrato.')
+  })
+
+  it('o gatilho além do teto da espera das mídias: o áudio da equipe não é ouvido nesta rodada (o cliente já esperou)', async () => {
+    Object.assign(linha(GATILHO), {
+      gravada_em: haMs(TETO_DA_ESPERA_DAS_MIDIAS_MS + 1_000),
+      created_at: haMs(TETO_DA_ESPERA_DAS_MIDIAS_MS + 1_000),
+    })
+    banco.tabelas.messages.push(audioDaEquipe('audio-equipe', TETO_DA_ESPERA_DAS_MIDIAS_MS + 60_000))
+    await executarTurno(TURNO)
+    expect(transcreverAudio).not.toHaveBeenCalled()
+    expect(turno().status).toBe('respondeu')
+    expect(conversaEnviada()).toContain('[Team member] [audio message, not transcribed]')
+  })
+
+  describe('o áudio do CLIENTE continua com a prioridade e o comportamento de antes', () => {
+    function gatilhoDeAudio(): void {
+      Object.assign(linha(GATILHO), { content_type: 'audio', content_text: null })
+      banco.tabelas.messages.push(audioDaEquipe('audio-equipe', 5 * 60_000))
+    }
+
+    it('o do cliente é ouvido ANTES do da equipe', async () => {
+      gatilhoDeAudio()
+      ouveComo((id) => (id === GATILHO ? 'e o prazo?' : 'o prazo é de 30 dias'))
+      await executarTurno(TURNO)
+      expect(ouvidos()).toEqual([GATILHO, 'audio-equipe'])
+      expect(conversaEnviada()).toEqual([
+        '[Team member] [audio message, transcribed] o prazo é de 30 dias',
+        '[audio message, transcribed] e o prazo?',
+      ])
+    })
+
+    it('o do cliente que não se ouve TRANSFERE como antes — e o da equipe nem é tentado', async () => {
+      gatilhoDeAudio()
+      vi.mocked(transcreverAudio).mockResolvedValue({ status: 'recusada', erro: 'áudio grande demais' })
+      await executarTurno(TURNO)
+      expect(ouvidos()).toEqual([GATILHO])
+      expect(turno()).toMatchObject({ status: 'transferiu', erro: 'audio' })
+    })
+
+    it('o do cliente ainda baixando REAGENDA como antes — o da equipe espera a rodada seguinte', async () => {
+      gatilhoDeAudio()
+      vi.mocked(transcreverAudio).mockResolvedValue({ status: 'falhou', erro: 'o áudio ainda está sendo baixado' })
+      await executarTurno(TURNO)
+      expect(ouvidos()).toEqual([GATILHO])
+      expect(turno()).toMatchObject({ status: 'aguardando', rodando_desde: null })
+    })
+  })
+
+  describe('a espera tem TETO: a resposta nunca perde o prazo por causa do áudio da equipe', () => {
+    // Só o `Date` é falso: a leitura de uma foto do cliente "come" o prazo do
+    // turno, e o resto do relógio (o `setTimeout` da espera) é o de verdade.
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date())
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    /** A foto do cliente cuja leitura leva `ms` (ninguém a lê: não reagenda o turno). */
+    function fotoQueLeva(ms: number): void {
+      banco.tabelas.messages.push(
+        mensagem({
+          id: 'foto',
+          message_id: 'wamid.foto',
+          content_type: 'image',
+          content_text: null,
+          media_type: 'image/jpeg',
+          gravada_em: haMs(25_000),
+          created_at: haMs(25_000),
+        }),
+      )
+      vi.mocked(lerMidia).mockImplementation(async () => {
+        vi.setSystemTime(Date.now() + ms)
+        return { status: 'sem_leitor', erro: 'sem chave' }
+      })
+    }
+
+    it('sobra pouco: espera SÓ até a sobra e responde com o rótulo — a geração fica com a reserva dela', async () => {
+      // 60 s − 10 s do envio − 8 s do embedding − 30 s da geração = 12 s: com
+      // 11,95 s gastos, a espera é de 50 ms — e a transcrição não acaba nunca.
+      fotoQueLeva(11_950)
+      banco.tabelas.messages.push(audioDaEquipe('audio-equipe', 5 * 60_000))
+      vi.mocked(transcreverAudio).mockReturnValue(new Promise(() => {}))
+      await executarTurno(TURNO)
+      expect(ouvidos()).toEqual(['audio-equipe'])
+      expect(turno().status).toBe('respondeu')
+      expect(conversaEnviada()).toContain('[Team member] [audio message, not transcribed]')
+      expect(vi.mocked(generateReply).mock.calls[0][0].timeoutMs).toBeGreaterThanOrEqual(RESERVA_DA_GERACAO_MS)
+    })
+
+    it('⚠️ sem sobra: manda ouvir e NÃO espera — responde com o rótulo, e a transcrição SEGUE e fica gravada para o próximo turno', async () => {
+      fotoQueLeva(13_000)
+      banco.tabelas.messages.push(audioDaEquipe('audio-equipe', 5 * 60_000))
+      let terminar!: () => void
+      const ouvido = new Promise<void>((resolve) => {
+        terminar = resolve
+      })
+      vi.mocked(transcreverAudio).mockImplementation(async (_db, { messageId }) => {
+        await ouvido
+        Object.assign(linha(messageId), { transcricao: 'o prazo é de 30 dias', transcricao_status: 'pronta' })
+        return { status: 'pronta', transcricao: 'o prazo é de 30 dias' }
+      })
+      await executarTurno(TURNO)
+      expect(turno().status).toBe('respondeu')
+      expect(conversaEnviada()).toContain('[Team member] [audio message, not transcribed]')
+      // Não foi abortada: termina depois do turno e fica gravada.
+      terminar()
+      await vi.waitFor(() => expect(linha('audio-equipe').transcricao_status).toBe('pronta'))
+    })
+  })
+})
+
+// ------------------------------------------------------------
 // O que o agente vê (F3): blocos de acesso, a base DELE e o retrato
 // ------------------------------------------------------------
 
@@ -4692,6 +4895,65 @@ describe('a RETOMADA (1056)', () => {
       comPreArmacao(20 * MIN)
       await executarTurno(RETOMADA)
       expect(turno(RETOMADA)).toMatchObject({ status: 'descartado', erro: 'a retomada está desligada no agente' })
+    })
+
+    describe('a fala da equipe por ÁUDIO (14/11/2026)', () => {
+      const falaDaEquipe = () => banco.tabelas.messages.find((m) => m.id === EQUIPE)!
+
+      /** A fala da equipe vira um áudio, e o dublê o OUVE de verdade (grava na linha). */
+      function porAudio(): void {
+        Object.assign(falaDaEquipe(), { content_type: 'audio', content_text: null, media_type: 'audio/ogg' })
+        vi.mocked(transcreverAudio).mockImplementation(async (_db, { messageId }) => {
+          const transcricao = 'Maria, me manda o holerite de outubro e a carteira de trabalho.'
+          Object.assign(banco.tabelas.messages.find((m) => m.id === messageId)!, { transcricao, transcricao_status: 'pronta' })
+          return { status: 'pronta', transcricao }
+        })
+      }
+
+      it('o follow-up OUVE o áudio antes de gerar: o modelo recebe o que a equipe pediu, rotulado', async () => {
+        comPreArmacao(20 * MIN)
+        porAudio()
+        await executarTurno(RETOMADA)
+        expect(transcreverAudio).toHaveBeenCalledWith(banco, { accountId: CONTA, messageId: EQUIPE })
+        expect(turno(RETOMADA).status).toBe('respondeu')
+        const enviadas = vi.mocked(generateReply).mock.calls[0][0].messages
+        expect(enviadas).toContainEqual({
+          role: 'assistant',
+          content: '[Team member] [audio message, transcribed] Maria, me manda o holerite de outubro e a carteira de trabalho.',
+        })
+      })
+
+      it('⚠️ a PRÉ-ARMAÇÃO (30 s depois da fala) já manda ouvir, sem gerar: o follow-up, minutos depois, a encontra pronta', async () => {
+        comPreArmacao(MIN)
+        porAudio()
+        await executarTurno(RETOMADA)
+        expect(turno(RETOMADA).status).toBe('aguardando')
+        expect(generateReply).not.toHaveBeenCalled()
+        expect(transcreverAudio).toHaveBeenCalledWith(banco, { accountId: CONTA, messageId: EQUIPE })
+        await vi.waitFor(() => expect(falaDaEquipe().transcricao_status).toBe('pronta'))
+      })
+
+      it('a transcrição que falha: o follow-up sai assim mesmo, com o rótulo (nunca reagenda nem para a série)', async () => {
+        comPreArmacao(20 * MIN)
+        Object.assign(falaDaEquipe(), { content_type: 'audio', content_text: null })
+        vi.mocked(transcreverAudio).mockResolvedValue({ status: 'falhou', erro: 'gemini fora do ar' })
+        await executarTurno(RETOMADA)
+        expect(turno(RETOMADA).status).toBe('respondeu')
+        expect(vi.mocked(generateReply).mock.calls[0][0].messages).toContainEqual({
+          role: 'assistant',
+          content: '[Team member] [audio message, not transcribed]',
+        })
+        expect(retomadas()).toMatchObject([{ tentativa: 2 }])
+      })
+
+      it('a retomada que NÃO vale (a cliente escreveu depois da fala): nada é mandado ouvir', async () => {
+        comPreArmacao(20 * MIN)
+        porAudio()
+        banco.tabelas.messages.push(mensagem({ id: 'msg-depois', message_id: 'wamid.depois', gravada_em: haMs(MIN) }))
+        await executarTurno(RETOMADA)
+        expect(turno(RETOMADA).status).toBe('descartado')
+        expect(transcreverAudio).not.toHaveBeenCalled()
+      })
     })
   })
 })

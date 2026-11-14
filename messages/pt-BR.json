@@ -7523,6 +7523,7 @@
       "desconhecido": "Não foi possível conferir agora quais chaves a conta tem.",
       "semAudio": "Esta conta não tem chave do Gemini nem da OpenAI, e a Anthropic não ouve áudio: o áudio do cliente não será ouvido, e a conversa com áudio vai para a equipe.",
       "limiteAudio": "Áudio: Gemini, senão OpenAI. A Anthropic não ouve áudio.",
+      "audioDaEquipe": "Áudio da equipe: os mais recentes da conversa também são ouvidos (foto e documento da equipe, não), para o agente não repetir nem contradizer o que a equipe explicou. Se a transcrição não ficar pronta a tempo, o agente vê só que houve um áudio: a resposta ao cliente não fica presa a ela.",
       "limiteFormatos": "Foto HEIC (a do iPhone) só é lida quando quem lê é o Gemini; GIF, só quando quem lê não é o Gemini.",
       "limitePlanilha": "Word, Excel e PowerPoint só o Gemini lê (da planilha, só a primeira aba). Outros arquivos (zip, texto…) nenhum provedor lê: o agente pede que o cliente descreva o conteúdo ou reenvie em outro formato.",
       "limiteVideo": "Vídeo não é assistido: o agente vê só que chegou um vídeo, com a legenda.",

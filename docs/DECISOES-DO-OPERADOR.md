@@ -171,6 +171,12 @@ qualquer uma é pergunta ao operador.
   follow-up que sai devolve a conversa à IA; os N min contam no relógio (fora
   do horário, espera a abertura); a fala da equipe chega ao modelo rotulada,
   sem o nome (`ia-pausa.md`).
+- O agente de IA OUVE o áudio da EQUIPE (14/11/2026: a IA fazia o follow-up
+  sem saber o que a equipe explicou por áudio): a transcrição entra no
+  contexto com o rótulo da equipe, mas NUNCA segura a resposta nem reagenda o
+  turno — o que não ficar pronto a tempo vai com o rótulo, e o áudio do
+  cliente tem a prioridade; foto e documento da equipe seguem sem leitura, e o
+  Radar segue ouvindo só o cliente (`ia-agentes-turno.md`).
 - IA que passa a conversa para a equipe AVISA (11/11/2026; 1139): no sino e
   numa caixinha clicável dentro do CRM, que fica até alguém abrir a conversa
   ou fechar; recebem as pessoas marcadas em cada agente e sempre o
