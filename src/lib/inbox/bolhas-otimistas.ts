@@ -69,7 +69,18 @@ export function comLinhaDoTempoReal(
   linha: Message,
   quemEstaNaTela: string | null
 ): Message[] {
-  if (lista.some((m) => m.id === linha.id)) return lista;
+  const repetida = lista.findIndex((m) => m.id === linha.id);
+  if (repetida >= 0) {
+    // ⚠️ A tentativa GRAVADA que o fio já pintou com o id dela (`pintarFalha`
+    // renomeia a otimista para o `mensagem_id` da resposta) chega aqui
+    // REPETIDA. A linha do BANCO vence a da tela: carimbo, texto assinado e
+    // canal são os dela — a da tela tem o relógio do navegador, e a régua do
+    // "Tentar de novo" ordena por ele. Só a da TELA (sem `gravada_em`, que o
+    // banco sempre preenche) é trocada; o mesmo INSERT entregue duas vezes
+    // devolve a MESMA lista.
+    const daTela = !lista[repetida].gravada_em && Boolean(linha.gravada_em);
+    return daTela ? lista.map((m, i) => (i === repetida ? linha : m)) : lista;
+  }
   // A falhada da conversa sai com qualquer linha nova (ver o topo).
   const semFalhadas = lista.filter(
     (m) =>

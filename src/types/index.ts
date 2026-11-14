@@ -839,6 +839,12 @@ export interface Message {
   message_id?: string;
   status: MessageStatus;
   created_at: string;
+  /**
+   * Quando o BANCO gravou a linha (1003; `now()` no INSERT, nula na carga de
+   * histórico). A bolha OTIMISTA da tela nunca tem: é o que separa a linha do
+   * banco da otimista já renomeada para o id dela (`comLinhaDoTempoReal`).
+   */
+  gravada_em?: string | null;
   reply_to_message_id?: string;
   /**
    * Only set when `content_type === 'interactive'` — the stable id of

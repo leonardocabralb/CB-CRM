@@ -76,6 +76,7 @@ import {
   assinaturaExistente,
   nomeDePessoa,
   removerAssinatura,
+  removerAssinaturaDe,
 } from "@/lib/assinatura/assinatura";
 import { LeadEventLine } from "@/components/lead-events/lead-event-line";
 import { NoteLine } from "./note-line";
@@ -2136,21 +2137,25 @@ export function MessageThread({
    *
    * A GRAVADA (31/10/2026) só enquanto for a última nossa
    * (`gravadaReenviavel`), e SEM a assinatura que a linha tem — o envio
-   * assina de novo com o nome de agora (`removerAssinatura`, como a edição);
-   * com o nome mudado, o cliente receberia as duas.
+   * assina de novo com o nome de agora. ⚠️ Só a assinatura DE QUEM TENTOU
+   * (`removerAssinaturaDe` com `nomeQueAssina`), nunca qualquer `*algo:*` do
+   * começo: com a assinatura desligada, um `*Atenção:*` na primeira linha é
+   * conteúdo, e sairia cortado. Com o nome mudado desde a tentativa, o
+   * prefixo velho fica no texto (o cliente veria os dois — raro, e nada se
+   * perde).
    */
   const tentarDeNovo = useCallback(
     (id: string) => {
       const r = reenviaveis.get(id);
       if (r?.retida) return;
       const gravada = !r && id === gravadaReenviavel ? messages.find((m) => m.id === id) : undefined;
-      const texto = r?.texto ?? removerAssinatura(gravada?.content_text);
+      const texto = r?.texto ?? removerAssinaturaDe(gravada?.content_text, nomeQueAssina);
       if (!texto) return;
       const replyToId = r ? r.replyToId : (gravada?.reply_to_message_id ?? undefined);
       if (!compositorRef.current?.reenviarTexto(texto, replyToId, id)) return;
       marcarReenviavel(id, { texto, replyToId, retida: true });
     },
-    [reenviaveis, marcarReenviavel, gravadaReenviavel, messages],
+    [reenviaveis, marcarReenviavel, gravadaReenviavel, messages, nomeQueAssina],
   );
 
   // O "Desfazer" do compositor cancelou o reenvio: o botão volta — se a bolha
@@ -3662,6 +3667,9 @@ export function MessageThread({
                             confirmadasComoEnviadas.has(msg.id)
                           }
                           onTentarDeNovo={
+                            // `podeEnviar`: no "Ver como" de um perfil sem envio,
+                            // e para o membro rebaixado, o botão não existe.
+                            podeEnviar &&
                             !envioTravado &&
                             (reenviaveis.get(msg.id)?.retida === false ||
                               (msg.id === gravadaReenviavel &&

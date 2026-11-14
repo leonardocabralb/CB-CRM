@@ -7,6 +7,7 @@ import {
   nomeDePessoa,
   prefixoDeAssinatura,
   removerAssinatura,
+  removerAssinaturaDe,
   saneiaNome,
 } from './assinatura';
 
@@ -138,6 +139,26 @@ describe('removerAssinatura', () => {
   it('atravessa null e undefined sem quebrar', () => {
     expect(removerAssinatura(null)).toBeNull();
     expect(removerAssinatura(undefined)).toBeUndefined();
+  });
+});
+
+describe('removerAssinaturaDe', () => {
+  it('tira a assinatura DESTE nome, e só ela', () => {
+    expect(removerAssinaturaDe('*Ana Souza:*\nO prazo vence amanhã', 'Ana Souza')).toBe(
+      'O prazo vence amanhã',
+    );
+  });
+
+  it('⚠️ com a assinatura desligada, a 1ª linha em negrito é conteúdo e FICA', () => {
+    // O "Tentar de novo" com `removerAssinatura` mandava só a segunda linha.
+    const texto = '*Atenção:*\nO prazo vence amanhã';
+    expect(removerAssinaturaDe(texto, null)).toBe(texto);
+    expect(removerAssinaturaDe(texto, 'Ana Souza')).toBe(texto);
+  });
+
+  it('nulo e indefinido passam como vieram', () => {
+    expect(removerAssinaturaDe(null, 'Ana')).toBeNull();
+    expect(removerAssinaturaDe(undefined, 'Ana')).toBeUndefined();
   });
 });
 
