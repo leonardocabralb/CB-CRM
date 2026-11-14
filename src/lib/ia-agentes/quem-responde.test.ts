@@ -178,6 +178,33 @@ describe('quemResponde — a pausa TEMPORÁRIA (1138)', () => {
   })
 })
 
+describe('quemResponde — a RETOMADA atravessa a conversa encerrada (1146)', () => {
+  it('encerrada SEM a declaração: ninguém (a resposta, a entrada e a faixa, como sempre)', () => {
+    expect(quemResponde(fatos({ encerrada: true }))).toEqual({ quem: 'ninguem', motivo: 'encerrada' })
+    expect(quemResponde(fatos({ encerrada: true, atravessaEncerrada: false }))).toEqual({ quem: 'ninguem', motivo: 'encerrada' })
+  })
+
+  it('encerrada e declarada pela retomada: as regras seguem, e o agente da etapa vem com o card e a etapa', () => {
+    expect(quemResponde(fatos({ encerrada: true, atravessaEncerrada: true }))).toEqual({
+      quem: 'agente',
+      agenteId: 'cobranca',
+      dealId: 'deal-1',
+      stageId: 'etapa-cobranca',
+    })
+  })
+
+  it('a declaração não passa por cima das outras regras: pausa, card fora da etapa, agente desligado', () => {
+    const encerrada = { encerrada: true, atravessaEncerrada: true }
+    expect(quemResponde(fatos({ ...encerrada, pausada: true }))).toEqual({ quem: 'ninguem', motivo: 'pausada' })
+    expect(quemResponde(fatos({ ...encerrada, agente: null }))).toEqual({ quem: 'ninguem', motivo: 'etapa_sem_agente' })
+    expect(quemResponde(fatos({ ...encerrada, card: null }))).toEqual({ quem: 'ninguem', motivo: 'sem_card' })
+    expect(quemResponde(fatos({ ...encerrada, agente: { ...AGENTE, ativo: false } }))).toEqual({
+      quem: 'ninguem',
+      motivo: 'agente_desligado',
+    })
+  })
+})
+
 describe('abreTurno — a régua do conteúdo (a entrada e o turno usam a mesma)', () => {
   it('vídeo está entre os tipos que abrem turno (E9)', () => {
     expect(TIPOS_QUE_ABREM_TURNO.has('video')).toBe(true)

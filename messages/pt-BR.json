@@ -7479,7 +7479,7 @@
       "janelaInvalida": "O início tem de ser antes do fim.",
       "inicio": "Início da janela",
       "fim": "Fim da janela",
-      "paradas": "As retomadas param sozinhas quando o cliente responde, quando alguém da equipe escreve (com \"Quando a equipe responde\" ligado, a série recomeça contada da fala da equipe) ou pausa a IA, quando a conversa é encerrada, quando o card sai da etapa do agente e perto da reunião do cliente: nunca a menos de 30 min de um lembrete da reunião, e nunca nos 90 min antes dela. Numa conexão oficial da Meta, também quando a janela de 24 h fecha. Se não houver nada pendente, o agente encerra as retomadas sem mandar nada — e elas nunca passam a conversa para a equipe. Cada retomada conta no teto de respostas do agente.",
+      "paradas": "As retomadas param sozinhas quando o cliente responde, quando alguém da equipe escreve (com \"Quando a equipe responde\" ligado, a série recomeça contada da fala da equipe) ou pausa a IA, quando o card sai da etapa do agente (ou é ganho ou perdido) e perto da reunião do cliente: nunca a menos de 30 min de um lembrete da reunião, e nunca nos 90 min antes dela. Numa conexão oficial da Meta, também quando a janela de 24 h fecha. Encerrar a conversa NÃO as para enquanto o card continua na etapa do agente: elas saem com a conversa encerrada, sem reabri-la, e a resposta do cliente a reabre. Se não houver nada pendente, o agente encerra as retomadas sem mandar nada — e elas nunca passam a conversa para a equipe. Cada retomada conta no teto de respostas do agente.",
       "salvo": "Retomada salva.",
       "tentativas": "{n, plural, one {# tentativa} other {# tentativas}} (até {max})",
       "tentativasDica": "Contadas a partir da última resposta do agente que ficou sem resposta. Se uma atrasa (fora da janela, perto de um lembrete da reunião), as seguintes mantêm o intervalo entre elas — e nunca saem a menos de 30 min da anterior.",
@@ -7493,7 +7493,6 @@
       "para": {
         "cliente": "o cliente responde",
         "equipe": "a equipe escreve (recomeça dela) ou pausa a IA",
-        "encerrada": "a conversa é encerrada",
         "etapa": "o card sai da etapa do agente",
         "reuniao": "falta pouco para a reunião do cliente"
       },

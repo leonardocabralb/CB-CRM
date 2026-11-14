@@ -219,8 +219,8 @@ bolha, ao Radar e ao agente de IA.
 ### Agentes de IA (1048, `src/lib/ia-agentes/`, `/agents`)
 
 Plano vivo: `docs/PLANO-agentes-de-ia.md` (D1–D27, E1–E14). F2 (1049): eles
-RESPONDEM cliente, por etapa do funil; a resposta automática do assistente
-anterior saiu (E2), e o ✨ do rascunho segue nele.
+RESPONDEM cliente, por etapa do funil; o auto-reply do assistente antigo
+saiu (E2); o ✨ do rascunho segue nele.
 
 - ⚠️⚠️ **"Agente" no código é PESSOA** (`assigned_agent_id`, o papel `agent`).
   Agente de IA leva `ia_agente` no nome (`cb_ia_agentes`, `ia_agente_id`).
@@ -333,8 +333,9 @@ ingestões), `fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron
   não pausa; a agendada e o eco antes do id pausam. `set_ai`: desligar =
   `automacao` sem pisar noutro motivo; ligar desfaz SÓ `automacao`.
 - ⚠️ **Encerrar limpa agente e pausa, recomeça o teto (`ia_retomada_em`)
-  e descarta os turnos** `aguardando` e `rodando` (`cb_encerrar_limpa_ia`,
-  SECURITY DEFINER: o operador encerra sob RLS), menos o que respondeu (1109).
+  e descarta os turnos vivos** (`cb_encerrar_limpa_ia`, SECURITY DEFINER: o
+  operador encerra sob RLS), menos o que respondeu (1109) e a retomada que
+  segue (1146, `ia-retomada.md`).
 - ⚠️ **Falha de CONFIGURAÇÃO não transfere** (E8): chave, modelo, provedor
   fora do ar → `falhou`. Transferem o sentinela, a resposta vazia, o teto, o
   áudio que não se ouve e o envio incerto — pausa `transferencia` + pendente,
@@ -383,9 +384,6 @@ ingestões), `fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron
   produção, tier PAGO (o gratuito pode usar os dados enviados).
 - **Modo ou provedor novo exige migration no CHECK** de `ai_usage_log`
   (`mode`, `provider`): senão `logAiUsage` engole o erro e o custo some.
-- ⚠️ **`ai_configs` tem índices únicos PARCIAIS (903: global + por canal)**:
-  sem `onConflict` (lookup + insert/update); `.maybeSingle()` com o canal, ou
-  `.is('channel_id', null)` para o padrão.
 - Agente por canal, interruptor, RAG por canal, `radarModel` em
   `CONFIG_COLUMNS` e a opção Gemini são trechos NOSSOS em arquivos do
   upstream (`docs/MERGE-UPSTREAM.md`).

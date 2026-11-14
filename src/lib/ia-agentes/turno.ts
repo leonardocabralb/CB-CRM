@@ -91,7 +91,9 @@
 //    seção própria, abaixo. A conversa ENCERRADA durante o turno (a automação
 //    que o próprio agente executou fecha a conversa) não arma retomada; e o
 //    turno cuja resposta já saiu não é mais descartado pelo encerramento
-//    (1109): ele grava `respondeu` com as ações.
+//    (1109): ele grava `respondeu` com as ações. A série que já estava na
+//    fila ATRAVESSA o encerramento (1146): sai com a conversa encerrada, sem
+//    reabri-la.
 //  - A AÇÃO PROMETIDA (25/10/2026, medido): a resposta que diz "criei o
 //    lembrete", "registrei seus dados", "movi seu card" SEM a ação aceita na
 //    mesma resposta é RETIDA e transfere (`acao_prometida`, o texto no
@@ -1204,6 +1206,13 @@ interface Andamento {
    */
   pediuEquipe: boolean
   /**
+   * A RETOMADA foi conferida (antes da reserva) com a conversa JÁ encerrada
+   * (1146): o encerramento a pesou e a deixou na fila, e a série segue nela
+   * (`armarRetomada`). Encerrada só DEPOIS (no meio do envio), a pausa que o
+   * encerramento apagou não foi pesada para esta série: ela acaba aqui.
+   */
+  encerradaAoConferir: boolean
+  /**
    * Quando o horário do agente abriu HOJE (`aberturaDeHoje`, ms); nulo sem
    * horário. As esperas que contam do gatilho (o áudio que ainda baixa, a
    * leitura das mídias) contam no máximo daqui: o turno que esperou a
@@ -1957,6 +1966,13 @@ async function enviarComPosse(
 //    `[[HANDOFF]]`, `[[TRANSFERIR]]`, passagem, a equipe prometida e o link
 //    inventado PARAM a série (registrado no `erro`), sem mandar nada. O teto
 //    de respostas conta as retomadas, e o teto também só para.
+//  - A conversa ENCERRADA não para a série (1146, decisão do operador de
+//    14/11/2026: a equipe pergunta e encerra para limpar a caixa). Quem pesa
+//    é o encerramento (`cb_encerrar_limpa_ia`): descarta a retomada que não
+//    seguiria (a pausa que ela não atravessa, o card fora da etapa do agente)
+//    e deixa a outra na fila. Ela sai com a conversa encerrada, SEM reabri-la
+//    (`engineSendText` só sobe a prévia), e a resposta da cliente reabre pelo
+//    caminho de gente. As leituras declaram `atravessaEncerrada`.
 
 /** O conteúdo com que a retomada passa por `quemResponde` (a régua do conteúdo não se aplica a ela). */
 const CONTEUDO_DA_RETOMADA = { tipo: 'text', texto: 'retomada', mime: null } as const
@@ -1993,6 +2009,8 @@ type ConferenciaDaRetomada =
       agente: IaAgente
       /** A retomada passa por cima da pausa `gente` (1138), com o N da conta: o envio a levanta. */
       sobrePausa: { minutos: number } | null
+      /** A conversa estava ENCERRADA nesta conferência (1146): a retomada a atravessa. */
+      encerrada: boolean
     }
   | { ok: false; desfecho: Desfecho }
 
@@ -2013,8 +2031,10 @@ async function minutosDaPausaDaRetomada(
 
 /**
  * A retomada ainda vale? O card na etapa do turno com o MESMO agente (a
- * leitura da entrada, `lerQuemAtende` + `quemResponde`), a conversa aberta e
- * sem pausa, a retomada ligada no agente e ninguém depois da âncora. Com
+ * leitura da entrada, `lerQuemAtende` + `quemResponde`), a conversa sem pausa
+ * — aberta ou ENCERRADA (1146: ela sai sem reabrir; o encerramento já
+ * descartou a que não seguiria) —, a retomada ligada no agente e ninguém
+ * depois da âncora. Com
  * `reprogramar`, também o vencimento: fora da janela ou perto de um lembrete,
  * a linha volta para a fila no instante certo; a série que não tem mais onde
  * caber (cadência, reunião, janela da Meta) para. LANÇA em erro de leitura
@@ -2033,6 +2053,7 @@ async function conferirRetomada(
     accountId: turno.account_id,
     conversationId: turno.conversation_id,
     canalId: turno.canal_id,
+    atravessaEncerrada: true,
   })
   if (!leitura) return { ok: false, desfecho: { status: 'descartado', erro: 'conversa' } }
   const minutos = await minutosDaPausaDaRetomada(db, turno.account_id, leitura)
@@ -2044,6 +2065,7 @@ async function conferirRetomada(
     roboConsumiu: false,
     automacaoFalou: false,
     pausaTemporaria: minutos > 0,
+    atravessaEncerrada: true,
   })
   if (decisao.quem === 'ninguem') {
     return decisao.motivo === 'pausada'
@@ -2101,7 +2123,13 @@ async function conferirRetomada(
       return { ok: false, desfecho: { status: 'reagendar', executarApos: new Date(proxima.instante).toISOString() } }
     }
   }
-  return { ok: true, contactId: leitura.contactId, agente, sobrePausa: decisao.sobrePausa ? { minutos } : null }
+  return {
+    ok: true,
+    contactId: leitura.contactId,
+    agente,
+    sobrePausa: decisao.sobrePausa ? { minutos } : null,
+    encerrada: leitura.encerrada,
+  }
 }
 
 /**
@@ -2136,6 +2164,7 @@ async function resolverArmacaoDaEquipe(
     accountId: turno.account_id,
     conversationId: turno.conversation_id,
     canalId: turno.canal_id,
+    atravessaEncerrada: true,
   })
   if (!leitura) return { status: 'descartado', erro: 'conversa' }
   const minutos = await minutosDaPausaDaRetomada(db, turno.account_id, leitura)
@@ -2147,6 +2176,9 @@ async function resolverArmacaoDaEquipe(
     roboConsumiu: false,
     automacaoFalou: false,
     pausaTemporaria: minutos > 0,
+    // A equipe perguntou e ENCERROU (1146): o encerramento já pesou a pausa e
+    // o card desta pré-armação e a deixou na fila.
+    atravessaEncerrada: true,
   })
   if (decisao.quem === 'ninguem') return { status: 'descartado', erro: decisao.motivo }
   const agente = await obterAgente(turno.account_id, decisao.agenteId)
@@ -2366,6 +2398,7 @@ async function conduzirRetomada(
   // De novo, com o texto pronto: o cliente pode ter escrito enquanto o modelo pensava.
   const segunda = await conferirRetomada(db, turno, ancora.gravada_em, { reprogramar: false })
   if (!segunda.ok) return segunda.desfecho
+  andamento.encerradaAoConferir = segunda.encerrada
   const dono = await donoDaConta(db, turno.account_id)
   if (!dono) return { status: 'falhou', erro: 'a conta não tem dono' }
   const contactId = segunda.contactId
@@ -2430,7 +2463,8 @@ async function devolverPausaDaEquipe(db: SupabaseClient, turno: LinhaDoTurno): P
 /**
  * ARMA a próxima tentativa da série, depois de uma resposta (a 1ª) ou de uma
  * retomada (a seguinte) que SAIU. Nada se arma com a retomada desligada, a
- * equipe pedida, a conversa encerrada ou pausada, alguém tendo escrito depois
+ * equipe pedida, a conversa encerrada (menos a série que já corria com ela
+ * encerrada, 1146) ou pausada, alguém tendo escrito depois
  * da âncora, ou a série que não cabe mais (`proximaRetomada` = parar). Já
  * existe pendente na conexão (23505) = o cliente escreveu: nada. Os lembretes
  * que não se leem aqui não seguram o armar — a tentativa relê tudo quando
@@ -2470,8 +2504,13 @@ async function armarRetomada(
     // Encerrada TAMBÉM pelo próprio turno: a automação que o agente executou
     // fechou a conversa (desde a 1109 o encerramento não descarta mais o turno
     // cuja resposta saiu, e ele chega aqui como `respondeu`). Nada de
-    // follow-up numa conversa que o agente encerrou.
-    if (!c || c.status === 'closed' || c.ai_autoreply_disabled === true) return
+    // follow-up numa conversa que o agente encerrou. A série que JÁ corria com
+    // a conversa encerrada segue (1146): o encerramento a pesou antes de esta
+    // tentativa ser conferida (`encerradaAoConferir`). Encerrada no MEIO do
+    // envio dela, não — a pausa que o encerramento apagou não foi pesada para
+    // esta série, e ela acaba aqui (o lado de mandar menos).
+    const segueEncerrada = ehRetomada && andamento.encerradaAoConferir
+    if (!c || (c.status === 'closed' && !segueEncerrada) || c.ai_autoreply_disabled === true) return
 
     const { depois } = await lerMensagensDepois(db, {
       conversationId: turno.conversation_id,
@@ -2491,6 +2530,7 @@ async function armarRetomada(
       accountId: turno.account_id,
       conversationId: turno.conversation_id,
       canalId: turno.canal_id,
+      atravessaEncerrada: segueEncerrada,
     })
     if (!leitura) return
     const decisao = quemResponde({
@@ -2500,6 +2540,7 @@ async function armarRetomada(
       ehRespostaDeBotao: false,
       roboConsumiu: false,
       automacaoFalou: false,
+      atravessaEncerrada: segueEncerrada,
     })
     // O MESMO card do turno, com a etapa livre para mudar: com dois cards do
     // agente, o da resposta movido para etapa sem dono faria `lerCardEAgente`
@@ -2735,6 +2776,7 @@ export async function executarTurno(turnoId: string): Promise<void> {
     falhaDaIa: null,
     gerou: false,
     pediuEquipe: false,
+    encerradaAoConferir: false,
     abertoDesde: null,
     cancelarDigitando: new AbortController(),
   }

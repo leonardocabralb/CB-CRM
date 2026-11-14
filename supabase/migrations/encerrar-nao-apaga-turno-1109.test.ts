@@ -117,6 +117,11 @@ describe('1109 — encerrar não apaga o turno que já respondeu', () => {
     const ini = turno.indexOf('async function armarRetomada')
     expect(ini).toBeGreaterThan(-1)
     const funcao = turno.slice(ini, turno.indexOf('\n}\n', ini))
-    expect(funcao).toMatch(/if \(!c \|\| c\.status === 'closed' \|\| c\.ai_autoreply_disabled === true\) return/)
+    // 1146: a exceção é SÓ da série que já corria com a conversa encerrada
+    // (a retomada conferida com ela encerrada); o turno de RESPOSTA nunca arma.
+    expect(funcao).toContain('const segueEncerrada = ehRetomada && andamento.encerradaAoConferir')
+    expect(funcao).toMatch(
+      /if \(!c \|\| \(c\.status === 'closed' && !segueEncerrada\) \|\| c\.ai_autoreply_disabled === true\) return/,
+    )
   })
 })

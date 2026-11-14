@@ -171,6 +171,16 @@ qualquer uma é pergunta ao operador.
   follow-up que sai devolve a conversa à IA; os N min contam no relógio (fora
   do horário, espera a abertura); a fala da equipe chega ao modelo rotulada,
   sem o nome (`ia-pausa.md`).
+- Follow-up da IA depois de ENCERRAR (14/11/2026, revisa o "encerrar
+  descarta" da 1049/1109; 1146): encerrar com o card aberto numa etapa com
+  agente ligado MANTÉM os follow-ups (o da resposta da IA e o da fala da
+  equipe); eles saem com a conversa encerrada, sem reabri-la, e a resposta
+  da cliente a reabre. Param como antes: card ganho, perdido ou em etapa sem
+  agente, agente desligado, cliente ou equipe que escreve (pelas regras de
+  hoje), e a pausa que já os parava (Pausar, Desativar, transferência,
+  automação). Encerrar continua
+  limpando a pausa e o teto, e a resposta pendente da IA sai
+  (`ia-retomada.md`).
 - IA que passa a conversa para a equipe AVISA (11/11/2026; 1139): no sino e
   numa caixinha clicável dentro do CRM, que fica até alguém abrir a conversa
   ou fechar; recebem as pessoas marcadas em cada agente e sempre o
