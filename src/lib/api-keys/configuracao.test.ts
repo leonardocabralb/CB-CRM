@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   OPCOES_DE_VALIDADE_DIAS,
+  acoesDaChave,
   VALIDADE_MAXIMA_DIAS,
   ehChaveSoDeLeitura,
   escritaProibida,
@@ -15,6 +16,18 @@ import { API_SCOPES, ehEscopoDeLeitura } from './scopes';
 const AGORA = Date.parse('2026-11-04T12:00:00Z');
 const UUID_A = '11111111-1111-4111-8111-111111111111';
 const UUID_B = '22222222-2222-4222-8222-222222222222';
+
+describe('acoesDaChave (o que a lista oferece ao admin)', () => {
+  it('a ATIVA se edita e se revoga', () => {
+    expect(acoesDaChave('active')).toEqual({ editar: true, revogar: true });
+  });
+  it('⚠️ a VENCIDA se edita (é como se renova a validade sem trocar o segredo) e não se revoga — achado do Codex', () => {
+    expect(acoesDaChave('expired')).toEqual({ editar: true, revogar: false });
+  });
+  it('a REVOGADA não volta: nem editar, nem revogar de novo', () => {
+    expect(acoesDaChave('revoked')).toEqual({ editar: false, revogar: false });
+  });
+});
 
 describe('lerValidade', () => {
   it('ausente = não mexer; null = sem validade', () => {

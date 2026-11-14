@@ -54,7 +54,7 @@ import {
 import { RequireRole } from '@/components/auth/require-role';
 import { useAuth } from '@/hooks/use-auth';
 import { useMembros } from '@/hooks/use-membros';
-import { OPCOES_DE_VALIDADE_DIAS, validadeSugerida } from '@/lib/api-keys/configuracao';
+import { acoesDaChave, OPCOES_DE_VALIDADE_DIAS, validadeSugerida } from '@/lib/api-keys/configuracao';
 import {
   API_SCOPES,
   SCOPE_DESCRIPTIONS,
@@ -304,6 +304,7 @@ export function ApiKeysSettings() {
               {keys.map((k) => {
                 const status = keyStatus(k);
                 const inactive = status !== 'active';
+                const acoes = acoesDaChave(status);
                 return (
                   <li
                     key={k.id}
@@ -376,10 +377,11 @@ export function ApiKeysSettings() {
                       </p>
                     </div>
 
-                    {status === 'active' && (
+                    {acoes.editar && (
                       <RequireRole min="admin">
                         <div className="flex shrink-0 gap-2 self-start sm:self-auto">
-                          {/* NOSSO (1121): o admin edita a chave sem gerar outra. */}
+                          {/* NOSSO (1121): o admin edita a chave sem gerar outra —
+                              também a VENCIDA (`acoesDaChave`). */}
                           <Button
                             variant="outline"
                             size="sm"
@@ -388,20 +390,22 @@ export function ApiKeysSettings() {
                             <Pencil className="size-4" />
                             {t('edit')}
                           </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleRevoke(k)}
-                            disabled={revoking === k.id}
-                            className="border-red-500/40 bg-red-500/10 text-red-300 hover:border-red-500/60 hover:bg-red-500/20 hover:text-red-200"
-                          >
-                            {revoking === k.id ? (
-                              <Loader2 className="size-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="size-4" />
-                            )}
-                            {t('revoke')}
-                          </Button>
+                          {acoes.revogar && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleRevoke(k)}
+                              disabled={revoking === k.id}
+                              className="border-red-500/40 bg-red-500/10 text-red-300 hover:border-red-500/60 hover:bg-red-500/20 hover:text-red-200"
+                            >
+                              {revoking === k.id ? (
+                                <Loader2 className="size-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="size-4" />
+                              )}
+                              {t('revoke')}
+                            </Button>
+                          )}
                         </div>
                       </RequireRole>
                     )}
