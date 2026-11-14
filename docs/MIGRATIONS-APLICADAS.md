@@ -2196,3 +2196,20 @@ nome da época em que foram aplicadas.
   Conferida na produção: o corpo com a regra das 24 h, `authenticated` sem
   EXECUTE e `service_role` com, e `cb_ia_alarmes` vazia (a conferência foi
   desfeita).
+- **1143_cb_chave_restrita_parada_ao_voltar** — a chave RESTRITA (de
+  funcionário ou recortada por funil) guarda o hash com o prefixo
+  `restrita-`, posto pelo gatilho `cb_api_keys_hash_da_restrita` para todo
+  escritor, com o CHECK `api_keys_hash_da_restrita` das duas formas: a imagem
+  de antes do #518 não a acha (401), em vez de abri-la para a conta inteira.
+  Achado da revisão do porte ao Atlas. PR #518.
+
+  Aplicada DEPOIS do deploy do #518 (o app novo procura as duas formas), com
+  a autorização explícita do operador ("Aplique a 1143", 14/11/2026), em
+  14/11/2026 às 16:50 BRT (histórico `20261114195047`), pela Management API,
+  com o arquivo idêntico ao do `main` em `3df45dcf` (sha256 `764e4ef3…`), cujo
+  replay do CI passou. Antes: o replay local e os cenários com conta fictícia
+  (conta pura, restrita com prefixo, UPDATE à mão não tira o prefixo, a busca
+  antiga não acha). Conferida na produção: o CHECK validado, o gatilho
+  ligado, `authenticated` sem EXECUTE, a conferência sem sobra; a única
+  chave restrita (de funcionário, de teste, revogada desde 04/11) ganhou o
+  prefixo.
