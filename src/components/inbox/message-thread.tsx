@@ -3727,6 +3727,7 @@ export function MessageThread({
         disabled={conversation.ai_autoreply_disabled ?? false}
         pausadaPor={conversation.ia_pausada_por ?? null}
         pausadaEm={conversation.ia_pausada_em ?? null}
+        status={conversation.status}
       />
       )}
 

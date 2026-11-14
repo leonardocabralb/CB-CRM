@@ -126,13 +126,12 @@ A IA lê as conversas dos últimos 7 dias e grava `cb_conversation_insights`
 
 ### Transcrição de áudio (943): função ÚNICA, Gemini (senão OpenAI), chave BYO
 
-`transcrever.ts` (testado), `POST /api/cb/transcricao/[messageId]`, colunas
-`transcricao_*` em `messages`. A MESMA função idempotente serve ao botão da
-bolha, ao Radar e ao agente de IA.
+`transcrever.ts`, `POST /api/cb/transcricao/[messageId]`, colunas
+`transcricao_*` em `messages`. A MESMA função idempotente serve à bolha, ao
+Radar e ao agente de IA (cliente e equipe).
 
 - ⚠️ **As MESMAS colunas guardam a LEITURA de imagem/PDF**
   (`ler-midia.ts`): leitor de `transcricao*` filtra `audio` (Radar incluso).
-
 - **A transcrição NUNCA vai para `content_text`**: o escrito e o ouvido diferem,
   e sobrescrever é irreversível.
 - ⚠️ **O cadeado `UPDATE…RETURNING` não é opcional**: no deploy há dois
@@ -219,8 +218,8 @@ bolha, ao Radar e ao agente de IA.
 ### Agentes de IA (1048, `src/lib/ia-agentes/`, `/agents`)
 
 Plano vivo: `docs/PLANO-agentes-de-ia.md` (D1–D27, E1–E14). F2 (1049): eles
-RESPONDEM cliente, por etapa do funil; a resposta automática do assistente
-anterior saiu (E2), e o ✨ do rascunho segue nele.
+RESPONDEM cliente, por etapa do funil; o auto-reply do assistente antigo
+saiu (E2); o ✨ do rascunho segue nele.
 
 - ⚠️⚠️ **"Agente" no código é PESSOA** (`assigned_agent_id`, o papel `agent`).
   Agente de IA leva `ia_agente` no nome (`cb_ia_agentes`, `ia_agente_id`).
@@ -265,14 +264,13 @@ ingestões), `fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron
 - ⚠️⚠️ **A ordem das regras É a regra** (`quemResponde`): fora do alcance
   (grupo, Instagram, número da conta) → não abre turno → robô → automação FALOU (E4:
   `ResultadoDoDisparo.falou`, em TODOS os gatilhos da mensagem, com o
-  `tag_added` aninhado e a fala ADIADA do funil — card criado ou movido para
-  etapa que automação ligada escuta, `etapaTemQuemFale`) → encerrada → pausada
-  → sem card → etapa sem agente → desligado → fora da conexão → card antigo.
-- ⚠️ **O card que o FUNIL cria na ingestão também é fala adiada**
-  (`routeContactToPipeline` devolve a etapa; pino
-  `pipeline-routing.chamadores.test.ts`). Na mensagem SEGUINTE da rajada,
-  `conferir` REAGENDA enquanto há `deal_stage_changed` não drenado em etapa
-  com quem fale (`funilAindaVaiFalar`); no vão do dreno, só a reserva pega.
+  `tag_added` aninhado) → encerrada → pausada → sem card → etapa sem agente →
+  desligado → fora da conexão → card antigo.
+- ⚠️⚠️ **A fala ADIADA do funil NÃO cala a entrada** (E4 revista em
+  14/11/2026): card criado ou movido para etapa que automação escuta (passo do
+  motor, roteador) não é `falou`. O turno espera o dreno e confere o que a
+  ouvinte FEZ (`esperaPeloFunil`): `ia-agentes-turno.md`; pino
+  `pipeline-routing.chamadores.test.ts`.
 - ⚠️⚠️ **UMA régua de conteúdo, `abreTurno`, na entrada E no turno** (E9/E10):
   figurinha, localização, botão, texto sem nada visível e o rótulo montado com
   `PREFIXO_DE_TIPO_NAO_SUPORTADO` (recusado pelo COMEÇO) não abrem turno.
@@ -305,9 +303,9 @@ ingestões), `fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron
   `open`) e `drenarEventosDeFunil()`, sem anotação; e, se NENHUMA automação
   ligada escuta a etapa de destino (`etapaTemQuemFale`), turno do destino com
   `veio_de_passagem` sobre a MESMA mensagem, sem espera — com automação
-  escutando, ELA fala e o destino responde a próxima mensagem (a regra E4 da
-  entrada; esperar pelo dreno não basta, porque o evento é reivindicado antes
-  de a automação rodar e um "Aguardar" a faria falar DEPOIS); este termina
+  escutando, ELA fala e o destino responde a próxima mensagem (a E4 de antes
+  de 14/11, mantida só aqui: a ouvinte que não fala deixa a mensagem sem
+  resposta — limite aceito); este termina
   `passou` ANTES de o novo ser reivindicado (um `rodando` por conversa). Passagem de
   passagem, n inválido, destino sem etapa ou UPDATE que não casa = transfere.
   Escritor de etapa sem `auth.uid()` (trilha `sistema` com o agente,
@@ -333,8 +331,9 @@ ingestões), `fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron
   não pausa; a agendada e o eco antes do id pausam. `set_ai`: desligar =
   `automacao` sem pisar noutro motivo; ligar desfaz SÓ `automacao`.
 - ⚠️ **Encerrar limpa agente e pausa, recomeça o teto (`ia_retomada_em`)
-  e descarta os turnos** `aguardando` e `rodando` (`cb_encerrar_limpa_ia`,
-  SECURITY DEFINER: o operador encerra sob RLS), menos o que respondeu (1109).
+  e descarta os turnos vivos** (`cb_encerrar_limpa_ia`, SECURITY DEFINER: o
+  operador encerra sob RLS), menos o que respondeu (1109) e a retomada que
+  segue (1146, `ia-retomada.md`).
 - ⚠️ **Falha de CONFIGURAÇÃO não transfere** (E8): chave, modelo, provedor
   fora do ar → `falhou`. Transferem o sentinela, a resposta vazia, o teto, o
   áudio que não se ouve e o envio incerto — pausa `transferencia` + pendente,
@@ -356,7 +355,8 @@ ingestões), `fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron
   as colunas do realtime (pausa, motivo, último agente) só a fazem perguntar de
   novo. Atendendo = "IA · X" + Pausar (+ Desativar); pausada (com agente da
   etapa ou `ia_agente_id`) = motivo + Retomar (`ia-pausa.md`); agente que não
-  atende = uma linha (`ia-tela-do-agente.md`); senão, nada. Pausar não toca
+  atende = uma linha (`ia-tela-do-agente.md`); encerrada com follow-up na fila
+  = ele + Pausar (+ Desativar), 1146; senão, nada. Pausar não toca
   `assigned_agent_id`. Motivo e status do turno são chaves MONTADAS, cobradas
   nos dois dicionários (`STATUS_DO_TURNO` lê o CHECK da 1049). A bolha mostra
   "IA · <nome>" (`nomes-dos-agentes.ts`; sem nome, "IA").
@@ -383,9 +383,6 @@ ingestões), `fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron
   produção, tier PAGO (o gratuito pode usar os dados enviados).
 - **Modo ou provedor novo exige migration no CHECK** de `ai_usage_log`
   (`mode`, `provider`): senão `logAiUsage` engole o erro e o custo some.
-- ⚠️ **`ai_configs` tem índices únicos PARCIAIS (903: global + por canal)**:
-  sem `onConflict` (lookup + insert/update); `.maybeSingle()` com o canal, ou
-  `.is('channel_id', null)` para o padrão.
 - Agente por canal, interruptor, RAG por canal, `radarModel` em
   `CONFIG_COLUMNS` e a opção Gemini são trechos NOSSOS em arquivos do
   upstream (`docs/MERGE-UPSTREAM.md`).

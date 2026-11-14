@@ -74,6 +74,53 @@ das ações está em `ia.md` e `ia-agentes.md`.
   1109 descarta o turno (a passagem não tem `mensagem_enviada_id`) e as ações
   feitas somem do registro do turno (as anotações delas ficam).
 
+### A fala ADIADA do funil: o turno espera o dreno e confere (14/11/2026)
+
+- ⚠️⚠️ Medido no Trabalhista (13/11/2026): a automação de "nova mensagem"
+  moveu o card de "Não Respondeu" para a etapa do agente, cuja saudação
+  (`deal_stage_changed`) só tira a etiqueta de quem volta — e a entrada, que
+  contava o "Mover" como fala (E4), não abriu turno: ninguém respondeu. O
+  "Mover card", o "Criar negócio" e o card novo do roteador NÃO são mais
+  `falou` (motor e ingestões não perguntam `etapaTemQuemFale`); o turno nasce
+  e `esperaPeloFunil` (no `conferir`, antes de gerar e de enviar) decide,
+  dentro de `JANELA_DO_AUDIO_MS` do gatilho:
+  - evento do contato NÃO drenado em etapa com quem escute → reagenda;
+  - drenado ou criado DEPOIS do gatilho em etapa com quem escute → as
+    execuções do contato nascidas depois do gatilho e vivas
+    (`automation_logs` sem `finalizado_em` nem `interrompida_em`, índice da
+    1005): parada na fila além de `ESPERA_CURTA_DO_FUNIL_MS` (60 s do
+    gatilho) numa automação que FALA (`PASSOS_QUE_CALAM_O_AGENTE` do motor,
+    em qualquer ramo; sem automação, conta como fala) = descarta
+    (`ERRO_DO_FUNIL_QUE_ESPERA`: o "Aguardar" longo e a retentativa falam
+    depois); a parada SÓ em espera longa de quem não fala conta como
+    terminada (o "15 dias sem conversa" do Trabalhista só mexe em etiqueta,
+    conversa e card, e calava a IA para quem volta da Recuperação — revisão
+    do PR #520); rodando ou espera curta = reagenda; envio
+    `incerto` do robô na conexão = descarta (`ERRO_DO_FUNIL_INCERTO`, a
+    régua do motor); senão responde. A que JÁ falou é a saída do robô
+    (`haSaidaDoRoboDepois`, antes) e a reserva.
+- ⚠️ **Por que o dreno basta agora** (a passagem diz que não bastava, Codex
+  #309): o registro da execução nasce logo depois de o evento ser
+  reivindicado e fica vivo até ela terminar, parada inclusive. Sobra o vão
+  reivindicação → registro (milissegundos): a 2ª conferência, depois da
+  geração, e a reserva o cobrem; só um banco travado por segundos ali passa.
+- ⚠️ `processado_em` é do relógio do APP (o dreno); `criado_em` e
+  `gravada_em`, do banco: o `.or()` usa os dois, com o ISO do JS (o do
+  PostgREST traz `+00:00`, e o `+` não vai cru no filtro).
+- **O turno da passagem** só espera o não drenado: a triagem já conferiu o
+  funil desta mensagem, e o que nasceu depois são as ações dela (o limite
+  acima). A passagem em si mantém a E4 antiga (`ia.md`).
+- **Limites aceitos**: fora da janela (dreno parado, execução morta) o turno
+  responde, e a ouvinte que acordar depois fala também; execução de OUTRA
+  origem nascida depois do gatilho (equipe etiquetou, Calendly) também
+  segura — o lado de calar. A régua de fala é da AUTOMAÇÃO, não do que falta
+  rodar: com um ramo que fala, a espera longa num ramo que não fala também
+  cala (o lado de calar). E o áudio da EQUIPE ainda transcrevendo segura o
+  turno até sobrarem `RESERVA_DA_GERACAO_MS` (30 s) para gerar, abaixo do
+  teto de 45 s: medido no Sonnet do Trabalhista (86 turnos, 7 dias), p95 de
+  12,8 s e máximo de 17,7 s o turno inteiro — com um modelo mais lento, o
+  estouro tenta uma vez mais (revisão do PR #520).
+
 ### FORA DO HORÁRIO o turno ESPERA a abertura
 
 - ⚠️⚠️ Antes terminava `fora_do_horario` e a mensagem da noite nunca era
@@ -127,6 +174,11 @@ das ações está em `ia.md` e `ia-agentes.md`.
   (`respondeu`, `falhou` ou `incerto`) — "descartado" mentia sobre uma
   resposta que estava saindo. E a conversa APAGADA com o turno vivo que já
   tem `mensagem_enviada_id` é `respondeu`, não `incerto` (`ia-central.md`).
+- ⚠️ Desde a 1146, nem a RETOMADA que seguiria (a pausa de antes que ela
+  atravessa e o card aberto na etapa do agente): ela sai com a conversa
+  encerrada, sem reabri-la (decisão do operador, 14/11/2026;
+  `ia-retomada.md`). O turno de RESPOSTA continua descartado, e o que
+  respondeu e encerrou pela automação continua sem armar série.
 
 ### Revisão de 09/11/2026 (antes de ligar os agentes)
 
@@ -146,6 +198,39 @@ das ações está em `ia.md` e `ia-agentes.md`.
   na retomada, como no Playground (`provedor_so_da_base`) — antes ela ia ao
   chat e falhava como chave recusada.
 
+### O ÁUDIO da EQUIPE vira texto (decisão do operador, 14/11/2026)
+
+A equipe explica o caso à cliente quase sempre por áudio, e a IA via só o
+rótulo: fazia o follow-up às cegas ("Conseguiu ouvir as explicações?") e podia
+contradizer a equipe. `ouvirAudiosDaEquipe` (`turno.ts`).
+
+- ⚠️⚠️ **A MESMA `transcreverAudio` do áudio do cliente** (cadeado, 3
+  tentativas, custo no modo `transcricao`) nos áudios da equipe
+  (`ehFalaDaEquipe`: CRM ou celular, sem `ia_agente_id`) da MESMA janela de
+  `lerConversaDaConexao`, só desta conexão. No contexto, como o do cliente, com
+  o `[Team member]`. Foto e documento da equipe seguem sem leitura. O Radar
+  segue OUVINDO só o cliente (pino em `cb-radar/worker.test.ts`) e LÊ, de
+  graça, o que o agente transcreveu; a bolha e a API v1 também o mostram.
+- ⚠️⚠️ **NUNCA segura a resposta nem reagenda** (decisão do operador): até 3
+  por rodada (`AUDIOS_DA_EQUIPE_POR_TURNO`, os mais novos fora de `pronta` e
+  `recusada`), em PARALELO; o turno espera só até sobrar
+  `RESERVA_DA_GERACAO_MS` (30 s) para gerar, além do embedding e do envio
+  (~12 s do turno). O que não acabou SEGUE em segundo plano — abortado,
+  gastaria tentativa — e fica gravado para o próximo turno; este vê o rótulo.
+  Não marca `transcreveu`; falha, sem chave ou leitura que falha = o rótulo.
+- **No turno de resposta, DEPOIS do áudio e das mídias do cliente** (a
+  prioridade é dele) e dentro do `TETO_DA_ESPERA_DAS_MIDIAS_MS`
+  (`desdeAEspera`). O áudio do cliente que transfere ou reagenda sai antes: o
+  da equipe fica para a rodada seguinte.
+- **Na retomada, depois de `conferirRetomada`**: a que vai gerar espera (o
+  mesmo teto de tempo); a que só reagendou — a PRÉ-ARMAÇÃO, 30 s depois da fala
+  da equipe — manda ouvir SEM esperar, e o follow-up, minutos depois, encontra
+  o texto pronto. Sem o teto do gatilho: a âncora é antiga por definição. A
+  retomada que não vale (descartada, pausada) não manda ouvir nada.
+- **Limite aceito**: áudio longo sem pré-armação (retomada desligada, ou a
+  cliente respondeu antes dos 30 s) pode não ficar pronto na 1ª resposta
+  depois dele — vai o rótulo, e a seguinte o lê.
+
 ### A transferência deixa a conversa PENDENTE
 
 - Pedido do operador (09/11/2026): quem a IA passa para a equipe precisa de
@@ -157,8 +242,8 @@ das ações está em `ia.md` e `ia-agentes.md`.
   anotação do motivo, menos a do `agente_passou`, 1141): a IA pediu gente, e
   a temporária a deixaria voltar em N min.
 - A pendente continua na caixa (o filtro padrão mostra aberta e pendente). A
-  IA só se cala na ENCERRADA, então "Retomar IA" não precisa reabrir; voltar
-  para aberta é com a equipe.
+  IA só se cala na ENCERRADA (a resposta; o follow-up a atravessa, 1146),
+  então "Retomar IA" não precisa reabrir; voltar para aberta é com a equipe.
 
 ### O que a IA fez aparece como FAIXA CINZA (1141)
 

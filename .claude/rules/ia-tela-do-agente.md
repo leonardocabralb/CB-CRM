@@ -71,9 +71,10 @@ agente errar em silêncio.
   Leitura de chave que falha = `leitores: null` ("não se sabe"), nunca
   "ninguém". Sem Gemini nem OpenAI: âmbar — áudio não será ouvido.
 - Mudou a ordem ou o que cada provedor lê (`leitores.ts`, `transcrever.ts`,
-  `contexto.ts`)? O texto `IaAgentes.midia.*` muda junto (HEIC só Gemini; GIF
-  não Gemini; Office só Gemini, da planilha só a 1ª aba; zip/texto ninguém;
-  vídeo não é assistido).
+  `contexto.ts`, o áudio da equipe em `turno.ts`)? O texto `IaAgentes.midia.*`
+  muda junto (HEIC só Gemini; GIF não Gemini; Office só Gemini, da planilha só
+  a 1ª aba; zip/texto ninguém; vídeo não é assistido; da equipe, só o áudio,
+  `midia.audioDaEquipe` — sem número digitado no dicionário).
 
 ### Avisos ANTES de salvar
 
@@ -121,7 +122,8 @@ agente errar em silêncio.
   conferência pode reagendar (horário, lembrete); hora passada = "a qualquer
   momento", nunca "em 0 min".
 - ⚠️ **Só o que vai acontecer**: a rota lê a fila só com agente atendendo E a
-  IA ativa ou na pausa que volta, e o follow-up só onde ele atravessa a pausa
+  IA ativa ou na pausa que volta (na ENCERRADA, só os follow-ups que ainda
+  saem, 1146: `ia-pausa.md`), e o follow-up só onde ele atravessa a pausa
   (sem pausa, ou `gente` com N > 0 — `ia-retomada.md`): o armado sob outra
   pausa é descartado no vencimento. E só a linha do DONO de agora (agente,
   card e etapa da decisão): a de outro (card movido para a etapa de outro

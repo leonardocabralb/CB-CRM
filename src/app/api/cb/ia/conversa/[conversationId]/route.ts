@@ -13,6 +13,7 @@ import {
   quemResponde,
   type AgenteDaEtapaComNome,
   type CardDoContato,
+  type FatosDaMensagem,
   type MotivoDoAgenteQueNaoAtende,
 } from '@/lib/ia-agentes/quem-responde'
 import {
@@ -51,6 +52,15 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  *     a fila não foi lida (ninguém atende, pausa permanente): a faixa lê o
  *     nulo como "fila vazia com agente" e relê a cada 2 min — em toda
  *     conversa aberta, até numa conta sem agente nenhum.
+ *   - `encerrada` e `agenteDoFollowUp` — a conversa ENCERRADA: a resposta não
+ *     sai (`agente` nulo, `motivo` 'encerrada', como antes), mas o FOLLOW-UP
+ *     sai, sem reabrir, enquanto o card estiver na etapa de um agente (1146):
+ *     `agenteDoFollowUp` é ele, e `proximo` lê só os follow-ups
+ *     (`tipo = 'retomada'`), só onde ele atravessa a pausa (nenhuma, ou a
+ *     `gente` com N > 0). Fora disso, nulo e `proximo` ausente: a encerrada
+ *     sem follow-up não tem faixa (pedido do operador, 14/11/2026: "É bom
+ *     mostrar"). Num campo à parte, e não em `agente`: a faixa de antes, ainda
+ *     aberta num navegador durante o deploy, diria "responde nesta conversa".
  *   - `motivo` — por que `agente` é nulo (o `MotivoDeNinguem` do motor).
  *   - `naoAtende` — `{ agente: { id, nome }, motivo }` quando a etapa do card
  *     TEM agente, mas ele não atende esta conversa (desligado, sem a conexão,
@@ -139,7 +149,8 @@ export async function GET(_request: Request, { params }: Contexto) {
       }
     }
 
-    const decisao = quemResponde({
+    const encerrada = conv.status === 'closed'
+    const fatos: FatosDaMensagem = {
       ehGrupo,
       ehInstagram: instagram,
       ehConexaoDaConta: conexaoDaConta,
@@ -150,11 +161,16 @@ export async function GET(_request: Request, { params }: Contexto) {
       ehRespostaDeBotao: false,
       roboConsumiu: false,
       automacaoFalou: false,
-      encerrada: conv.status === 'closed',
+      encerrada,
       pausada: false,
       card,
       agente,
-    })
+    }
+    const decisao = quemResponde(fatos)
+    // A ENCERRADA com o card na etapa de um agente: o follow-up dele ainda
+    // sai, sem reabrir (1146) — a régua da conferência da retomada
+    // (`atravessaEncerrada`). A resposta não: ela para no encerramento.
+    const doFollowUp = encerrada ? quemResponde({ ...fatos, atravessaEncerrada: true }) : null
     const motivo = decisao.quem === 'ninguem' ? decisao.motivo : null
     const naoAtende =
       agente && motivo && (MOTIVOS_DO_AGENTE_QUE_NAO_ATENDE as readonly string[]).includes(motivo)
@@ -167,7 +183,7 @@ export async function GET(_request: Request, { params }: Contexto) {
     // antes" nem "não volta" por ignorância.
     let voltaAposMin = 0
     let voltaEm: string | null = null
-    if (decisao.quem === 'agente' || pausada) {
+    if (decisao.quem === 'agente' || doFollowUp?.quem === 'agente' || pausada) {
       try {
         voltaAposMin = await lerVoltaAposMin(db, ctx.accountId)
       } catch (err) {
@@ -199,13 +215,20 @@ export async function GET(_request: Request, { params }: Contexto) {
       const primeira = (espera ?? [])[0] as { executar_apos?: unknown } | undefined
       voltaEm = typeof primeira?.executar_apos === 'string' ? primeira.executar_apos : null
     }
+    // O follow-up da ENCERRADA só onde ele sai: sem pausa, ou na `gente` com
+    // N > 0 — a única que a retomada atravessa (`ia-retomada.md`). Depois do
+    // "Pausar" (`botao`) ou do "Desativar" da faixa, ele para no vencimento
+    // (`pausado_no_meio`), e a faixa some na hora.
+    const followUpDaEncerrada =
+      doFollowUp?.quem === 'agente' && (!pausada || (pausadaPor === 'gente' && voltaAposMin > 0)) ? doFollowUp : null
     // O próximo passo: só onde um agente atende, com a IA ativa ou na pausa
     // que volta sozinha — na permanente nenhum turno sai, e o follow-up
     // armado seria descartado no vencimento. O follow-up só atravessa a
     // pausa `gente` (`ia-retomada.md`).
+    const dono = decisao.quem === 'agente' ? decisao : followUpDaEncerrada
     let proximo: ProximoPasso | null = null
-    const leAFila = decisao.quem === 'agente' && (!pausada || pausaTemporaria)
-    if (leAFila) {
+    const leAFila = (decisao.quem === 'agente' && (!pausada || pausaTemporaria)) || followUpDaEncerrada !== null
+    if (leAFila && dono) {
       const { data: vivos, error: erroVivos } = await db
         .from('cb_ia_turnos')
         .select(COLUNAS_DO_PROXIMO_PASSO)
@@ -215,15 +238,20 @@ export async function GET(_request: Request, { params }: Contexto) {
         .order('executar_apos', { ascending: true })
         .limit(10)
       if (erroVivos) return falhou('próximo passo', erroVivos.message)
-      proximo = proximoPassoDaIa((vivos ?? []) as TurnoVivo[], {
+      const linhas = (vivos ?? []) as TurnoVivo[]
+      // Na encerrada, só o follow-up: a resposta que sobrou na fila a reserva
+      // recusa (`encerrada`), e a faixa prometeria um envio que não acontece.
+      proximo = proximoPassoDaIa(encerrada ? linhas.filter((l) => l.tipo === 'retomada') : linhas, {
         atravessaRetomada: !pausada || pausadaPor === 'gente',
         // O dono de agora: o turno de outro (card movido para a etapa de
         // outro agente) é descartado pela conferência do motor.
-        dono: { agenteId: decisao.agenteId, dealId: decisao.dealId, stageId: decisao.stageId },
+        dono: { agenteId: dono.agenteId, dealId: dono.dealId, stageId: dono.stageId },
       })
     }
     return NextResponse.json({
       agente: decisao.quem === 'agente' && agente ? { id: agente.id, nome: agente.nome } : null,
+      encerrada,
+      agenteDoFollowUp: followUpDaEncerrada && agente ? { id: agente.id, nome: agente.nome } : null,
       pausada,
       pausadaPor,
       pausaTemporaria,

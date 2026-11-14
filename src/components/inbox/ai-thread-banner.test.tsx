@@ -52,6 +52,8 @@ function estado(p: Partial<EstadoDaIa> = {}): EstadoDaIa {
     voltaEm: null,
     proximo: null,
     naoAtende: null,
+    encerrada: false,
+    agenteDoFollowUp: null,
     ...p,
   };
 }
@@ -171,10 +173,14 @@ describe('lerEstadoDaIa — o corpo da rota', () => {
       // Servidor sem o campo: não se sabe — nunca "sem follow-up agendado".
       proximo: null,
       naoAtende: null,
+      encerrada: false,
+      agenteDoFollowUp: null,
     });
   });
   it('forma estranha: agente nulo, pausa só com o booleano true', () => {
-    expect(lerEstadoDaIa({ agente: { id: 1 }, pausada: 'true', pausaTemporaria: 'true', voltaAposMin: '15', voltaEm: 'ontem' })).toEqual({
+    expect(
+      lerEstadoDaIa({ agente: { id: 1 }, pausada: 'true', pausaTemporaria: 'true', voltaAposMin: '15', voltaEm: 'ontem', encerrada: 'true' }),
+    ).toEqual({
       agente: null,
       pausada: false,
       pausadaPor: null,
@@ -184,8 +190,20 @@ describe('lerEstadoDaIa — o corpo da rota', () => {
       // Servidor sem o campo: não se sabe — nunca "sem follow-up agendado".
       proximo: null,
       naoAtende: null,
+      encerrada: false,
+      agenteDoFollowUp: null,
     });
     expect(lerEstadoDaIa(null)).toBeNull();
+  });
+  it('lê a ENCERRADA (1146): a marca só com o booleano true, e o agente do follow-up campo a campo', () => {
+    expect(lerEstadoDaIa({ agente: null, encerrada: true, agenteDoFollowUp: TRIAGEM, proximo: null })).toMatchObject({
+      agente: null,
+      encerrada: true,
+      agenteDoFollowUp: TRIAGEM,
+      proximo: 'nada',
+    });
+    expect(lerEstadoDaIa({ agente: TRIAGEM })).toMatchObject({ encerrada: false, agenteDoFollowUp: null });
+    expect(lerEstadoDaIa({ encerrada: true, agenteDoFollowUp: { id: 'ag-1' } })?.agenteDoFollowUp).toBeNull();
   });
   it('lê `naoAtende`; motivo fora da lista ou agente sem nome = nulo (nunca chave crua na tela)', () => {
     expect(lerEstadoDaIa({ agente: null, pausada: false, naoAtende: CARD_ANTIGO })?.naoAtende).toEqual(CARD_ANTIGO);
@@ -594,6 +612,121 @@ describe('FaixaDaIa — a linha do próximo passo, nos dois dicionários', () =>
 
   it('as frases do próximo passo existem nos DOIS dicionários, com as mesmas chaves', () => {
     expect(Object.keys(en.Inbox.aiBanner.proximo).sort()).toEqual(Object.keys(ptBR.Inbox.aiBanner.proximo).sort());
+  });
+});
+
+// ============================================================
+// A conversa ENCERRADA com o follow-up da IA na fila (1146; pedido do
+// operador, 14/11/2026: "É bom mostrar"): ele sai sem reabrir a conversa, e
+// a faixa diz isso, com o próximo follow-up, o Pausar e o Desativar — os
+// dois o param, e nenhum reabre a conversa.
+// ============================================================
+
+describe('faixaDaIa — a conversa ENCERRADA (1146)', () => {
+  // Como a rota devolve: a resposta não sai (`agente` nulo); o follow-up, sim.
+  const encerrada = (p: Partial<EstadoDaIa> = {}) => estado({ agente: null, encerrada: true, agenteDoFollowUp: TRIAGEM, ...p });
+
+  it('com o follow-up na fila: "encerrada", com o agente, o N e o follow-up', () => {
+    expect(faixaDaIa(encerrada({ proximo: FOLLOW_UP }), null)).toEqual({
+      tipo: 'encerrada',
+      agente: 'Triagem',
+      minutos: 15,
+      proximo: FOLLOW_UP,
+    });
+  });
+
+  it('o follow-up saindo agora, ou a pré-armação da fala da equipe: também', () => {
+    expect(faixaDaIa(encerrada({ proximo: { tipo: 'agora' } }), null)).toMatchObject({ tipo: 'encerrada', proximo: { tipo: 'agora' } });
+    expect(faixaDaIa(encerrada({ proximo: { tipo: 'agendando', em: EM } }), null)).toMatchObject({ tipo: 'encerrada' });
+  });
+
+  it('⚠️ sem follow-up na fila, ou sem saber: nada, como antes — nem "Sem follow-up agendado"', () => {
+    expect(faixaDaIa(encerrada({ proximo: 'nada' }), 'ag-1')).toBeNull();
+    expect(faixaDaIa(encerrada(), 'ag-1')).toBeNull();
+    expect(faixaDaIa(encerrada({ agenteDoFollowUp: null, proximo: FOLLOW_UP }), 'ag-1')).toBeNull();
+  });
+
+  it('⚠️ a faixa de ANTES (aberta num navegador durante o deploy, sem ler `encerrada`) não desenha nada com o corpo da encerrada: `agente` segue nulo', () => {
+    const corpo = { agente: null, agenteDoFollowUp: TRIAGEM, pausada: false, proximo: FOLLOW_UP, motivo: 'encerrada', naoAtende: null };
+    expect(faixaDaIa(lerEstadoDaIa(corpo), null)).toBeNull();
+  });
+
+  it('⚠️ a encerrada nunca vira "pausada" nem "não atende": Retomar não devolveria o follow-up parado', () => {
+    expect(faixaDaIa(encerrada({ agenteDoFollowUp: null, pausada: true, pausadaPor: 'botao' }), 'ag-1')).toBeNull();
+    expect(faixaDaIa(encerrada({ agenteDoFollowUp: null, naoAtende: CARD_ANTIGO }), null)).toBeNull();
+  });
+});
+
+describe('FaixaDaIa — a ENCERRADA com follow-up, nos dois dicionários', () => {
+  const faixa = (p: Partial<Extract<Faixa, { tipo: 'encerrada' }>> = {}): Faixa => ({
+    tipo: 'encerrada',
+    agente: 'Triagem',
+    minutos: 15,
+    proximo: FOLLOW_UP,
+    ...p,
+  });
+
+  it('diz que a conversa está encerrada e o follow-up sai sem reabrir; a linha do próximo follow-up; Pausar e Desativar, sem Retomar', () => {
+    const html = desenharNoRelogio(faixa(), AGORA);
+    expect(html).toContain('Conversa encerrada: IA · Triagem ainda manda o follow-up, sem reabrir a conversa');
+    expect(html).toContain(`Próximo follow-up (2 de 5) a partir de ${horaDaVolta(EM, AGORA)} · em 2 h 13 min`);
+    expect(html).toContain(banner.pausar);
+    expect(html).toContain(banner.encerrada.pausarDica.replace('{minutos}', '15'));
+    expect(html).toContain(banner.desativar);
+    expect(html).not.toContain(`${banner.resume}</button>`);
+    expect(html).not.toContain('responde nesta conversa');
+  });
+
+  it('N = 0 na conta: só o Pausar (que então não volta sozinho), sem Desativar', () => {
+    const html = desenharNoRelogio(faixa({ minutos: 0 }), AGORA);
+    expect(html).toContain(banner.pausar);
+    expect(html).toContain(banner.encerrada.pausarDicaSemVolta.replace(/"/g, '&quot;'));
+    expect(html).not.toContain(banner.desativar);
+  });
+
+  it('o follow-up saindo agora: "Mandando o follow-up agora…", nunca "Respondendo agora…"', () => {
+    const html = desenharNoRelogio(faixa({ proximo: { tipo: 'agora' } }), AGORA);
+    expect(html).toContain(banner.proximo.followUpAgora);
+    expect(html).not.toContain(banner.proximo.agora);
+  });
+
+  it('a pré-armação ainda sem hora: a frase e os botões, sem a linha do follow-up', () => {
+    const html = desenharNoRelogio(faixa({ proximo: { tipo: 'agendando', em: EM } }), AGORA);
+    expect(html).toContain('Conversa encerrada: IA · Triagem');
+    expect(html).not.toContain('mt-0.5 pl-5');
+    expect(html).toContain(banner.pausar);
+  });
+
+  it('em inglês também, sem chave crua', () => {
+    const html = desenharNoRelogio(faixa(), AGORA, en as unknown as AbstractIntlMessages);
+    expect(html).toContain('Conversation closed: AI · Triagem still sends the follow-up');
+    expect(html).toContain('Next follow-up (2 of 5) from');
+    expect(html).not.toContain('Inbox.aiBanner');
+  });
+
+  it('as frases da encerrada existem nos DOIS dicionários, com as mesmas chaves', () => {
+    expect(Object.keys(en.Inbox.aiBanner.encerrada).sort()).toEqual(Object.keys(ptBR.Inbox.aiBanner.encerrada).sort());
+    for (const dic of [en, ptBR]) {
+      for (const [chave, texto] of Object.entries(dic.Inbox.aiBanner.encerrada)) {
+        expect(typeof texto, `Inbox.aiBanner.encerrada.${chave}`).toBe('string');
+      }
+    }
+  });
+});
+
+describe('AiThreadBanner — a encerrada relê como a atendendo (1146)', () => {
+  const semComentarios = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  const fonte = semComentarios(readFileSync(join(__dirname, 'ai-thread-banner.tsx'), 'utf8'));
+
+  it('⚠️ pergunta de novo quando a SITUAÇÃO muda (encerrar nem sempre muda a pausa ou o último agente), e o fio a passa', () => {
+    expect(fonte).toContain('[conversationId, disabled, pausadaPor, pausadaEm, iaAgenteId, status, recarga]');
+    const fio = semComentarios(readFileSync(join(__dirname, 'message-thread.tsx'), 'utf8'));
+    expect(fio).toContain('status={conversation.status}');
+  });
+
+  it('⚠️ a releitura sai do `proximo` da ROTA, nunca da faixa desenhada: a encerrada com a fila vazia some, mas continua relendo (o vão entre o follow-up que saiu e o seguinte — Codex, #515)', () => {
+    expect(fonte).toContain('const passo = estado?.proximo ?? null;');
+    expect(esperaParaReler('nada', null, AGORA)).toBe(RELEITURA_SEM_PASSO_MS);
   });
 });
 

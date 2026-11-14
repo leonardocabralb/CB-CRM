@@ -1111,6 +1111,18 @@
       "voltaAs": "The AI comes back from {hora} on if no one on the team replies.",
       "voltaSeEsperar": "Comes back on its own if the customer waits {minutos} min without a reply from the team.",
       "retomarAgoraDica": "Hands the conversation back to the AI now, without waiting.",
+      "avisoDesativar": {
+        "titulo": "Turn off the AI in this conversation?",
+        "texto": "Turning it off is permanent: the AI no longer answers and the automatic follow-ups stop until someone clicks \"Resume AI\".",
+        "recomendaPausar": "If you are only taking over the conversation for now, use \"Pause\": the AI comes back on its own if the customer waits {minutos} min without a reply from the team, and keeps sending the follow-ups.",
+        "naPausa": "The current pause is already temporary: the AI comes back on its own if the customer waits {minutos} min without a reply from the team, and keeps sending the follow-ups.",
+        "recomendaPausarNaEncerrada": "If you only want to stop this follow-up, use \"Pause\": the conversation stays closed and, if the customer writes, the AI comes back on its own after {minutos} min without a reply from the team.",
+        "naPausaDoBotao": "The current pause is already temporary: the AI comes back on its own if the customer waits {minutos} min without a reply from the team. The follow-up that was scheduled will not be sent.",
+        "pausar": "Pause instead",
+        "manterPausa": "Keep the pause",
+        "desativar": "Turn off anyway",
+        "cancelar": "Cancel"
+      },
       "motivo": {
         "gente": "someone on the team replied",
         "botao": "paused by someone on the team",
@@ -1135,9 +1147,16 @@
         "card_antigo": "the deal was already in the stage before the agent was turned on there"
       },
       "naoAtendeDica": "It only answers deals that enter the stage after it is turned on: this conversation stays with the team.",
+      "encerrada": {
+        "titulo": "Conversation closed: AI · {agente} still sends the follow-up, without reopening it",
+        "dica": "Closing doesn't stop the follow-up while the deal is in a stage with an AI agent. If the customer replies, the conversation reopens.",
+        "pausarDica": "Cancels the scheduled follow-up without reopening the conversation. If the customer writes, the AI comes back on its own after {minutos} min without a reply from the team.",
+        "pausarDicaSemVolta": "Cancels the scheduled follow-up without reopening the conversation. The AI only replies again after someone clicks \"Resume AI\"."
+      },
       "proximo": {
         "nada": "No follow-up scheduled: replies when the customer writes.",
         "agora": "Replying now…",
+        "followUpAgora": "Sending the follow-up now…",
         "respostaJa": "Replying in a moment.",
         "resposta": "Replies from {hora}.",
         "respostaForaDoHorario": "Outside the agent's hours: replies from {hora}.",
@@ -7486,7 +7505,7 @@
       "janelaInvalida": "The start must be before the end.",
       "inicio": "Window start",
       "fim": "Window end",
-      "paradas": "Follow-ups stop on their own when the customer answers, when someone from the team writes (with \"When the team replies\" on, the series starts again from the team's message) or pauses the AI, when the conversation is closed, when the deal leaves the agent's stage and near the customer's meeting: never within 30 min of a meeting reminder, and never in the 90 min before it. On an official Meta connection, also when the 24-hour window closes. If nothing is pending, the agent ends the follow-ups without sending anything — and they never hand the conversation to the team. Each follow-up counts toward the agent's reply limit.",
+      "paradas": "Follow-ups stop on their own when the customer answers, when someone from the team writes (with \"When the team replies\" on, the series starts again from the team's message) or pauses the AI, when the deal leaves the agent's stage (or is won or lost) and near the customer's meeting: never within 30 min of a meeting reminder, and never in the 90 min before it. On an official Meta connection, also when the 24-hour window closes. Closing the conversation does NOT stop them while the deal stays in the agent's stage: they go out with the conversation still closed, without reopening it, and the customer's reply reopens it. If nothing is pending, the agent ends the follow-ups without sending anything — and they never hand the conversation to the team. Each follow-up counts toward the agent's reply limit.",
       "salvo": "Follow-ups saved.",
       "tentativas": "{n, plural, one {# attempt} other {# attempts}} (up to {max})",
       "tentativasDica": "Counted from the agent's last reply that got no answer. If one is delayed (outside the window, near a meeting reminder), the next ones keep their spacing — and never go out less than 30 min after the previous one.",
@@ -7500,7 +7519,6 @@
       "para": {
         "cliente": "the customer replies",
         "equipe": "the team writes (restarts from it) or pauses the AI",
-        "encerrada": "the conversation is closed",
         "etapa": "the card leaves the agent's stage",
         "reuniao": "the customer's meeting is close"
       },
@@ -7530,6 +7548,7 @@
       "desconhecido": "Could not check right now which keys the account has.",
       "semAudio": "This account has no Gemini or OpenAI key, and Anthropic does not take audio: the customer's audio will not be heard, and a conversation with audio goes to the team.",
       "limiteAudio": "Audio: Gemini, otherwise OpenAI. Anthropic does not take audio.",
+      "audioDaEquipe": "Team voice notes: the most recent ones in the conversation are also transcribed (team photos and documents are not), so the agent neither repeats nor contradicts what the team explained. If a transcription is not ready in time, the agent only sees that a voice note was sent: the reply to the customer is never held up by it.",
       "limiteFormatos": "HEIC photos (the iPhone's) are only read when the reader is Gemini; GIFs, only when the reader is not Gemini.",
       "limitePlanilha": "Only Gemini reads Word, Excel and PowerPoint (only the first sheet of a spreadsheet). No provider reads other files (zip, text…): the agent asks the customer to describe the content or resend it in another format.",
       "limiteVideo": "Videos are not watched: the agent only sees that a video arrived, with its caption.",

@@ -16,12 +16,16 @@
 //      abre turno (`abreTurno`, e o toque em botão) → ninguém;
 //   1. o robô consumiu a mensagem → ninguém;
 //   2. uma automação desta mensagem FALOU (ou vai falar) com o contato
-//      (`ResultadoDoDisparo.falou`, E4) → ninguém;
+//      (`ResultadoDoDisparo.falou`, E4) → ninguém. A fala ADIADA do funil
+//      (card criado ou movido para etapa que automação escuta) não entra
+//      aqui: o turno espera o dreno e confere (`esperaPeloFunil`, `turno.ts`);
 //   3. conversa encerrada, ou pausada (D26: gente respondeu, o botão, a
 //      transferência, uma automação) → ninguém — MENOS a pausa TEMPORÁRIA que
 //      quem chama declara (`pausaTemporaria`, 1138: `gente`/`botao` com N > 0
 //      na conta, `pausa.ts`): aí as regras seguem, e o agente que atende vem
-//      marcado `sobrePausa` (o turno espera a equipe e levanta a pausa);
+//      marcado `sobrePausa` (o turno espera a equipe e levanta a pausa); e
+//      menos a encerrada que a RETOMADA declara (`atravessaEncerrada`, 1146):
+//      o follow-up sai com a conversa encerrada, sem reabri-la;
 //   4. sem card aberto, etapa sem agente, agente desligado ou arquivado,
 //      agente sem a conexão, card anterior ao agente (D27) → ninguém;
 //   5. senão → o agente da etapa, com o card e a etapa (o turno confere que
@@ -146,6 +150,13 @@ export interface FatosDaMensagem {
   automacaoFalou: boolean
   /** `conversations.status = 'closed'` (uma automação pode ter encerrado na ingestão). */
   encerrada: boolean
+  /**
+   * A encerrada NÃO segura (1146, decisão do operador de 14/11/2026): quem
+   * chama é a RETOMADA, que sai com a conversa encerrada, sem reabri-la — o
+   * encerramento já descartou a que não seguiria (`cb_encerrar_limpa_ia`).
+   * Ausente = a encerrada segura, como antes (a resposta, a entrada, a faixa).
+   */
+  atravessaEncerrada?: boolean
   /** `conversations.ai_autoreply_disabled`. */
   pausada: boolean
   /**
@@ -205,7 +216,7 @@ export function quemResponde(f: FatosDaMensagem): QuemResponde {
   if (f.ehRespostaDeBotao || !abreTurno(f.conteudo)) return { quem: 'ninguem', motivo: 'nao_abre_turno' }
   if (f.roboConsumiu) return { quem: 'ninguem', motivo: 'robo' }
   if (f.automacaoFalou) return { quem: 'ninguem', motivo: 'automacao_falou' }
-  if (f.encerrada) return { quem: 'ninguem', motivo: 'encerrada' }
+  if (f.encerrada && f.atravessaEncerrada !== true) return { quem: 'ninguem', motivo: 'encerrada' }
   if (f.pausada && f.pausaTemporaria !== true) return { quem: 'ninguem', motivo: 'pausada' }
   if (!f.card) return { quem: 'ninguem', motivo: 'sem_card' }
   if (!f.agente) return { quem: 'ninguem', motivo: 'etapa_sem_agente' }
@@ -402,11 +413,19 @@ export async function canalDaIaNaConversa(
  *
  * O caso comum custa pouco: conversa e conexões numa ida; encerrada, pausada,
  * grupo ou sem contato param aí; o contato que é número da conta, na
- * segunda; sem card, na terceira; etapa sem agente, na quarta.
+ * segunda; sem card, na terceira; etapa sem agente, na quarta. A encerrada
+ * NÃO para quando quem lê é a RETOMADA (`atravessaEncerrada`, 1146): ela sai
+ * com a conversa encerrada e precisa do card e do agente.
  */
 export async function lerQuemAtende(
   db: SupabaseClient,
-  args: { accountId: string; conversationId: string; canalId: string },
+  args: {
+    accountId: string
+    conversationId: string
+    canalId: string
+    /** A RETOMADA (1146): lê o card também na conversa encerrada. Ausente = a encerrada para aqui. */
+    atravessaEncerrada?: boolean
+  },
 ): Promise<LeituraDaConversa | null> {
   const [{ data: conv, error: erroConv }, { data: canais, error: erroCanal }] = await Promise.all([
     db
@@ -450,9 +469,11 @@ export async function lerQuemAtende(
     agente: null,
   }
   // A pausa PERMANENTE para aqui; a temporária (1138) precisa do card e do
-  // agente (quem chama decide, com o N da conta, se ela segura).
+  // agente (quem chama decide, com o N da conta, se ela segura). A encerrada
+  // também para — menos para a RETOMADA, que a atravessa (1146).
   const pausaQueSegura = leitura.pausada && !ehMotivoTemporario(leitura.pausadaPor)
-  if (leitura.ehGrupo || leitura.ehInstagram || leitura.encerrada || pausaQueSegura || !c.contact_id) return leitura
+  const encerradaQueSegura = leitura.encerrada && args.atravessaEncerrada !== true
+  if (leitura.ehGrupo || leitura.ehInstagram || encerradaQueSegura || pausaQueSegura || !c.contact_id) return leitura
 
   const { data: contato, error: erroContato } = await db
     .from('contacts')

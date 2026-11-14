@@ -39,9 +39,12 @@
 //    (`veio_de_passagem`) responde à MESMA mensagem. Esse não passa de novo:
 //    se tentar, transfere para gente. Com automação ligada escutando a etapa
 //    de destino, ELA fala e o turno do destino não nasce (E4).
-//  - Evento de funil ainda não drenado cuja etapa tem automação escutando
-//    REAGENDA o turno (a boas-vindas da etapa ainda vai sair), por até
-//    `JANELA_DO_AUDIO_MS` contada do gatilho (`funilAindaVaiFalar`).
+//  - A FALA ADIADA DO FUNIL (E4, revista em 14/11/2026): o card criado ou
+//    movido para etapa com automação escutando NÃO cala mais a entrada. O
+//    turno espera o dreno e confere o que a automação FEZ (`esperaPeloFunil`),
+//    por até `JANELA_DO_AUDIO_MS` contada do gatilho: evento não drenado ou
+//    execução dela ainda rodando = reagenda; parada num "Aguardar" longo ou
+//    envio incerto = descarta; terminou sem falar = responde.
 //  - O que o agente VÊ além da conversa (F3): os blocos de acesso marcados e
 //    os trechos da base DELE, lidos UMA vez por turno, antes de gerar
 //    (`lerOQueOAgenteVe`). Bloco que não se lê vai como "unavailable", base
@@ -91,7 +94,9 @@
 //    seção própria, abaixo. A conversa ENCERRADA durante o turno (a automação
 //    que o próprio agente executou fecha a conversa) não arma retomada; e o
 //    turno cuja resposta já saiu não é mais descartado pelo encerramento
-//    (1109): ele grava `respondeu` com as ações.
+//    (1109): ele grava `respondeu` com as ações. A série que já estava na
+//    fila ATRAVESSA o encerramento (1146): sai com a conversa encerrada, sem
+//    reabri-la.
 //  - A AÇÃO PROMETIDA (25/10/2026, medido): a resposta que diz "criei o
 //    lembrete", "registrei seus dados", "movi seu card" SEM a ação aceita na
 //    mesma resposta é RETIDA e transfere (`acao_prometida`, o texto no
@@ -110,6 +115,9 @@
 //    abertura de hoje (`aberturaDeHoje`), e o teto de respostas por minuto da
 //    conta o devolve à fila (em vez de `sem_resposta`): a fila da noite vence
 //    toda na abertura.
+//  - O ÁUDIO da EQUIPE (14/11/2026) vira texto como o do cliente, mas NUNCA
+//    segura a resposta: até 3 por rodada, espera curta, sem reagendar; o que
+//    não ficou pronto a tempo vai com o rótulo (`ouvirAudiosDaEquipe`).
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -121,7 +129,7 @@ import { generateReply } from '@/lib/ai/generate'
 import { AiError, mensagemSeguraDeAiError, type AiConfig, type AiUsage } from '@/lib/ai/types'
 import { logAiUsage } from '@/lib/ai/usage'
 import { drenarEventosDeFunil } from '@/lib/automations/drain-events'
-import { etapaTemQuemFale } from '@/lib/automations/engine'
+import { etapaTemQuemFale, PASSOS_QUE_CALAM_O_AGENTE } from '@/lib/automations/engine'
 import { recusaComprovada } from '@/lib/automations/retentativa'
 import { donoDaConta } from '@/lib/cb-channels/resolve-inbound'
 import {
@@ -151,7 +159,7 @@ import {
 import { type IaAgente, PRAZO_DA_GERACAO_MS } from './agente'
 import { lerAgendaDoAgente } from './agenda'
 import { consultaDaUltimaMensagem, PRAZO_DO_EMBEDDING_MS } from './conhecimento'
-import { ehNotaDoSistema, lerConversaDaConexao, terminarNoCliente } from './contexto'
+import { ehFalaDaEquipe, ehNotaDoSistema, lerConversaDaConexao, terminarNoCliente } from './contexto'
 import {
   agendarDisparo,
   enfileirarTurno,
@@ -516,55 +524,226 @@ async function haSaidaDoRoboDepois(db: SupabaseClient, turno: LinhaDoTurno, gati
   return (data?.length ?? 0) > 0
 }
 
-/** Teto da leitura dos eventos de funil pendentes do contato. */
+/** Teto da leitura dos eventos de funil do contato (os pendentes e os drenados depois do gatilho). */
 const EVENTOS_PENDENTES_LIDOS = 20
+/** Teto da leitura das execuções de automação ainda vivas do contato. */
+const EXECUCOES_VIVAS_LIDAS = 20
+/**
+ * Até onde, contado do `gravada_em` do gatilho, a espera de uma automação do
+ * funil é CURTA: o turno espera ela acordar e confere o que a automação fez
+ * (o "Aguardar 5 s" antes da saudação). Mais longa, é a automação que fala
+ * DEPOIS (um follow-up): a IA cala nesta mensagem, como sempre calou com
+ * "Aguardar" (E4). A folga até o fim da janela (`JANELA_DO_AUDIO_MS`, 2 min)
+ * é para o laço rápido do agendador acordar a espera (~15 s, até ~65 s com o
+ * ciclo lento) e o turno reagendado (10 s) ver o que ela fez.
+ */
+export const ESPERA_CURTA_DO_FUNIL_MS = 60_000
+/** O desfecho do turno quando a automação do funil vai falar depois de uma espera longa. */
+export const ERRO_DO_FUNIL_QUE_ESPERA = 'uma automação do funil vai falar depois de um "Aguardar"'
+/** O desfecho do turno quando o envio de uma automação do funil falhou sem recusa comprovada. */
+export const ERRO_DO_FUNIL_INCERTO = 'o envio de uma automação do funil pode ter saído (incerto)'
 
 /**
- * FALA ADIADA DO FUNIL NA RAJADA (E4). "Mover card", "Criar negócio", o
- * roteador de funil e a PASSAGEM só gravam um evento em
- * `cb_automation_events`; a automação da etapa de destino — a boas-vindas —
- * roda DEPOIS, no dreno. Há evento deste CONTATO ainda não drenado cuja etapa
- * tem quem escute? O turno REAGENDA, e na volta, drenado o evento, a saída da
- * automação o descarta (`haSaidaDoRoboDepois`, e a reserva).
+ * O envio do ROBÔ ou de uma AUTOMAÇÃO nesta conversa, POR ESTA CONEXÃO, depois
+ * do gatilho, que falhou SEM recusa comprovada (`nao_saiu` com o motivo
+ * `incerto`, `envio-que-falhou.ts`): pode ter chegado ao cliente. A pergunta
+ * é "pode ter saído?", não "alguém falou?" (essa ignora a tentativa,
+ * `haSaidaDoRoboDepois`) — a mesma conta do motor, em que a falha sem recusa
+ * comprovada CONTA como fala (E4).
+ */
+async function haEnvioIncertoDoRoboDepois(db: SupabaseClient, turno: LinhaDoTurno, gatilho: Gatilho): Promise<boolean> {
+  if (!gatilho.gravada_em || !turno.canal_id) return false
+  const { data, error } = await db
+    .from('messages')
+    .select('id')
+    .eq('conversation_id', turno.conversation_id)
+    .eq('channel_id', turno.canal_id)
+    .eq('sender_type', 'bot')
+    .is('ia_agente_id', null)
+    .is('deleted_at', null)
+    .eq('nao_saiu', true)
+    .eq('error_title', 'incerto')
+    .gt('gravada_em', gatilho.gravada_em)
+    .limit(1)
+  if (error) throw new Error(`leitura do envio incerto do robô falhou: ${error.message}`)
+  return (data?.length ?? 0) > 0
+}
+
+/**
+ * As execuções de automação deste CONTATO que nasceram depois do gatilho e
+ * ainda não terminaram (sem `finalizado_em` nem marca de interrupção — o
+ * índice parcial da 1005): `nenhuma`; `espera_longa`, quando alguma está
+ * PARADA num "Aguardar" (ou na retentativa) que acorda depois de
+ * `ESPERA_CURTA_DO_FUNIL_MS` e a automação dela FALA (`algumaFala`); senão
+ * `rodando` (roda agora, ou a espera é curta). A filha (`run_automation`) e a
+ * da etiqueta (`tag_added`) que a ouvinte disparou também contam: o registro
+ * delas é próprio. LANÇA em erro.
+ *
+ * A espera longa de automação que NÃO fala não é a resposta que vem depois:
+ * o "15 dias sem conversa" das etapas do Trabalhista só mexe em etiqueta,
+ * conversa e card, e calava a IA para a cliente que volta da Recuperação
+ * (revisão do PR #520, 14/11/2026). A execução parada SÓ nela conta como
+ * terminada; o que ela fizer ao acordar, dias depois, não é desta mensagem.
+ */
+async function execucoesVivasDepois(
+  db: SupabaseClient,
+  turno: LinhaDoTurno,
+  contactId: string,
+  gravadaMs: number,
+): Promise<'nenhuma' | 'rodando' | 'espera_longa'> {
+  const { data: vivas, error } = await db
+    .from('automation_logs')
+    .select('id, automation_id')
+    .eq('account_id', turno.account_id)
+    .eq('contact_id', contactId)
+    .is('finalizado_em', null)
+    .is('interrompida_em', null)
+    .gt('created_at', new Date(gravadaMs).toISOString())
+    .limit(EXECUCOES_VIVAS_LIDAS)
+  if (error) throw new Error(`leitura das execuções vivas falhou: ${error.message}`)
+  const execucoes = (vivas ?? []) as Array<{ id: string; automation_id: string | null }>
+  if (execucoes.length === 0) return 'nenhuma'
+  const { data: fila, error: erroDaFila } = await db
+    .from('automation_pending_executions')
+    .select('log_id, status, run_at')
+    .in('log_id', execucoes.map((v) => v.id))
+    .in('status', ['pending', 'running'])
+  if (erroDaFila) throw new Error(`leitura da fila das automações falhou: ${erroDaFila.message}`)
+  const linhas = (fila ?? []) as Array<{ log_id: string; status: string; run_at: string | null }>
+  const limite = gravadaMs + ESPERA_CURTA_DO_FUNIL_MS
+  const longa = (f: { status: string; run_at: string | null }) => {
+    const acorda = Date.parse(f.run_at ?? '')
+    return f.status === 'pending' && (!Number.isFinite(acorda) || acorda > limite)
+  }
+  const automacaoDe = new Map(execucoes.map((v) => [v.id, v.automation_id]))
+  const dasLongas = new Set(linhas.filter(longa).map((f) => automacaoDe.get(f.log_id) ?? null))
+  // Sem a automação (apagada) não se sabe se fala: o lado de calar.
+  if (dasLongas.has(null)) return 'espera_longa'
+  if (dasLongas.size > 0 && (await algumaFala(db, [...dasLongas] as string[]))) return 'espera_longa'
+  // Só esperas longas de quem não fala: a execução parada SÓ nelas não segura.
+  const paradaSoNaLonga = (id: string) => {
+    const delas = linhas.filter((f) => f.log_id === id)
+    return delas.length > 0 && delas.every(longa)
+  }
+  return execucoes.some((v) => !paradaSoNaLonga(v.id)) ? 'rodando' : 'nenhuma'
+}
+
+/**
+ * Alguma destas automações tem passo que FALA com o contato? A régua do motor
+ * para a E4 (`PASSOS_QUE_CALAM_O_AGENTE`: envio, robô, outra automação),
+ * em qualquer ramo — o lado de calar. LANÇA em erro.
+ */
+async function algumaFala(db: SupabaseClient, automacoes: string[]): Promise<boolean> {
+  const { data, error } = await db
+    .from('automation_steps')
+    .select('id')
+    .in('automation_id', automacoes)
+    .in('step_type', [...PASSOS_QUE_CALAM_O_AGENTE])
+    .limit(1)
+  if (error) throw new Error(`leitura dos passos das automações falhou: ${error.message}`)
+  return (data?.length ?? 0) > 0
+}
+
+/**
+ * A FALA ADIADA DO FUNIL (E4, revista em 14/11/2026). "Mover card", "Criar
+ * negócio", o roteador de funil e a PASSAGEM só gravam um evento em
+ * `cb_automation_events`; a automação que escuta a etapa de destino roda
+ * DEPOIS, no dreno — e pode falar, ou NÃO: a ouvinte da etapa tem condição
+ * (a saudação que só tira a etiqueta de quem volta de "Não Respondeu"), recorte
+ * de conexão ou de etapa, "não repetir". Até 14/11 a ENTRADA calava o agente
+ * só por existir quem escutasse a etapa, e a cliente que voltava ficava sem
+ * resposta nenhuma (medido no Trabalhista). Agora o turno nasce, e aqui espera
+ * o dreno e confere o que ela FEZ:
+ *  1. evento deste contato ainda NÃO drenado, numa etapa com quem escute
+ *     (`etapaTemQuemFale`, a régua `triggerMatches`) → reagenda: ela ainda
+ *     vai rodar;
+ *  2. evento drenado (ou criado) DEPOIS do gatilho, numa etapa com quem
+ *     escute → as execuções do contato que nasceram depois do gatilho: parada
+ *     num "Aguardar" longo de automação que FALA → descarta (ela fala depois,
+ *     a regra de sempre do "Aguardar"; a que não fala — o "15 dias sem
+ *     conversa" — não segura); rodando, ou espera curta → reagenda (o envio
+ *     que ainda não voltou do provedor não tem linha em `messages` — é o
+ *     registro vivo que o mostra); terminada com envio INCERTO → descarta.
+ *     A que JÁ falou é a saída do robô, que `conferir` olha antes (e a
+ *     reserva, por último);
+ *  3. nada disso → `null`: a ouvinte terminou sem falar, ou nem rodou (fora do
+ *     escopo, de outra conexão) — a IA responde.
+ * Por que esperar o dreno basta agora (a passagem diz que não bastava, Codex
+ * #309): o evento é reivindicado ANTES de a automação rodar, mas o registro
+ * dela nasce logo depois e fica vivo até ela terminar — inclusive parada num
+ * "Aguardar" ou na retentativa. Sobra o vão entre a reivindicação e o
+ * registro (a leitura de escopo, milissegundos): a 2ª conferência, segundos
+ * depois da geração, e a reserva o cobrem; só um banco travado por segundos
+ * exatamente ali o deixaria passar (limite aceito).
+ *
+ * O turno da PASSAGEM (`veio_de_passagem`) só olha o item 1: ele nasce da
+ * triagem, que acabou de passar por esta mesma conferência para a MESMA
+ * mensagem; o que nasceu depois são as ações da própria triagem
+ * (`ACOES_COM_A_PASSAGEM`), com a regra delas (`ia-agentes-turno.md`).
  *
  * Só dentro de `JANELA_DO_AUDIO_MS` contada do `gravada_em` do gatilho:
- * passada a janela o dreno falhou, e o cliente não pode ficar sem resposta.
- * Leitura que falha DENTRO dela = reagenda. `true` = reagendar.
+ * passada a janela o dreno falhou (ou a execução morreu), e o cliente não pode
+ * ficar sem resposta. Leitura que falha DENTRO dela = reagenda ("na dúvida, a
+ * automação fala"). `null` = segue.
  */
-async function funilAindaVaiFalar(
+async function esperaPeloFunil(
   db: SupabaseClient,
   turno: LinhaDoTurno,
   contactId: string | null,
   gatilho: Gatilho,
-): Promise<boolean> {
-  if (!contactId || !gatilho.gravada_em) return false
+): Promise<Desfecho | null> {
+  if (!contactId || !gatilho.gravada_em) return null
   const gravada = Date.parse(gatilho.gravada_em)
-  if (!Number.isFinite(gravada) || Date.now() - gravada >= JANELA_DO_AUDIO_MS) return false
+  if (!Number.isFinite(gravada) || Date.now() - gravada >= JANELA_DO_AUDIO_MS) return null
+  // O carimbo em ISO do JS: o do PostgREST traz `+00:00`, e o `+` não pode ir
+  // cru dentro do `.or()`.
+  const depoisDoGatilho = new Date(gravada).toISOString()
   try {
     const { data, error } = await db
       .from('cb_automation_events')
-      .select('to_stage_id')
+      .select('to_stage_id, processado_em')
       .eq('account_id', turno.account_id)
       .eq('contact_id', contactId)
       .eq('tipo', 'deal_stage_changed')
-      .is('processado_em', null)
+      // O drenado depois do gatilho pelo relógio do DRENO (`processado_em`) e
+      // o criado depois dele pelo do banco (`criado_em`, o mesmo do gatilho).
+      .or(`processado_em.is.null,processado_em.gt.${depoisDoGatilho},criado_em.gt.${depoisDoGatilho}`)
+      .order('criado_em', { ascending: false })
       .limit(EVENTOS_PENDENTES_LIDOS)
     if (error) {
-      console.error('[ia-agentes] leitura dos eventos de funil pendentes falhou (reagenda):', error.message)
-      return true
+      console.error('[ia-agentes] leitura dos eventos de funil falhou (reagenda):', error.message)
+      return { status: 'reagendar' }
     }
-    const etapas = new Set(
-      ((data ?? []) as Array<{ to_stage_id: string | null }>)
-        .map((e) => e.to_stage_id)
-        .filter((e): e is string => typeof e === 'string'),
-    )
-    for (const etapa of etapas) {
-      if (await etapaTemQuemFale(db, turno.account_id, etapa)) return true
+    const eventos = (data ?? []) as Array<{ to_stage_id: string | null; processado_em: string | null }>
+    const etapasDe = (drenados: boolean) =>
+      new Set(
+        eventos
+          .filter((e) => (e.processado_em !== null) === drenados)
+          .map((e) => e.to_stage_id)
+          .filter((e): e is string => typeof e === 'string'),
+      )
+    for (const etapa of etapasDe(false)) {
+      if (await etapaTemQuemFale(db, turno.account_id, etapa)) return { status: 'reagendar' }
     }
-    return false
+    if (turno.veio_de_passagem) return null
+    let ouvida = false
+    for (const etapa of etapasDe(true)) {
+      if (await etapaTemQuemFale(db, turno.account_id, etapa)) {
+        ouvida = true
+        break
+      }
+    }
+    if (!ouvida) return null
+    const vivas = await execucoesVivasDepois(db, turno, contactId, gravada)
+    if (vivas === 'espera_longa') return { status: 'descartado', erro: ERRO_DO_FUNIL_QUE_ESPERA }
+    if (vivas === 'rodando') return { status: 'reagendar' }
+    if (await haEnvioIncertoDoRoboDepois(db, turno, gatilho)) {
+      return { status: 'descartado', erro: ERRO_DO_FUNIL_INCERTO }
+    }
+    return null
   } catch (err) {
     console.error('[ia-agentes] conferir a fala adiada do funil falhou (reagenda):', err)
-    return true
+    return { status: 'reagendar' }
   }
 }
 
@@ -655,10 +834,10 @@ async function conferir(
     return { ok: false, desfecho: { status: 'descartado', erro: 'o robô ou uma automação respondeu' } }
   }
   // Depois da saída do robô, de propósito: a automação que JÁ falou descarta
-  // (final); a que ainda vai falar só adia.
-  if (await funilAindaVaiFalar(db, turno, leitura.contactId, gatilho)) {
-    return { ok: false, desfecho: { status: 'reagendar' } }
-  }
+  // (final); a do funil que ainda roda (ou acorda logo) adia, e a que espera
+  // um "Aguardar" longo descarta (`esperaPeloFunil`).
+  const doFunil = await esperaPeloFunil(db, turno, leitura.contactId, gatilho)
+  if (doFunil) return { ok: false, desfecho: doFunil }
   return {
     ok: true,
     contactId: leitura.contactId,
@@ -930,6 +1109,101 @@ async function prepararMidias(
 }
 
 // ------------------------------------------------------------
+// O áudio da EQUIPE (14/11/2026)
+// ------------------------------------------------------------
+
+/** Quantos áudios da EQUIPE a rodada manda ouvir: os MAIS NOVOS ainda sem transcrição. */
+export const AUDIOS_DA_EQUIPE_POR_TURNO = 3
+/**
+ * O que a espera pelo áudio da equipe deixa para a GERAÇÃO, além do embedding
+ * e do envio: os 30 s que ela tinha antes de 09/11/2026 (hoje o teto é
+ * `PRAZO_DA_GERACAO_MS`, 45 s). Com o prazo de 60 s do turno, a espera acaba
+ * ~12 s depois da reivindicação — e a resposta ao cliente nunca perde o prazo
+ * por causa do áudio da equipe.
+ */
+export const RESERVA_DA_GERACAO_MS = 30_000
+
+interface LinhaDoAudioDaEquipe {
+  id: string
+  sender_type: string
+  sender_id: string | null
+  from_device: boolean | null
+  ia_agente_id: string | null
+  content_type: string
+  transcricao_status: string | null
+}
+
+/**
+ * Os áudios da EQUIPE entre as mensagens que vão ao modelo (a MESMA janela de
+ * `lerConversaDaConexao`, só desta conexão) viram texto pela MESMA função do
+ * áudio do cliente (`transcreverAudio`: cadeado, 3 tentativas, custo em
+ * `ai_usage_log` no modo `transcricao`) e entram no contexto como
+ * `[Team member] [audio message, transcribed] …` (`contexto.ts`). Decisão do
+ * operador (14/11/2026): a equipe explica o caso à cliente quase sempre por
+ * áudio, e a IA, que via só o rótulo, fazia o follow-up às cegas ("Conseguiu
+ * ouvir as explicações?") e podia contradizer a equipe.
+ *
+ * ⚠️⚠️ NUNCA segura a resposta, e nunca REAGENDA o turno:
+ *  - no máximo `AUDIOS_DA_EQUIPE_POR_TURNO` por rodada, os mais novos (`pronta`
+ *    e `recusada` ficam de fora: lida, e o irreversível), em PARALELO;
+ *  - com `esperar`, o turno espera por eles só até sobrar
+ *    `RESERVA_DA_GERACAO_MS` para gerar (além do embedding e do envio); sem
+ *    `esperar` (a retomada que só reagendou), manda ouvir e segue;
+ *  - o que não ficou pronto a tempo SEGUE em segundo plano — não é abortado: a
+ *    transcrição fica gravada e o próximo turno a lê de graça (o cadeado
+ *    impede pagar de novo) — e ESTE turno vê o rótulo, como antes;
+ *  - não marca `andamento.transcreveu` (o que deixa a prévia do prazo
+ *    reagendar), e a falha (`falhou`, `recusada`, sem chave) só deixa o rótulo.
+ *    A leitura da janela que falha também: melhor esforço.
+ * A imagem e o documento da equipe continuam sem leitura (`prepararMidias`).
+ */
+async function ouvirAudiosDaEquipe(
+  db: SupabaseClient,
+  turno: LinhaDoTurno,
+  inicio: number,
+  esperar: boolean,
+): Promise<void> {
+  if (!turno.canal_id) return
+  const { data, error } = await db
+    .from('messages')
+    .select('id, sender_type, sender_id, from_device, ia_agente_id, content_type, transcricao_status')
+    .eq('conversation_id', turno.conversation_id)
+    .eq('channel_id', turno.canal_id)
+    .is('deleted_at', null)
+    // A MESMA janela de `lerConversaDaConexao`: o que não saiu (1080) não vai
+    // ao modelo, e empurraria a janela para trás.
+    .eq('nao_saiu', false)
+    .order('created_at', { ascending: false })
+    .limit(aiContextMessageLimit())
+  if (error) {
+    console.error('[ia-agentes] ler os áudios da equipe falhou; seguem com o rótulo:', turno.id, error.message)
+    return
+  }
+  // Mais novos primeiro (a ordem da consulta).
+  const aOuvir = ((data ?? []) as LinhaDoAudioDaEquipe[])
+    .filter((m) => m.content_type === 'audio' && ehFalaDaEquipe(m))
+    .filter((m) => m.transcricao_status !== 'pronta' && m.transcricao_status !== 'recusada')
+    .slice(0, AUDIOS_DA_EQUIPE_POR_TURNO)
+  if (aOuvir.length === 0) return
+
+  // `allSettled` nunca rejeita: o que segue em segundo plano não vira erro solto.
+  const ouvindo = Promise.allSettled(
+    aOuvir.map((m) => transcreverAudio(db, { accountId: turno.account_id, messageId: m.id })),
+  )
+  const espera =
+    PRAZO_DO_TURNO_MS - (Date.now() - inicio) - RESERVA_DO_ENVIO_MS - PRAZO_DO_EMBEDDING_MS - RESERVA_DA_GERACAO_MS
+  if (!esperar || espera <= 0) return
+  let prazo: ReturnType<typeof setTimeout> | undefined
+  await Promise.race([
+    ouvindo,
+    new Promise<void>((resolve) => {
+      prazo = setTimeout(resolve, espera)
+    }),
+  ])
+  clearTimeout(prazo)
+}
+
+// ------------------------------------------------------------
 // A passagem (D25)
 // ------------------------------------------------------------
 
@@ -1050,10 +1324,13 @@ async function passar(
   void drenarEventosDeFunil().catch(() => {})
 
   // Alguma automação ligada escuta a etapa de destino: ELA fala desta vez, e
-  // o agente responde a partir da próxima mensagem do cliente — a regra da
-  // entrada (E4). Esperar pelo dreno não basta: o evento é reivindicado antes
-  // de a automação rodar, e um "Aguardar" ou a retentativa do envio faria a
-  // boas-vindas sair DEPOIS da resposta do agente (Codex, #309).
+  // o agente responde a partir da próxima mensagem do cliente — a regra que a
+  // entrada seguia até 14/11/2026 (E4), mantida aqui: a automação que não
+  // manda nada deixa a mensagem sem resposta (limite aceito). A entrada passou
+  // a esperar o dreno e conferir o que a automação fez (`esperaPeloFunil`); o
+  // turno do destino não confere as execuções que nascem depois do gatilho
+  // (as ações da triagem estão entre elas), e o "Aguardar" ou a retentativa
+  // da boas-vindas sairia DEPOIS da resposta dele (Codex, #309).
   if (await etapaTemQuemFale(db, turno.account_id, etapa.id)) return { status: 'passou' }
 
   const novo = await enfileirarTurno(db, {
@@ -1204,6 +1481,13 @@ interface Andamento {
    */
   pediuEquipe: boolean
   /**
+   * A RETOMADA foi conferida (antes da reserva) com a conversa JÁ encerrada
+   * (1146): o encerramento a pesou e a deixou na fila, e a série segue nela
+   * (`armarRetomada`). Encerrada só DEPOIS (no meio do envio), a pausa que o
+   * encerramento apagou não foi pesada para esta série: ela acaba aqui.
+   */
+  encerradaAoConferir: boolean
+  /**
    * Quando o horário do agente abriu HOJE (`aberturaDeHoje`, ms); nulo sem
    * horário. As esperas que contam do gatilho (o áudio que ainda baixa, a
    * leitura das mídias) contam no máximo daqui: o turno que esperou a
@@ -1321,6 +1605,13 @@ async function conduzir(
   if (audio) return audio
   const midias = await prepararMidias(db, turno, gatilho, desde, inicio, andamento)
   if (midias) return midias
+  // O áudio da EQUIPE (14/11/2026): DEPOIS do áudio e das mídias do cliente (a
+  // prioridade é dele) e só dentro do teto da espera das mídias, contado como
+  // em `prepararMidias` (do gatilho, ou da abertura/volta). Nunca reagenda.
+  const doGatilho = Date.parse(gatilho.gravada_em ?? '')
+  if (Number.isFinite(doGatilho) && Date.now() - desdeAEspera(doGatilho, andamento) < TETO_DA_ESPERA_DAS_MIDIAS_MS) {
+    await ouvirAudiosDaEquipe(db, turno, inicio, true)
+  }
 
   const conversa = await lerConversaDaConexao(db, {
     conversationId: turno.conversation_id,
@@ -1957,6 +2248,13 @@ async function enviarComPosse(
 //    `[[HANDOFF]]`, `[[TRANSFERIR]]`, passagem, a equipe prometida e o link
 //    inventado PARAM a série (registrado no `erro`), sem mandar nada. O teto
 //    de respostas conta as retomadas, e o teto também só para.
+//  - A conversa ENCERRADA não para a série (1146, decisão do operador de
+//    14/11/2026: a equipe pergunta e encerra para limpar a caixa). Quem pesa
+//    é o encerramento (`cb_encerrar_limpa_ia`): descarta a retomada que não
+//    seguiria (a pausa que ela não atravessa, o card fora da etapa do agente)
+//    e deixa a outra na fila. Ela sai com a conversa encerrada, SEM reabri-la
+//    (`engineSendText` só sobe a prévia), e a resposta da cliente reabre pelo
+//    caminho de gente. As leituras declaram `atravessaEncerrada`.
 
 /** O conteúdo com que a retomada passa por `quemResponde` (a régua do conteúdo não se aplica a ela). */
 const CONTEUDO_DA_RETOMADA = { tipo: 'text', texto: 'retomada', mime: null } as const
@@ -1993,6 +2291,8 @@ type ConferenciaDaRetomada =
       agente: IaAgente
       /** A retomada passa por cima da pausa `gente` (1138), com o N da conta: o envio a levanta. */
       sobrePausa: { minutos: number } | null
+      /** A conversa estava ENCERRADA nesta conferência (1146): a retomada a atravessa. */
+      encerrada: boolean
     }
   | { ok: false; desfecho: Desfecho }
 
@@ -2013,8 +2313,10 @@ async function minutosDaPausaDaRetomada(
 
 /**
  * A retomada ainda vale? O card na etapa do turno com o MESMO agente (a
- * leitura da entrada, `lerQuemAtende` + `quemResponde`), a conversa aberta e
- * sem pausa, a retomada ligada no agente e ninguém depois da âncora. Com
+ * leitura da entrada, `lerQuemAtende` + `quemResponde`), a conversa sem pausa
+ * — aberta ou ENCERRADA (1146: ela sai sem reabrir; o encerramento já
+ * descartou a que não seguiria) —, a retomada ligada no agente e ninguém
+ * depois da âncora. Com
  * `reprogramar`, também o vencimento: fora da janela ou perto de um lembrete,
  * a linha volta para a fila no instante certo; a série que não tem mais onde
  * caber (cadência, reunião, janela da Meta) para. LANÇA em erro de leitura
@@ -2033,6 +2335,7 @@ async function conferirRetomada(
     accountId: turno.account_id,
     conversationId: turno.conversation_id,
     canalId: turno.canal_id,
+    atravessaEncerrada: true,
   })
   if (!leitura) return { ok: false, desfecho: { status: 'descartado', erro: 'conversa' } }
   const minutos = await minutosDaPausaDaRetomada(db, turno.account_id, leitura)
@@ -2044,6 +2347,7 @@ async function conferirRetomada(
     roboConsumiu: false,
     automacaoFalou: false,
     pausaTemporaria: minutos > 0,
+    atravessaEncerrada: true,
   })
   if (decisao.quem === 'ninguem') {
     return decisao.motivo === 'pausada'
@@ -2101,7 +2405,13 @@ async function conferirRetomada(
       return { ok: false, desfecho: { status: 'reagendar', executarApos: new Date(proxima.instante).toISOString() } }
     }
   }
-  return { ok: true, contactId: leitura.contactId, agente, sobrePausa: decisao.sobrePausa ? { minutos } : null }
+  return {
+    ok: true,
+    contactId: leitura.contactId,
+    agente,
+    sobrePausa: decisao.sobrePausa ? { minutos } : null,
+    encerrada: leitura.encerrada,
+  }
 }
 
 /**
@@ -2136,6 +2446,7 @@ async function resolverArmacaoDaEquipe(
     accountId: turno.account_id,
     conversationId: turno.conversation_id,
     canalId: turno.canal_id,
+    atravessaEncerrada: true,
   })
   if (!leitura) return { status: 'descartado', erro: 'conversa' }
   const minutos = await minutosDaPausaDaRetomada(db, turno.account_id, leitura)
@@ -2147,6 +2458,9 @@ async function resolverArmacaoDaEquipe(
     roboConsumiu: false,
     automacaoFalou: false,
     pausaTemporaria: minutos > 0,
+    // A equipe perguntou e ENCERROU (1146): o encerramento já pesou a pausa e
+    // o card desta pré-armação e a deixou na fila.
+    atravessaEncerrada: true,
   })
   if (decisao.quem === 'ninguem') return { status: 'descartado', erro: decisao.motivo }
   const agente = await obterAgente(turno.account_id, decisao.agenteId)
@@ -2223,6 +2537,14 @@ async function conduzirRetomada(
   const daEquipe = ancora.sender_type === 'agent' && tentativa === 1
 
   const primeira = await conferirRetomada(db, turno, ancora.gravada_em, { reprogramar: true })
+  // O áudio da EQUIPE (14/11/2026), com a retomada valendo: na que vai gerar,
+  // esperando (com o teto de `ouvirAudiosDaEquipe`); na que só não venceu
+  // ainda, sem esperar — a pré-armação, 30 s depois da fala da equipe, já
+  // manda ouvi-la, e o follow-up a encontra pronta. Sem o teto do gatilho: a
+  // retomada não tem cliente esperando, e a âncora é antiga por definição.
+  if (primeira.ok || primeira.desfecho.status === 'reagendar') {
+    await ouvirAudiosDaEquipe(db, turno, inicio, primeira.ok)
+  }
   if (!primeira.ok) return primeira.desfecho
   const { agente } = primeira
   andamento.agente = agente
@@ -2366,6 +2688,7 @@ async function conduzirRetomada(
   // De novo, com o texto pronto: o cliente pode ter escrito enquanto o modelo pensava.
   const segunda = await conferirRetomada(db, turno, ancora.gravada_em, { reprogramar: false })
   if (!segunda.ok) return segunda.desfecho
+  andamento.encerradaAoConferir = segunda.encerrada
   const dono = await donoDaConta(db, turno.account_id)
   if (!dono) return { status: 'falhou', erro: 'a conta não tem dono' }
   const contactId = segunda.contactId
@@ -2430,7 +2753,8 @@ async function devolverPausaDaEquipe(db: SupabaseClient, turno: LinhaDoTurno): P
 /**
  * ARMA a próxima tentativa da série, depois de uma resposta (a 1ª) ou de uma
  * retomada (a seguinte) que SAIU. Nada se arma com a retomada desligada, a
- * equipe pedida, a conversa encerrada ou pausada, alguém tendo escrito depois
+ * equipe pedida, a conversa encerrada (menos a série que já corria com ela
+ * encerrada, 1146) ou pausada, alguém tendo escrito depois
  * da âncora, ou a série que não cabe mais (`proximaRetomada` = parar). Já
  * existe pendente na conexão (23505) = o cliente escreveu: nada. Os lembretes
  * que não se leem aqui não seguram o armar — a tentativa relê tudo quando
@@ -2470,8 +2794,13 @@ async function armarRetomada(
     // Encerrada TAMBÉM pelo próprio turno: a automação que o agente executou
     // fechou a conversa (desde a 1109 o encerramento não descarta mais o turno
     // cuja resposta saiu, e ele chega aqui como `respondeu`). Nada de
-    // follow-up numa conversa que o agente encerrou.
-    if (!c || c.status === 'closed' || c.ai_autoreply_disabled === true) return
+    // follow-up numa conversa que o agente encerrou. A série que JÁ corria com
+    // a conversa encerrada segue (1146): o encerramento a pesou antes de esta
+    // tentativa ser conferida (`encerradaAoConferir`). Encerrada no MEIO do
+    // envio dela, não — a pausa que o encerramento apagou não foi pesada para
+    // esta série, e ela acaba aqui (o lado de mandar menos).
+    const segueEncerrada = ehRetomada && andamento.encerradaAoConferir
+    if (!c || (c.status === 'closed' && !segueEncerrada) || c.ai_autoreply_disabled === true) return
 
     const { depois } = await lerMensagensDepois(db, {
       conversationId: turno.conversation_id,
@@ -2491,6 +2820,7 @@ async function armarRetomada(
       accountId: turno.account_id,
       conversationId: turno.conversation_id,
       canalId: turno.canal_id,
+      atravessaEncerrada: segueEncerrada,
     })
     if (!leitura) return
     const decisao = quemResponde({
@@ -2500,6 +2830,7 @@ async function armarRetomada(
       ehRespostaDeBotao: false,
       roboConsumiu: false,
       automacaoFalou: false,
+      atravessaEncerrada: segueEncerrada,
     })
     // O MESMO card do turno, com a etapa livre para mudar: com dois cards do
     // agente, o da resposta movido para etapa sem dono faria `lerCardEAgente`
@@ -2735,6 +3066,7 @@ export async function executarTurno(turnoId: string): Promise<void> {
     falhaDaIa: null,
     gerou: false,
     pediuEquipe: false,
+    encerradaAoConferir: false,
     abertoDesde: null,
     cancelarDigitando: new AbortController(),
   }

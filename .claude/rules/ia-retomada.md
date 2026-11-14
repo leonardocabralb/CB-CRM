@@ -5,6 +5,7 @@ paths:
   - "src/lib/ia-agentes/rede*"
   - "src/components/agentes-de-ia/retomada*"
   - "supabase/migrations/1056_cb_ia_retomada.sql"
+  - "supabase/migrations/1146_cb_ia_follow_up_depois_de_encerrar.sql"
 ---
 
 # Agentes de IA — a retomada quando o cliente não responde (1056, 27/09/2026)
@@ -23,8 +24,30 @@ faz, em `.claude/rules/ia-agentes.md`. ⚠️ "Retomada" aqui é o FOLLOW-UP; o
   `[[TRANSFERIR]]`, equipe prometida, reunião não marcada), com a retomada
   ligada; cada retomada que sai arma a seguinte. 23505 ao armar = o cliente
   escreveu. Robô, automação e gente não armam. Conversa ENCERRADA durante o
-  turno (a automação que o agente executou) não arma: `armarRetomada` relê a
-  conversa (1109, `ia-agentes-turno.md`).
+  turno de RESPOSTA (a automação que o agente executou) não arma:
+  `armarRetomada` relê a conversa (1109, `ia-agentes-turno.md`). A série que
+  já corria com a conversa encerrada arma a seguinte (1146, abaixo).
+- ⚠️⚠️ **ENCERRAR não para a série (1146, decisão do operador de
+  14/11/2026)**: a equipe pergunta e encerra para limpar a caixa, e o card
+  segue aberto na etapa do agente. `cb_encerrar_limpa_ia` (o gatilho de
+  TODO encerramento: tela, passo da automação, lote) descarta a RESPOSTA,
+  como sempre, e só a retomada que NÃO seguiria: com a pausa que ela não
+  atravessa (qualquer uma menos a `gente` com N > 0 — encerrar a APAGA, então
+  é pesada ali, pela de ANTES), ou com o card fora da etapa (fechado, outra
+  etapa, agente desligado, sem a conexão, retomada desligada; a pré-armação
+  pelo card do contato). A que fica sai com a conversa encerrada, SEM
+  reabri-la (`engineSendText` só sobe a prévia; aba Encerradas), e a resposta
+  da cliente reabre pelo caminho de gente. A reserva deixa SÓ a retomada
+  passar pela encerrada; as leituras da retomada declaram `atravessaEncerrada`
+  (`lerQuemAtende` e `quemResponde`; a entrada e a resposta, não). Encerrar
+  continua zerando o teto e a pausa. ⚠️ A seguinte só se arma se a conversa
+  já estava encerrada na conferência (`encerradaAoConferir`): encerrada no
+  meio do envio, a pausa apagada não foi pesada — a série acaba ali. Passo
+  "Encerrar conversa" de "Não Respondeu"/"Desqualificado": o card já está na
+  etapa sem agente, e o gatilho descarta. Pino
+  `follow-up-depois-de-encerrar-1146.test.ts`. A faixa da encerrada mostra o
+  próximo follow-up, com Pausar e Desativar, que o param sem reabrir
+  (`ia-pausa.md`).
 - ⚠️⚠️ **A fala da EQUIPE também arma (1138, P4 e P7 do operador,
   11/11/2026)**, com a cadência do agente da etapa, contada DELA: a equipe
   pediu o holerite e a cliente sumiu → a IA cobra. Quem arma é o gatilho da
@@ -48,6 +71,11 @@ faz, em `.claude/rules/ia-agentes.md`. ⚠️ "Retomada" aqui é o FOLLOW-UP; o
   O pedido ganha a linha "a última foi da equipe" (`daEquipe`, parte
   VARIÁVEL, pela `sender_type` da âncora) SÓ na 1ª tentativa: da 2ª em
   diante a última fala é o follow-up da própria IA.
+- ⚠️ **O ÁUDIO da equipe é ouvido depois de `conferirRetomada`** (14/11/2026):
+  a pré-armação, que só reagenda, manda transcrever SEM esperar, e o follow-up
+  encontra o texto pronto; a que gera espera pouco, nunca reagenda por ele
+  (`ia-agentes-turno.md`). Sem isso, o follow-up perguntava "conseguiu ouvir as
+  explicações?" sem saber o que a equipe disse.
 - ⚠️⚠️ **Arma com o card e a etapa de AGORA** (revisão de 09/11/2026): a
   própria resposta pode ter movido o card (`mover_etapa`); armada com a etapa
   do começo do turno, ela era descartada SEMPRE no vencimento ("o card mudou

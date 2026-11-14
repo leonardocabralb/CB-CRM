@@ -62,12 +62,16 @@ function comparar(a: unknown, b: unknown): number {
   return Number(a) - Number(b)
 }
 
-/** `col.is.null` / `col.not.is.null` / `col.eq.x` / `col.in.(a,b)` — o que o motor manda em `.or()`. */
+/** `col.is.null` / `col.not.is.null` / `col.eq.x` / `col.in.(a,b)` / `col.gt.<iso>` — o que o motor manda em `.or()`. */
 function itemDoOr(item: string): (l: Linha) => boolean {
   const partes = item.split('.')
   if (partes[1] === 'in') {
     const lista = partes.slice(2).join('.').replace(/^\(|\)$/g, '').split(',')
     return (l) => lista.includes(String(l[partes[0]] ?? ''))
+  }
+  // A comparação (o carimbo ISO tem pontos: o valor é o resto inteiro).
+  if (['gt', 'gte', 'lt', 'lte'].includes(partes[1])) {
+    return filtro(partes[1], [partes[0], partes.slice(2).join('.')])!
   }
   const nega = partes[1] === 'not'
   const bruto = partes.slice(nega ? 3 : 2).join('.')
@@ -249,6 +253,7 @@ import { lerLinhaDoAgente } from './agente'
 import { lerAgendaDoAgente } from './agenda'
 import { registrarFalhaDaIa, registrarIaVoltou } from './alarme-da-ia'
 import { NOTA_DA_RESPOSTA_CRUZADA } from './contexto'
+import { aoChegarMensagemDoCliente } from './entrada'
 import { executarAcoes } from './executar-acoes'
 import { opcoesDoAgente } from './ferramentas'
 import { JANELA_DO_AUDIO_MS, REAGENDAR_AUDIO_MS } from './fila'
@@ -257,10 +262,15 @@ import { ERRO_DA_ARMACAO_PELA_EQUIPE, ERRO_DA_ESPERA_DA_EQUIPE } from './pausa'
 import { CANARIO_DAS_REGRAS } from './regras-do-sistema'
 import { obterAgente } from './repo'
 import {
+  AUDIOS_DA_EQUIPE_POR_TURNO,
   ERRO_DA_REPETICAO,
+  ERRO_DO_FUNIL_INCERTO,
+  ERRO_DO_FUNIL_QUE_ESPERA,
+  ESPERA_CURTA_DO_FUNIL_MS,
   executarTurno,
   MIDIAS_POR_TURNO,
   nadaSaiu,
+  RESERVA_DA_GERACAO_MS,
   TETO_DA_ESPERA_DAS_MIDIAS_MS,
   transferirParaGente,
 } from './turno'
@@ -448,7 +458,8 @@ function montarCenario(): void {
     return { data: [{ id: t.id, executar_apos: t.executar_apos }], error: null }
   }
   // A reserva do envio (1049): só o turno e a posse; o resto o banco lê. A
-  // ordem e os nomes da recusa espelham o SQL: descartado, encerrada, pausada,
+  // ordem e os nomes da recusa espelham o SQL: descartado, encerrada (a
+  // RETOMADA passa pela encerrada, 1146), pausada,
   // card_mudou, card_fechado, agente_desligado, fora_da_conexao,
   // agente_sem_etapa, mais_nova (OUTRO pendente da conexão com gatilho mais
   // novo — a prova de que a mensagem abre turno), robo_falou, teto. O teto
@@ -459,7 +470,7 @@ function montarCenario(): void {
     const t = banco.tabelas.cb_ia_turnos.find((x) => x.id === p_turno_id)
     if (!t || t.status !== 'rodando' || t.rodando_desde !== p_rodando_desde) return r('descartado')
     const c = banco.tabelas.conversations.find((x) => x.id === t.conversation_id)
-    if (!c || c.status === 'closed') return r('encerrada')
+    if (!c || (c.status === 'closed' && t.tipo !== 'retomada')) return r('encerrada')
     if (c.ai_autoreply_disabled) return r('pausada')
     const d = banco.tabelas.deals.find((x) => x.id === t.deal_id)
     if (!d || d.stage_id !== t.stage_id) return r('card_mudou')
@@ -488,6 +499,8 @@ function montarCenario(): void {
         m.conversation_id === t.conversation_id &&
         m.channel_id === t.canal_id &&
         m.sender_type === 'bot' &&
+        // A tentativa que não saiu (1080) não é fala — a régua do SQL (`NOT nao_saiu`).
+        m.nao_saiu !== true &&
         !temValor(m.ia_agente_id) &&
         !temValor(m.deleted_at) &&
         temValor(g?.gravada_em) &&
@@ -2431,6 +2444,398 @@ describe('executarTurno — a fala adiada do funil (E4)', () => {
 })
 
 // ------------------------------------------------------------
+// A volta de "Não Respondeu" (E4 revista em 14/11/2026)
+// ------------------------------------------------------------
+
+// O defeito medido no Trabalhista: o card estava em "Não Respondeu"; a
+// cliente escreveu; a automação de "nova mensagem" (condição: etapa = Não
+// Respondeu) MOVEU o card para a "Entrada Avulsa" — a etapa do agente, que
+// tem também a saudação (`deal_stage_changed`, presa à etapa). O 1º passo da
+// saudação é a condição da etiqueta "Não Respondeu": no ramo "sim" ela SÓ
+// tira a etiqueta, sem mandar nada. A entrada contava o "Mover" como fala
+// (a fala adiada) e não enfileirava turno: ninguém respondeu. Agora o motor
+// não conta o "Mover" (`engine.test.ts`), o turno nasce, e aqui ele espera o
+// dreno e confere o que a saudação FEZ. Dados fictícios.
+describe('executarTurno — a volta de "Não Respondeu": a IA responde quando a ouvinte não fala (14/11/2026)', () => {
+  const NAO_RESPONDEU = 'etapa-nao-respondeu'
+  const SAUDACAO = 'auto-saudacao-da-entrada'
+  const agora = () => new Date().toISOString()
+
+  /** O evento do "Mover card" da automação: de "Não Respondeu" para a etapa do agente. */
+  function eventoDaVolta(p: Linha = {}): Linha {
+    return {
+      id: 'ev-volta',
+      account_id: CONTA,
+      tipo: 'deal_stage_changed',
+      contact_id: 'contato-1',
+      deal_id: CARD,
+      from_stage_id: NAO_RESPONDEU,
+      to_stage_id: ETAPA,
+      // Depois da mensagem da cliente (gravada há 20 s): foi ela que o causou.
+      criado_em: haMs(19_000),
+      processado_em: null,
+      ...p,
+    }
+  }
+
+  /** O registro de execução da saudação (o dreno a roda depois do gatilho). */
+  function execucao(p: Linha = {}): Linha {
+    return {
+      id: 'log-saudacao',
+      account_id: CONTA,
+      automation_id: SAUDACAO,
+      contact_id: 'contato-1',
+      trigger_event: 'deal_stage_changed',
+      created_at: haMs(5_000),
+      finalizado_em: null,
+      interrompida_em: null,
+      desfecho: null,
+      ...p,
+    }
+  }
+
+  /** O dreno: o evento reivindicado e a saudação rodada — pelo ramo "sim", só tira a etiqueta. */
+  function drenaComARamoDaEtiqueta(): void {
+    banco.tabelas.cb_automation_events[0].processado_em = haMs(5_000)
+    banco.tabelas.automation_logs = [execucao({ finalizado_em: haMs(4_000), desfecho: 'concluida' })]
+  }
+
+  function venceDeNovo(id = TURNO): void {
+    turno(id).executar_apos = haMs(1_000)
+  }
+
+  const leuExecucoes = () => banco.chamadas.some((c) => c.tabela === 'automation_logs')
+
+  beforeEach(() => {
+    // O card ACABOU de entrar na etapa do agente (D27: depois de ligado).
+    card().etapa_desde = haMs(19_000)
+    banco.tabelas.automations = [
+      {
+        id: SAUDACAO,
+        account_id: CONTA,
+        trigger_type: 'deal_stage_changed',
+        trigger_config: { stage_ids: [ETAPA], parar_ao_sair: true },
+        is_active: true,
+      },
+    ]
+    banco.tabelas.cb_automation_events = [eventoDaVolta()]
+    banco.tabelas.automation_logs = []
+    banco.tabelas.automation_pending_executions = []
+  })
+
+  it('⚠️ O CENÁRIO: a entrada enfileira, o turno espera o dreno, a saudação só tira a etiqueta — e a IA RESPONDE', async () => {
+    banco.tabelas.cb_ia_turnos = []
+    // A entrada recebe os fatos como a ingestão os manda agora: o "Mover" da
+    // automação NÃO é fala (o motor não o conta mais).
+    await aoChegarMensagemDoCliente({
+      accountId: CONTA,
+      conversationId: CONVERSA,
+      canalGravado: CANAL,
+      mensagemId: GATILHO,
+      tipo: 'text',
+      texto: 'Oi, voltei. Ainda dá para ver meu caso?',
+      mime: null,
+      ehGrupo: false,
+      ehRespostaDeBotao: false,
+      roboConsumiu: false,
+      automacaoFalou: false,
+    })
+    const enfileirado = banco.tabelas.cb_ia_turnos[0]
+    expect(enfileirado).toMatchObject({ status: 'aguardando', ia_agente_id: AGENTE, deal_id: CARD, stage_id: ETAPA })
+    const id = enfileirado.id as string
+
+    // 1ª rodada: o dreno ainda não rodou — a saudação ainda pode falar.
+    venceDeNovo(id)
+    await executarTurno(id)
+    expect(turno(id)).toMatchObject({ status: 'aguardando', rodando_desde: null })
+    expect(generateReply).not.toHaveBeenCalled()
+
+    // O dreno roda a saudação: a cliente tem a etiqueta, o ramo "sim" só a tira.
+    drenaComARamoDaEtiqueta()
+
+    // 2ª rodada: drenado, a saudação terminou SEM mandar nada — a IA responde.
+    venceDeNovo(id)
+    await executarTurno(id)
+    expect(turno(id)).toMatchObject({ status: 'respondeu' })
+    expect(engineSendText).toHaveBeenCalledTimes(1)
+  })
+
+  it('pelo ramo "não" a saudação CUMPRIMENTA (mensagem do robô depois do gatilho): descarta, uma resposta só', async () => {
+    drenaComARamoDaEtiqueta()
+    banco.tabelas.messages.push(mensagem({ id: 'msg-saudacao', sender_type: 'bot', gravada_em: haMs(4_000) }))
+
+    await executarTurno(TURNO)
+
+    expect(turno()).toMatchObject({ status: 'descartado', erro: 'o robô ou uma automação respondeu' })
+    expect(generateReply).not.toHaveBeenCalled()
+    expect(engineSendText).not.toHaveBeenCalled()
+  })
+
+  /** Os passos da saudação: o ramo "não" CUMPRIMENTA (o envio que a cala). */
+  function saudacaoQueFala(): void {
+    banco.tabelas.automation_steps = [
+      { id: 'passo-condicao', automation_id: SAUDACAO, step_type: 'condition' },
+      { id: 'passo-tira-etiqueta', automation_id: SAUDACAO, step_type: 'remove_tag' },
+      { id: 'passo-ola', automation_id: SAUDACAO, step_type: 'send_message' },
+    ]
+  }
+
+  it('⚠️ a saudação PARADA num "Aguardar" longo (fala depois): descarta — a IA não fala por cima', async () => {
+    saudacaoQueFala()
+    banco.tabelas.cb_automation_events[0].processado_em = haMs(5_000)
+    banco.tabelas.automation_logs = [execucao()]
+    banco.tabelas.automation_pending_executions = [
+      { id: 'espera-1', log_id: 'log-saudacao', status: 'pending', run_at: daquiMs(DIA) },
+    ]
+
+    await executarTurno(TURNO)
+
+    expect(turno()).toMatchObject({ status: 'descartado', erro: ERRO_DO_FUNIL_QUE_ESPERA })
+    expect(generateReply).not.toHaveBeenCalled()
+    expect(engineSendText).not.toHaveBeenCalled()
+  })
+
+  it('a RETENTATIVA do envio da saudação na fila, para daqui a 5 min, também é fala depois: descarta', async () => {
+    saudacaoQueFala()
+    banco.tabelas.cb_automation_events[0].processado_em = haMs(5_000)
+    banco.tabelas.automation_logs = [execucao()]
+    banco.tabelas.automation_pending_executions = [
+      { id: 'retentativa-1', log_id: 'log-saudacao', status: 'pending', run_at: daquiMs(5 * 60_000) },
+    ]
+
+    await executarTurno(TURNO)
+
+    expect(turno()).toMatchObject({ status: 'descartado', erro: ERRO_DO_FUNIL_QUE_ESPERA })
+  })
+
+  // A revisão do PR #520 (14/11/2026), medido na produção: a "Volta da
+  // Recuperação" move o card para a etapa do agente, e a ouvinte de lá ("15
+  // dias sem conversa") abre com uma espera de 15 dias e depois só mexe em
+  // etiqueta, conversa e card. Parada nela, calava a IA, e ninguém respondia
+  // a cliente que voltou. Dados fictícios.
+  describe('a espera longa de automação que NÃO fala ("15 dias sem conversa")', () => {
+    const QUINZE_DIAS = 'auto-15-dias-sem-conversa'
+
+    function quinzeDiasParado(p: Linha = {}): void {
+      banco.tabelas.automations.push({
+        id: QUINZE_DIAS,
+        account_id: CONTA,
+        trigger_type: 'deal_stage_changed',
+        trigger_config: { stage_ids: [ETAPA], parar_ao_sair: true },
+        is_active: true,
+      })
+      banco.tabelas.automation_steps = [
+        { id: 'p-espera', automation_id: QUINZE_DIAS, step_type: 'wait' },
+        { id: 'p-condicao', automation_id: QUINZE_DIAS, step_type: 'condition' },
+        { id: 'p-tira', automation_id: QUINZE_DIAS, step_type: 'remove_tag' },
+        { id: 'p-poe', automation_id: QUINZE_DIAS, step_type: 'add_tag' },
+        { id: 'p-encerra', automation_id: QUINZE_DIAS, step_type: 'close_conversation' },
+        { id: 'p-move', automation_id: QUINZE_DIAS, step_type: 'move_deal_stage' },
+      ]
+      banco.tabelas.cb_automation_events[0].processado_em = haMs(5_000)
+      banco.tabelas.automation_logs = [execucao({ id: 'log-15-dias', automation_id: QUINZE_DIAS, ...p })]
+      banco.tabelas.automation_pending_executions = [
+        { id: 'espera-15-dias', log_id: 'log-15-dias', status: 'pending', run_at: daquiMs(15 * DIA) },
+      ]
+    }
+
+    it('⚠️ O CASO: parada nos 15 dias, sem passo que fale — a IA RESPONDE', async () => {
+      quinzeDiasParado()
+
+      await executarTurno(TURNO)
+
+      expect(turno().status).toBe('respondeu')
+      expect(engineSendText).toHaveBeenCalledTimes(1)
+    })
+
+    it('com OUTRA execução ainda rodando (a saudação, sem espera): reagenda', async () => {
+      quinzeDiasParado()
+      banco.tabelas.automation_logs.push(execucao())
+
+      await executarTurno(TURNO)
+
+      expect(turno()).toMatchObject({ status: 'aguardando', rodando_desde: null })
+      expect(generateReply).not.toHaveBeenCalled()
+    })
+
+    it.each(['send_message', 'send_media', 'run_flow', 'run_automation'])(
+      'a mesma espera numa automação com `%s` (fala, ou pode falar, depois): descarta',
+      async (passo) => {
+        quinzeDiasParado()
+        banco.tabelas.automation_steps.push({ id: 'p-fala', automation_id: QUINZE_DIAS, step_type: passo })
+
+        await executarTurno(TURNO)
+
+        expect(turno()).toMatchObject({ status: 'descartado', erro: ERRO_DO_FUNIL_QUE_ESPERA })
+        expect(engineSendText).not.toHaveBeenCalled()
+      },
+    )
+
+    it('execução sem automação (apagada): não se sabe se fala — descarta', async () => {
+      quinzeDiasParado({ automation_id: null })
+
+      await executarTurno(TURNO)
+
+      expect(turno()).toMatchObject({ status: 'descartado', erro: ERRO_DO_FUNIL_QUE_ESPERA })
+    })
+
+    it('a leitura dos passos que FALHA dentro da janela: reagenda (na dúvida, a automação fala)', async () => {
+      quinzeDiasParado()
+      banco.falhas.push({ tabela: 'automation_steps', op: 'select', erro: { message: 'timeout' } })
+
+      await executarTurno(TURNO)
+
+      expect(turno().status).toBe('aguardando')
+      expect(generateReply).not.toHaveBeenCalled()
+    })
+  })
+
+  it('"Aguardar" CURTO antes da condição: reagenda; acordada, ela só tira a etiqueta — e a IA responde', async () => {
+    banco.tabelas.cb_automation_events[0].processado_em = haMs(5_000)
+    banco.tabelas.automation_logs = [execucao()]
+    // Acorda bem antes do fim da espera curta (contada do gatilho, há 20 s).
+    const acorda = Date.now() + 5_000
+    expect(acorda).toBeLessThan(Date.now() - 20_000 + ESPERA_CURTA_DO_FUNIL_MS)
+    banco.tabelas.automation_pending_executions = [
+      { id: 'espera-curta', log_id: 'log-saudacao', status: 'pending', run_at: new Date(acorda).toISOString() },
+    ]
+
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'aguardando', rodando_desde: null })
+    expect(generateReply).not.toHaveBeenCalled()
+
+    // Acordou, passou pela condição e terminou sem mandar nada.
+    banco.tabelas.automation_pending_executions[0].status = 'done'
+    Object.assign(banco.tabelas.automation_logs[0], { finalizado_em: agora(), desfecho: 'concluida' })
+    venceDeNovo()
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+  })
+
+  it('a saudação ainda RODANDO (o envio não voltou do provedor: sem linha em `messages`): reagenda', async () => {
+    banco.tabelas.cb_automation_events[0].processado_em = haMs(2_000)
+    banco.tabelas.automation_logs = [execucao({ created_at: haMs(1_500) })]
+
+    await executarTurno(TURNO)
+
+    expect(turno()).toMatchObject({ status: 'aguardando', rodando_desde: null })
+    expect(generateReply).not.toHaveBeenCalled()
+  })
+
+  it('⚠️ a saudação começa a rodar ENQUANTO o modelo pensa (o vão da reivindicação): a 2ª conferência reagenda, sem enviar', async () => {
+    // O evento já reivindicado pelo dreno, sem registro ainda: a 1ª conferência passa.
+    banco.tabelas.cb_automation_events[0].processado_em = haMs(1_000)
+    vi.mocked(generateReply).mockImplementation(async () => {
+      banco.tabelas.automation_logs.push(execucao({ created_at: agora() }))
+      return { text: 'Olá! Que bom que voltou.', handoff: false, usage: null }
+    })
+
+    await executarTurno(TURNO)
+
+    expect(generateReply).toHaveBeenCalledTimes(1)
+    expect(turno().status).toBe('aguardando')
+    expect(engineSendText).not.toHaveBeenCalled()
+  })
+
+  it('o envio da saudação falhou SEM recusa comprovada (incerto: pode ter saído): descarta', async () => {
+    drenaComARamoDaEtiqueta()
+    banco.tabelas.messages.push(
+      mensagem({ id: 'msg-incerta', sender_type: 'bot', nao_saiu: true, error_title: 'incerto', gravada_em: haMs(4_000) }),
+    )
+
+    await executarTurno(TURNO)
+
+    expect(turno()).toMatchObject({ status: 'descartado', erro: ERRO_DO_FUNIL_INCERTO })
+    expect(engineSendText).not.toHaveBeenCalled()
+  })
+
+  it('o envio da saudação RECUSADO (4xx, nada saiu): a IA responde', async () => {
+    drenaComARamoDaEtiqueta()
+    banco.tabelas.messages.push(
+      mensagem({ id: 'msg-recusada', sender_type: 'bot', nao_saiu: true, error_title: 'recusado', gravada_em: haMs(4_000) }),
+    )
+
+    await executarTurno(TURNO)
+
+    expect(turno().status).toBe('respondeu')
+  })
+
+  it('execução viva de ANTES do gatilho (um follow-up parado há dias) não segura a IA', async () => {
+    drenaComARamoDaEtiqueta()
+    banco.tabelas.automation_logs.push(execucao({ id: 'log-antigo', automation_id: 'auto-follow-up', created_at: haMs(3 * DIA) }))
+    banco.tabelas.automation_pending_executions = [
+      { id: 'espera-antiga', log_id: 'log-antigo', status: 'pending', run_at: daquiMs(DIA) },
+    ]
+
+    await executarTurno(TURNO)
+
+    expect(turno().status).toBe('respondeu')
+  })
+
+  it('execução INTERROMPIDA (a cliente respondeu, o card saiu da etapa) não segura a IA', async () => {
+    banco.tabelas.cb_automation_events[0].processado_em = haMs(5_000)
+    banco.tabelas.automation_logs = [execucao({ interrompida_em: haMs(1_000) })]
+    banco.tabelas.automation_pending_executions = [
+      { id: 'espera-1', log_id: 'log-saudacao', status: 'cancelled', run_at: daquiMs(DIA) },
+    ]
+
+    await executarTurno(TURNO)
+
+    expect(turno().status).toBe('respondeu')
+  })
+
+  it('a ouvinte não escuta a etapa do card (outra etapa, ou desligada): nem lê as execuções', async () => {
+    drenaComARamoDaEtiqueta()
+    banco.tabelas.automations[0].is_active = false
+
+    await executarTurno(TURNO)
+
+    expect(turno().status).toBe('respondeu')
+    expect(leuExecucoes()).toBe(false)
+  })
+
+  it('o turno da PASSAGEM não olha as execuções (a triagem já conferiu o funil desta mensagem)', async () => {
+    turno().veio_de_passagem = true
+    banco.tabelas.cb_automation_events[0].processado_em = haMs(5_000)
+    banco.tabelas.automation_logs = [execucao()]
+    banco.tabelas.automation_pending_executions = [
+      { id: 'espera-1', log_id: 'log-saudacao', status: 'pending', run_at: daquiMs(DIA) },
+    ]
+
+    await executarTurno(TURNO)
+
+    expect(turno().status).toBe('respondeu')
+    expect(leuExecucoes()).toBe(false)
+  })
+
+  it.each(['automation_logs', 'automation_pending_executions'])(
+    'a leitura de %s que FALHA dentro da janela: reagenda (na dúvida, a automação fala)',
+    async (tabela) => {
+      banco.tabelas.cb_automation_events[0].processado_em = haMs(5_000)
+      banco.tabelas.automation_logs = [execucao()]
+      banco.falhas.push({ tabela, op: 'select', erro: { message: 'timeout' } })
+
+      await executarTurno(TURNO)
+
+      expect(turno().status).toBe('aguardando')
+      expect(generateReply).not.toHaveBeenCalled()
+    },
+  )
+
+  it('fora da janela (o dreno ou a execução morreram): segue, e nem lê as execuções', async () => {
+    const velha = haMs(JANELA_DO_AUDIO_MS + 60_000)
+    Object.assign(banco.tabelas.messages[0], { gravada_em: velha, created_at: velha })
+    banco.tabelas.cb_automation_events[0].processado_em = haMs(5_000)
+    banco.tabelas.automation_logs = [execucao()]
+
+    await executarTurno(TURNO)
+
+    expect(turno().status).toBe('respondeu')
+    expect(leuExecucoes()).toBe(false)
+  })
+})
+
+// ------------------------------------------------------------
 // Áudio (E9)
 // ------------------------------------------------------------
 
@@ -2841,6 +3246,207 @@ describe('executarTurno — imagem e PDF do cliente', () => {
     banco.tabelas.messages.push(midia('outra-conexao', 25_000, { channel_id: OUTRO_CANAL }))
     await executarTurno(TURNO)
     expect(lerMidia).not.toHaveBeenCalled()
+  })
+})
+
+// ------------------------------------------------------------
+// O áudio da EQUIPE (14/11/2026): a IA ouve o que a equipe explicou
+// ------------------------------------------------------------
+
+describe('executarTurno — o áudio da EQUIPE (14/11/2026)', () => {
+  const enviadas = () => vi.mocked(generateReply).mock.calls[0][0].messages as Array<{ role: string; content: string }>
+  const conversaEnviada = () => enviadas().map((m) => m.content)
+  const linha = (id: string) => banco.tabelas.messages.find((m) => m.id === id)!
+  const ouvidos = () => vi.mocked(transcreverAudio).mock.calls.map((c) => c[1].messageId)
+
+  /** O áudio da equipe (pelo CRM, por padrão), gravado há `haMsGravado` — antes da mensagem do cliente. */
+  function audioDaEquipe(id: string, haMsGravado: number, p: Linha = {}): Linha {
+    return mensagem({
+      id,
+      message_id: `wamid.${id}`,
+      sender_type: 'agent',
+      sender_id: MEMBRO,
+      content_type: 'audio',
+      content_text: null,
+      media_type: 'audio/ogg',
+      gravada_em: haMs(haMsGravado),
+      created_at: haMs(haMsGravado),
+      ...p,
+    })
+  }
+
+  /** O dublê OUVE de verdade: grava a transcrição na linha, como `transcreverAudio` faria. */
+  function ouveComo(texto: (id: string) => string): void {
+    vi.mocked(transcreverAudio).mockImplementation(async (_db, { messageId }) => {
+      Object.assign(linha(messageId), { transcricao: texto(messageId), transcricao_status: 'pronta' })
+      return { status: 'pronta', transcricao: texto(messageId) }
+    })
+  }
+
+  it.each<[string, Linha]>([
+    ['pelo CRM (`sender_id`)', {}],
+    ['pelo celular pareado (`from_device`)', { sender_id: null, from_device: true }],
+  ])('o áudio da equipe %s vira TEXTO antes de gerar: o modelo recebe a transcrição, rotulada como da equipe', async (_rotulo, p) => {
+    banco.tabelas.messages.push(audioDaEquipe('audio-equipe', 5 * 60_000, p))
+    ouveComo(() => 'Maria, já protocolamos o pedido; o prazo é de 30 dias.')
+    await executarTurno(TURNO)
+    expect(transcreverAudio).toHaveBeenCalledWith(banco, { accountId: CONTA, messageId: 'audio-equipe' })
+    expect(turno().status).toBe('respondeu')
+    expect(enviadas()).toContainEqual({
+      role: 'assistant',
+      content: '[Team member] [audio message, transcribed] Maria, já protocolamos o pedido; o prazo é de 30 dias.',
+    })
+  })
+
+  it.each<[string, Awaited<ReturnType<typeof transcreverAudio>>]>([
+    ['falhou', { status: 'falhou', erro: 'gemini fora do ar' }],
+    ['recusada', { status: 'recusada', erro: 'áudio grande demais para transcrever' }],
+    ['transcrevendo (o cadeado de outra rodada)', { status: 'transcrevendo' }],
+  ])('a transcrição %s: o turno RESPONDE com o rótulo — sem transferir, reagendar nem falhar', async (_rotulo, r) => {
+    banco.tabelas.messages.push(audioDaEquipe('audio-equipe', 5 * 60_000))
+    vi.mocked(transcreverAudio).mockResolvedValue(r)
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(conversa().ia_pausada_por).toBeNull()
+    expect(notas()).toHaveLength(0)
+    expect(conversaEnviada()).toContain('[Team member] [audio message, not transcribed]')
+  })
+
+  it('no máximo 3 por rodada, os MAIS NOVOS ainda sem transcrição — os outros seguem com o rótulo', async () => {
+    for (let i = 1; i <= 5; i++) banco.tabelas.messages.push(audioDaEquipe(`equipe-${i}`, (12 - i) * 60_000))
+    ouveComo((id) => `explicação ${id}`)
+    await executarTurno(TURNO)
+    expect(AUDIOS_DA_EQUIPE_POR_TURNO).toBe(3)
+    expect(ouvidos()).toEqual(['equipe-5', 'equipe-4', 'equipe-3'])
+    expect(turno().status).toBe('respondeu')
+    expect(conversaEnviada()).toContain('[Team member] [audio message, transcribed] explicação equipe-5')
+    expect(conversaEnviada().filter((c) => c === '[Team member] [audio message, not transcribed]')).toHaveLength(2)
+  })
+
+  it('não manda ouvir: o já transcrito, o recusado, o de outra conexão, e o áudio da IA, do robô ou sem autor (API)', async () => {
+    banco.tabelas.messages.push(
+      audioDaEquipe('ja-ouvido', 9 * 60_000, { transcricao: 'Já mandamos o contrato.', transcricao_status: 'pronta' }),
+      audioDaEquipe('recusado', 8 * 60_000, { transcricao_status: 'recusada', transcricao_erro: 'grande demais' }),
+      audioDaEquipe('outra-conexao', 7 * 60_000, { channel_id: OUTRO_CANAL }),
+      audioDaEquipe('da-ia', 6 * 60_000, { sender_type: 'bot', sender_id: null, ia_agente_id: AGENTE }),
+      audioDaEquipe('do-robo', 5 * 60_000, { sender_type: 'bot', sender_id: null }),
+      audioDaEquipe('da-api', 4 * 60_000, { sender_id: null, from_device: false }),
+    )
+    await executarTurno(TURNO)
+    expect(transcreverAudio).not.toHaveBeenCalled()
+    expect(turno().status).toBe('respondeu')
+    // O que já está transcrito (pela bolha, por um turno anterior) entra pronto.
+    expect(conversaEnviada()).toContain('[Team member] [audio message, transcribed] Já mandamos o contrato.')
+  })
+
+  it('o gatilho além do teto da espera das mídias: o áudio da equipe não é ouvido nesta rodada (o cliente já esperou)', async () => {
+    Object.assign(linha(GATILHO), {
+      gravada_em: haMs(TETO_DA_ESPERA_DAS_MIDIAS_MS + 1_000),
+      created_at: haMs(TETO_DA_ESPERA_DAS_MIDIAS_MS + 1_000),
+    })
+    banco.tabelas.messages.push(audioDaEquipe('audio-equipe', TETO_DA_ESPERA_DAS_MIDIAS_MS + 60_000))
+    await executarTurno(TURNO)
+    expect(transcreverAudio).not.toHaveBeenCalled()
+    expect(turno().status).toBe('respondeu')
+    expect(conversaEnviada()).toContain('[Team member] [audio message, not transcribed]')
+  })
+
+  describe('o áudio do CLIENTE continua com a prioridade e o comportamento de antes', () => {
+    function gatilhoDeAudio(): void {
+      Object.assign(linha(GATILHO), { content_type: 'audio', content_text: null })
+      banco.tabelas.messages.push(audioDaEquipe('audio-equipe', 5 * 60_000))
+    }
+
+    it('o do cliente é ouvido ANTES do da equipe', async () => {
+      gatilhoDeAudio()
+      ouveComo((id) => (id === GATILHO ? 'e o prazo?' : 'o prazo é de 30 dias'))
+      await executarTurno(TURNO)
+      expect(ouvidos()).toEqual([GATILHO, 'audio-equipe'])
+      expect(conversaEnviada()).toEqual([
+        '[Team member] [audio message, transcribed] o prazo é de 30 dias',
+        '[audio message, transcribed] e o prazo?',
+      ])
+    })
+
+    it('o do cliente que não se ouve TRANSFERE como antes — e o da equipe nem é tentado', async () => {
+      gatilhoDeAudio()
+      vi.mocked(transcreverAudio).mockResolvedValue({ status: 'recusada', erro: 'áudio grande demais' })
+      await executarTurno(TURNO)
+      expect(ouvidos()).toEqual([GATILHO])
+      expect(turno()).toMatchObject({ status: 'transferiu', erro: 'audio' })
+    })
+
+    it('o do cliente ainda baixando REAGENDA como antes — o da equipe espera a rodada seguinte', async () => {
+      gatilhoDeAudio()
+      vi.mocked(transcreverAudio).mockResolvedValue({ status: 'falhou', erro: 'o áudio ainda está sendo baixado' })
+      await executarTurno(TURNO)
+      expect(ouvidos()).toEqual([GATILHO])
+      expect(turno()).toMatchObject({ status: 'aguardando', rodando_desde: null })
+    })
+  })
+
+  describe('a espera tem TETO: a resposta nunca perde o prazo por causa do áudio da equipe', () => {
+    // Só o `Date` é falso: a leitura de uma foto do cliente "come" o prazo do
+    // turno, e o resto do relógio (o `setTimeout` da espera) é o de verdade.
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date())
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    /** A foto do cliente cuja leitura leva `ms` (ninguém a lê: não reagenda o turno). */
+    function fotoQueLeva(ms: number): void {
+      banco.tabelas.messages.push(
+        mensagem({
+          id: 'foto',
+          message_id: 'wamid.foto',
+          content_type: 'image',
+          content_text: null,
+          media_type: 'image/jpeg',
+          gravada_em: haMs(25_000),
+          created_at: haMs(25_000),
+        }),
+      )
+      vi.mocked(lerMidia).mockImplementation(async () => {
+        vi.setSystemTime(Date.now() + ms)
+        return { status: 'sem_leitor', erro: 'sem chave' }
+      })
+    }
+
+    it('sobra pouco: espera SÓ até a sobra e responde com o rótulo — a geração fica com a reserva dela', async () => {
+      // 60 s − 10 s do envio − 8 s do embedding − 30 s da geração = 12 s: com
+      // 11,95 s gastos, a espera é de 50 ms — e a transcrição não acaba nunca.
+      fotoQueLeva(11_950)
+      banco.tabelas.messages.push(audioDaEquipe('audio-equipe', 5 * 60_000))
+      vi.mocked(transcreverAudio).mockReturnValue(new Promise(() => {}))
+      await executarTurno(TURNO)
+      expect(ouvidos()).toEqual(['audio-equipe'])
+      expect(turno().status).toBe('respondeu')
+      expect(conversaEnviada()).toContain('[Team member] [audio message, not transcribed]')
+      expect(vi.mocked(generateReply).mock.calls[0][0].timeoutMs).toBeGreaterThanOrEqual(RESERVA_DA_GERACAO_MS)
+    })
+
+    it('⚠️ sem sobra: manda ouvir e NÃO espera — responde com o rótulo, e a transcrição SEGUE e fica gravada para o próximo turno', async () => {
+      fotoQueLeva(13_000)
+      banco.tabelas.messages.push(audioDaEquipe('audio-equipe', 5 * 60_000))
+      let terminar!: () => void
+      const ouvido = new Promise<void>((resolve) => {
+        terminar = resolve
+      })
+      vi.mocked(transcreverAudio).mockImplementation(async (_db, { messageId }) => {
+        await ouvido
+        Object.assign(linha(messageId), { transcricao: 'o prazo é de 30 dias', transcricao_status: 'pronta' })
+        return { status: 'pronta', transcricao: 'o prazo é de 30 dias' }
+      })
+      await executarTurno(TURNO)
+      expect(turno().status).toBe('respondeu')
+      expect(conversaEnviada()).toContain('[Team member] [audio message, not transcribed]')
+      // Não foi abortada: termina depois do turno e fica gravada.
+      terminar()
+      await vi.waitFor(() => expect(linha('audio-equipe').transcricao_status).toBe('pronta'))
+    })
   })
 })
 
@@ -4693,5 +5299,180 @@ describe('a RETOMADA (1056)', () => {
       await executarTurno(RETOMADA)
       expect(turno(RETOMADA)).toMatchObject({ status: 'descartado', erro: 'a retomada está desligada no agente' })
     })
+
+    describe('a fala da equipe por ÁUDIO (14/11/2026)', () => {
+      const falaDaEquipe = () => banco.tabelas.messages.find((m) => m.id === EQUIPE)!
+
+      /** A fala da equipe vira um áudio, e o dublê o OUVE de verdade (grava na linha). */
+      function porAudio(): void {
+        Object.assign(falaDaEquipe(), { content_type: 'audio', content_text: null, media_type: 'audio/ogg' })
+        vi.mocked(transcreverAudio).mockImplementation(async (_db, { messageId }) => {
+          const transcricao = 'Maria, me manda o holerite de outubro e a carteira de trabalho.'
+          Object.assign(banco.tabelas.messages.find((m) => m.id === messageId)!, { transcricao, transcricao_status: 'pronta' })
+          return { status: 'pronta', transcricao }
+        })
+      }
+
+      it('o follow-up OUVE o áudio antes de gerar: o modelo recebe o que a equipe pediu, rotulado', async () => {
+        comPreArmacao(20 * MIN)
+        porAudio()
+        await executarTurno(RETOMADA)
+        expect(transcreverAudio).toHaveBeenCalledWith(banco, { accountId: CONTA, messageId: EQUIPE })
+        expect(turno(RETOMADA).status).toBe('respondeu')
+        const enviadas = vi.mocked(generateReply).mock.calls[0][0].messages
+        expect(enviadas).toContainEqual({
+          role: 'assistant',
+          content: '[Team member] [audio message, transcribed] Maria, me manda o holerite de outubro e a carteira de trabalho.',
+        })
+      })
+
+      it('⚠️ a PRÉ-ARMAÇÃO (30 s depois da fala) já manda ouvir, sem gerar: o follow-up, minutos depois, a encontra pronta', async () => {
+        comPreArmacao(MIN)
+        porAudio()
+        await executarTurno(RETOMADA)
+        expect(turno(RETOMADA).status).toBe('aguardando')
+        expect(generateReply).not.toHaveBeenCalled()
+        expect(transcreverAudio).toHaveBeenCalledWith(banco, { accountId: CONTA, messageId: EQUIPE })
+        await vi.waitFor(() => expect(falaDaEquipe().transcricao_status).toBe('pronta'))
+      })
+
+      it('a transcrição que falha: o follow-up sai assim mesmo, com o rótulo (nunca reagenda nem para a série)', async () => {
+        comPreArmacao(20 * MIN)
+        Object.assign(falaDaEquipe(), { content_type: 'audio', content_text: null })
+        vi.mocked(transcreverAudio).mockResolvedValue({ status: 'falhou', erro: 'gemini fora do ar' })
+        await executarTurno(RETOMADA)
+        expect(turno(RETOMADA).status).toBe('respondeu')
+        expect(vi.mocked(generateReply).mock.calls[0][0].messages).toContainEqual({
+          role: 'assistant',
+          content: '[Team member] [audio message, not transcribed]',
+        })
+        expect(retomadas()).toMatchObject([{ tentativa: 2 }])
+      })
+
+      it('a retomada que NÃO vale (a cliente escreveu depois da fala): nada é mandado ouvir', async () => {
+        comPreArmacao(20 * MIN)
+        porAudio()
+        banco.tabelas.messages.push(mensagem({ id: 'msg-depois', message_id: 'wamid.depois', gravada_em: haMs(MIN) }))
+        await executarTurno(RETOMADA)
+        expect(turno(RETOMADA).status).toBe('descartado')
+        expect(transcreverAudio).not.toHaveBeenCalled()
+      })
+    })
+  })
+
+  describe('a conversa ENCERRADA (1146, decisão do operador de 14/11/2026)', () => {
+    /**
+     * O que o gatilho do encerramento deixa: a conversa encerrada, sem agente
+     * e sem pausa (`cb_encerrar_limpa_ia`). A retomada que ele não descartou
+     * continua na fila.
+     */
+    function encerrada(): void {
+      Object.assign(conversa(), {
+        status: 'closed',
+        ia_agente_id: null,
+        ai_autoreply_disabled: false,
+        ia_pausada_por: null,
+        ia_pausada_em: null,
+      })
+    }
+
+    it('⚠️ o atendente encerrou com o card na etapa do agente: a retomada SAI, sem reabrir a conversa, e arma a seguinte', async () => {
+      comRetomadaPendente()
+      encerrada()
+      vi.mocked(generateReply).mockResolvedValue({ text: 'Oi! Conseguiu separar os extratos?', handoff: false, usage: null })
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA).status).toBe('respondeu')
+      expect(engineSendText).toHaveBeenCalledWith(
+        expect.objectContaining({ text: 'Oi! Conseguiu separar os extratos?', iaAgenteId: AGENTE, conversationId: CONVERSA }),
+      )
+      // Continua encerrada (só a resposta da cliente reabre) e sem o agente
+      // marcado: encerrar o tirou, e o follow-up não o devolve.
+      expect(conversa()).toMatchObject({ status: 'closed', ia_agente_id: null, ai_autoreply_disabled: false })
+      // A série segue com a conversa encerrada.
+      expect(retomadas()).toMatchObject([{ tentativa: 2, mensagem_gatilho_id: ANCORA, status: 'aguardando' }])
+    })
+
+    it('⚠️ a pré-armação da fala da EQUIPE (a pergunta antes de encerrar): resolve, sai sem levantar pausa nenhuma e arma a seguinte', async () => {
+      const EQUIPE = 'msg-equipe'
+      Object.assign(banco.tabelas.messages.find((m) => m.id === GATILHO)!, { gravada_em: haMs(21 * MIN), created_at: haMs(21 * MIN) })
+      banco.tabelas.messages.push(
+        mensagem({
+          id: EQUIPE,
+          sender_type: 'agent',
+          sender_id: MEMBRO,
+          message_id: 'wamid.equipe',
+          content_text: 'Me manda o holerite, por favor.',
+          gravada_em: haMs(20 * MIN),
+          created_at: haMs(20 * MIN),
+        }),
+      )
+      banco.tabelas.cb_ia_turnos = [
+        {
+          ...turno(),
+          id: RETOMADA,
+          tipo: 'retomada',
+          tentativa: 1,
+          tentativas: 1,
+          ia_agente_id: null,
+          deal_id: null,
+          stage_id: null,
+          mensagem_gatilho_id: EQUIPE,
+          mensagem_inicial_id: EQUIPE,
+          erro: ERRO_DA_ARMACAO_PELA_EQUIPE,
+          executar_apos: haMs(1_000),
+        },
+      ]
+      // A pausa `gente` da pergunta foi apagada pelo encerramento.
+      encerrada()
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA)).toMatchObject({ status: 'respondeu', ia_agente_id: AGENTE, deal_id: CARD, stage_id: ETAPA })
+      expect(vi.mocked(generateReply).mock.calls[0][0].systemPrompt).toContain('written by a person from the team')
+      // Sem pausa a levantar (o encerramento já a tirou) e nada a devolver.
+      expect(banco.rpcChamadas.map((c) => c.nome)).not.toContain('cb_ia_voltar_da_pausa')
+      expect(conversa()).toMatchObject({ status: 'closed', ai_autoreply_disabled: false, ia_pausada_por: null })
+      expect(retomadas()).toMatchObject([{ tentativa: 2, mensagem_gatilho_id: EQUIPE, ia_agente_id: AGENTE }])
+    })
+
+    it.each<[string, () => void, string]>([
+      ['o card saiu para uma etapa SEM agente (Desqualificado, Não Respondeu)', () => { card().stage_id = 'etapa-meio' }, 'descartado'],
+      ['o card foi ganho ou perdido', () => { card().status = 'won' }, 'descartado'],
+      ['o agente foi desligado', () => { agenteLido().ativo = false }, 'descartado'],
+      ['a retomada foi desligada no agente', () => { agenteLido().retomada = retomadaLigada({ ativa: false }) }, 'descartado'],
+      ['a cliente escreveu', () => {
+        banco.tabelas.messages.push(mensagem({ id: 'msg-depois', message_id: 'wamid.depois', gravada_em: haMs(5 * MIN) }))
+      }, 'descartado'],
+      ['a equipe escreveu pelo celular', () => {
+        banco.tabelas.messages.push(mensagem({ id: 'msg-depois', sender_type: 'agent', from_device: true, gravada_em: haMs(5 * MIN) }))
+      }, 'descartado'],
+      ['a IA foi DESATIVADA depois de encerrar (o "Desativar" da faixa)', () => {
+        Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: 'desativada', ia_pausada_em: haMs(MIN) })
+      }, 'pausado_no_meio'],
+      ['o "Pausar" da faixa depois de encerrar (`botao`: a retomada só atravessa a `gente`)', () => {
+        Object.assign(conversa(), { ai_autoreply_disabled: true, ia_pausada_por: 'botao', ia_pausada_em: haMs(MIN) })
+      }, 'pausado_no_meio'],
+    ])('a conversa encerrada não segura o resto: %s — nada sai', async (_rotulo, montar, status) => {
+      comRetomadaPendente()
+      encerrada()
+      montar()
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA).status).toBe(status)
+      expect(generateReply).not.toHaveBeenCalled()
+      expect(engineSendText).not.toHaveBeenCalled()
+      expect(retomadas()).toHaveLength(0)
+      // Parar o follow-up nunca reabre a conversa.
+      expect(conversa().status).toBe('closed')
+    })
+
+    it('⚠️ encerrada NO MEIO do envio (depois da última conferência): a retomada sai, mas a série acaba aqui — a pausa que o encerramento apagou não foi pesada para ela', async () => {
+      comRetomadaPendente()
+      antesDaReserva(() => {
+        conversa().status = 'closed'
+      })
+      await executarTurno(RETOMADA)
+      expect(turno(RETOMADA).status).toBe('respondeu')
+      expect(retomadas()).toHaveLength(0)
+    })
+    // O turno de RESPOSTA na conversa encerrada continua recusado: "a conversa
+    // foi encerrada logo antes da reserva" e "conversa ENCERRADA", acima.
   })
 })

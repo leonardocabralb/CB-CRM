@@ -131,6 +131,34 @@ Decisões do operador de 11/11/2026 (P1–P7 de
   ignorância. "A IA volta A PARTIR DE <hora>" (fora do horário ela espera a
   abertura), no idioma de quem olha, com o dia quando não é hoje
   (`horaDaVolta`).
+- ⚠️ **O [Desativar IA] pergunta antes** (operador, 14/11/2026: a equipe
+  desativava sem saber que os follow-ups param): o botão só ABRE o aviso
+  (`clicarNoDesativar`; estado do próprio botão, some com ele), que recomenda
+  o Pausar com o N. "Pausar em vez disso" (o principal, com o foco) = o
+  `{ paused: true }`; "Desativar mesmo assim" = o `permanente`; "Cancelar", o
+  X e o Esc, nada. Na pausa temporária o principal é "Manter a pausa" e NÃO
+  chama a rota: o Pausar trocaria a `gente` por `botao`, e a retomada só
+  atravessa a `gente`. N = 0: sem Desativar, sem aviso.
+- ⚠️ **A frase do Pausar é a do ESTADO** (`FraseDoAviso`, revisão do PR
+  #520): só a atendendo e a pausa `gente` dizem "continua os follow-ups"; na
+  pausa `botao` o agendado não sai, e na encerrada o Pausar PARA este
+  follow-up (é para isso que se clica). Prometer follow-up ali era falso.
+- ⚠️⚠️ **ENCERRADA com o follow-up na fila (1146; operador, 14/11/2026: "É
+  bom mostrar")**: a rota devolve `encerrada` e, SÓ onde o follow-up sai (o
+  card na etapa do agente — `quemResponde` com `atravessaEncerrada` — e a
+  pausa que ele atravessa: nenhuma, ou a `gente` com N > 0), o
+  `agenteDoFollowUp` e o `proximo` lido só dos `tipo = 'retomada'` (a resposta
+  que sobrou, a reserva recusa). ⚠️ `agente` segue NULO na encerrada: a faixa
+  de antes, aberta no deploy, diria "responde nesta conversa". A faixa diz
+  "Conversa encerrada: IA · X ainda manda o follow-up, sem reabrir a
+  conversa", a linha do próximo follow-up e [Pausar] + [Desativar IA] — no
+  aviso, `pausada={false}`: o Pausar é o que para o follow-up sem desativar.
+  Os dois só gravam a pausa (a rota do botão não mudou, nunca toca a
+  situação), o follow-up para no vencimento (`pausado_no_meio`) e a faixa
+  some na hora (a rota não lê a fila sob a pausa que ele não atravessa). Sem
+  follow-up, nada — nem "pausada", nem "não atende" —, mas com o agente do
+  follow-up o `proximo` vem NULO e a faixa segue relendo (o vão do #515).
+  Ela relê também quando `status` muda.
 - A aba Turnos diz "aguardando a equipe responder · a IA volta <quando>" e
   traduz `a equipe respondeu` (`ERROS_GRAVADOS_PELO_BANCO`).
 
@@ -143,3 +171,7 @@ Decisões do operador de 11/11/2026 (P1–P7 de
   deploy) diz que é a equipe, para não repetir nem contradizer e seguir o que
   ela combinou. O rótulo imitado sai em `lerAcoes` (`semRotuloDaEquipe`, em
   qualquer ponto, em negrito e traduzido): nunca chega ao cliente.
+- O ÁUDIO da equipe vai TRANSCRITO (14/11/2026; `ouvirAudiosDaEquipe`, sem
+  segurar a resposta: `ia-agentes-turno.md`); sem a transcrição pronta a
+  tempo, vai o rótulo do áudio, como antes. `ehFalaDaEquipe` decide as duas
+  coisas (quem leva o rótulo e quais áudios são ouvidos): mudá-la muda ambas.

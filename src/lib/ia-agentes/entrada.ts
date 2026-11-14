@@ -40,7 +40,11 @@ export interface MensagemDoCliente {
   ehRespostaDeBotao: boolean
   /** Um fluxo (robô) consumiu a mensagem. */
   roboConsumiu: boolean
-  /** Alguma automação desta mensagem FALOU (ou vai falar) com o contato (E4). */
+  /**
+   * Alguma automação desta mensagem FALOU (ou vai falar) com o contato (E4).
+   * O card criado ou movido para etapa que automação escuta NÃO entra (E4
+   * revista em 14/11/2026): o turno nasce e espera o dreno (`esperaPeloFunil`).
+   */
   automacaoFalou: boolean
 }
 

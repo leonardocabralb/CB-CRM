@@ -56,8 +56,11 @@ import { prepararMidiaDoPasso } from './midia-do-passo';
  * cliente (F2 dos agentes, E4): os que falam com o contato, e — por
  * conservadorismo — os que iniciam um robô ou outra automação, que podem
  * falar. O "Aguardar" conta à parte (quem espera, fala depois).
+ * EXPORTADA para o turno do agente: a execução do funil PARADA numa espera
+ * longa só o cala se a automação dela tiver um destes passos
+ * (`execucoesVivasDepois`, `ia-agentes/turno.ts`).
  */
-const PASSOS_QUE_CALAM_O_AGENTE: ReadonlySet<string> = new Set([
+export const PASSOS_QUE_CALAM_O_AGENTE: ReadonlySet<string> = new Set([
   ...PASSOS_QUE_FALAM_COM_O_CONTATO,
   'run_flow',
   'run_automation',
@@ -367,6 +370,9 @@ export interface ResultadoDoDisparo {
    * ou outra automação iniciados. Com
    * isso o agente de IA fica calado nesta mensagem: o cliente não recebe
    * duas respostas. Opcional para os fakes antigos continuarem valendo.
+   * ⚠️ O card criado ou MOVIDO para uma etapa que automação escuta não entra
+   * (E4, revista em 14/11/2026): a ouvinte roda depois, no dreno, e quem
+   * confere o que ela fez é o turno do agente (`esperaPeloFunil`).
    */
   falou?: boolean;
 }
@@ -2267,11 +2273,10 @@ async function runStep(
       });
 
       if (!criado.ok) throw new Error(`create_deal falhou: ${criado.message}`);
-      // O card NASCEU na etapa: a automação que escuta a entrada nela fala
-      // depois, no dreno — conta agora (E4, `etapaTemQuemFale`).
-      if (criado.created && args.aoFalar && (await etapaTemQuemFale(db, args.automation.account_id, cfg.stage_id))) {
-        args.aoFalar();
-      }
+      // O card NASCEU na etapa: a automação que escuta a entrada nela roda
+      // depois, no dreno. NÃO conta como fala (E4, revista em 14/11/2026): ela
+      // pode terminar sem mandar nada, e quem confere o que ela fez é o turno
+      // do agente de IA (`esperaPeloFunil`, `ia-agentes/turno.ts`).
       // `created: false` (colisão de índice único) não acontece com source
       // 'automation' — o índice da 911 não alcança este insert. Quem barra
       // duplicata aqui é a checagem acima; o ramo fica pelo contrato de
@@ -2294,21 +2299,11 @@ async function runStep(
       if (!ehMover && !cfg.status)
         throw new Error('set_deal_status precisa de status');
 
-
-      // FALA ADIADA (E4): quem escuta a entrada na etapa de destino fala
-      // depois, no dreno. Só vale se o card MUDAR de etapa (sem mudança o
-      // gatilho da 934 não enfileira evento nenhum) — e a RPC não diz se
-      // mudou: a etapa de antes é lida aqui, e só quando alguém escuta a de
-      // destino (o caso comum fica numa consulta só). Leitura que falha =
-      // conta como fala (`undefined` nunca é a etapa de destino).
-      const escutaODestino =
-        ehMover &&
-        !!cfg.stage_id &&
-        !!args.aoFalar &&
-        (await etapaTemQuemFale(db, args.automation.account_id, cfg.stage_id));
-      const etapaAntes = escutaODestino
-        ? await etapaAtualDoCard(db, args.automation.account_id, alvo.id)
-        : undefined;
+      // ⚠️ O "Mover" para uma etapa que automação escuta NÃO conta como fala
+      // (E4, revista em 14/11/2026): a ouvinte roda depois, no dreno, e pode
+      // não mandar nada — a saudação que só tira a etiqueta de quem volta de
+      // "Não Respondeu" deixava a cliente sem resposta nenhuma. Quem confere o
+      // que ela fez é o turno do agente de IA (`esperaPeloFunil`).
 
       // ⚠️ O "Mover" NÃO pede status: quem reabre o PERDIDO levado a uma
       // etapa neutra — inclusive a etapa em que ele já está, o card marcado
@@ -2349,7 +2344,6 @@ async function runStep(
       // para o "Aguardar" junto com o resto do contexto.
       if (!args.context.deal_id) args.context.deal_id = alvo.id;
       args.context.deal_status_fixado = (r.status_gravado as DealStatus | null) ?? null;
-      if (escutaODestino && etapaAntes !== cfg.stage_id) args.aoFalar?.();
 
       // O motivo do passo (1112, Fase 3 dos motivos): DEPOIS do movimento,
       // e a falha vira nota no registro, nunca passo falho — ver
@@ -4112,16 +4106,21 @@ function stepChannel(
 }
 
 /**
- * FALA ADIADA DO FUNIL (E4 dos agentes de IA). O "Mover card" e o "Criar
- * negócio" só gravam um evento em `cb_automation_events`; a automação de
- * `deal_stage_changed` que escuta a etapa de destino roda DEPOIS, no dreno
- * (`drain-events.ts`), e pode mandar mensagem ao contato — com o agente já
- * tendo respondido a mesma mensagem (o turno roda 8 s depois dela). Por isso
- * o passo conta como fala quando alguma automação LIGADA da conta dispararia
- * para essa etapa, pela MESMA régua do motor (`triggerMatches`: lista vazia =
- * qualquer etapa). Sem olhar os passos dela, nem os recortes de canal e de
- * escopo — o lado conservador, como `run_automation`: o agente cala. Erro de
- * leitura = fala, pelo mesmo motivo.
+ * FALA ADIADA DO FUNIL (E4 dos agentes de IA). O "Mover card", o "Criar
+ * negócio", o roteador de funil e a passagem entre agentes só gravam um evento
+ * em `cb_automation_events`; a automação de `deal_stage_changed` que escuta a
+ * etapa de destino roda DEPOIS, no dreno (`drain-events.ts`), e pode mandar
+ * mensagem ao contato. Esta é a pergunta "alguma automação LIGADA da conta
+ * dispararia para essa etapa?", pela MESMA régua do motor (`triggerMatches`:
+ * lista vazia = qualquer etapa), sem olhar os passos dela nem os recortes de
+ * canal e de escopo. Erro de leitura = sim (o lado conservador).
+ *
+ * Quem pergunta é o agente de IA (`ia-agentes/turno.ts`): o turno espera o
+ * dreno enquanto há evento não drenado numa etapa assim e confere o que a
+ * ouvinte FEZ (`esperaPeloFunil`), e a passagem não abre o turno do destino.
+ * Desde 14/11/2026 os passos do motor e as ingestões não a perguntam mais: a
+ * existência da ouvinte calava o agente, e a ouvinte que não manda nada (uma
+ * condição, outro número) deixava o cliente sem resposta.
  */
 export async function etapaTemQuemFale(
   db: ReturnType<typeof supabaseAdmin>,
@@ -4141,22 +4140,6 @@ export async function etapaTemQuemFale(
   return ((data ?? []) as Automation[]).some(
     (a) => a.trigger_type === 'deal_stage_changed' && triggerMatches(a, { to_stage_id: stageId })
   );
-}
-
-/** A etapa do card agora (`null` = sem etapa). `undefined` = a leitura falhou. */
-async function etapaAtualDoCard(
-  db: ReturnType<typeof supabaseAdmin>,
-  accountId: string,
-  dealId: string
-): Promise<string | null | undefined> {
-  const { data, error } = await db
-    .from('deals')
-    .select('stage_id')
-    .eq('id', dealId)
-    .eq('account_id', accountId)
-    .maybeSingle();
-  if (error) return undefined;
-  return (data?.stage_id as string | null | undefined) ?? null;
 }
 
 /**

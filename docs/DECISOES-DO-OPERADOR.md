@@ -158,6 +158,12 @@ qualquer uma é pergunta ao operador.
   não zera (1130, `ia.md`); (3) a resposta que move o card para a etapa de
   OUTRO agente (ou sem agente) não arma retomada; para outra etapa do mesmo,
   arma com ela (`ia-retomada.md`).
+- Agente de IA × automação do funil (14/11/2026, a volta de "Não Respondeu"
+  no Trabalhista ficava sem resposta): o card movido ou criado para etapa com
+  automação escutando NÃO cala mais a IA — ela espera a automação rodar e
+  responde se ela terminar sem mandar nada; se a automação falou, ou vai
+  falar depois de um "Aguardar" longo, a IA cala (`ia-agentes-turno.md`). A
+  passagem entre agentes mantém a regra de antes.
 - A automação que o agente de IA executa fala EM NOME dele e não para a
   retomada dele; o disparo por evento nunca leva a marca (09/11/2026: no
   Trabalhista, o vídeo e o link da assinatura saem por automação, com o link
@@ -171,6 +177,26 @@ qualquer uma é pergunta ao operador.
   follow-up que sai devolve a conversa à IA; os N min contam no relógio (fora
   do horário, espera a abertura); a fala da equipe chega ao modelo rotulada,
   sem o nome (`ia-pausa.md`).
+- O agente de IA OUVE o áudio da EQUIPE (14/11/2026: a IA fazia o follow-up
+  sem saber o que a equipe explicou por áudio): a transcrição entra no
+  contexto com o rótulo da equipe, mas NUNCA segura a resposta nem reagenda o
+  turno — o que não ficar pronto a tempo vai com o rótulo, e o áudio do
+  cliente tem a prioridade; foto e documento da equipe seguem sem leitura, e o
+  Radar segue ouvindo só o cliente (`ia-agentes-turno.md`).
+- Follow-up da IA depois de ENCERRAR (14/11/2026, revisa o "encerrar
+  descarta" da 1049/1109; 1146): encerrar com o card aberto numa etapa com
+  agente ligado MANTÉM os follow-ups (o da resposta da IA e o da fala da
+  equipe); eles saem com a conversa encerrada, sem reabri-la, e a resposta
+  da cliente a reabre. Param como antes: card ganho, perdido ou em etapa sem
+  agente, agente desligado, cliente ou equipe que escreve (pelas regras de
+  hoje), e a pausa que já os parava (Pausar, Desativar, transferência,
+  automação). Encerrar continua limpando a pausa e o teto, e a resposta
+  pendente da IA sai (`ia-retomada.md`). Na encerrada com follow-up na fila,
+  a faixa da conversa mostra o próximo e os botões "Pausar" e "Desativar
+  IA", que o param sem reabrir ("É bom mostrar"; `ia-pausa.md`).
+- O "Desativar IA" da conversa pergunta antes (14/11/2026): o aviso diz que
+  desativar para os follow-ups automáticos e recomenda o "Pausar", que é o
+  botão principal (`ia-pausa.md`).
 - IA que passa a conversa para a equipe AVISA (11/11/2026; 1139): no sino e
   numa caixinha clicável dentro do CRM, que fica até alguém abrir a conversa
   ou fechar; recebem as pessoas marcadas em cada agente e sempre o
