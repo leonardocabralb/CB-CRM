@@ -173,9 +173,11 @@ class ConsultaFalsa implements PromiseLike<{ data: unknown; error: { message: st
     const casa = (l: Linha) => this.filtros.every((f) => f(l));
     switch (this.op) {
       case 'select': {
+        // O PostgREST corta em 1000 linhas sem avisar (`max_rows`), com ou
+        // sem `limit` maior: o dublê também, senão a leitura sem página passa.
         const achadas = linhas
           .filter(casa)
-          .slice(this.inicio, this.inicio + this.limite)
+          .slice(this.inicio, this.inicio + Math.min(this.limite, 1000))
           .map((l) => ({ ...l }));
         this.banco.depoisDeLer[this.tabela]?.();
         return { data: achadas, error: null };
@@ -310,6 +312,42 @@ describe('avisarAlarmesDeConexao — o passo do ciclo', () => {
     // O suspenso fica de fora já na leitura.
     const membros = banco.chamadas.find((c) => c.tabela === 'profiles');
     expect(membros?.filtros).toContain('is:suspenso_em=null');
+  });
+
+  it('⚠️ mais de 1000 PERFIS: a leitura pagina, e o perfil depois do milésimo segue recortando (não vira "vê tudo") — achado do Codex', async () => {
+    const banco = montarBanco();
+    // Ordem de chave: os mil de `p…` vêm antes de `so-c1` e `so-m1`.
+    banco.tabelas.cb_perfis_de_acesso = [
+      ...Array.from({ length: 1000 }, (_, i) => perfil(`p${String(i).padStart(4, '0')}`, ['m1'])),
+      ...banco.tabelas.cb_perfis_de_acesso,
+    ];
+    lerEnviosRecentes.mockImplementation(async (_db: unknown, canal: string, agora: number) =>
+      canal === 'c1' ? travada(agora) : [],
+    );
+    await avisarAlarmesDeConexao(banco as unknown as SupabaseClient, AGORA);
+    // `atende-m1` vê só a m1: o alarme da c1 não é dele.
+    expect(avisos(banco).map((a) => a.user_id).sort()).toEqual(['atende-c1', 'dono']);
+  });
+
+  it('⚠️ mais de 1000 MEMBROS: a leitura pagina, e quem vem depois do milésimo também é avisado — achado do Codex', async () => {
+    const banco = montarBanco();
+    const comId = (l: Linha, i: number) => ({ id: `b${i}`, ...l });
+    banco.tabelas.profiles = [
+      ...Array.from({ length: 1000 }, (_, i) => ({
+        id: `a${String(i).padStart(4, '0')}`,
+        user_id: `outro-${i}`,
+        account_id: 'conta-1',
+        account_role: 'agent',
+        perfil_id: 'so-m1',
+        suspenso_em: null,
+      })),
+      ...banco.tabelas.profiles.map(comId),
+    ];
+    lerEnviosRecentes.mockImplementation(async (_db: unknown, canal: string, agora: number) =>
+      canal === 'c1' ? travada(agora) : [],
+    );
+    await avisarAlarmesDeConexao(banco as unknown as SupabaseClient, AGORA);
+    expect(avisos(banco).map((a) => a.user_id).sort()).toEqual(['atende-c1', 'dono']);
   });
 
   it('um aviso por EPISÓDIO: o ciclo seguinte, ainda aceso, não repete', async () => {
