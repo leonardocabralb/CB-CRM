@@ -276,6 +276,17 @@ export function corpoDaAcao(acao: AcaoDaFaixa): { paused: boolean; permanente?: 
 export type CliqueNoDesativar = "desativarIa" | "pausarEmVez" | "desativarMesmoAssim" | "cancelar";
 
 /**
+ * A segunda frase do aviso: o que o Pausar faz com o follow-up AQUI (revisão
+ * do PR #520 — o follow-up só atravessa a pausa `gente`, `ia-retomada.md`):
+ *  - `recomendaPausar` (atendendo): a IA volta e os follow-ups seguem;
+ *  - `recomendaPausarNaEncerrada`: o Pausar PARA o follow-up da encerrada —
+ *    é para isso que se clica — e a conversa continua encerrada;
+ *  - `naPausa` (pausa `gente`): os follow-ups continuam;
+ *  - `naPausaDoBotao` (o "Pausar" já apertado): o follow-up agendado não sai.
+ */
+export type FraseDoAviso = "recomendaPausar" | "recomendaPausarNaEncerrada" | "naPausa" | "naPausaDoBotao";
+
+/**
  * O que cada clique faz. O botão da faixa só ABRE o aviso: nada vai à rota
  * antes de uma escolha. "Pausar em vez disso" é o Pausar da faixa. Na pausa
  * temporária (`pausada`) a IA já está pausada, e o principal vira "Manter a
@@ -648,6 +659,7 @@ export function FaixaDaIa({
             key="pausada"
             minutos={faixa.volta.minutos}
             pausada
+            frase={faixa.motivo === "gente" ? "naPausa" : "naPausaDoBotao"}
             busy={busy}
             aoPausar={aoPausar}
             aoDesativar={aoDesativar}
@@ -698,6 +710,7 @@ export function FaixaDaIa({
             key="encerrada"
             minutos={faixa.minutos ?? 0}
             pausada={false}
+            frase="recomendaPausarNaEncerrada"
             busy={busy}
             aoPausar={aoPausar}
             aoDesativar={aoDesativar}
@@ -732,6 +745,7 @@ export function FaixaDaIa({
           key="atendendo"
           minutos={faixa.minutos ?? 0}
           pausada={false}
+          frase="recomendaPausar"
           busy={busy}
           aoPausar={aoPausar}
           aoDesativar={aoDesativar}
@@ -752,12 +766,14 @@ export function FaixaDaIa({
 function DesativarComAviso({
   minutos,
   pausada,
+  frase,
   busy,
   aoPausar,
   aoDesativar,
 }: {
   minutos: number;
   pausada: boolean;
+  frase: FraseDoAviso;
   busy: boolean;
   aoPausar: () => void;
   aoDesativar: () => void;
@@ -771,7 +787,7 @@ function DesativarComAviso({
       <BannerButton onClick={() => clicar("desativarIa")} busy={busy} icon={CircleSlash} title={t("desativarDica")}>
         {t("desativar")}
       </BannerButton>
-      <AvisoAoDesativar aberto={aberto} minutos={minutos} pausada={pausada} aoClicar={clicar} />
+      <AvisoAoDesativar aberto={aberto} minutos={minutos} pausada={pausada} frase={frase} aoClicar={clicar} />
     </>
   );
 }
@@ -786,12 +802,15 @@ export function AvisoAoDesativar({
   aberto,
   minutos,
   pausada,
+  frase,
   aoClicar,
 }: {
   aberto: boolean;
   /** O N da conta: > 0, senão a faixa nem oferece o Desativar. */
   minutos: number;
   pausada: boolean;
+  /** O que o Pausar faz com o follow-up neste estado da faixa. */
+  frase: FraseDoAviso;
   aoClicar: (clique: Exclude<CliqueNoDesativar, "desativarIa">) => void;
 }) {
   const t = useTranslations("Inbox.aiBanner");
@@ -806,9 +825,13 @@ export function AvisoAoDesativar({
           <DialogDescription>
             {t("avisoDesativar.texto")}
             <span className="mt-2 block">
-              {pausada
+              {frase === "naPausa"
                 ? t("avisoDesativar.naPausa", { minutos })
-                : t("avisoDesativar.recomendaPausar", { minutos })}
+                : frase === "naPausaDoBotao"
+                  ? t("avisoDesativar.naPausaDoBotao", { minutos })
+                  : frase === "recomendaPausarNaEncerrada"
+                    ? t("avisoDesativar.recomendaPausarNaEncerrada", { minutos })
+                    : t("avisoDesativar.recomendaPausar", { minutos })}
             </span>
           </DialogDescription>
         </DialogHeader>

@@ -1116,6 +1116,8 @@
         "texto": "Turning it off is permanent: the AI no longer answers and the automatic follow-ups stop until someone clicks \"Resume AI\".",
         "recomendaPausar": "If you are only taking over the conversation for now, use \"Pause\": the AI comes back on its own if the customer waits {minutos} min without a reply from the team, and keeps sending the follow-ups.",
         "naPausa": "The current pause is already temporary: the AI comes back on its own if the customer waits {minutos} min without a reply from the team, and keeps sending the follow-ups.",
+        "recomendaPausarNaEncerrada": "If you only want to stop this follow-up, use \"Pause\": the conversation stays closed and, if the customer writes, the AI comes back on its own after {minutos} min without a reply from the team.",
+        "naPausaDoBotao": "The current pause is already temporary: the AI comes back on its own if the customer waits {minutos} min without a reply from the team. The follow-up that was scheduled will not be sent.",
         "pausar": "Pause instead",
         "manterPausa": "Keep the pause",
         "desativar": "Turn off anyway",

@@ -64,6 +64,7 @@ import {
   FaixaDaIa,
   type CliqueNoDesativar,
   type Faixa,
+  type FraseDoAviso,
 } from './ai-thread-banner';
 
 const banner = ptBR.Inbox.aiBanner;
@@ -94,7 +95,7 @@ function desenharFaixa(faixa: Faixa) {
  * (pino no fim). `rota` guarda o corpo de cada chamada; `avisoAberto`, se o
  * aviso ficou aberto depois do último clique.
  */
-function faixaComAviso(pausada: boolean) {
+function faixaComAviso(pausada: boolean, frase: FraseDoAviso = pausada ? 'naPausa' : 'recomendaPausar') {
   const estado = { avisoAberto: false, rota: [] as ReturnType<typeof corpoDaAcao>[] };
   const efeitos = {
     mostrarAviso: (aberto: boolean) => {
@@ -109,7 +110,7 @@ function faixaComAviso(pausada: boolean) {
   };
   const clicar = (clique: CliqueNoDesativar) => clicarNoDesativar(clique, pausada, efeitos);
   const desenharAviso = (messages: unknown = ptBR) =>
-    desenhar(<AvisoAoDesativar aberto minutos={15} pausada={pausada} aoClicar={clicar} />, messages);
+    desenhar(<AvisoAoDesativar aberto minutos={15} pausada={pausada} frase={frase} aoClicar={clicar} />, messages);
   return { estado, clicar, desenharAviso };
 }
 
@@ -218,6 +219,18 @@ describe('o aviso do "Desativar IA" — na pausa TEMPORÁRIA', () => {
     clicarNoBotao(aviso.desativar);
     expect(f.estado).toEqual({ avisoAberto: false, rota: [{ paused: true, permanente: true }] });
   });
+
+  it('⚠️ na pausa do BOTÃO o aviso não promete follow-up: o agendado já não sai (revisão do PR #520)', () => {
+    const f = faixaComAviso(true, 'naPausaDoBotao');
+    f.clicar('desativarIa');
+    const html = f.desenharAviso();
+    expect(html).toContain(noHtml(aviso.naPausaDoBotao));
+    expect(html).not.toContain(noHtml(aviso.naPausa));
+    expect(html).not.toContain('continua os follow-ups');
+    expect(rotulos()).toEqual([aviso.desativar, aviso.manterPausa]);
+    clicarNoBotao(aviso.manterPausa);
+    expect(f.estado).toEqual({ avisoAberto: false, rota: [] });
+  });
 });
 
 describe('o aviso do "Desativar IA" — na conversa ENCERRADA com follow-up na fila (1146)', () => {
@@ -241,6 +254,18 @@ describe('o aviso do "Desativar IA" — na conversa ENCERRADA com follow-up na f
     expect(html).not.toContain(banner.desativar);
     expect(dialogos).toEqual([]);
   });
+
+  it('⚠️ o aviso da encerrada diz que o Pausar PARA este follow-up, sem reabrir — nunca "continua os follow-ups" (revisão do PR #520)', () => {
+    const f = faixaComAviso(false, 'recomendaPausarNaEncerrada');
+    f.clicar('desativarIa');
+    const html = f.desenharAviso();
+    expect(html).toContain(noHtml(aviso.recomendaPausarNaEncerrada));
+    expect(html).not.toContain(noHtml(aviso.recomendaPausar));
+    expect(html).not.toContain('continua os follow-ups');
+    expect(rotulos()).toEqual([aviso.cancelar, aviso.desativar, aviso.pausar]);
+    clicarNoBotao(aviso.pausar);
+    expect(f.estado).toEqual({ avisoAberto: false, rota: [{ paused: true }] });
+  });
 });
 
 describe('o aviso do "Desativar IA" — o resto da faixa não muda', () => {
@@ -261,15 +286,24 @@ describe('o aviso do "Desativar IA" — o resto da faixa não muda', () => {
   });
 
   it('aviso fechado não desenha nada', () => {
-    expect(desenhar(<AvisoAoDesativar aberto={false} minutos={15} pausada={false} aoClicar={() => {}} />)).toBe('');
+    expect(
+      desenhar(<AvisoAoDesativar aberto={false} minutos={15} pausada={false} frase="recomendaPausar" aoClicar={() => {}} />),
+    ).toBe('');
   });
 });
 
 describe('o aviso do "Desativar IA" — os dois dicionários', () => {
-  it('em inglês também, sem chave crua', () => {
-    for (const pausada of [false, true]) {
-      const html = faixaComAviso(pausada).desenharAviso(en);
+  it('em inglês também, sem chave crua — as quatro frases', () => {
+    const casos: Array<[boolean, FraseDoAviso]> = [
+      [false, 'recomendaPausar'],
+      [false, 'recomendaPausarNaEncerrada'],
+      [true, 'naPausa'],
+      [true, 'naPausaDoBotao'],
+    ];
+    for (const [pausada, frase] of casos) {
+      const html = faixaComAviso(pausada, frase).desenharAviso(en);
       expect(html).toContain(en.Inbox.aiBanner.avisoDesativar.titulo);
+      expect(html).toContain(noHtml(en.Inbox.aiBanner.avisoDesativar[frase]));
       expect(html).toContain('15 min');
       expect(html).not.toContain('avisoDesativar');
     }
@@ -303,6 +337,13 @@ describe('pino estrutural: o Desativar só sai pelo aviso', () => {
 
   it('⚠️ na encerrada o principal do aviso é o "Pausar em vez disso" (`pausada={false}`): é ele que para o follow-up sem desativar a IA', () => {
     expect(fonte).toMatch(/<DesativarComAviso\s+key="encerrada"\s+minutos=\{faixa\.minutos \?\? 0\}\s+pausada=\{false\}/);
+  });
+
+  it('⚠️ cada estado diz o que o Pausar faz com o follow-up AQUI (revisão do PR #520): a encerrada e a pausa do botão nunca prometem follow-up', () => {
+    expect(fonte).toMatch(/<DesativarComAviso\s+key="atendendo"[^>]*frase="recomendaPausar"/);
+    expect(fonte).toMatch(/<DesativarComAviso\s+key="encerrada"[^>]*frase="recomendaPausarNaEncerrada"/);
+    // Só a pausa `gente` (a que o follow-up atravessa) promete os follow-ups.
+    expect(fonte).toMatch(/<DesativarComAviso\s+key="pausada"[^>]*frase=\{faixa\.motivo === "gente" \? "naPausa" : "naPausaDoBotao"\}/);
   });
 
   it('o espelho deste teste é a ligação da faixa: Pausar e Desativar vão a `alternar`, que manda `corpoDaAcao`', () => {

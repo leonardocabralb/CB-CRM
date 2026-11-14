@@ -1109,6 +1109,8 @@
         "texto": "Desativar é permanente: a IA não responde mais e os follow-ups automáticos param até alguém clicar em \"Retomar IA\".",
         "recomendaPausar": "Se você só vai assumir a conversa agora, use \"Pausar\": a IA volta sozinha se o cliente esperar {minutos} min sem resposta da equipe e continua os follow-ups.",
         "naPausa": "A pausa de agora já é temporária: a IA volta sozinha se o cliente esperar {minutos} min sem resposta da equipe e continua os follow-ups.",
+        "recomendaPausarNaEncerrada": "Se você só quer parar este follow-up, use \"Pausar\": a conversa continua encerrada e, se o cliente escrever, a IA volta sozinha depois de {minutos} min sem resposta da equipe.",
+        "naPausaDoBotao": "A pausa de agora já é temporária: a IA volta sozinha se o cliente esperar {minutos} min sem resposta da equipe. O follow-up que estava agendado não sai.",
         "pausar": "Pausar em vez disso",
         "manterPausa": "Manter a pausa",
         "desativar": "Desativar mesmo assim",

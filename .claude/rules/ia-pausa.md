@@ -139,6 +139,10 @@ Decisões do operador de 11/11/2026 (P1–P7 de
   X e o Esc, nada. Na pausa temporária o principal é "Manter a pausa" e NÃO
   chama a rota: o Pausar trocaria a `gente` por `botao`, e a retomada só
   atravessa a `gente`. N = 0: sem Desativar, sem aviso.
+- ⚠️ **A frase do Pausar é a do ESTADO** (`FraseDoAviso`, revisão do PR
+  #520): só a atendendo e a pausa `gente` dizem "continua os follow-ups"; na
+  pausa `botao` o agendado não sai, e na encerrada o Pausar PARA este
+  follow-up (é para isso que se clica). Prometer follow-up ali era falso.
 - ⚠️⚠️ **ENCERRADA com o follow-up na fila (1146; operador, 14/11/2026: "É
   bom mostrar")**: a rota devolve `encerrada` e, SÓ onde o follow-up sai (o
   card na etapa do agente — `quemResponde` com `atravessaEncerrada` — e a
