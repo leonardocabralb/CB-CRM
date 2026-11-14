@@ -595,11 +595,19 @@ export async function probeChannels(
         string,
         { envios: readonly EnvioRecente[]; recibo: SemRecibo | null } | null
       >();
+      // O começo do episódio guardado vai junto (E1): com ele há mais de 24 h,
+      // a prova do fim pode estar fora da janela da régua.
+      const episodios = await estadosPedidos;
       await Promise.all(
         canais
           .filter((c) => ehEvolution(c) || ehMeta(c))
           .map(async (c) => {
-            const envios = await lerEnviosRecentes(db, c.id, agora);
+            const envios = await lerEnviosRecentes(
+              db,
+              c.id,
+              agora,
+              episodios?.get(`${c.id}:sem_recibo`)?.desdeIso ?? null,
+            );
             mapa.set(c.id, envios ? { envios, recibo: semRecibo(envios, agora) } : null);
           }),
       );

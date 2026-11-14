@@ -405,7 +405,9 @@ async function avaliarConexao(conta: Conta, canal: LinhaDoCanal): Promise<void> 
   const { ctx, estados } = conta;
   const deRecibo = estados.get(`${canal.id}:sem_recibo`) ?? null;
   const deAtraso = estados.get(`${canal.id}:atraso`) ?? null;
-  const envios = await lerEnviosRecentes(ctx.admin, canal.id, ctx.agoraMs);
+  // O começo do episódio aberto vai junto: com ele há mais de 24 h, a prova
+  // do fim pode estar fora da janela da régua (`lerEnviosRecentes`).
+  const envios = await lerEnviosRecentes(ctx.admin, canal.id, ctx.agoraMs, deRecibo?.desdeIso ?? null);
   await aplicar(ctx, canal, 'sem_recibo', deRecibo, medirSemRecibo(envios, deRecibo?.desdeIso ?? null, ctx.agoraMs));
   await aplicar(
     ctx,

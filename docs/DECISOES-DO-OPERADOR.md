@@ -117,7 +117,8 @@ qualquer uma é pergunta ao operador.
   recibo só em horário útil (segunda a sexta, 8h–20h de Brasília; o que
   acendeu e apagou à noite não vai ao sino) e o do atraso quando a conexão
   fica 30 min recebendo com atraso, a qualquer hora; um aviso por episódio,
-  "Continua" a cada 24 h, "Normalizou" só com prova; recebem owner/admin e os
+  "Continua" a cada 24 h, "Normalizou" só com a prova firme por 1 h
+  (reacender antes é o mesmo episódio; 14/11/2026); recebem owner/admin e os
   membros cujo perfil vê a conexão; ligados em toda instalação, sem chave
   (`canais.md`, 1122).
 - Alarme de conexão na tela (05/11/2026): sem faixa fixa no topo (o operador

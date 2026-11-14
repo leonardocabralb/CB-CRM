@@ -417,7 +417,17 @@ describe('avisarAlarmesDeConexao — o passo do ciclo', () => {
     lerEnviosRecentes.mockImplementation(async (_db: unknown, canal: string, agora: number) =>
       canal === 'c1' ? [envio(agora, 2, 'z', 'delivered'), ...travada(agora)] : [],
     );
+    // A 1ª prova só começa a FIRMAR (histerese): nada vai ao sino ainda, e o
+    // começo do episódio vai à leitura (a prova pode ser mais velha que 24 h).
     await avisarAlarmesDeConexao(banco as unknown as SupabaseClient, AGORA);
+    expect(avisos(banco)).toEqual([]);
+    expect(estadoDe(banco, 'c1', 'sem_recibo')?.normalizou_em).toBe(iso(AGORA));
+    expect(lerEnviosRecentes).toHaveBeenCalledWith(expect.anything(), 'c1', AGORA, desde);
+
+    // Uma hora depois, sem envio novo: a prova firmou, e o "Normalizou" sai.
+    lerEnviosRecentes.mockImplementation(async () => []);
+    const depois = AGORA + 61 * MIN;
+    await avisarAlarmesDeConexao(banco as unknown as SupabaseClient, depois);
     expect(avisos(banco).map((a) => a.user_id).sort()).toEqual(['atende-c1', 'dono']);
     expect(String(avisos(banco)[0].title)).toMatch(/^Normalizou — /);
     expect(estadoDe(banco, 'c1', 'sem_recibo')).toBeUndefined();
@@ -508,8 +518,9 @@ describe('avisarAlarmesDeConexao — o passo do ciclo', () => {
         channel_id: 'c1',
         tipo: 'sem_recibo',
         desde: iso(AGORA - 3 * 60 * MIN),
-        avisado_em: iso(AGORA - 60 * MIN),
-        normalizou_em: null,
+        avisado_em: iso(AGORA - 2 * 60 * MIN),
+        // A prova de pé há mais de uma hora (firme): fecha neste ciclo.
+        normalizou_em: iso(AGORA - 70 * MIN),
         devido_em: null,
         detalhe: {},
       },
