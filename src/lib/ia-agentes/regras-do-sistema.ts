@@ -292,6 +292,15 @@ export function blocoDasRegrasDoSistema(o: OpcoesDasRegras): string {
  * registramos o seu pedido" era retida como ação prometida. Casa a frase
  * INTEIRA, sem diferença de caixa, de espaços nem da pontuação do fim. Fora
  * das frases, a conferência vale igual.
+ *
+ * ⚠️ Só a frase COMPLETA, como afirmação própria: começa no início do texto,
+ * de uma linha ou depois do fim de outra frase (`.`, `!`, `?`, `…`), e
+ * termina com a pontuação do fim, numa quebra de linha ou no fim do texto.
+ * Tirada do meio de uma afirmação maior, a frase autorizada isentava a
+ * EXTENSÃO dela: "Já registramos o seu pedido no nosso sistema como aprovado
+ * pelo advogado." escapava da ação prometida (Codex, #518). Continuada por
+ * vírgula, ou com outra coisa antes, ela é parte de outra afirmação e fica
+ * conferida — o lado seguro das duas travas (reter ou passar para a equipe).
  */
 export function semFrasesAutorizadas(texto: string, frases: readonly string[]): string {
   let resto = texto
@@ -302,7 +311,9 @@ export function semFrasesAutorizadas(texto: string, frases: readonly string[]): 
       .split(' ')
       .map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
       .join('\\s+')
-    resto = resto.replace(new RegExp(`${padrao}[.!?…]*`, 'giu'), ' ')
+    const comeco = '(?<=^\\s*|[.!?…]\\s+|\\n\\s*)'
+    const fim = '(?:[.!?…]+|(?=[ \\t]*(?:\\n|$)))'
+    resto = resto.replace(new RegExp(`${comeco}${padrao}${fim}`, 'giu'), ' ')
   }
   return resto
 }

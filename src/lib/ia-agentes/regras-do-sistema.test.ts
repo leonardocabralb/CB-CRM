@@ -420,6 +420,30 @@ describe('as FRASES AUTORIZADAS (1131): a exceção em duas regras e a lista no 
     expect(equipePrometida(semFrasesAutorizadas(PROMESSA, [EQUIPE]))).toBe(true)
   })
 
+  it('⚠️ só a frase COMPLETA sai: a frase autorizada estendida no meio de outra afirmação continua conferida (Codex, #518)', () => {
+    const REGISTRO = 'Já registramos o seu pedido no nosso sistema.'
+    const EQUIPE = 'Nossa equipe entrará em contato com você em até 24 horas.'
+    // A extensão não autorizada não pode escapar da retenção da ação prometida.
+    const estendida = 'Já registramos o seu pedido no nosso sistema como aprovado pelo advogado.'
+    expect(acaoPrometida({ texto: semFrasesAutorizadas(estendida, [REGISTRO]), aceitas: [] })).not.toBeNull()
+    expect(semFrasesAutorizadas(estendida, [REGISTRO])).toBe(estendida)
+    // Nem no meio de uma frase maior, depois de outra coisa.
+    const noMeio = 'Pode ficar tranquila que já registramos o seu pedido no nosso sistema.'
+    expect(semFrasesAutorizadas(noMeio, [REGISTRO])).toBe(noMeio)
+    // A frase completa sai no começo, depois de um ponto, numa linha própria e
+    // no fim sem pontuação.
+    for (const texto of [
+      `${REGISTRO} Mais alguma dúvida?`,
+      `Obrigada, Ana! ${REGISTRO}`,
+      `Obrigada, Ana!\n${REGISTRO}\nMais alguma dúvida?`,
+      'Obrigada, Ana. Já registramos o seu pedido no nosso sistema',
+    ]) {
+      expect(acaoPrometida({ texto: semFrasesAutorizadas(texto, [REGISTRO]), aceitas: [] }), texto).toBeNull()
+    }
+    // Continuada por vírgula também é afirmação maior: a trava vale.
+    expect(equipePrometida(semFrasesAutorizadas('Nossa equipe entrará em contato com você em até 24 horas, com a proposta pronta.', [EQUIPE]))).toBe(true)
+  })
+
   it('⚠️ as travas: repetir uma frase autorizada NÃO é pedido vazado, nem equipe, ação ou reunião prometida', () => {
     for (const texto of [REUNIAO_SEM_CUSTO, DESCONTOS, `Oi, Ana! ${REUNIAO_SEM_CUSTO} ${DESCONTOS} Quer agendar?`]) {
       const lidas = lerAcoes(texto)

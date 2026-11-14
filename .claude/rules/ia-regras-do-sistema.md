@@ -126,7 +126,7 @@ resultado passado em gestão de passivo, com a ressalva (`sem_promessa`).
   `NAO_MUDAM_A_RESPOSTA`). Pino `frases-autorizadas.chamadores.test.ts`.
 - **As travas** (teste): repetir uma frase não é pedido vazado, nem equipe,
   ação ou reunião prometida — ⚠️ a equipe e a ação prometidas leem o texto SEM
-  as frases (`semFrasesAutorizadas`, no turno e na retomada): "Nossa equipe
+  as frases (`semFrasesAutorizadas`, no turno e na retomada; só a frase COMPLETA, como afirmação própria — estendida ou no meio de outra, segue conferida): "Nossa equipe
   entrará em contato" escrita pelo escritório transferia toda conversa; o link escrito numa frase está no pedido (não é
   link inventado; outro link é). O cabeçalho da lista em MAIÚSCULAS
   (`AUTHORIZED STATEMENTS`, `FRASES AUTORIZADAS`) é pedido vazado.
