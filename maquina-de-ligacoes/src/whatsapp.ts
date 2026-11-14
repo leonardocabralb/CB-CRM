@@ -52,6 +52,15 @@ export const SELETORES = {
   desligar: 'button[aria-label="Desligar"]',
   /** Aparece no instante em que a chamada feita é atendida. */
   opcoesDaLigacao: '[aria-label="Opções da ligação"]',
+  /**
+   * A janela "Novidades do WhatsApp Web" (medida em 14/11/2026): aparece logo
+   * depois de parear e quando o WhatsApp lança novidades, cobre a tela e
+   * BLOQUEIA os cliques — a discagem do Bancário - Comercial esperava 10 s pelo
+   * clique na aba Ligações e desistia. Fecha-se pelo "Continuar" DELA, antes de
+   * discar e de atender (`fecharNovidades`); nenhuma outra janela é tocada.
+   */
+  novidades: 'Novidades do WhatsApp Web',
+  continuarNovidades: 'Continuar',
   /** O cronômetro é o fim do texto do quadro ("Fulano 0:05"); no nome, um "14:30" não conta. */
   cronometroNoFim: '\\b\\d{1,2}:\\d{2}$',
   /** O que o quadro da recebida mostra além de quem liga. */
@@ -132,6 +141,13 @@ export function whatsappDaPagina(pagina: Page): WhatsApp {
   const retrato = async () =>
     decidir(await comPrazo(pagina.evaluate(lerTela, SELETORES), PRAZO_DA_LEITURA_MS, 'a leitura da tela'))
   const noQuadro = (seletor: string) => pagina.locator(`${SELETORES.quadro} ${seletor}`).first()
+  /** Fecha a janela de novidades, se estiver na tela (ver `SELETORES.novidades`). */
+  const fecharNovidades = async () => {
+    const janela = pagina.locator('[role=dialog]').filter({ hasText: SELETORES.novidades }).first()
+    if (!(await janela.isVisible())) return
+    await janela.getByText(SELETORES.continuarNovidades, { exact: true }).first().click({ timeout: ESPERA_DA_TELA_MS })
+    await janela.waitFor({ state: 'hidden', timeout: ESPERA_DA_TELA_MS })
+  }
 
   return {
     retrato,
@@ -141,6 +157,7 @@ export function whatsappDaPagina(pagina: Page): WhatsApp {
       for (let i = 0; (await retrato()).chamada.fase === 'encerrada' && i < 20; i++) await pagina.waitForTimeout(300)
       if ((await retrato()).chamada.fase !== 'nenhuma') throw new Error('já há uma chamada na tela')
 
+      await fecharNovidades()
       if ((await pagina.locator(SELETORES.teclaDoDiscador).count()) === 0) {
         await pagina.locator(SELETORES.abaLigacoes).click({ timeout: ESPERA_DA_TELA_MS })
         await pagina.getByText(SELETORES.abrirDiscador).first().click({ timeout: ESPERA_DA_TELA_MS })
@@ -172,6 +189,7 @@ export function whatsappDaPagina(pagina: Page): WhatsApp {
       const agora = (await retrato()).chamada
       if (agora.fase !== 'tocando') return 'nada_tocando'
       if (agora.quem !== quem) return 'outra_chamada'
+      await fecharNovidades()
       await noQuadro(SELETORES.aceitar).click({ timeout: ESPERA_DA_TELA_MS })
       // Só volta com o "Desligar" na tela: um desligar logo depois do aceite
       // precisa achar o botão (sem ele, a chamada ficaria muda e sem dono).
