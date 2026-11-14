@@ -33,8 +33,9 @@ import { lerArquivoDoAnexo } from '@/lib/notes/arquivo-do-anexo'
  * escritores também rodam no servidor — a API v1 (`/api/v1/notes`), o agente
  * de IA e o passo de automação "Escrever anotação interna"
  * (`src/lib/notes/anotacao-da-automacao.ts`, que confere os marcados contra a
- * conta como esta rota). Apagar, sim, continua indo direto do navegador — lá
- * a RLS decide sozinha (autor ou admin) e não há o que validar no meio.
+ * conta como esta rota). Apagar e restaurar também moram no servidor
+ * (`DELETE /api/cb/notes/[id]` e `POST …/restaurar`, 1132): apagar MARCA a
+ * anotação para a lixeira, com a régua do autor ou admin (`mudarNaLixeira`).
  *
  * ANEXOS (1102; só esta rota — os outros três escritores seguem só texto):
  * a caixa sobe cada arquivo para `account-<conta>/notas/<único>/` ANTES do

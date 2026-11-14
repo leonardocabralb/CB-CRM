@@ -10,7 +10,7 @@
 // ⚠️ Por que nesta rota, e não numa nova: rota nova no agendador só roda
 // depois de mudar o `command` do `docker-stack.yml` E de um `docker stack
 // deploy` manual na VPS (`.claude/rules/deploy.md`). Tirar esta chamada da
-// rota (ou a rota do laço) para as seis coisas, sem erro nenhum — pinos
+// rota (ou a rota do laço) para as oito coisas, sem erro nenhum — pinos
 // `tarefas-recorrentes-1074.test.ts` e `manutencao-do-ciclo.test.ts`.
 //
 // ⚠️ A ORDEM: os alarmes vêm primeiro: são rápidos (duas leituras por
@@ -57,7 +57,7 @@ import { retomarTranscricoes } from '@/lib/whatsapp/ligacoes/transcricao';
  */
 export const PRAZO_DA_MANUTENCAO_MS = 5 * 60_000;
 
-/** Um passo que lançou (não devia: os seis engolem) não derruba os outros. */
+/** Um passo que lançou (não devia: os oito engolem) não derruba os outros. */
 async function isolado(
   nome: string,
   passo: () => Promise<unknown>

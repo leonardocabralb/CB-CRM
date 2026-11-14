@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AnexosDaNota } from '@/components/inbox/anexos-da-nota';
 import { MarcaDeEditada } from '@/components/inbox/marca-de-editada';
 import { TextoComLinks } from '@/components/inbox/texto-com-links';
+import { TETO_DA_LIXEIRA_DA_CONVERSA } from '@/hooks/use-conversation-notes';
 import {
   DIAS_NA_LIXEIRA_DE_ANOTACOES,
   diasParaVencer,
@@ -45,7 +46,11 @@ export function BotaoDaLixeiraDeAnotacoes({
       className="text-muted-foreground hover:text-foreground -m-1 inline-flex items-center gap-1 p-1 text-[11px] transition-colors"
     >
       <Trash2 className="h-3.5 w-3.5" />
-      {quantas !== null && quantas > 0 && <span>{quantas}</span>}
+      {quantas !== null && quantas > 0 && (
+        <span>
+          {quantas >= TETO_DA_LIXEIRA_DA_CONVERSA ? `${TETO_DA_LIXEIRA_DA_CONVERSA}+` : quantas}
+        </span>
+      )}
     </button>
   );
 }

@@ -41,6 +41,12 @@ import type { ConversationNote } from '@/types';
  * apagou também), e a Lixeira de contatos pode REINSERIR uma linha já marcada
  * (INSERT de apagada). O DELETE de verdade é só o vencimento dos 90 dias.
  */
+/**
+ * Teto da leitura das APAGADAS de uma conversa (a lixeira da aba Notas):
+ * lista com teto nunca vira número exato — o botão diz "200+" (CLAUDE.md 8b).
+ */
+export const TETO_DA_LIXEIRA_DA_CONVERSA = 200;
+
 export function useConversationNotes(
   conversationId: string | null | undefined,
   token = 0
@@ -105,11 +111,17 @@ export function useConversationNotes(
    */
   const buscar = useCallback(
     async (vivo?: () => boolean) => {
-      const valeAinda = () => (vivo ? vivo() : true);
+      // ⚠️ A conversa ABERTA também decide, não só o `vivo` do efeito: a
+      // recarga pedida por um render velho (o "Desfazer" do toast, ou a falha
+      // do apagar, clicados em A e respondidos com B aberta) chega sem `vivo`
+      // e gravaria as notas de A na lista de B.
+      const valeAinda = () =>
+        (vivo ? vivo() : true) && conversaAtualRef.current === (conversationId ?? null);
       if (!conversationId) {
         setNotas([]);
         return;
       }
+      if (!valeAinda()) return;
       setCarregando(true);
       const supabase = createClient();
       // ⚠️ DUAS leituras, cada uma com o seu teto (1132, achado do Codex no
@@ -139,7 +151,7 @@ export function useConversationNotes(
           .eq('conversation_id', conversationId)
           .not('apagada_em', 'is', null)
           .order('apagada_em', { ascending: false })
-          .limit(200),
+          .limit(TETO_DA_LIXEIRA_DA_CONVERSA),
       ]);
 
       if (!valeAinda()) return;
