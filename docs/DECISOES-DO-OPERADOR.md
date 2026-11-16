@@ -194,6 +194,12 @@ qualquer uma é pergunta ao operador.
   pendente da IA sai (`ia-retomada.md`). Na encerrada com follow-up na fila,
   a faixa da conversa mostra o próximo e os botões "Pausar" e "Desativar
   IA", que o param sem reabrir ("É bom mostrar"; `ia-pausa.md`).
+- O que fica para a ABERTURA da janela sai espalhado pela primeira hora dela
+  (16/11/2026): os follow-ups da IA e o "Aguardar até estar dentro do
+  horário" das automações saem num instante próprio de cada conversa (ou
+  cliente) entre a abertura e uma hora depois, nunca todos às 08:00; a
+  janela das 8h às 21h fica (follow-up de madrugada não: bloqueio e denúncia
+  pesam mais que a rajada) (`ia-retomada.md`, `automacoes-passos.md`).
 - O "Desativar IA" da conversa pergunta antes (14/11/2026): o aviso diz que
   desativar para os follow-ups automáticos e recomenda o "Pausar", que é o
   botão principal (`ia-pausa.md`).

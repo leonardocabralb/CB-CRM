@@ -199,6 +199,7 @@ import {
   motivoDaParada,
   proximaRetomada,
   SEM_BLOQUEIOS,
+  sementeDaRetomada,
   tempoEmIngles,
   TOLERANCIA_DO_VENCIMENTO_MS,
   type Bloqueios,
@@ -2397,6 +2398,9 @@ async function conferirRetomada(
       horario: agente.horario,
       bloqueios,
       fimDaJanelaMeta,
+      // A MESMA semente de quando foi armada: o instante na primeira hora da
+      // abertura não muda a cada conferência (16/11/2026).
+      semente: sementeDaRetomada(turno.conversation_id, turno.tentativa ?? 1),
     })
     if (proxima.tipo === 'parar') {
       return { ok: false, desfecho: { status: 'sem_resposta', erro: ERRO_DO_FIM[proxima.motivo] } }
@@ -2860,6 +2864,9 @@ async function armarRetomada(
       horario: agente.horario,
       bloqueios,
       fimDaJanelaMeta,
+      // O que a janela empurra para a abertura sai no instante PRÓPRIO desta
+      // conversa e tentativa, na primeira hora (16/11/2026: oito às 08:00 em 9 s).
+      semente: sementeDaRetomada(turno.conversation_id, tentativa),
     })
     if (proxima.tipo === 'parar') return
 

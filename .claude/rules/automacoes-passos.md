@@ -113,9 +113,16 @@ das 8h às 21h; o que cairia fora sai UM só no início seguinte, e a contagem
 segue dali (`Aguardar 1 h → Aguardar o horário → lembrete → …`).
 `esperaPeloHorario` e `proximoInicioDaJanela` (`hora-do-dia.ts`).
 
+- ⚠️⚠️ **Sai ESPALHADO pela primeira hora da janela** (decisão do operador,
+  16/11/2026): estaciona até o início MAIS o instante próprio da semente (o
+  cliente e o passo; `espalhar-na-abertura.ts`), deixando 5 min livres no
+  fim da janela (a retomada não a reconfere; a janela de até 5 min não
+  espalha). No início exato, tudo o que ficou da noite saía junto às 08:00
+  — a rajada que o WhatsApp pune na conexão de QR Code.
+
 - **Dentro da janela, segue na hora sem estacionar** (o registro diz
   `dentro do horário (sex 10:00); segue`); fora, estaciona até o PRÓXIMO
-  início (`fora do horário (sex 22:40); aguarda até seg 08:00`). "Dentro" é
+  início (`fora do horário (sex 22:40); aguarda até seg 08:17`). "Dentro" é
   `avaliarHoraDoDia` — a mesma janela, a mesma madrugada e o mesmo
   "segunda a sexta" da condição. Janela ilegível FALHA o passo (o lado
   seguro) e a ativação a recusa; o dia inteiro passa.

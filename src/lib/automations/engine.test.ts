@@ -785,6 +785,7 @@ import {
 } from './retomada';
 import type { Automation, KeywordMatchTriggerConfig } from '@/types';
 import { diaNoFuso, somarDias } from '@/lib/tasks/prazo';
+import { deslocamentoNaAbertura, ESPALHAR_NA_ABERTURA_MS } from '@/lib/agenda/espalhar-na-abertura';
 
 const ACCOUNT = 'acct-1';
 
@@ -6241,6 +6242,11 @@ describe('Aguardar até estar dentro do horário (B6a, 26/09/2026)', () => {
     step_config: { amount: 1, unit: 'hours', modo: 'horario', ...config },
   });
   const lembrete = { ...sendStep({ text: 'lembrete' }), id: 'lembrete', position: 1 };
+  // O motor espalha o que ficou da noite pela primeira hora da janela, com a
+  // semente do CLIENTE e do passo (16/11/2026, `espalhar-na-abertura.ts`).
+  const DESLOC = deslocamentoNaAbertura('c1:esp-horario');
+  const inicioMais = (iso: string) => new Date(Date.parse(iso) + DESLOC).toISOString();
+  const HHMM = `08:${String(Math.floor(DESLOC / 60_000)).padStart(2, '0')}`;
 
   async function roda(agoraIso: string, config: Record<string, unknown>) {
     vi.useFakeTimers({ toFake: ['Date'] });
@@ -6258,19 +6264,20 @@ describe('Aguardar até estar dentro do horário (B6a, 26/09/2026)', () => {
     });
   }
 
-  it('fora do horário: estaciona pela porta de sempre até o PRÓXIMO início, e o lembrete não sai', async () => {
+  it('fora do horário: estaciona pela porta de sempre até o PRÓXIMO início (mais o instante do cliente), e o lembrete não sai', async () => {
     // Sexta 22:40 em Brasília, de segunda a sexta → segunda 08:00 (11:00 UTC).
     await roda('2026-09-26T01:40:00Z', { janela: '08:00-21:00', somente_seg_a_sex: true });
 
     expect(vi.mocked(engineSendText)).not.toHaveBeenCalled();
     expect(h.state.esperasEnfileiradas).toHaveLength(1);
     const espera = h.state.esperasEnfileiradas[0];
-    expect(espera.run_at).toBe('2026-09-28T11:00:00.000Z');
+    expect(espera.run_at).toBe(inicioMais('2026-09-28T11:00:00.000Z'));
+    expect(DESLOC).toBeLessThan(ESPALHAR_NA_ABERTURA_MS);
     // Retoma no passo SEGUINTE, como o "Aguardar" comum.
     expect(espera.next_step_position).toBe(1);
     expect(espera.log_id).toBeTruthy();
     expect(JSON.stringify(h.state.logUpdates)).toContain(
-      'fora do horário (sex 22:40); aguarda até seg 08:00'
+      `fora do horário (sex 22:40); aguarda até seg ${HHMM}`
     );
   });
 
@@ -6286,7 +6293,7 @@ describe('Aguardar até estar dentro do horário (B6a, 26/09/2026)', () => {
     await roda('2026-09-25T09:00:00Z', { janela: '08:00-21:00' });
 
     expect(vi.mocked(engineSendText)).not.toHaveBeenCalled();
-    expect(h.state.esperasEnfileiradas[0]?.run_at).toBe('2026-09-25T11:00:00.000Z');
+    expect(h.state.esperasEnfileiradas[0]?.run_at).toBe(inicioMais('2026-09-25T11:00:00.000Z'));
   });
 
   it('"parar se o cliente responder" continua valendo nesta espera: a marca vai para a fila', async () => {
@@ -6297,7 +6304,7 @@ describe('Aguardar até estar dentro do horário (B6a, 26/09/2026)', () => {
     // O resto do contexto atravessa intacto.
     expect(contexto.conversation_id).toBe('conv1');
     expect(JSON.stringify(h.state.logUpdates)).toContain(
-      'aguarda até sáb 08:00 (para se o cliente responder)'
+      `aguarda até sáb ${HHMM} (para se o cliente responder)`
     );
   });
 

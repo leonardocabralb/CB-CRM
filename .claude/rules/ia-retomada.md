@@ -97,6 +97,20 @@ faz, em `.claude/rules/ia-agentes.md`. ⚠️ "Retomada" aqui é o FOLLOW-UP; o
   piso de 30 min depois da anterior, dentro da janela ∩ horário do agente. A
   tentativa adiada empurra as seguintes — contada só da âncora, a noite fora
   da janela despejava cinco mensagens de manhã (pino no teste).
+- ⚠️⚠️ **O que a janela empurra para a ABERTURA sai ESPALHADO** (decisão do
+  operador, 16/11/2026: oito follow-ups da noite saíram às 08:00 em 9 s pela
+  conexão de QR Code): `proximaRetomada` soma à abertura o instante próprio
+  da semente na primeira hora (`espalhar-na-abertura.ts`, determinístico).
+  A semente é `sementeDaRetomada` (conversa + tentativa), a MESMA ao armar e
+  ao conferir — com outra, a conferência reagendaria. Dentro da janela nada
+  muda; nunca passa da janela do dia nem para onde a série PARARIA (90 min
+  antes da reunião, fim da janela de 24 h da Meta): fica
+  `FOLGA_DO_AGENDADOR_MS` (5 min) antes do limite — o agendador confere no
+  instante real, e a 1 s dele o tique seguinte pararia a série (Codex,
+  #521). E se o espalhado PARARIA a série (perto de um lembrete, o empurrão
+  passa do limite) e a abertura exata não, vale a abertura exata. Follow-up
+  24 h foi descartado: de madrugada vira bloqueio e denúncia, que pesam mais
+  que a rajada.
 - ⚠️⚠️ **O cliente que escreve DESCARTA a pendente**: dentro de
   `cb_ia_enfileirar_turno` (1056, toda conexão) quando abre turno; o que não
   abre (figurinha, conversa pausada…) é visto quando ela VENCE
