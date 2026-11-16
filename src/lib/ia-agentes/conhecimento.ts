@@ -24,6 +24,8 @@ import { embedTexts, toVectorLiteral } from '@/lib/ai/embeddings'
 import { latestUserMessage } from '@/lib/ai/query'
 import type { ChatMessage } from '@/lib/ai/types'
 
+import { ehNotaDoSistema } from './contexto'
+
 /** Quanto a busca por sentido pode esperar pelo embedding da pergunta. */
 export const PRAZO_DO_EMBEDDING_MS = 8_000
 
@@ -56,13 +58,17 @@ function lerLinhas(data: unknown): LinhaDaBusca[] {
  * conversa põe na frente de mídia (`[audio message, transcribed] …`,
  * `[image] …`, `[document: x.pdf] …` — `contexto.ts`). Com o rótulo, a busca
  * por palavras (que exige TODAS as palavras) nunca acharia nada num áudio.
+ *
+ * ⚠️ As NOTAS do sistema no papel de usuário (a da edição, a da resposta
+ * cruzada, a da ligação; `ehNotaDoSistema`) não são o cliente: saem antes de
+ * escolher a última fala — senão a base buscaria o texto da nota (Codex, #522).
  */
 export function consultaDaUltimaMensagem(conversa: ChatMessage[]): string {
   // ⚠️ SÓ os rótulos que `contexto.ts` põe: "[reembolso]" digitado pelo
   // cliente é a pergunta, não rótulo (Codex, #312). A leitura de uma imagem
   // ou PDF ("(content: …)", na linha de baixo) entra SEM o invólucro: o que o
   // cliente mandou por escrito numa foto também é a pergunta.
-  return latestUserMessage(conversa)
+  return latestUserMessage(conversa.filter((m) => !(m.role === 'user' && ehNotaDoSistema(m.content))))
     .replace(/^\[(?:audio message[^\]]*|image(?: — [^\]]*)?|video|document(?:(?::| —)[^\]]*)?|sticker|location)\]\s*/, '')
     .replace(/^\(content: ([\s\S]*)\)$/m, '$1')
     .trim()
