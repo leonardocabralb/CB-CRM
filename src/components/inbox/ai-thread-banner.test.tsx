@@ -160,6 +160,38 @@ describe('faixaDaIa — "não atende": a etapa TEM agente, mas ele não atende (
   });
 });
 
+describe('faixaDaIa — a etapa SEM agente numa conversa que a IA já atendeu (16/11/2026)', () => {
+  // O agente do Trabalhista move quem ainda trabalha para "Ag. Demissão" (sem
+  // agente): depois do "Retomar IA", a faixa sumia e a equipe tentava pausar
+  // e desativar uma IA que não atendia mais.
+  it('⚠️ sem pausa: a linha com o nome da etapa, onde antes não se desenhava NADA', () => {
+    expect(faixaDaIa(estado({ agente: null, etapaSemAgente: 'Ag. Demissão' }), 'ag-1')).toEqual({
+      tipo: 'semAgente',
+      etapa: 'Ag. Demissão',
+    });
+  });
+
+  it('pausada: a linha vai embaixo (o Retomar não faz a IA atender ali); sem ela, a pausada de sempre', () => {
+    expect(
+      faixaDaIa(estado({ agente: null, pausada: true, pausadaPor: 'gente', etapaSemAgente: 'Ag. Demissão' }), 'ag-1'),
+    ).toEqual({ tipo: 'pausada', motivo: 'gente', naoAtende: null, volta: null, semAgente: 'Ag. Demissão' });
+    expect(faixaDaIa(estado({ agente: null, pausada: true, pausadaPor: 'gente' }), 'ag-1')).toEqual({
+      tipo: 'pausada',
+      motivo: 'gente',
+      naoAtende: null,
+      volta: null,
+    });
+  });
+
+  it('agente atendendo ou "não atende" vencem; sem o nome, nada', () => {
+    expect(faixaDaIa(estado({ etapaSemAgente: 'Ag. Demissão' }), 'ag-1')).toMatchObject({ tipo: 'atendendo' });
+    expect(faixaDaIa(estado({ agente: null, naoAtende: CARD_ANTIGO, etapaSemAgente: 'X' }), 'ag-1')).toMatchObject({
+      tipo: 'naoAtende',
+    });
+    expect(faixaDaIa(estado({ agente: null, etapaSemAgente: null }), 'ag-1')).toBeNull();
+  });
+});
+
 describe('lerEstadoDaIa — o corpo da rota', () => {
   it('lê o agente, a pausa e o motivo', () => {
     expect(lerEstadoDaIa({ agente: TRIAGEM, pausada: true, pausadaPor: 'botao', motivo: null })).toEqual({
@@ -175,6 +207,8 @@ describe('lerEstadoDaIa — o corpo da rota', () => {
       naoAtende: null,
       encerrada: false,
       agenteDoFollowUp: null,
+      // Servidor sem o campo (ou nenhuma etapa sem agente): sem linha.
+      etapaSemAgente: null,
     });
   });
   it('forma estranha: agente nulo, pausa só com o booleano true', () => {
@@ -192,6 +226,8 @@ describe('lerEstadoDaIa — o corpo da rota', () => {
       naoAtende: null,
       encerrada: false,
       agenteDoFollowUp: null,
+      // Servidor sem o campo (ou nenhuma etapa sem agente): sem linha.
+      etapaSemAgente: null,
     });
     expect(lerEstadoDaIa(null)).toBeNull();
   });
@@ -205,6 +241,13 @@ describe('lerEstadoDaIa — o corpo da rota', () => {
     expect(lerEstadoDaIa({ agente: TRIAGEM })).toMatchObject({ encerrada: false, agenteDoFollowUp: null });
     expect(lerEstadoDaIa({ encerrada: true, agenteDoFollowUp: { id: 'ag-1' } })?.agenteDoFollowUp).toBeNull();
   });
+  it('lê `etapaSemAgente`: o nome aparado; forma estranha ou vazio = nulo (sem linha)', () => {
+    expect(lerEstadoDaIa({ etapaSemAgente: { etapa: ' Ag. Demissão ' } })?.etapaSemAgente).toBe('Ag. Demissão');
+    expect(lerEstadoDaIa({ etapaSemAgente: { etapa: '   ' } })?.etapaSemAgente).toBeNull();
+    expect(lerEstadoDaIa({ etapaSemAgente: 'Ag. Demissão' })?.etapaSemAgente).toBeNull();
+    expect(lerEstadoDaIa({})?.etapaSemAgente).toBeNull();
+  });
+
   it('lê `naoAtende`; motivo fora da lista ou agente sem nome = nulo (nunca chave crua na tela)', () => {
     expect(lerEstadoDaIa({ agente: null, pausada: false, naoAtende: CARD_ANTIGO })?.naoAtende).toEqual(CARD_ANTIGO);
     expect(lerEstadoDaIa({ naoAtende: { agente: TRIAGEM, motivo: 'motivo_novo' } })?.naoAtende).toBeNull();
@@ -285,6 +328,27 @@ describe('FaixaDaIa — o texto, nos dois dicionários', () => {
       const html = desenhar({ tipo: 'naoAtende', agente: 'Triagem', motivo });
       expect(html).toContain(`IA · Triagem não atende esta conversa: ${banner.naoAtendeMotivo[motivo]}`);
       expect(html).not.toContain(banner.naoAtendeDica);
+    }
+  });
+
+  it('⚠️ etapa sem agente: "A IA não atende esta conversa: o card está em “Ag. Demissão”…", sem botão', () => {
+    const html = desenhar({ tipo: 'semAgente', etapa: 'Ag. Demissão' });
+    expect(html).toContain('A IA não atende esta conversa: o card está em “Ag. Demissão”, uma etapa sem agente de IA.');
+    expect(html).not.toContain('<button');
+  });
+
+  it('pausada com a linha da etapa sem agente embaixo: Retomar continua, e a linha diz por que a IA não atende ali', () => {
+    const html = desenhar({ tipo: 'pausada', motivo: 'gente', naoAtende: null, volta: null, semAgente: 'Ag. Demissão' });
+    expect(html).toContain(`IA pausada — ${banner.motivo.gente}`);
+    expect(html).toContain(banner.resume);
+    expect(html).toContain('o card está em “Ag. Demissão”');
+  });
+
+  it('o texto da etapa sem agente existe nos DOIS dicionários, com a etapa', () => {
+    for (const dic of [en, ptBR]) {
+      const texto = (dic.Inbox.aiBanner as Record<string, unknown>).semAgente;
+      expect(typeof texto).toBe('string');
+      expect(texto as string).toContain('{etapa}');
     }
   });
 

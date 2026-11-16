@@ -1147,6 +1147,7 @@
         "card_antigo": "the deal was already in the stage before the agent was turned on there"
       },
       "naoAtendeDica": "It only answers deals that enter the stage after it is turned on: this conversation stays with the team.",
+      "semAgente": "The AI doesn't answer this conversation: the deal is in “{etapa}”, a stage without an AI agent.",
       "encerrada": {
         "titulo": "Conversation closed: AI · {agente} still sends the follow-up, without reopening it",
         "dica": "Closing doesn't stop the follow-up while the deal is in a stage with an AI agent. If the customer replies, the conversation reopens.",

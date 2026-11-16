@@ -1140,6 +1140,7 @@
         "card_antigo": "o card já estava na etapa antes de o agente ser ligado nela"
       },
       "naoAtendeDica": "Ele só atende os cards que entram na etapa depois de ligado: esta conversa fica com a equipe.",
+      "semAgente": "A IA não atende esta conversa: o card está em “{etapa}”, uma etapa sem agente de IA.",
       "encerrada": {
         "titulo": "Conversa encerrada: IA · {agente} ainda manda o follow-up, sem reabrir a conversa",
         "dica": "Encerrar não para o follow-up enquanto o card estiver numa etapa com agente de IA. Se o cliente responder, a conversa reabre.",

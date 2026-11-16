@@ -110,6 +110,14 @@ agente errar em silêncio.
   das duas etapas rodam de novo e podem escrever ao cliente outra vez.
 - Motivo é chave MONTADA (`Inbox.aiBanner.naoAtendeMotivo.<m>`), cobrada pela
   LISTA; motivo fora dela a faixa ignora (`lerNaoAtende`), nunca chave crua.
+- ⚠️ **E quando a etapa NÃO tem agente** (16/11/2026): na conversa que a IA JÁ
+  atendeu (`conversations.ia_agente_id`), a rota devolve `etapaSemAgente:
+  { etapa }` (o nome, pelos funis da conta) e a faixa diz "A IA não atende esta
+  conversa: o card está em “X”, uma etapa sem agente de IA" — sozinha ou
+  embaixo da pausada (o "Retomar" não faz a IA atender ali). O Trabalhista move
+  quem ainda trabalha para "Ag. Demissão": a faixa sumia depois do Retomar e a
+  equipe tentava pausar uma IA que não atendia mais. Conversa que nenhum
+  agente atendeu e a encerrada: sem linha (nem a leitura da etapa).
 
 ### A faixa diz o PRÓXIMO PASSO (pedido do operador, 12/11/2026)
 
