@@ -304,12 +304,12 @@ describe('proximaRetomada — o que a janela empurra para a abertura sai ESPALHA
     })
   })
 
-  it('a janela curta espalha só pela duração dela', () => {
+  it('a janela curta espalha menos e deixa 5 min livres no fim (o tique do agendador não passa do fechamento)', () => {
     const config = { cadencia: [15], janela: { inicio: '08:00', fim: '08:20' } }
     for (let i = 0; i < 40; i++) {
       const r = proxima({ ancora: em('2026-09-28', '22:00'), config, semente: `c${i}:1` })
       if (r.tipo !== 'agendar') throw new Error('devia agendar')
-      expect(r.instante).toBeLessThan(em('2026-09-29', '08:20'))
+      expect(r.instante).toBeLessThan(em('2026-09-29', '08:15'))
     }
   })
 

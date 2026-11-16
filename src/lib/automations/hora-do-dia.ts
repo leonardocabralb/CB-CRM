@@ -24,7 +24,7 @@
 // "segunda a sexta", não "dia útil".
 // ============================================================
 
-import { deslocamentoNaAbertura, ESPALHAR_NA_ABERTURA_MS } from '@/lib/agenda/espalhar-na-abertura';
+import { deslocamentoNaAbertura, larguraDoEspalhamento } from '@/lib/agenda/espalhar-na-abertura';
 import { diaNoFuso, paraInstante, partesNoFuso, type PartesNoFuso } from '@/lib/agenda/fuso';
 import { diaDaSemana, somarDias } from '@/lib/agenda/grade';
 import { FUSO_DO_ESCRITORIO } from '@/lib/contacts/campo-data';
@@ -214,8 +214,9 @@ export type DecisaoDaEspera =
  * ⚠️⚠️ A espera vai até o próximo início MAIS o instante próprio da `semente`
  * na primeira hora da janela (decisão do operador, 16/11/2026;
  * `espalhar-na-abertura.ts`): estacionado no início exato, tudo o que ficou
- * da noite sairia junto às 08:00 — a rajada que o WhatsApp pune. Nunca passa
- * da janela (a curta espalha pela duração dela). Nula = o início exato.
+ * da noite sairia junto às 08:00 — a rajada que o WhatsApp pune. Deixa 5 min
+ * livres no fim da janela (a curta espalha menos; a de até 5 min, nada),
+ * porque a retomada não reconfere a janela. Nula = o início exato.
  */
 export function esperaPeloHorario(
   cfg: EsperaPeloHorario,
@@ -244,7 +245,7 @@ export function esperaPeloHorario(
   const ate =
     semente === null
       ? inicio
-      : new Date(inicio.getTime() + deslocamentoNaAbertura(semente, Math.min(ESPALHAR_NA_ABERTURA_MS, duracao * 60_000)));
+      : new Date(inicio.getTime() + deslocamentoNaAbertura(semente, larguraDoEspalhamento(duracao * 60_000)));
   return {
     tipo: 'espera',
     ate,

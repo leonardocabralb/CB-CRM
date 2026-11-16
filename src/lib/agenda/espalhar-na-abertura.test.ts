@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { deslocamentoNaAbertura, ESPALHAR_NA_ABERTURA_MS } from './espalhar-na-abertura'
+import {
+  deslocamentoNaAbertura,
+  ESPALHAR_NA_ABERTURA_MS,
+  FOLGA_NO_FIM_DA_JANELA_MS,
+  larguraDoEspalhamento,
+} from './espalhar-na-abertura'
 
 describe('deslocamentoNaAbertura — o instante próprio de cada um na primeira hora', () => {
   it('é a primeira hora depois da abertura', () => {
@@ -21,6 +26,14 @@ describe('deslocamentoNaAbertura — o instante próprio de cada um na primeira 
     }
     const curta = 10 * 60_000
     for (let i = 0; i < 100; i++) expect(deslocamentoNaAbertura(`x${i}`, curta)).toBeLessThan(curta)
+  })
+
+  it('a largura: a primeira hora, deixando 5 min livres no fim da janela (Codex, #521)', () => {
+    expect(FOLGA_NO_FIM_DA_JANELA_MS).toBe(5 * 60_000)
+    expect(larguraDoEspalhamento(13 * 60 * 60_000)).toBe(ESPALHAR_NA_ABERTURA_MS) // 08:00–21:00
+    expect(larguraDoEspalhamento(15 * 60_000)).toBe(10 * 60_000) // 00:30–00:45
+    expect(larguraDoEspalhamento(5 * 60_000)).toBe(0)
+    expect(larguraDoEspalhamento(60_000)).toBe(0) // 08:00–08:01: a abertura exata
   })
 
   it('largura de menos de 1 s: zero', () => {

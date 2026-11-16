@@ -115,9 +115,10 @@ segue dali (`Aguardar 1 h → Aguardar o horário → lembrete → …`).
 
 - ⚠️⚠️ **Sai ESPALHADO pela primeira hora da janela** (decisão do operador,
   16/11/2026): estaciona até o início MAIS o instante próprio da semente (o
-  cliente e o passo; `espalhar-na-abertura.ts`), dentro da duração da
-  janela. No início exato, tudo o que ficou da noite saía junto às 08:00 —
-  a rajada que o WhatsApp pune na conexão de QR Code.
+  cliente e o passo; `espalhar-na-abertura.ts`), deixando 5 min livres no
+  fim da janela (a retomada não a reconfere; a janela de até 5 min não
+  espalha). No início exato, tudo o que ficou da noite saía junto às 08:00
+  — a rajada que o WhatsApp pune na conexão de QR Code.
 
 - **Dentro da janela, segue na hora sem estacionar** (o registro diz
   `dentro do horário (sex 10:00); segue`); fora, estaciona até o PRÓXIMO

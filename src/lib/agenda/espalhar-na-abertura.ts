@@ -21,6 +21,22 @@
 export const ESPALHAR_NA_ABERTURA_MS = 60 * 60_000
 
 /**
+ * O que fica LIVRE no fim da janela: o agendador bate a cada ~15 s, e o
+ * instante espalhado a segundos do fechamento seria retomado já fora dele —
+ * o "Aguardar o horário" não reconfere a janela ao acordar (Codex, #521).
+ */
+export const FOLGA_NO_FIM_DA_JANELA_MS = 5 * 60_000
+
+/**
+ * A largura do espalhamento numa janela que dura `duracaoMs`: a primeira
+ * hora, sem passar de `duração − FOLGA_NO_FIM_DA_JANELA_MS`. Janela curta
+ * espalha menos; abaixo da folga, nada (a abertura exata, como antes).
+ */
+export function larguraDoEspalhamento(duracaoMs: number): number {
+  return Math.max(0, Math.min(ESPALHAR_NA_ABERTURA_MS, duracaoMs - FOLGA_NO_FIM_DA_JANELA_MS))
+}
+
+/**
  * Quanto depois da abertura sai o que tem esta `semente`: um instante em
  * `[0, larguraMs)`, em segundos inteiros, sempre o mesmo para a mesma
  * semente (FNV-1a de 32 bits sobre o texto). Largura de menos de 1 s = 0.

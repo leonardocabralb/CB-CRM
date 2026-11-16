@@ -30,7 +30,7 @@
 // em `retomada-fatos.ts`. Aqui só as regras.
 // ============================================================
 
-import { deslocamentoNaAbertura, ESPALHAR_NA_ABERTURA_MS } from '@/lib/agenda/espalhar-na-abertura'
+import { deslocamentoNaAbertura, larguraDoEspalhamento } from '@/lib/agenda/espalhar-na-abertura'
 import { diaNoFuso, FUSO_PADRAO, paraInstante, partesNoFuso } from '@/lib/agenda/fuso'
 
 import type { Horario } from './agente'
@@ -272,7 +272,7 @@ export function proximaRetomada(args: {
   // fim da janela de 24 h da Meta, com a folga) se na abertura exata ela
   // ainda sairia: fica `FOLGA_DO_AGENDADOR_MS` antes do limite. Sem essa
   // folga, fica na abertura, e as conferências do laço decidem como antes.
-  const largura = Math.min(ESPALHAR_NA_ABERTURA_MS, (janela.fim - janela.inicio) * 60_000)
+  const largura = larguraDoEspalhamento((janela.fim - janela.inicio) * 60_000)
   const limites = reunioes.map((r) => r - ANTES_DA_REUNIAO_MS)
   if (args.fimDaJanelaMeta !== null) limites.push(args.fimDaJanelaMeta - FOLGA_DA_JANELA_META_MS)
   const espalhar = (abertura: number, semente: string | null): number => {

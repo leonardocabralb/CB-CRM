@@ -406,13 +406,20 @@ describe('esperaPeloHorario — o que ficou da noite sai ESPALHADO pela primeira
     expect(instantes.size).toBeGreaterThan(35);
   });
 
-  it('janela mais curta que uma hora: espalha só pela duração dela (nunca sai depois do fim)', () => {
+  it('janela mais curta que uma hora: espalha menos e deixa 5 min livres no fim (o agendador não passa do fechamento)', () => {
+    // Sexta 12:00 → a janela de sábado 00:30–00:45 (03:30–03:45 UTC).
     const curta: EsperaPeloHorario = { janela: '00:30-00:45' };
     for (let i = 0; i < 60; i++) {
       const d = esperaPeloHorario(curta, em('2026-09-25T15:00:00Z'), `x${i}`);
       if (d.tipo !== 'espera') throw new Error('devia esperar');
-      expect(esperaPeloHorario(curta, d.ate, null).tipo).toBe('segue');
+      expect(d.ate.getTime()).toBeLessThan(em('2026-09-26T03:40:00Z').getTime());
+      // 15 s depois (o tique seguinte do agendador) ainda está dentro.
+      expect(esperaPeloHorario(curta, new Date(d.ate.getTime() + 15_000), null).tipo).toBe('segue');
     }
+    // Janela de 1 minuto: nada a espalhar — o início exato, como antes.
+    const minuto: EsperaPeloHorario = { janela: '08:00-08:01' };
+    const d = esperaPeloHorario(minuto, em('2026-09-25T10:00:00Z'), 'qualquer');
+    expect(d).toMatchObject({ tipo: 'espera', ate: em('2026-09-25T11:00:00Z') });
   });
 
   it('janela que atravessa a meia-noite: espalha pela primeira hora dela, dentro da mesma noite', () => {
