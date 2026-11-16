@@ -72,8 +72,10 @@ com o celular na mão refazer o pareamento — e refazer os fluxos do n8n do zer
 |---|---|
 | Endereço | `82.25.76.63` = `vps.cbadvogados.com` |
 | SO | Ubuntu 20.04.6 LTS (Focal), kernel 5.4.0-216 |
-| Disco | 97 GB, 29% usado |
-| Memória | 7,8 GB, **sem swap** |
+| Plano | Hostinger **KVM 4** desde 14/11/2026 (antes KVM 2: 2 núcleos, 8 GB, 97 GB) — o upgrade reiniciou a VPS às 10:27 BRT, e tudo voltou sem o laço da §5.1 |
+| Processador | 4 núcleos |
+| Disco | 194 GB, 19% usado (14/11/2026) |
+| Memória | 15,6 GB, **sem swap** |
 | Docker | 28.0.1, Swarm de **nó único** (`vps`, Leader) |
 | Acesso | `ssh root@82.25.76.63`; a chave `~/.ssh/cb-crm-vps` (`claude-leitura-cb-crm`) foi autorizada em 2026-08-04 |
 
@@ -187,16 +189,18 @@ de ligar e atender desde a 4c, 11/11/2026; parado, o "Ligar" fica desligado
 e a recebida não toca no CRM). Desde a 4e, o CRM só o usa com o INTERRUPTOR
 "Ligações pelo CRM" ligado na tela Conexões (1137), e a sentinela (§12) vigia
 o contêiner do computador ligado.
-Desde 11/11/2026 (23:29 UTC): imagem `maquina-de-ligacoes:20261111-11` (a
-etiqueta `CB_SOM` com o som medido de cada lado, contra a fala que o Gemini
-inventa sobre áudio sem voz — `.claude/rules/ligacoes-transcricao.md`; montada
-à mão, abaixo, em 8 s, e conferida DENTRO da imagem com o ffmpeg 5.1 dela
-antes da troca; a cópia anterior do subprojeto ficou em
-`/root/ligacoes/imagem.anterior`), URL do CRM `http://crm_crm:3000`, segredo
-próprio em `previdenciario/segredo.env`. Rollback = recriar com a
-`20261111-10` (a 4e: o `POST /desconectar` do Reparear, o QR vencido que se
-recarrega e o sinal de vida na hora em que o WhatsApp muda; o CRM, sem a
-etiqueta, só deixa de filtrar).
+Desde 14/11/2026 (19:50 UTC), TODOS os computadores na imagem
+`maquina-de-ligacoes:20261114-12`: a máquina fecha sozinha a janela
+"Novidades do WhatsApp Web" (pelo "Continuar" dela) antes de discar e de
+atender — a janela aparece depois de parear e quando o WhatsApp lança
+novidades, cobre a tela e bloqueava o clique da discagem (o Bancário -
+Comercial não ligava; fechada à mão às 16:38 BRT, ligou). Montada à mão,
+abaixo, em 14 s; trocados um de cada vez com a linha livre, sem QR; a cópia
+anterior do subprojeto ficou em `/root/ligacoes/imagem.anterior`. Rollback =
+recriar com a `20261111-11` (a etiqueta `CB_SOM` do som de cada lado, contra a
+fala que o Gemini inventa — `.claude/rules/ligacoes-transcricao.md`; sem ela, a
+janela de novidades volta a bloquear até ser fechada à mão). URL do CRM
+`http://crm_crm:3000`, segredo próprio em `<nome>/segredo.env`.
 
 ⚠️ **Computador de ligações `ligacoes-trabalhista-comercial` (desde
 12/11/2026, pedido do operador):** o da conexão Trabalhista - Comercial, pela
@@ -222,6 +226,16 @@ sincronização, com a máquina a 160%, as conexões do WhatsApp seguiram
 entregando em ~1 s). A remontagem semanal e a sentinela os pegam sozinhas
 (todo `ligacoes-*`; todo computador ligado). O script anterior ficou em
 `/root/ligacoes/criar-maquina.sh.anterior`.
+
+⚠️ **Computadores `ligacoes-bancario-comercial` e `ligacoes-bancario-juridico`
+(desde 14/11/2026, pedido do operador, depois do upgrade para o KVM 4):** as
+conexões Bancário - Comercial e Bancário - Jurídico, pela mesma receita, com
+`memoria` = `2560m` gravado ANTES de criar (números com muitas conversas). O
+Comercial foi pareado às 10:32 BRT: pico de 2,1 GB na sincronização (com o
+teto padrão, morreria em laço) e ~1,5 GB depois, sem reinício. A 1ª ligação
+dele falhou pela janela de novidades (acima). Os quatro computadores LIGADOS
+ocupam ~3–5 GB (0,7–1,5 GB cada, conforme o número), e a VPS ficou com ~10 GB
+livres.
 
 - **Pastas** (`/root/ligacoes`, 700): `imagem/` (cópia do subprojeto, de onde
   a imagem é montada), `criar-maquina.sh` (= `ops/vps/ligacoes/`),
@@ -277,13 +291,14 @@ entregando em ~1 s). A remontagem semanal e a sentinela os pegam sozinhas
   máquina conectado: com o contêiner parado, as rotas respondem
   `computador_fora`.
 - **Computador para um número NOVO (D17, 4e):** a tela não cria contêiner —
-  é aqui. Conferir a memória antes (cada um ocupa ~0,8–1 GiB parado e ~1
-  núcleo em ligação; a VPS tem 2 núcleos, D8). ⚠️ Número com MUITAS
-  conversas passa de 1,5 GiB na primeira sincronização (a Trabalhista -
-  Comercial chegou a 2 GiB): grave `<pasta>/memoria` com `2560m` ANTES de
-  criar, senão o Chrome morre em laço (acima). Com os dois de hoje, um
-  TERCEIRO computador já não cabe com folga nesta VPS (~2,7 GB livres; no
-  pior caso, ~0,8 GB): é a hora de aumentar a máquina. Depois: `criar-maquina.sh
+  é aqui. Conferir a memória antes (cada um ocupa ~0,8–1,5 GiB parado e ~1
+  núcleo em ligação). ⚠️ Número com MUITAS conversas passa de 1,5 GiB na
+  primeira sincronização (a Trabalhista - Comercial chegou a 2 GiB, o
+  Bancário - Comercial a 2,1): grave `<pasta>/memoria` com `2560m` ANTES de
+  criar, senão o Chrome morre em laço (acima). Capacidade (KVM 4, 4 núcleos e
+  16 GB): a memória ainda comporta mais alguns números, mas o limite que pesa
+  é o de LIGAÇÕES AO MESMO TEMPO — ~3 no total, com ~1 núcleo para o CRM, a
+  Evolution e o banco. Depois: `criar-maquina.sh
   <nome> <imagem> http://crm_crm:3000` (o `<nome>` em `[a-z0-9-]`), a linha em
   `cb_computadores_de_ligacao` (conta, conexão, `nome`, `endereco`
   `http://ligacoes-<nome>:8080`; nasce DESLIGADA), `docker start

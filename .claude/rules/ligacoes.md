@@ -80,6 +80,12 @@ desenho: §8.12 e §8.13 do plano.
   e ligar para a pessoa errada é o pior caso.
 - ⚠️⚠️ **A máquina nunca toca em "Recusar" nem em "Ignorar"**: recusar num
   aparelho derruba a chamada em todos (os celulares do escritório também).
+- ⚠️ **A janela "Novidades do WhatsApp Web" cobre a tela e bloqueia o clique**
+  (depois de parear e quando o WhatsApp lança novidades; medido em
+  14/11/2026, a discagem esperava 10 s e desistia): `fecharNovidades` clica no
+  "Continuar" DELA antes de discar e de atender. Janela nova que bloqueie
+  ganha o mesmo tratamento, pelo texto dela — nunca um "fechar qualquer
+  diálogo", que poderia ser o da chamada.
 - **Todo seletor mora em `SELETORES` (`whatsapp.ts`)**, e a decisão do que a
   tela mostra é a função pura `decidir`, testada com retratos fictícios
   (nunca a tela real copiada: ela tem nomes e mensagens de clientes). Os
