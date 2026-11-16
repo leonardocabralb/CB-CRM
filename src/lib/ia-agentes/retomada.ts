@@ -275,43 +275,59 @@ export function proximaRetomada(args: {
   const largura = Math.min(ESPALHAR_NA_ABERTURA_MS, (janela.fim - janela.inicio) * 60_000)
   const limites = reunioes.map((r) => r - ANTES_DA_REUNIAO_MS)
   if (args.fimDaJanelaMeta !== null) limites.push(args.fimDaJanelaMeta - FOLGA_DA_JANELA_META_MS)
-  const espalhar = (abertura: number): number => {
-    if (args.semente === null) return abertura
+  const espalhar = (abertura: number, semente: string | null): number => {
+    if (semente === null) return abertura
     const teto = Math.min(...limites) - FOLGA_DO_AGENDADOR_MS - abertura
-    return abertura + Math.max(0, Math.min(deslocamentoNaAbertura(args.semente, largura), teto))
+    return abertura + Math.max(0, Math.min(deslocamentoNaAbertura(semente, largura), teto))
   }
 
   const k = args.tentativa
   // A primeira não tem anterior (ver o comentário da função).
   const anterior = k === 0 ? null : args.ultimaRetomada
-  let t = Math.max(
+  const nominal = Math.max(
     args.ancora + config.cadencia[k] * 60_000,
     // O ESPAÇAMENTO: a anterior adiada (janela, lembrete, cron) empurra esta.
     anterior === null || k === 0 ? Number.NEGATIVE_INFINITY : anterior + (config.cadencia[k] - config.cadencia[k - 1]) * 60_000,
     anterior === null ? Number.NEGATIVE_INFINITY : anterior + INTERVALO_MINIMO_MS,
     args.agora,
   )
-  for (let i = 0; i < 64; i++) {
-    const naJanela = dentroDaJanela(t, janela, args.fuso)
-    if (naJanela === null) return { tipo: 'parar', motivo: 'sem_janela' }
-    // `dentroDaJanela` devolve o próprio `t` (dentro) ou uma ABERTURA: só o
-    // que ela empurrou se espalha.
-    t = naJanela === t ? t : espalhar(naJanela)
-    if (reunioes.some((r) => t >= r - ANTES_DA_REUNIAO_MS)) return { tipo: 'parar', motivo: 'reuniao_proxima' }
-    const lembrete = args.bloqueios.lembretes.find((l) => Math.abs(t - l) < FOLGA_DO_LEMBRETE_MS)
-    if (lembrete !== undefined) {
-      t = lembrete + FOLGA_DO_LEMBRETE_MS
-      continue
+  const percorrer = (semente: string | null): ProximaRetomada => {
+    let t = nominal
+    for (let i = 0; i < 64; i++) {
+      const naJanela = dentroDaJanela(t, janela, args.fuso)
+      if (naJanela === null) return { tipo: 'parar', motivo: 'sem_janela' }
+      // `dentroDaJanela` devolve o próprio `t` (dentro) ou uma ABERTURA: só o
+      // que ela empurrou se espalha.
+      t = naJanela === t ? t : espalhar(naJanela, semente)
+      if (reunioes.some((r) => t >= r - ANTES_DA_REUNIAO_MS)) return { tipo: 'parar', motivo: 'reuniao_proxima' }
+      const lembrete = args.bloqueios.lembretes.find((l) => Math.abs(t - l) < FOLGA_DO_LEMBRETE_MS)
+      if (lembrete !== undefined) {
+        t = lembrete + FOLGA_DO_LEMBRETE_MS
+        continue
+      }
+      // `>=`: o fim vem de minutos TRUNCADOS (`minutosRestantesNoMapa`), então
+      // pode estar até 59 s adiante do real — a borda conta como dentro da folga
+      // (Codex, PR #328).
+      if (args.fimDaJanelaMeta !== null && t >= args.fimDaJanelaMeta - FOLGA_DA_JANELA_META_MS) {
+        return { tipo: 'parar', motivo: 'janela_24h' }
+      }
+      return { tipo: 'agendar', instante: t }
     }
-    // `>=`: o fim vem de minutos TRUNCADOS (`minutosRestantesNoMapa`), então
-    // pode estar até 59 s adiante do real — a borda conta como dentro da folga
-    // (Codex, PR #328).
-    if (args.fimDaJanelaMeta !== null && t >= args.fimDaJanelaMeta - FOLGA_DA_JANELA_META_MS) {
-      return { tipo: 'parar', motivo: 'janela_24h' }
-    }
-    return { tipo: 'agendar', instante: t }
+    return { tipo: 'parar', motivo: 'sem_janela' }
   }
-  return { tipo: 'parar', motivo: 'sem_janela' }
+
+  // ⚠️ O espalhamento nunca ACABA uma série que sairia na abertura exata: o
+  // instante espalhado pode cair a menos de 30 min de um lembrete, e o
+  // empurrão do lembrete passar do limite da reunião ou da janela da Meta
+  // (Codex, #521). Aí vale a abertura exata, como antes de 16/11/2026 — e a
+  // conferência, no vencimento, chega ao mesmo instante (dentro da janela,
+  // nada se espalha).
+  const resultado = percorrer(args.semente)
+  if (resultado.tipo === 'parar' && args.semente !== null) {
+    const naAbertura = percorrer(null)
+    if (naAbertura.tipo === 'agendar') return naAbertura
+  }
+  return resultado
 }
 
 /**

@@ -344,6 +344,39 @@ describe('proximaRetomada — o que a janela empurra para a abertura sai ESPALHA
     expect(proxima({ ancora, fimDaJanelaMeta: em('2026-09-29', '07:00'), semente: S })).toEqual({ tipo: 'parar', motivo: 'janela_24h' })
   })
 
+  it('⚠️ o espalhamento nunca ACABA a série: perto de um lembrete que empurraria para além da reunião, vale a abertura exata', () => {
+    // O exemplo do Codex (#521): lembrete às 09:00 e reunião às 10:30 (a série
+    // para a partir das 09:00). Espalhada para 08:54, a tentativa cairia a
+    // menos de 30 min do lembrete, o empurrão a levaria às 09:30 e a série
+    // pararia — às 08:00 ela sai.
+    const ancora = em('2026-09-28', '22:00')
+    const bloqueios = { lembretes: [em('2026-09-29', '09:00')], reunioes: [em('2026-09-29', '10:30')] }
+    for (let i = 0; i < 200; i++) {
+      const semente = `c${i}:1`
+      const r = proxima({ ancora, bloqueios, semente })
+      if (r.tipo !== 'agendar') throw new Error(`parou com a semente ${semente}`)
+      expect(r.instante).toBeGreaterThanOrEqual(em('2026-09-29', '08:00'))
+      expect(r.instante).toBeLessThan(em('2026-09-29', '08:30'))
+      // No vencimento, a conferência chega ao mesmo instante (sai, não reagenda).
+      expect(proxima({ ancora, agora: r.instante, bloqueios, semente })).toEqual({ tipo: 'agendar', instante: r.instante })
+    }
+    expect(proxima({ ancora, bloqueios, semente: 'c1:1' })).toMatchObject({ tipo: 'agendar' })
+  })
+
+  it('com o lembrete longe dos limites, o espalhamento segue valendo (empurrado para 30 min depois dele)', () => {
+    // Lembrete às 08:20 e nenhuma reunião próxima: quem cairia entre 07:50 e
+    // 08:50 vai para as 08:50; os outros ficam no próprio instante.
+    const ancora = em('2026-09-28', '22:00')
+    const bloqueios = { lembretes: [em('2026-09-29', '08:20')], reunioes: [] }
+    for (let i = 0; i < 100; i++) {
+      const semente = `d${i}:1`
+      const r = proxima({ ancora, bloqueios, semente })
+      if (r.tipo !== 'agendar') throw new Error('devia agendar')
+      const proprio = em('2026-09-29', '08:00') + deslocamentoNaAbertura(semente)
+      expect(r.instante).toBe(Math.abs(proprio - em('2026-09-29', '08:20')) < 30 * MIN ? em('2026-09-29', '08:50') : proprio)
+    }
+  })
+
   it('o espaçamento da cadência conta de quando a anterior SAIU (o instante espalhado)', () => {
     const ancora = em('2026-09-28', '20:50')
     const r0 = proxima({ ancora, tentativa: 0, semente: sementeDaRetomada('conversa-1', 1) })
