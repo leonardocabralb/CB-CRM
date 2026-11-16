@@ -248,6 +248,7 @@ import { lerMidia } from '@/lib/transcricao/ler-midia'
 import { transcreverAudio } from '@/lib/transcricao/transcrever'
 import { EvolutionApiError } from '@/lib/whatsapp/transport/evolution-client'
 import { MetaApiError } from '@/lib/whatsapp/meta-api'
+import { deslocamentoNaAbertura } from '@/lib/agenda/espalhar-na-abertura'
 
 import { lerLinhaDoAgente } from './agente'
 import { lerAgendaDoAgente } from './agenda'
@@ -261,6 +262,7 @@ import { ERRO_DA_ESPERA_DO_HORARIO } from './horario'
 import { ERRO_DA_ARMACAO_PELA_EQUIPE, ERRO_DA_ESPERA_DA_EQUIPE } from './pausa'
 import { CANARIO_DAS_REGRAS } from './regras-do-sistema'
 import { obterAgente } from './repo'
+import { sementeDaRetomada } from './retomada'
 import {
   AUDIOS_DA_EQUIPE_POR_TURNO,
   ERRO_DA_REPETICAO,
@@ -5086,7 +5088,7 @@ describe('a RETOMADA (1056)', () => {
   })
 
   describe('a retomada reconfere o vencimento', () => {
-    it('fora da janela (21:30): volta para a fila às 08:00 do dia seguinte, sem gerar', async () => {
+    it('fora da janela (21:30): volta para a fila na primeira hora do dia seguinte, no instante da conversa, sem gerar', async () => {
       vi.setSystemTime(new Date('2026-09-29T00:30:00Z')) // 28/09, 21:30 em Brasília
       montarCenario()
       reservaComRetomada()
@@ -5094,7 +5096,10 @@ describe('a RETOMADA (1056)', () => {
       card().etapa_desde = haMs(12 * 60 * MIN)
       comRetomadaPendente()
       await executarTurno(RETOMADA)
-      expect(turno(RETOMADA)).toMatchObject({ status: 'aguardando', executar_apos: '2026-09-29T11:00:00.000Z' })
+      // 08:00 MAIS o instante da semente (a conversa e a tentativa 1): os
+      // follow-ups da noite não saem juntos (16/11/2026).
+      const instante = Date.parse('2026-09-29T11:00:00.000Z') + deslocamentoNaAbertura(sementeDaRetomada(CONVERSA, 1))
+      expect(turno(RETOMADA)).toMatchObject({ status: 'aguardando', executar_apos: new Date(instante).toISOString() })
       expect(generateReply).not.toHaveBeenCalled()
       // Horas à frente: é da rede do cron, nunca de um `after()` dormindo.
       expect(after).not.toHaveBeenCalled()

@@ -1462,7 +1462,14 @@ async function executeStepsFrom(
         detalhe = decisao.nota;
         proximaPosicao = step.position;
       } else if (cfg.modo === 'horario') {
-        const decisao = esperaPeloHorario(cfg, new Date());
+        // A semente é o CLIENTE (e o passo): o que ficou da noite sai num
+        // instante próprio de cada um na primeira hora da janela, nunca todos
+        // no início exato (16/11/2026, `espalhar-na-abertura.ts`).
+        const decisao = esperaPeloHorario(
+          cfg,
+          new Date(),
+          `${args.contactId ?? args.logId ?? args.automation.id}:${step.id}`,
+        );
         if (decisao.tipo === 'invalida') {
           // A ativação já recusa a janela que o motor não lê; config gravada
           // por fora cai aqui. Falhar é o lado seguro: seguir mandaria a

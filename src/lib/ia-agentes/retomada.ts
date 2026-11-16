@@ -20,10 +20,17 @@
 // adiada empurra as seguintes (âncora 20:50 → 08:00, 08:45, 10:45, 13:45,
 // 19:45 e âncora + 48 h; pino no teste).
 //
+// ⚠️⚠️ O que a janela empurra para a ABERTURA sai ESPALHADO pela primeira
+// hora dela, num instante próprio de cada conversa e tentativa (decisão do
+// operador, 16/11/2026): oito follow-ups da noite saíram às 08:00 em 9 s pela
+// conexão de QR Code, e rajada é o sinal de envio em massa que o WhatsApp
+// pune. `espalhar-na-abertura.ts`; pino no teste.
+//
 // Quem arma, quem roda e quem para está em `turno.ts`; a leitura do banco,
 // em `retomada-fatos.ts`. Aqui só as regras.
 // ============================================================
 
+import { deslocamentoNaAbertura, ESPALHAR_NA_ABERTURA_MS } from '@/lib/agenda/espalhar-na-abertura'
 import { diaNoFuso, FUSO_PADRAO, paraInstante, partesNoFuso } from '@/lib/agenda/fuso'
 
 import type { Horario } from './agente'
@@ -223,7 +230,8 @@ export function dentroDaJanela(
  *
  * A ordem: o vencimento nominal (âncora + cadência; o espaçamento da cadência
  * depois da anterior; o piso de 30 min depois dela; e nunca antes de agora) →
- * a janela → a reunião (a menos de 90 min,
+ * a janela (empurrada para a abertura, o instante PRÓPRIO na primeira hora
+ * dela) → a reunião (a menos de 90 min,
  * PARA) → os lembretes (a menos de 30 min, empurra para 30 min depois deles e
  * volta à janela) → a janela da Meta. Laço com teto: um lembrete a cada meia
  * hora a noite inteira não prende a conta num laço infinito.
@@ -237,12 +245,34 @@ export function proximaRetomada(args: {
   horario: Horario | null
   bloqueios: Bloqueios
   fimDaJanelaMeta: number | null
+  /**
+   * Quem é (`<conversa>:<tentativa>`, a MESMA ao armar e ao conferir): dá o
+   * instante próprio na primeira hora quando a janela empurra a tentativa
+   * para a abertura (`espalhar-na-abertura.ts`). Nulo = a abertura exata (a
+   * regra de antes de 16/11/2026, que os testes antigos descrevem).
+   */
+  semente: string | null
   fuso?: string
 }): ProximaRetomada {
   const { config } = args
   if (args.tentativa < 0 || args.tentativa >= config.cadencia.length) return { tipo: 'parar', motivo: 'cadencia_acabou' }
   const janela = janelaEfetiva(config.janela, args.horario)
   if (!janela) return { tipo: 'parar', motivo: 'sem_janela' }
+  const reunioes = args.bloqueios.reunioes.filter((r) => r > args.agora)
+
+  // O ESPALHAMENTO (16/11/2026) nunca passa da janela do dia nem leva a
+  // tentativa para onde a série PARARIA (90 min antes da reunião; o fim da
+  // janela de 24 h da Meta, com a folga) se na abertura exata ela ainda
+  // sairia: aí fica no último segundo antes do limite. Com o limite já na
+  // abertura, fica nela, e as conferências do laço param a série como antes.
+  const largura = Math.min(ESPALHAR_NA_ABERTURA_MS, (janela.fim - janela.inicio) * 60_000)
+  const limites = reunioes.map((r) => r - ANTES_DA_REUNIAO_MS)
+  if (args.fimDaJanelaMeta !== null) limites.push(args.fimDaJanelaMeta - FOLGA_DA_JANELA_META_MS)
+  const espalhar = (abertura: number): number => {
+    if (args.semente === null) return abertura
+    const teto = Math.min(...limites) - abertura - 1000
+    return abertura + Math.max(0, Math.min(deslocamentoNaAbertura(args.semente, largura), teto))
+  }
 
   const k = args.tentativa
   // A primeira não tem anterior (ver o comentário da função).
@@ -254,11 +284,12 @@ export function proximaRetomada(args: {
     anterior === null ? Number.NEGATIVE_INFINITY : anterior + INTERVALO_MINIMO_MS,
     args.agora,
   )
-  const reunioes = args.bloqueios.reunioes.filter((r) => r > args.agora)
   for (let i = 0; i < 64; i++) {
     const naJanela = dentroDaJanela(t, janela, args.fuso)
     if (naJanela === null) return { tipo: 'parar', motivo: 'sem_janela' }
-    t = naJanela
+    // `dentroDaJanela` devolve o próprio `t` (dentro) ou uma ABERTURA: só o
+    // que ela empurrou se espalha.
+    t = naJanela === t ? t : espalhar(naJanela)
     if (reunioes.some((r) => t >= r - ANTES_DA_REUNIAO_MS)) return { tipo: 'parar', motivo: 'reuniao_proxima' }
     const lembrete = args.bloqueios.lembretes.find((l) => Math.abs(t - l) < FOLGA_DO_LEMBRETE_MS)
     if (lembrete !== undefined) {
@@ -274,6 +305,15 @@ export function proximaRetomada(args: {
     return { tipo: 'agendar', instante: t }
   }
   return { tipo: 'parar', motivo: 'sem_janela' }
+}
+
+/**
+ * A semente do espalhamento de UMA tentativa: a conversa e o número dela
+ * (1-based). ⚠️ Uma função só para quem arma e quem confere: com textos
+ * diferentes, a conferência reagendaria a tentativa para outro instante.
+ */
+export function sementeDaRetomada(conversaId: string, tentativa: number): string {
+  return `${conversaId}:${tentativa}`
 }
 
 // ------------------------------------------------------------

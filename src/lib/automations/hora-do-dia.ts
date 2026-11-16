@@ -24,6 +24,7 @@
 // "segunda a sexta", não "dia útil".
 // ============================================================
 
+import { deslocamentoNaAbertura, ESPALHAR_NA_ABERTURA_MS } from '@/lib/agenda/espalhar-na-abertura';
 import { diaNoFuso, paraInstante, partesNoFuso, type PartesNoFuso } from '@/lib/agenda/fuso';
 import { diaDaSemana, somarDias } from '@/lib/agenda/grade';
 import { FUSO_DO_ESCRITORIO } from '@/lib/contacts/campo-data';
@@ -207,12 +208,19 @@ export type DecisaoDaEspera =
 
 /**
  * Segue ou espera? E a nota para o registro da execução, com a hora LIDA e
- * até quando ficou ("fora do horário (sex 22:40); aguarda até seg 08:00") —
+ * até quando ficou ("fora do horário (sex 22:40); aguarda até seg 08:17") —
  * sem ela, ninguém conferiria depois por que o lembrete saiu às 8h.
+ *
+ * ⚠️⚠️ A espera vai até o próximo início MAIS o instante próprio da `semente`
+ * na primeira hora da janela (decisão do operador, 16/11/2026;
+ * `espalhar-na-abertura.ts`): estacionado no início exato, tudo o que ficou
+ * da noite sairia junto às 08:00 — a rajada que o WhatsApp pune. Nunca passa
+ * da janela (a curta espalha pela duração dela). Nula = o início exato.
  */
 export function esperaPeloHorario(
   cfg: EsperaPeloHorario,
   agora: Date,
+  semente: string | null,
   fuso: string = FUSO_DO_ESCRITORIO,
 ): DecisaoDaEspera {
   const janela = lerJanela(cfg.janela);
@@ -226,10 +234,17 @@ export function esperaPeloHorario(
     fuso,
   ).sim;
   if (dentro) return { tipo: 'segue', nota: `dentro do horário (${lida}); segue` };
-  const ate = proximoInicioDaJanela(janela, cfg.somente_seg_a_sex === true, agora, fuso);
-  if (!ate) {
+  const inicio = proximoInicioDaJanela(janela, cfg.somente_seg_a_sex === true, agora, fuso);
+  if (!inicio) {
     return { tipo: 'invalida', nota: `nenhum início da janela nos próximos dias (${lida})` };
   }
+  // A duração em minutos: a que atravessa a meia-noite soma a madrugada ("fim"
+  // 0 é a meia-noite). O dia inteiro nunca chega aqui (está sempre dentro).
+  const duracao = janela.fim > janela.inicio ? janela.fim - janela.inicio : MINUTOS_NO_DIA - janela.inicio + janela.fim;
+  const ate =
+    semente === null
+      ? inicio
+      : new Date(inicio.getTime() + deslocamentoNaAbertura(semente, Math.min(ESPALHAR_NA_ABERTURA_MS, duracao * 60_000)));
   return {
     tipo: 'espera',
     ate,

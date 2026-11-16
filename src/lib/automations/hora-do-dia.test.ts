@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { deslocamentoNaAbertura, ESPALHAR_NA_ABERTURA_MS } from '@/lib/agenda/espalhar-na-abertura';
 import {
   avaliarHoraDoDia,
   camposDaJanela,
@@ -227,12 +228,12 @@ describe('esperaPeloHorario — "Aguardar até estar dentro do horário" (B6a)',
   const util: EsperaPeloHorario = { janela: '08:00-21:00', somente_seg_a_sex: true };
   // Até quando estaciona, em ISO UTC (ou o tipo, quando não estaciona).
   const ate = (cfg: EsperaPeloHorario, iso: string) => {
-    const d = esperaPeloHorario(cfg, em(iso));
+    const d = esperaPeloHorario(cfg, em(iso), null);
     return d.tipo === 'espera' ? d.ate.toISOString() : d.tipo;
   };
 
   it('dentro do horário: segue na hora, e o registro diz a hora lida', () => {
-    expect(esperaPeloHorario(comercial, em('2026-09-25T13:00:00Z'))).toEqual({
+    expect(esperaPeloHorario(comercial, em('2026-09-25T13:00:00Z'), null)).toEqual({
       tipo: 'segue',
       nota: 'dentro do horário (sex 10:00); segue',
     });
@@ -243,7 +244,7 @@ describe('esperaPeloHorario — "Aguardar até estar dentro do horário" (B6a)',
 
   it('o exemplo do operador: sexta 22:40, de segunda a sexta → espera até segunda 08:00', () => {
     // Sexta 22:40 em Brasília = sábado 01:40 UTC.
-    expect(esperaPeloHorario(util, em('2026-09-26T01:40:00Z'))).toEqual({
+    expect(esperaPeloHorario(util, em('2026-09-26T01:40:00Z'), null)).toEqual({
       tipo: 'espera',
       ate: em('2026-09-28T11:00:00Z'),
       nota: 'fora do horário (sex 22:40); aguarda até seg 08:00',
@@ -304,7 +305,7 @@ describe('esperaPeloHorario — "Aguardar até estar dentro do horário" (B6a)',
   });
 
   it('janela que o motor não lê: inválida (o passo falha), com a janela no registro', () => {
-    expect(esperaPeloHorario({ janela: '' }, em('2026-09-25T15:00:00Z'))).toEqual({
+    expect(esperaPeloHorario({ janela: '' }, em('2026-09-25T15:00:00Z'), null)).toEqual({
       tipo: 'invalida',
       nota: 'janela de horário inválida: ""',
     });
@@ -344,27 +345,86 @@ describe('esperaPeloHorario — "Aguardar até estar dentro do horário" (B6a)',
     for (const cfg of janelas) {
       for (let t = inicio; t < inicio + 7 * 86_400_000; t += 347 * 60_000) {
         const agora = new Date(t);
-        const d = esperaPeloHorario(cfg, agora);
+        const d = esperaPeloHorario(cfg, agora, null);
         const dentro = avaliarHoraDoDia({ operand: cfg.janela, somente_seg_a_sex: cfg.somente_seg_a_sex }, agora).sim;
         expect(d.tipo).toBe(dentro ? 'segue' : 'espera');
         if (d.tipo !== 'espera') continue;
         expect(d.ate.getTime()).toBeGreaterThan(t);
-        expect(esperaPeloHorario(cfg, d.ate).tipo).toBe('segue');
+        expect(esperaPeloHorario(cfg, d.ate, null).tipo).toBe('segue');
         // Nenhum instante no meio já estava dentro (oito amostras), nem o
         // minuto logo antes do início.
         const minutoAntes = d.ate.getTime() - 60_000;
-        if (minutoAntes > t) expect(esperaPeloHorario(cfg, new Date(minutoAntes)).tipo).toBe('espera');
+        if (minutoAntes > t) expect(esperaPeloHorario(cfg, new Date(minutoAntes), null).tipo).toBe('espera');
         const passo = (d.ate.getTime() - t) / 8;
         for (let k = 1; k < 8; k++) {
           const meio = new Date(t + k * passo);
           if (meio.getTime() >= d.ate.getTime() - 60_000) break;
-          expect(esperaPeloHorario(cfg, meio).tipo).toBe('espera');
+          expect(esperaPeloHorario(cfg, meio, null).tipo).toBe('espera');
         }
       }
     }
     // Cada leitura monta um `Intl.DateTimeFormat`; com a suíte inteira em
     // paralelo, os 5 s padrão não bastam.
   }, 30_000);
+});
+
+describe('esperaPeloHorario — o que ficou da noite sai ESPALHADO pela primeira hora (16/11/2026)', () => {
+  // Medido no Trabalhista: oito mensagens às 08:00 em 9 s pela conexão de QR
+  // Code. Com a semente (o cliente e o passo), cada um sai num instante
+  // próprio entre 08:00 e 09:00.
+  const comercial: EsperaPeloHorario = { janela: '08:00-21:00' };
+
+  it('espera até o início MAIS o instante próprio da semente, e o registro diz a hora', () => {
+    const d = esperaPeloHorario(comercial, em('2026-09-26T01:40:00Z'), 'c1:passo');
+    const desloc = deslocamentoNaAbertura('c1:passo');
+    expect(d.tipo).toBe('espera');
+    if (d.tipo !== 'espera') return;
+    expect(d.ate.getTime()).toBe(em('2026-09-26T11:00:00Z').getTime() + desloc);
+    const hhmm = `08:${String(Math.floor(desloc / 60_000)).padStart(2, '0')}`;
+    expect(d.nota).toBe(`fora do horário (sex 22:40); aguarda até sáb ${hhmm}`);
+  });
+
+  it('a mesma semente, o mesmo instante (de qualquer hora da noite)', () => {
+    const a = esperaPeloHorario(comercial, em('2026-09-26T01:40:00Z'), 'c1:passo');
+    const b = esperaPeloHorario(comercial, em('2026-09-26T06:00:00Z'), 'c1:passo');
+    expect(a).toMatchObject({ tipo: 'espera' });
+    expect(b).toMatchObject({ tipo: 'espera' });
+    if (a.tipo === 'espera' && b.tipo === 'espera') expect(a.ate.getTime()).toBe(b.ate.getTime());
+  });
+
+  it('clientes diferentes saem em instantes diferentes, todos na primeira hora e dentro da janela', () => {
+    const inicio = em('2026-09-26T11:00:00Z').getTime();
+    const instantes = new Set<number>();
+    for (let i = 0; i < 40; i++) {
+      const d = esperaPeloHorario(comercial, em('2026-09-26T01:40:00Z'), `cliente-${i}:passo`);
+      if (d.tipo !== 'espera') throw new Error('devia esperar');
+      expect(d.ate.getTime()).toBeGreaterThanOrEqual(inicio);
+      expect(d.ate.getTime()).toBeLessThan(inicio + ESPALHAR_NA_ABERTURA_MS);
+      expect(esperaPeloHorario(comercial, d.ate, null).tipo).toBe('segue');
+      instantes.add(d.ate.getTime());
+    }
+    expect(instantes.size).toBeGreaterThan(35);
+  });
+
+  it('janela mais curta que uma hora: espalha só pela duração dela (nunca sai depois do fim)', () => {
+    const curta: EsperaPeloHorario = { janela: '00:30-00:45' };
+    for (let i = 0; i < 60; i++) {
+      const d = esperaPeloHorario(curta, em('2026-09-25T15:00:00Z'), `x${i}`);
+      if (d.tipo !== 'espera') throw new Error('devia esperar');
+      expect(esperaPeloHorario(curta, d.ate, null).tipo).toBe('segue');
+    }
+  });
+
+  it('janela que atravessa a meia-noite: espalha pela primeira hora dela, dentro da mesma noite', () => {
+    const noite: EsperaPeloHorario = { janela: '23:30-06:00', somente_seg_a_sex: true };
+    for (let i = 0; i < 60; i++) {
+      // Sábado 12:00 → a noite de segunda, 23:30, mais o deslocamento.
+      const d = esperaPeloHorario(noite, em('2026-09-26T15:00:00Z'), `y${i}`);
+      if (d.tipo !== 'espera') throw new Error('devia esperar');
+      expect(d.ate.getTime()).toBeGreaterThanOrEqual(em('2026-09-29T02:30:00Z').getTime());
+      expect(esperaPeloHorario(noite, d.ate, null).tipo).toBe('segue');
+    }
+  });
 });
 
 describe('rotuloDaJanela — o resumo do passo', () => {
