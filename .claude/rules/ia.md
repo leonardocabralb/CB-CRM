@@ -346,7 +346,8 @@ ingestões), `fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron
 - ⚠️ **O contexto é SÓ da conexão do turno** (D4); áudio pela transcrição
   (reagenda até 2 min de `gravada_em`), imagem/PDF pela leitura
   (`prepararMidias`), vídeo como descrição (`contexto.ts`).
-  Gatilho apagado ou editado descarta. O eco da Evolution que chega antes do
+  Gatilho apagado descarta; o EDITADO sem o texto novo vai com a nota
+  `NOTA_DA_EDICAO` (16/11/2026), e a edição no meio da geração reagenda. O eco da Evolution que chega antes do
   INSERT é gravado COMO a resposta do agente por `eco.ts`, sem motor.
 - **FK anulável de `cb_ia_turnos`/`ai_usage_log` ganha índice PARCIAL**;
   `messages.ia_agente_id` fica sem índice (decisão do operador). ⚠️ Apagar

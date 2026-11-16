@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  editadaSemOTextoNovo,
   ehNotaDoSistema,
   montarConversa,
   MOTIVO_SEM_LEITOR,
+  NOTA_DA_EDICAO,
   NOTA_DA_RESPOSTA_CRUZADA,
   PREFIXO_DA_NOTA,
   ROTULO_DA_EQUIPE,
@@ -323,6 +325,40 @@ describe('montarConversa — a ligação pelo CRM transcrita (4d, D11)', () => {
     const [m] = montarConversa([faixa({})], undefined, longo)
     expect(m.content.endsWith(' […cut]')).toBe(true)
     expect(m.content.split('\n').slice(1).join('\n').length).toBeLessThanOrEqual(TETO_DA_LEITURA_NO_CONTEXTO + ' […cut]'.length)
+  })
+})
+
+describe('montarConversa — a mensagem do cliente EDITADA (16/11/2026, saída A do operador)', () => {
+  const cliente = (p: Partial<MensagemDoContexto>): MensagemDoContexto => ({
+    sender_type: 'customer',
+    content_type: 'text',
+    content_text: 'Sim',
+    ...p,
+  })
+
+  it('a CIFRADA (só `edited_at`, o texto é o antigo): a nota vem logo depois dela, no papel de usuário', () => {
+    const conversa = montarConversa([
+      { sender_type: 'bot', content_type: 'text', content_text: 'Quando você saiu, já sabia que estava grávida?' },
+      cliente({ edited_at: '2026-11-16T15:21:11Z' }),
+    ])
+    expect(conversa).toEqual([
+      { role: 'assistant', content: 'Quando você saiu, já sabia que estava grávida?' },
+      { role: 'user', content: 'Sim' },
+      { role: 'user', content: NOTA_DA_EDICAO },
+    ])
+    expect(ehNotaDoSistema(NOTA_DA_EDICAO)).toBe(true)
+  })
+
+  it('a LEGÍVEL (o texto já é o novo; o antigo em `text_before_edit`) e a não editada vão como estão', () => {
+    expect(montarConversa([cliente({ edited_at: '2026-11-16T15:21:11Z', text_before_edit: 'Sin' })])).toEqual([
+      { role: 'user', content: 'Sim' },
+    ])
+    expect(montarConversa([cliente({})])).toEqual([{ role: 'user', content: 'Sim' }])
+  })
+
+  it('só a fala do CLIENTE; e a vazia continua fora (sem nota solta)', () => {
+    expect(editadaSemOTextoNovo({ sender_type: 'agent', edited_at: '2026-11-16T15:21:11Z', text_before_edit: null })).toBe(false)
+    expect(montarConversa([cliente({ content_text: '  ', edited_at: '2026-11-16T15:21:11Z' })])).toEqual([])
   })
 })
 

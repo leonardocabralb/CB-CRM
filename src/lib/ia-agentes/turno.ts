@@ -248,6 +248,12 @@ interface Gatilho {
   content_type: string
   content_text: string | null
   media_type: string | null
+  /**
+   * A edição que o turno JÁ conhece (a da leitura do começo): o contexto que
+   * vai ao modelo leva a nota dela (`NOTA_DA_EDICAO`). Uma edição MAIS NOVA na
+   * conferência não estava no pedido — reagenda (`conferir`).
+   */
+  edited_at: string | null
 }
 
 /** Como o turno termina. `abandonado` = a posse foi perdida: nada se escreve. */
@@ -763,7 +769,7 @@ type Conferencia =
  * O card continua na etapa do turno, a etapa continua do MESMO agente, ligado
  * e dono da conexão (D24/D27 — `lerQuemAtende` + `quemResponde`, as leituras
  * da entrada), a conversa aberta e sem pausa (a de gente inclusive), o
- * gatilho lá e sem edição, sem mensagem mais nova nem saída do
+ * gatilho lá e sem edição NOVA, sem mensagem mais nova nem saída do
  * robô/automação? E nenhuma
  * automação de funil ainda por falar (reagenda)? Roda antes de gerar e de
  * novo antes de enviar ou passar.
@@ -815,9 +821,16 @@ async function conferir(
   const agente = await obterAgente(turno.account_id, decisao.agenteId)
   if (!agente) return { ok: false, desfecho: { status: 'descartado', erro: 'agente indisponível' } }
 
-  // O cliente pode ter APAGADO ou EDITADO a mensagem durante a espera ou a
-  // geração (a edição cifrada da Evolution 2.4 carimba `edited_at` e mantém
-  // o texto antigo): responder seria responder ao que ele retirou.
+  // O cliente pode ter APAGADO a mensagem durante a espera ou a geração:
+  // responder seria responder ao que ele retirou.
+  //
+  // ⚠️⚠️ EDITADA não descarta mais (decisão do operador, 16/11/2026, saída A):
+  // descartada, a cliente ficava sem resposta E sem follow-up até escrever de
+  // novo (medido no Trabalhista: "Sim" editado 8 s depois). O turno responde,
+  // e o contexto leva a nota da edição (`NOTA_DA_EDICAO`, `contexto.ts` — a
+  // cifrada da Evolution 2.4 mantém o texto antigo). Só a edição que chegou
+  // DEPOIS da leitura do começo (no meio da geração) não estava no pedido:
+  // reagenda, e a próxima rodada responde com a nota.
   const { data: aindaLa, error: erroDoGatilho } = await db
     .from('messages')
     .select('deleted_at, edited_at')
@@ -826,7 +839,7 @@ async function conferir(
   if (erroDoGatilho) throw new Error(`releitura da mensagem falhou: ${erroDoGatilho.message}`)
   const linha = aindaLa as { deleted_at: string | null; edited_at: string | null } | null
   if (!linha || linha.deleted_at) return { ok: false, desfecho: { status: 'descartado', erro: 'o cliente apagou a mensagem' } }
-  if (linha.edited_at) return { ok: false, desfecho: { status: 'descartado', erro: 'o cliente editou a mensagem' } }
+  if (linha.edited_at && linha.edited_at !== gatilho.edited_at) return { ok: false, desfecho: { status: 'reagendar' } }
 
   if (await haMensagemMaisNova(db, turno, gatilho)) {
     return { ok: false, desfecho: { status: 'descartado', erro: 'mensagem mais nova do cliente' } }
@@ -1521,7 +1534,7 @@ async function conduzir(
     .maybeSingle()
   if (erroGatilho) throw new Error(`leitura da mensagem falhou: ${erroGatilho.message}`)
   if (!gatilhoLido || gatilhoLido.deleted_at) return { status: 'descartado', erro: 'a mensagem sumiu ou foi apagada' }
-  if (gatilhoLido.edited_at) return { status: 'descartado', erro: 'o cliente editou a mensagem' }
+  // Editada segue (16/11/2026): a nota da edição vai no contexto (`conferir`).
   const gatilho = gatilhoLido as Gatilho
 
   const primeira = await conferir(db, turno, gatilho, { aceitaPausaTemporaria: true })
