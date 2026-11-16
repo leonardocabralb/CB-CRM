@@ -104,8 +104,10 @@ faz, em `.claude/rules/ia-agentes.md`. ⚠️ "Retomada" aqui é o FOLLOW-UP; o
   A semente é `sementeDaRetomada` (conversa + tentativa), a MESMA ao armar e
   ao conferir — com outra, a conferência reagendaria. Dentro da janela nada
   muda; nunca passa da janela do dia nem para onde a série PARARIA (90 min
-  antes da reunião, fim da janela de 24 h da Meta): fica 1 s antes do
-  limite. Follow-up 24 h foi descartado: de madrugada vira bloqueio e
+  antes da reunião, fim da janela de 24 h da Meta): fica
+  `FOLGA_DO_AGENDADOR_MS` (5 min) antes do limite — o agendador confere no
+  instante real, e a 1 s dele o tique seguinte pararia a série (Codex,
+  #521). Follow-up 24 h foi descartado: de madrugada vira bloqueio e
   denúncia, que pesam mais que a rajada.
 - ⚠️⚠️ **O cliente que escreve DESCARTA a pendente**: dentro de
   `cb_ia_enfileirar_turno` (1056, toda conexão) quando abre turno; o que não

@@ -65,6 +65,13 @@ export const ANTES_DA_REUNIAO_MS = 90 * 60_000
 export const FOLGA_DA_JANELA_META_MS = 5 * 60_000
 /** Vencida há até isto = roda agora (os relógios do cron e do banco não são o mesmo). */
 export const TOLERANCIA_DO_VENCIMENTO_MS = 60_000
+/**
+ * A tentativa ESPALHADA na abertura fica pelo menos isto antes de um limite
+ * que pararia a série (reunião, janela da Meta). O agendador bate a cada
+ * ~15 s e a conferência roda no instante REAL: a 1 s do limite, o tique
+ * seguinte já a pararia — e na abertura exata ela teria saído (Codex, #521).
+ */
+export const FOLGA_DO_AGENDADOR_MS = 5 * 60_000
 
 export interface JanelaDaRetomada {
   /** "HH:MM", no fuso do escritório. */
@@ -261,16 +268,16 @@ export function proximaRetomada(args: {
   const reunioes = args.bloqueios.reunioes.filter((r) => r > args.agora)
 
   // O ESPALHAMENTO (16/11/2026) nunca passa da janela do dia nem leva a
-  // tentativa para onde a série PARARIA (90 min antes da reunião; o fim da
-  // janela de 24 h da Meta, com a folga) se na abertura exata ela ainda
-  // sairia: aí fica no último segundo antes do limite. Com o limite já na
-  // abertura, fica nela, e as conferências do laço param a série como antes.
+  // tentativa para perto de onde a série PARARIA (90 min antes da reunião; o
+  // fim da janela de 24 h da Meta, com a folga) se na abertura exata ela
+  // ainda sairia: fica `FOLGA_DO_AGENDADOR_MS` antes do limite. Sem essa
+  // folga, fica na abertura, e as conferências do laço decidem como antes.
   const largura = Math.min(ESPALHAR_NA_ABERTURA_MS, (janela.fim - janela.inicio) * 60_000)
   const limites = reunioes.map((r) => r - ANTES_DA_REUNIAO_MS)
   if (args.fimDaJanelaMeta !== null) limites.push(args.fimDaJanelaMeta - FOLGA_DA_JANELA_META_MS)
   const espalhar = (abertura: number): number => {
     if (args.semente === null) return abertura
-    const teto = Math.min(...limites) - abertura - 1000
+    const teto = Math.min(...limites) - FOLGA_DO_AGENDADOR_MS - abertura
     return abertura + Math.max(0, Math.min(deslocamentoNaAbertura(args.semente, largura), teto))
   }
 

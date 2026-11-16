@@ -6,6 +6,7 @@ import { FUSO_DO_ESCRITORIO } from './pedido'
 import {
   bloqueiosDoContato,
   CADENCIA_PADRAO,
+  FOLGA_DO_AGENDADOR_MS,
   FUSO_DA_RETOMADA,
   janelaEfetiva,
   JANELA_PADRAO,
@@ -314,20 +315,31 @@ describe('proximaRetomada — o que a janela empurra para a abertura sai ESPALHA
 
   it('⚠️ nunca leva para onde a série PARARIA: fica antes dos 90 min da reunião e do fim da janela da Meta', () => {
     // Reunião às 09:45: a série para a partir das 08:15. Na abertura exata a
-    // tentativa sairia, então o espalhamento fica até 1 s antes do limite.
+    // tentativa sairia, então o espalhamento fica até 5 min antes do limite:
+    // o agendador bate a cada ~15 s e confere no instante real (Codex, #521).
     const ancora = em('2026-09-28', '22:00')
     const reuniao = em('2026-09-29', '09:45')
     for (let i = 0; i < 40; i++) {
       const r = proxima({ ancora, bloqueios: { lembretes: [], reunioes: [reuniao] }, semente: `c${i}:1` })
       if (r.tipo !== 'agendar') throw new Error('devia agendar')
-      expect(r.instante).toBeLessThan(reuniao - 90 * MIN)
+      expect(r.instante).toBeLessThanOrEqual(reuniao - 90 * MIN - FOLGA_DO_AGENDADOR_MS)
+      // Conferida no tique seguinte do agendador (15 s depois), ainda sai.
+      expect(proxima({ ancora, agora: r.instante + 15_000, bloqueios: { lembretes: [], reunioes: [reuniao] }, semente: `c${i}:1` })).toEqual({
+        tipo: 'agendar',
+        instante: r.instante + 15_000,
+      })
     }
     // A janela de 24 h da Meta fecha às 08:20 (com a folga de 5 min, 08:15).
     for (let i = 0; i < 40; i++) {
       const r = proxima({ ancora, fimDaJanelaMeta: em('2026-09-29', '08:20'), semente: `c${i}:1` })
       if (r.tipo !== 'agendar') throw new Error('devia agendar')
-      expect(r.instante).toBeLessThan(em('2026-09-29', '08:15'))
+      expect(r.instante).toBeLessThanOrEqual(em('2026-09-29', '08:15') - FOLGA_DO_AGENDADOR_MS)
     }
+    // Com o limite a menos da folga da abertura (08:03), fica na abertura e sai como antes.
+    expect(proxima({ ancora, fimDaJanelaMeta: em('2026-09-29', '08:08'), semente: S })).toEqual({
+      tipo: 'agendar',
+      instante: em('2026-09-29', '08:00'),
+    })
     // Com o limite antes da abertura, para como antes.
     expect(proxima({ ancora, fimDaJanelaMeta: em('2026-09-29', '07:00'), semente: S })).toEqual({ tipo: 'parar', motivo: 'janela_24h' })
   })
