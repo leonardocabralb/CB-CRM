@@ -1857,6 +1857,15 @@ async function executeStepsFrom(
 /** O rascunho da tentativa de envio que falhou, por passo (`runStep` → `catch`). */
 type FalhaDoPasso = { rascunho?: RascunhoDoEnvio };
 
+/**
+ * O registro do "Atribuir conversa" quando a pessoa não é membro da conta
+ * (1148). O "Já rodou" o traduz (`texto-do-motor.ts`, escrito lá por extenso;
+ * o teste de lá amarra os dois).
+ */
+function responsavelForaDaConta(agentId: string): string {
+  return `agent ${agentId} is not a member of the account — conversation not assigned`;
+}
+
 async function runStep(
   step: AutomationStep,
   args: ExecuteArgs,
@@ -2064,13 +2073,18 @@ async function runStep(
       // 1067: o atendente FIXO que está suspenso não recebe conversa nova — ela
       // fica na fila (sem responsável), como no nó "Transferir" do robô. Só a
       // suspensão CONFIRMADA barra: leitura que falha segue como antes.
+      // 1148: quem NÃO É membro da conta (saiu da equipe) também não recebe —
+      // a leitura sem erro que volta vazia é a resposta. A que falha segue: o
+      // gatilho do banco recusa ex-membro de qualquer jeito, e a conferência
+      // depois do UPDATE diz que não pegou.
       if (cfg.mode !== 'round_robin') {
-        const { data: fixo } = await db
+        const { data: fixo, error: erroDoFixo } = await db
           .from('profiles')
           .select('suspenso_em')
           .eq('account_id', args.automation.account_id)
           .eq('user_id', agentId)
           .maybeSingle();
+        if (!erroDoFixo && !fixo) return responsavelForaDaConta(agentId);
         if ((fixo as { suspenso_em?: string | null } | null)?.suspenso_em) {
           return `agent ${agentId} is suspended — conversation left unassigned`;
         }
@@ -2097,9 +2111,17 @@ async function runStep(
       q = conversaDoDisparo
         ? q.eq('id', conversaDoDisparo)
         : q.eq('contact_id', args.contactId);
-      const { error: assignErr } = await q;
+      const { data: gravadas, error: assignErr } = await q.select('assigned_agent_id');
       if (assignErr)
         throw new Error(`assign_conversation falhou: ${assignErr.message}`);
+      // 1148: o gatilho do banco mantém o anterior (ou deixa sem ninguém)
+      // quando a pessoa não é membro da conta — a remoção dela no meio, ou a
+      // leitura acima que falhou. O registro não diz "assigned" sobre o que
+      // não pegou.
+      const gravados = (gravadas ?? []) as { assigned_agent_id: string | null }[];
+      if (gravados.some((c) => c.assigned_agent_id !== agentId)) {
+        return responsavelForaDaConta(agentId);
+      }
 
       return conversaDoDisparo
         ? `assigned to ${agentId}`
