@@ -186,7 +186,9 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
   re-pergunta que falha ENCERRA o run): libera o contato na hora e deixa a
   falha visível, ao preço de perder o fluxo num erro transitório. O do
   original mantém o run vivo até `max_reprompts`. Num merge fica o nosso —
-  pino `engine-channel.test.ts`.
+  pino `engine-channel.test.ts`. ⚠️ Re-pergunta e esgotamento têm CERCA
+  (`reivindicarFallback`, porte #683): só muda a run ainda ativa, no mesmo nó
+  e contador, e esgotar encerra no mesmo UPDATE; quem perde não envia.
 - `{{vars}}` só nos textos VISÍVEIS (`camposDosBotoes`/`camposDaLista`), NUNCA
   no `reply_id` — é ele que casa a resposta do cliente. Botões, lista e a
   pergunta do `collect_input` saem pelo canal do NÓ (senão o do run), nunca
@@ -237,9 +239,14 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
 - ⚠️ **Robô que deixa de estar ATIVO encerra a run de quem estava nele**
   (`stopped_by_agent` + `robo_desativado`, `encerrarRunDeRoboDesativado`): na
   resposta do cliente (`dispatchInboundToFlows`, que segue como se não
-  houvesse run — gatilhos, automações, IA) e no cron dos robôs. Leitura do
-  robô que falha = "não sei": a run segue. O `cancelled` do #674 não existe
-  aqui (CHECK da 0955).
+  houvesse run — gatilhos, automações, IA) e no cron dos robôs (lido por
+  chave). Leitura do robô OU dos nós que falha = "não sei" (porte #683): a run
+  ativa segue (`run_error`, a mensagem fica com o robô) e robô novo não nasce.
+  O `cancelled` do #674 não existe aqui (CHECK da 0955).
+- ⚠️ **Ciclo de nós automáticos e cadeia acima de `MAX_CADEIA_AUTOMATICA` (63;
+  o motor corta em 64) reprovam ATIVAR e SALVAR robô ativo** (PUT 422; porte
+  #674/#683). Tipo novo que o laço atravessa entra em
+  `AUTO_ADVANCING_NODE_TYPES` (`types.ts`).
 
 ### Modelos da Meta
 
@@ -284,10 +291,22 @@ submissão e sincronização, categoria, variáveis nomeadas, stub do webhook).
   `pessoasDoCsv` + `fichasDoCsvNaBase`). Contar por outra via mostrava 1.000
   contatos onde havia milhares e ignorava a exclusão. "Todos os contatos" é
   lido POR CHAVE (`buscarPorChave`): por OFFSET, ficha criada no meio da
-  leitura repetia um destinatário, e o modelo pago chegava em dobro. Pinos
+  leitura repetia um destinatário, e o modelo pago chegava em dobro — e os
+  destinatários na tela da campanha também (`lerDestinatariosDaCampanha`;
+  nulo = erro, nunca lista parcial). Pinos
   `use-broadcast-sending.contagem.test.ts` e `.paginacao.test.ts`. O
   `paged-query.ts` (do original) pagina por POSIÇÃO e sem teto: dele, só o
   `chunk` tem uso.
+- ⚠️⚠️ **POSSE do envio (1147)**: o assistente a toma ao criar a campanha e a
+  renova (5 min, relógio do BANCO, por TOKEN) antes de cada lote e após cada
+  espera do 429 (`broadcast-posse.ts`, `enviarLoteComPosse`); a ROTA do lote
+  a renova antes do 1º envio e a cada minuto (sem ela, 409 com o que saiu).
+  Perdeu = PARA sem gravar o resto do lote e nunca reenvia. A retomada (e a
+  API v1, antes do `after()`) só trava com a posse vencida, e a APAGA; o
+  planejamento que falha depois fecha a campanha pelas linhas. A tela troca
+  "parou no meio"/Retomar por "em andamento" (`cb_disparo_em_andamento`;
+  nulo = não sei). Sem isso o Retomar durante o envio mandava o modelo pago
+  em dobro.
 - ⚠️ **A retomada (`broadcast-resume.ts`) manda até 1.000 por pedido e lê até
   25 páginas para achá-las** (#658), das linhas mais antigas: a página só de
   fichas sem telefone não a encerra mais. Página por POSIÇÃO: a linha lida

@@ -429,6 +429,61 @@ as demais correções.
   entrou neste porte. A 048 (CHECK das respostas rápidas) também não: as duas
   rotas são as únicas escritoras e validam; trazida crua, é inofensiva.
 
+### 3.6 A rodada de 2026-11-17: porte manual do lote `34bce1a8..c81299d1`
+
+11 PRs do original (#679–#683, #697, #700, #715, #720–#722, 16 a 30/10/2026),
+analisados e reconferidos no nosso código em 17/11/2026 e portados em seis
+lotes (PRs #526–#531, integrados num PR só para o `main`). Sem merge: a
+ancestralidade continua em `aee1b01f`. Plano, decisões do operador e o que
+cada lote fez: `docs/PLANO-porte-upstream-2026-11.md`.
+
+- **Entrou, adaptado:** a última página de Contatos depois da Lixeira e a
+  busca por telefone formatado (#679); o Gerenciar funil que avisa o quadro e
+  não ressuscita etapa (#679); o editor do robô (salvar que falha não ativa,
+  chave do "Adicionar nó") (#679); o motor do robô (leitura que falha = "não
+  sei", cerca da re-pergunta, ciclo e cadeia recusados, cron por chave)
+  (#683, #674); o sino que reconta (#682); o 429 do convite (#682); o envio
+  pela ficha na corrida e na leitura que falha (#680); o login (#697);
+  `cpus: 4` (#722); a base de conhecimento que grava antes de apagar (#683);
+  o cursor estrito, a URL de webhook com credencial, o `bearer` e o
+  `duplicates` (#681); a categoria do modelo aprovado, a sincronização e as
+  variáveis nomeadas (#680, #700); o responsável que tem de ser membro e a
+  remoção que devolve as conversas à fila (#682); a posse do envio do
+  disparo e os destinatários paginados (#683, #679).
+- **Migrations NOSSAS desta rodada:** 1147 (posse do disparo, com TOKEN),
+  1148 (gatilho do responsável membro + `remove_account_member` que devolve à
+  fila, com trava), 1149 (`flow-media` só atendente+ na pasta da conta) e 1150
+  (modelos únicos por conta, sem apagar nada, + o gatilho
+  `cb_channels_solta_modelos`).
+- **Descartar no próximo merge:**
+  - a `055_authz_membership_holes` inteira: recria
+    `enforce_profile_privilege_columns`, `remove_account_member`, as policies
+    do `chat-media` e do `flow-media` e `notify_conversation_assigned` por cima
+    das nossas (958/961/1067/954/1102/0020/0027 e agora 1148/1149);
+  - a `057_message_templates_account_unique`: APAGA o modelo legítimo de outro
+    número (multi-WABA); a 1150 a substitui sem apagar;
+  - a `058_engine_race_gaps`: depende da 052, descartada; a posse do disparo
+    é a nossa 1147;
+  - somar a **1148** à lista das nossas que a `047` sobrescreveria em
+    `remove_account_member` (§3.5);
+  - `src/lib/contacts/search-filter.ts`, `page-bounds.ts` e `custom-value-writes.ts`;
+    `src/lib/pipelines/stage-sync.ts` (o `reconcileStages` semeia pelas
+    props); `src/lib/notifications/unread-count.ts`;
+    `src/lib/settings/account-catalog.ts`; `src/lib/whatsapp/broadcast-delivery-lease.ts`;
+  - `src/lib/inbox/linkify-text.tsx` e as dependências `linkify-react`/`linkifyjs`
+    (#715): temos `links-no-texto.ts`, com a formatação do WhatsApp;
+  - `src/lib/inbox/context-menu.ts` e a mudança do #721 em
+    `message-actions.tsx` (decisão #18 do operador);
+  - do #681: a importação de etiquetas deles (apaga a etiqueta repetida), a
+    soma de etiquetas por padrão no `POST /v1/contacts` (o nosso padrão é
+    `replace`), o `conversation.created` ao abrir conversa pela v1 e o 503 da
+    leitura da chave.
+- **Decisões do operador (17/11/2026), em `docs/DECISOES-DO-OPERADOR.md`:**
+  #16 remover membro devolve as conversas à fila; #17 o Visualizador segue
+  subindo arquivo no `chat-media`; #18 o botão direito na mensagem abre a
+  nossa barra; #19 a API v1 continua renomeando o contato existente
+  (respeitando o nome fixado).
+
 ## 4. Arquivos do upstream com trechos NOSSOS
 
 ⚠️ **Vários arquivos do upstream ganharam mudanças NOSSAS para o multi-canal —
@@ -738,6 +793,32 @@ upstream sobrescrevê-los:
 | `messages/en.json` e `src/types/index.ts` (ligar pelo CRM, 4d, 1136) | no `en.json`, em `Inbox.ligacao`, as chaves da transcrição: `transcrevendo`, `semTranscricao`, `gravacaoExpirada`, `resumo`, `verTranscricao`, `tituloDaTranscricao`, `cliente`, `atendente`, `carregandoTranscricao`, `falhaDaTranscricao`, `tentarDeNovo` e `semFala` (a faixa `aviso-de-ligacao.tsx`, NOSSA); no `types/index.ts`, `transcricao`, `resumo` e `expirada` em `DetalhesDaLigacao` (a interface é NOSSA, 1044). Um merge que traga o `en.json` cru deixa a faixa da ligação transcrita com a chave crua na tela, sem erro nenhum |
 | `src/types/index.ts`, `src/app/(dashboard)/notifications/page.tsx`, `src/components/notifications/browser-notifications-listener.tsx`, `messages/en.json` (aviso da IA que passa a conversa, 1139, 11/11/2026) | o tipo `ia_transferiu` em `NotificationType` (espelho do CHECK da 1139) e o ícone `Bot` dele no `TYPE_ICON` do sino; no ouvinte, `useAvisoDaIaNaTela()` depois de `useAvisosDoSinoNoNavegador()` — a caixinha clicável dentro do CRM (NOSSA, `src/hooks/use-aviso-da-ia-na-tela.tsx`); no `en.json`, `AvisoDaIaNaTela` (NOSSA inteira), `IaAgentes.transferencia.aviso` e as chaves `IaAgentes.campo.avisarAoTransferir*`/`avisarEquipeNaoCarregou`. O ouvinte cru do upstream tira a caixinha sem conflito nem erro; os pinos são `cartao-de-notificacao.chamadores.test.ts` e `src/lib/notifications/aviso-da-ia.test.ts` |
 | `src/types/index.ts`, `src/app/(dashboard)/notifications/page.tsx`, `src/app/(dashboard)/inbox/page.tsx`, `src/components/inbox/conversation-list.tsx` e `messages/en.json` (alarme quando a IA para, 1140, 12/11/2026) | os tipos `ia_falhou` e `ia_voltou` em `NotificationType` (espelho do CHECK da 1140) e os ícones `BotOff`/`Bot` deles no `TYPE_ICON` do sino, com o corpo em até 3 linhas (`ehAlarmeDaIa`, como o `whatsapp_alert`: o conserto só está ali); na lista do inbox, `verInicial` SEM `conexaoInicial` semeia só o chip (`FILTROS_VAZIOS` + `naoLidas`/`emAtraso`), entra no `semeouPadraoRef`/`esperandoPadrao` (vence o filtro padrão) e o ouvinte de `EVENTO_VER_EM_ATRASO` acende "Em atraso"; na página do inbox, o ouvinte do MESMO sinal que, no celular (`!ehDesktop`), tira a conversa aberta (`limparConversaAberta`) — a lista só aparece sem ela; no `en.json`, `IaAgentes.alarme` e `AvisoDaIaNaTela.verEmAtraso`. Pinos: `supabase/migrations/alarme-da-ia-1140.test.ts` (o `Record<NotificationType>`) e `src/lib/inbox/url.test.ts` |
+| `src/app/(dashboard)/contacts/page.tsx` (porte #679, 17/11/2026) | a busca por `ramosDaBuscaNaTabela` (`busca-remota.ts`: nome, e-mail, os dois `@` e o telefone por `phone_normalized` só com termo de cara de telefone) — o original usa `search-filter.ts`, que NÃO trouxemos; o termo da RPC 025 só com dígitos quando tem cara de telefone; a volta à última página por `paginaQueExiste`, que trata também o 416 `PGRST103`, com o passo herdando o modo silencioso. Pinos `literal.chamadores.test.ts`, `pagina-que-existe.test.ts` |
+| `src/components/pipelines/pipeline-settings.tsx` (porte #679, 17/11/2026) | o "Salvar" lê os ids que ainda existem e grava por `etapasParaSalvar` (as NOSSAS colunas), com aviso das descartadas; `onStagesChanged` depois de adicionar e de remover. O `reconcileStages` deles (semeia pelas props) não entra |
+| `src/app/(dashboard)/pipelines/page.tsx` (porte #679, 17/11/2026) | `refreshStages` por `buscarEtapas`: a falha não esvazia o quadro |
+| `src/lib/flows/engine.ts` (porte #683, 17/11/2026) | `loadAllNodes` devolve `null` ("não sei") e cada caminho decide (`run_error` na run ativa; o original LANÇA); a cerca da re-pergunta `reivindicarFallback` SEM `transition_seq` (o deles depende da 052, descartada); o laço por `MAX_NOS_POR_AVANCO` (64; o deles, 25) |
+| `src/lib/flows/types.ts` e `src/lib/flows/validate.ts` (porte #674/#683, 17/11/2026) | `AUTO_ADVANCING_NODE_TYPES` com `move_deal_stage`, `MAX_NOS_POR_AVANCO` = 64 e `MAX_CADEIA_AUTOMATICA` = 63, `run_error` no resultado; `findAutoAdvancingCycles`/`longestAutoAdvancingChain` sobre os NOSSOS tipos, com frases em português (o deles usa chaves `Validation.flows.*` que não existem aqui) |
+| `src/app/api/flows/[id]/route.ts` e `src/app/api/flows/cron/route.ts` (porte #674/#683, 17/11/2026) | `recusaDoRoboAtivo`: robô ATIVO passa pelo validador antes da `cb_trocar_nos_do_robo` (o deles chama a `replace_flow_nodes` da 052); o cron lê as runs ativas por `buscarPorChave` (o deles, por uma RPC da 058) |
+| `src/hooks/use-unread-notifications.ts` (selo do sino, 17/11/2026) | o selo RECONTA no banco a cada evento do tempo real (`recontagem-do-sino.ts`: rajada de 500 ms com teto de 2 s, vale a contagem mais nova que chega, recontagem no `SUBSCRIBED`, tópico com geração). O original (#682) reconta só no DELETE e soma/desconta no INSERT/UPDATE: de volta, o selo desce sozinho quando a Lixeira ou a união regravam aviso JÁ LIDO. Pino `recontagem-do-sino.test.ts` |
+| `src/app/api/whatsapp/send/route.ts` (leituras do envio, 17/11/2026) | `findOrCreateConversation` devolve `{ id } \| { erro }` e o 23505 relê; a conversa pelo id e o contato distinguem erro de "não existe"; toda leitura que FALHA antes do envio responde 503 `lookup_failed` com `motivo: 'barrado'` (o 5xx sem motivo a bolha leria como "pode ter saído"); 22P02 segue 404. O original relê no 23505 mas ignora o `error` da leitura. Pino `send/route.test.ts` |
+| `src/app/join/[token]/page.tsx` (convite no 429, 17/11/2026) | usa o `peek-result.ts` do #682 (ele e o teste vieram BYTE A BYTE) com as NOSSAS chaves `fail*` (`failRateLimitedTitle/Body`), não o `FAIL_KEY`/`rateLimitedTitle` do original. Pino `peek-result.pagina.test.ts` |
+| `next.config.ts` (`cpus: 4`, 17/11/2026) | `experimental: { cpus: 4 }` (o #722) num bloco próprio; o original tem o MESMO `cpus` num `experimental` com `turbopackPluginRuntimeStrategy`. No merge, UM bloco `experimental` só |
+| `src/components/inbox/message-actions.tsx` (Android, 17/11/2026) | `if (abriuNoToqueRef.current) return;` no `handleContextMenu` (o `contextmenu` atrasado não tira a barra de cima do dedo) e o `touchcancel` que zera a marca. O #721 (barra só com `pointerType === 'touch'`, nunca sobre `a[href]`) NÃO entra: decisão #18 do operador. Pino `message-actions.test.tsx` |
+| `src/lib/ai/knowledge.ts` (reprocessar a base, 17/11/2026) | a lista dos trechos antigos POR CHAVE (`buscarPorChave`) e o contrato `Promise<void>` com o erro do embedding lançado depois de gravar; o original (#683) lista sem paginar e devolve `IngestResult` (as três rotas da base perderiam o aviso). Pino `knowledge.test.ts` |
+| `mcp-server/src/tools/broadcast.ts` e `mcp-server/src/tools/write.ts` (porte #681/#700, 17/11/2026) | a frase dos repetidos (`duplicates`) na descrição de `recipients` e a das variáveis nomeadas (ordem alfabética dos nomes) na de `params`, nos dois arquivos |
+| `src/app/api/whatsapp/templates/[id]/route.ts` e `templates/submit/route.ts` (porte #680/#700, 17/11/2026) | a trava da categoria do APROVADO responde `code: 'categoria_travada'` (o original usa `getT`); a recusa do `{{nome}}` ao criar/editar sai com `code: 'variavel_nomeada'`; o submit busca a linha por `escolherLinhaDoModelo` (`linha-do-modelo.ts`) |
+| `src/app/api/whatsapp/templates/sync/route.ts` (porte #680, 17/11/2026) | a linha sai de `escolherLinhaDoModelo` (a do número, a vinculada, a mais antiga), em LISTA; o UPDATE sem `user_id`. O original pega `updated_at desc limit 1` sem olhar o número |
+| `src/components/settings/template-manager.tsx` (porte #680, 17/11/2026) | além do seletor travado (igual ao original), os `code` `categoria_travada` e `variavel_nomeada` viram frases traduzidas |
+| `src/lib/whatsapp/template-validators.ts`, `template-send-builder.ts` e `template-body.ts` (porte #700, 17/11/2026) | `extractTemplateVariables` ordena o nomeado pelo CÓDIGO do caractere (o original usa `localeCompare`); o nomeado é RAMO próprio no corpo e no cabeçalho, e o posicional é o código de antes (o original unificou e mudou as bordas); criar/editar com `{{nome}}` é recusado |
+| `src/components/inbox/template-picker.tsx`, `message-thread.tsx` e `src/components/broadcasts/step3-personalize.tsx` (porte #700, 17/11/2026) | os campos por nome; o fio importa o `renderTemplateBody` de `template-body.ts` (a cópia local só lia `{{1}}`); o "Avançar" do passo 3 poda as chaves de outro modelo (`variaveisDoModelo`) |
+| `src/hooks/use-broadcast-sending.ts` (porte #700 e #683, 17/11/2026) | `resolveVariables`: posições antes de nomes e os nomes pelo CÓDIGO do caractere (o original, `localeCompare`). A POSSE do envio (1147): `tomarPosseDoDisparo` com TOKEN, renovada antes de cada lote e depois de cada espera do 429 (`enviarLoteComPosse`); perdeu = para e nunca reenvia; o fim e os abortos só com o token; devolve `{ broadcastId, interrupcao }`. O original renova comparando o próprio prazo, sem token |
+| `src/lib/automations/validate.ts`, `src/lib/automations/meta-send.ts` e `src/components/automations/automation-builder.tsx` (porte #700, 17/11/2026) | a chave nomeada vale em `variables`/`variaveis_reserva` (teto de 50 nas duas listas); o texto gravado do modelo nomeado usa o corpo de `recortarAoModelo`; `ValoresDoModelo` por `extractTemplateVariables` |
+| `src/app/api/whatsapp/broadcast/route.ts` e `src/lib/whatsapp/broadcast-resume.ts` (posse, 1147) | com `broadcast_id` + `posse`, a rota do lote renova a posse antes do 1º envio e a cada minuto e, sem ela, para com 409 `posse_perdida`/`posse_incerta`; `claimBroadcastDelivery` devolve `tomada \| ocupada \| erro`, só toma com a posse vencida e a apaga na mesma escrita |
+| `src/app/api/whatsapp/broadcast/[id]/resume/route.ts` e `src/app/api/v1/broadcasts/route.ts` (posse, 1147) | 409 `delivery_in_flight`, 500 `claim_failed` e o planejamento que falha fecha a campanha pelas linhas; a v1 toma a trava da retomada antes do `after()` (o original não trava: o Retomar durante o envio pela API mandava em dobro). Pino `route.trava.test.ts` |
+| `src/app/(dashboard)/broadcasts/[id]/page.tsx` e `broadcasts/new/page.tsx` (posse, 1147) | o painel por `painelDaRetomada` + `cb_disparo_em_andamento` (nulo = "não sei"); destinatários por `lerDestinatariosDaCampanha` (por chave, com teto; o original pagina por OFFSET); o 409/500 da retomada traduzidos; CSV com `neutralizarFormula`; os avisos de interrupção do envio |
+| `src/types/index.ts` (posse e nomeadas, 17/11/2026) | `delivery_lease_until` (nome do original) e `delivery_lease_token` (nosso) em `Broadcast`; `variables` do passo "Enviar modelo" aceitando o NOME |
+| `src/lib/automations/engine.ts` (`assign_conversation`, 1148) | o atendente FIXO que não é membro não recebe (`responsavelForaDaConta`), além do suspenso (1067); o UPDATE devolve o gravado e o registro não diz "assigned" sobre o que o gatilho da 1148 manteve ou zerou nem sobre 0 linhas. Pinos `engine.test.ts` (`assign_conversation — alvo`) e `texto-do-motor.test.ts` |
+| `messages/en.json` (porte de 17/11/2026) | as chaves dos seis lotes, entre elas `Inbox.messageThread.assigneeNoLongerMember`, `Inbox.execucoes.motor.responsavelForaDaConta`/`semConversaParaAtribuir`, `JoinPage.failRateLimitedTitle/Body`, `Settings.webhooks.urlComCredencial` e `Settings.members.removeDialogDesc` com a frase da fila (a do upstream não a tem) |
 
 ## 5. Migrations do original: a história das renumerações
 
