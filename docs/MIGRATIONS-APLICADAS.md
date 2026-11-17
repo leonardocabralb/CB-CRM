@@ -2235,3 +2235,41 @@ nome da época em que foram aplicadas.
   do arquivo (md5), `cb_encerrar_limpa_ia` SECURITY DEFINER com o gatilho
   ligado, `anon`/`authenticated` sem EXECUTE e `service_role` com, e nenhuma
   sobra da conferência.
+- **1147_cb_posse_do_disparo** — a POSSE do envio do disparo (porte do #683
+  do original, Lote F do porte do upstream de 16–30/10): as colunas
+  `broadcasts.delivery_lease_until` e `delivery_lease_token` e as funções
+  INVOKER `cb_tomar_posse_do_disparo`, `cb_renovar_posse_do_disparo` (prazo de
+  5 min pelo relógio do banco, por token) e `cb_disparo_em_andamento`. O
+  assistente toma e renova a posse; a retomada só toma com ela vencida. PR
+  #532 (lote #528).
+
+  ADITIVA, aplicada ANTES do deploy com a autorização explícita do operador
+  ("Pode gravar", 17/11/2026), em 17/11/2026 às 16:21 BRT (histórico
+  `20261117192142`), pela Management API, com o arquivo idêntico ao do commit
+  `8a6dc7ce` (sha256 `51ce138c…`), cujo replay do CI passou, e ao HEAD do
+  lote (`cec56466`), revisado pelo Codex. Antes: o replay local do zero e 33
+  cenários com dado fictício, mais a corrida em duas sessões (renovação ×
+  Retomar: só um envia). Conferida na produção: as colunas, as três funções
+  INVOKER com o corpo idêntico ao do arquivo (md5), `anon` sem EXECUTE e
+  `authenticated` com, e nenhuma posse gravada (a conferência foi desfeita).
+- **1148_cb_responsavel_tem_de_ser_membro** — o responsável da conversa tem
+  de ser MEMBRO da conta (porte do #682 do original, Lote E): o gatilho
+  `cb_responsavel_tem_de_ser_membro_trigger` mantém o anterior (ou deixa sem
+  responsável) quando a troca é para quem não é membro, sem recusar a
+  escrita; `remove_account_member` devolve à fila as conversas de quem sai
+  (decisão do operador #16) com a trava em ordem de `user_id`; a correção
+  única das conversas presas a ex-membro (0); o gatilho em `livres` de
+  `cb_lixeira_tratamento()`. PR #532 (lote #531).
+
+  Aplicada ANTES do deploy com a autorização explícita do operador ("Pode
+  gravar", 17/11/2026), em 17/11/2026 às 16:22 BRT (histórico
+  `20261117192243`), pela Management API, com o arquivo idêntico ao do commit
+  `8a6dc7ce` (sha256 `4614275e…`), cujo replay do CI passou e cujo HEAD o
+  Codex revisou sem achados. Antes: o replay local do zero; 1148 duas vezes
+  com dado fictício e os 9 cenários do Lote E; a escolha do membro da prova
+  medida na produção (só leitura): um atendente com 0 conversas atribuídas,
+  entre 15. Conferida na produção: o gatilho ligado, os três corpos
+  idênticos ao do arquivo (md5), `remove_account_member` com EXECUTE só para
+  `authenticated`, as outras duas fechadas, nenhuma sobra da prova (ficha
+  sintética), os 15 membros ativos de antes e nenhuma conversa com
+  responsável fora da conta.
