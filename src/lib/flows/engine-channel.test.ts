@@ -41,6 +41,8 @@ let nosNoBanco: Record<string, unknown>[];
 let runsAtivos: Record<string, unknown>[];
 /** A leitura de `flow_nodes` falha (erro passageiro do banco). */
 let erroNosNos: boolean;
+/** O UPDATE condicional da cerca da re-pergunta falha (erro do banco). */
+let erroNaCerca: boolean;
 
 vi.mock("./admin-client", () => ({
   supabaseAdmin: () => makeDb(),
@@ -104,6 +106,9 @@ function makeDb() {
     single: () => builder.maybeSingle as never,
     then: (resolve: (v: unknown) => void) => {
       if (table === "flow_runs" && mode === "update") {
+        if (erroNaCerca && filtros.some(([k]) => k === "reprompt_count")) {
+          return resolve({ data: null, error: { message: "banco fora" } });
+        }
         const linha = { ...(runsAtivos[0] ?? {}), ...(estado.runs["r1"] ?? {}) };
         const casa = filtros.every(([k, v]) =>
           v === null ? linha[k] === null || linha[k] === undefined : linha[k] === v,
@@ -185,6 +190,7 @@ beforeEach(() => {
   nosNoBanco = NODES;
   runsAtivos = [];
   erroNosNos = false;
+  erroNaCerca = false;
   sendInteractiveButtons.mockReset();
   sendInteractiveList.mockReset();
   sendText.mockReset();
@@ -788,6 +794,21 @@ describe("re-pergunta com cerca: duas respostas juntas (porte #683)", () => {
     expect(estado.runs["r1"]?.end_reason).toBe("fallback_exhausted");
     expect(estado.eventos.filter((e) => e.tipo === "handoff")).toHaveLength(1);
     expect(sendInteractiveList).not.toHaveBeenCalled();
+  });
+
+  it("erro do banco na cerca é \"não sei\": nada sai, e o registro diz que foi erro (não corrida)", async () => {
+    nosNoBanco = [NODES[0], lista, NODES[2]];
+    runsAtivos = [runNoMenu(0)];
+    erroNaCerca = true;
+    sendInteractiveList.mockResolvedValue({ whatsapp_message_id: "wamid.out" });
+    const { dispatchInboundToFlows } = await import("./engine");
+
+    const r = await dispatchInboundToFlows(resposta("hã?", "wamid.e"));
+
+    expect(r).toEqual({ consumed: true, flow_run_id: "r1", outcome: "run_error" });
+    expect(sendInteractiveList).not.toHaveBeenCalled();
+    expect(estado.eventos.some((e) => e.payload.reason === "fallback_claim_failed")).toBe(true);
+    expect(estado.eventos.some((e) => e.payload.reason === "lost_race_during_fallback")).toBe(false);
   });
 
   it("o robô que já andou (outro nó) não re-pergunta o nó velho", async () => {

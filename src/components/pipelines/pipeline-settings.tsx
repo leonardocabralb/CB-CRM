@@ -277,12 +277,17 @@ export function PipelineSettings({
       supabase
         .from("pipelines")
         .update({ name: name.trim(), painel: escreverPainel(painel) })
-        .eq("id", pipeline.id),
+        .eq("id", pipeline.id)
+        .select("id"),
       stageRows.length > 0
         ? supabase.from("pipeline_stages").upsert(stageRows, { onConflict: "id" })
         : Promise.resolve({ error: null }),
     ]);
     if (renameRes.error || stagesRes.error) return { ok: false };
+    // ⚠️ O funil que outra pessoa apagou com esta janela aberta (ou a RLS que
+    // barra) casa ZERO linhas sem erro: sem a conferência a tela dizia
+    // "Funil salvo" — antes, o upsert das etapas falhava na FK e avisava.
+    if (!renameRes.data?.length) return { ok: false };
     return { ok: true, descartadas: localStages.length - stageRows.length };
   }
 

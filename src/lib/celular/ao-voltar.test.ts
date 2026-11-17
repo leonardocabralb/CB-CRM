@@ -139,8 +139,10 @@ describe("as cercas da recarga silenciosa (Codex, PR #216)", () => {
     // a que FALHA não grava — `loadStages` devolvia `[]` e o quadro perdia
     // todas as colunas (ela passou a rodar a cada etapa adicionada ou
     // removida no Gerenciar funil).
+    // E, como os negócios, nenhuma releitura das etapas grava por cima de
+    // outra pedida depois dela (a régua é a última que gravou).
     expect(funil).toMatch(
-      /const refreshStages = useCallback\([\s\S]{0,300}const funil = selectedPipelineId;[\s\S]{0,400}const etapas = await buscarEtapas\(funil\);[\s\S]{0,300}if \(funilAbertoRef\.current !== funil\) return;\s*if \(!etapas\) return;\s*setStages\(etapas\);/,
+      /const refreshStages = useCallback\([\s\S]{0,300}const funil = selectedPipelineId;\s*const pedido = \+\+pedidoDasEtapasRef\.current;[\s\S]{0,400}const etapas = await buscarEtapas\(funil\);[\s\S]{0,300}if \(funilAbertoRef\.current !== funil\) return;\s*if \(!etapas\) return;[\s\S]{0,200}if \(pedido < ultimasEtapasGravadasRef\.current\) return;\s*ultimasEtapasGravadasRef\.current = pedido;\s*setStages\(etapas\);/,
     );
   });
 

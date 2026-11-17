@@ -1347,11 +1347,11 @@ async function handleReplyForActiveRun(
   // ⚠️⚠️ A CERCA (porte #683): o contador — e, quando a política esgota, o
   // fim da run — só muda se a run ainda está como foi lida. Quem perde a
   // corrida não manda nada (ver `reivindicarFallback`).
-  const venceu = await reivindicarFallback(db, run, currentNode.node_key, newReprompts, action);
+  const cerca = await reivindicarFallback(db, run, currentNode.node_key, newReprompts, action);
   if (action.type === "ignore") {
     // Don't consume — let automations have a shot at it. Nada sai ao
     // cliente: perder a corrida aqui não muda nada.
-    if (venceu) {
+    if (cerca === "venceu") {
       await logEvent(db, run.id, "fallback_fired", currentNode.node_key, {
         action: action.type,
         reprompt_count: newReprompts,
@@ -1359,14 +1359,19 @@ async function handleReplyForActiveRun(
     }
     return { consumed: false, flow_run_id: run.id, outcome: "no_match" };
   }
-  if (!venceu) {
-    // Outra resposta do cliente, chegada junto, já re-perguntou ou encerrou
-    // (ou o robô andou). Esta fica com o robô e não manda nada.
+  if (cerca !== "venceu") {
+    // "perdeu": outra resposta do cliente, chegada junto, já re-perguntou ou
+    // encerrou (ou o robô andou). "erro": não sei. Nos dois casos esta fica
+    // com o robô e não manda nada — a próxima mensagem decide de novo.
     await logEvent(db, run.id, "error", currentNode.node_key, {
-      reason: "lost_race_during_fallback",
+      reason: cerca === "perdeu" ? "lost_race_during_fallback" : "fallback_claim_failed",
       action: action.type,
     });
-    return { consumed: true, flow_run_id: run.id, outcome: "duplicate_inbound_ignored" };
+    return {
+      consumed: true,
+      flow_run_id: run.id,
+      outcome: cerca === "perdeu" ? "duplicate_inbound_ignored" : "run_error",
+    };
   }
   await logEvent(db, run.id, "fallback_fired", currentNode.node_key, {
     action: action.type,
@@ -1459,7 +1464,7 @@ async function reivindicarFallback(
   noAtual: string,
   novoContador: number,
   acao: FallbackAction,
-): Promise<boolean> {
+): Promise<"venceu" | "perdeu" | "erro"> {
   const fim =
     acao.type === "handoff"
       ? { status: "handed_off", end_reason: "fallback_exhausted" }
@@ -1479,11 +1484,11 @@ async function reivindicarFallback(
     .select("id");
   if (error) {
     console.error("[flows] reivindicarFallback error:", error.message);
-    return false;
+    return "erro";
   }
-  if (!Array.isArray(data) || data.length === 0) return false;
+  if (!Array.isArray(data) || data.length === 0) return "perdeu";
   run.reprompt_count = novoContador;
-  return true;
+  return "venceu";
 }
 
 async function startNewRun(

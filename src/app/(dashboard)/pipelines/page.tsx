@@ -649,6 +649,14 @@ function PipelinesPageInner() {
   const pedidoDosNegociosRef = useRef(0);
   const ultimoGravadoRef = useRef(0);
   /**
+   * A mesma régua para as releituras das ETAPAS (`refreshStages`): desde o
+   * porte #679 o Gerenciar funil pede uma a cada etapa adicionada ou removida
+   * e outra no "Salvar", e com a rede lenta a mais velha (a etapa apagada
+   * ainda existia) chegava por último e devolvia a coluna ao quadro.
+   */
+  const pedidoDasEtapasRef = useRef(0);
+  const ultimasEtapasGravadasRef = useRef(0);
+  /**
    * Os arrastos que uma leitura no ar pode não ter lido: card → a marca do
    * último arrasto (o gesto e a gravação confirmada contam, cada um, um
    * passo em `movimentosRef`). Toda leitura que grava o quadro mantém a etapa
@@ -766,6 +774,7 @@ function PipelinesPageInner() {
     if (!selectedPipelineId) return;
     versaoDoQuadroRef.current += 1;
     const funil = selectedPipelineId;
+    const pedido = ++pedidoDasEtapasRef.current;
     // ⚠️ `buscarEtapas`, não `loadStages`: na falha este devolve `[]`, e o
     // quadro perdia TODAS as colunas até recarregar a página — desde o porte
     // #679 isto roda a cada etapa adicionada ou removida no Gerenciar funil.
@@ -775,6 +784,10 @@ function PipelinesPageInner() {
     // troca de funil logo depois.
     if (funilAbertoRef.current !== funil) return;
     if (!etapas) return;
+    // Nenhuma releitura grava por cima de outra pedida DEPOIS dela (a régua
+    // é a última que gravou: a que falhou não cala a mais velha).
+    if (pedido < ultimasEtapasGravadasRef.current) return;
+    ultimasEtapasGravadasRef.current = pedido;
     setStages(etapas);
   }, [buscarEtapas, selectedPipelineId]);
 

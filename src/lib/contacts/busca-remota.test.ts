@@ -183,6 +183,15 @@ describe('temCaraDeTelefone', () => {
     }
   });
 
+  it('⚠️ o número COLADO do WhatsApp (marcas invisíveis, traço tipográfico) é telefone', () => {
+    expect(temCaraDeTelefone('‪+55 83 98874-5316‬')).toBe(true);
+    expect(temCaraDeTelefone('(83) 98874–5316')).toBe(true);
+    // E a busca da tabela ganha o ramo dos dígitos (o `\D` limpa o resto).
+    expect(ramosDaBuscaNaTabela('‪+55 83 98874-5316‬')).toContain(
+      'phone_normalized.imatch."5583988745316"',
+    );
+  });
+
   it('e-mail, nome com número e pontuação solta não são telefone', () => {
     for (const termo of ['joao123@gmail.com', 'Maria 2', 'ana', '( )', '+', '', '83 ana']) {
       expect(temCaraDeTelefone(termo)).toBe(false);

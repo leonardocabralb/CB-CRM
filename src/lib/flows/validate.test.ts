@@ -829,9 +829,19 @@ describe("ciclo e cadeia de nós automáticos (porte #674/#683)", () => {
     expect(MAX_CADEIA_AUTOMATICA).toBe(MAX_NOS_POR_AVANCO - 1);
     const motor = fs.readFileSync(path.join(__dirname, "engine.ts"), "utf8");
     expect(motor).toMatch(/for \(let safety = 0; safety < MAX_NOS_POR_AVANCO; safety \+= 1\)/);
-    // Os nós que o laço atravessa (`continue`) são exatamente os automáticos.
-    expect([...AUTO_ADVANCING_NODE_TYPES].sort()).toEqual(
-      ["condition", "move_deal_stage", "send_media", "send_message", "set_tag", "start"].sort(),
+    // Os nós que o laço ATRAVESSA — o bloco do tipo em `advanceFromNodeKey`
+    // termina em `continue` — são EXATAMENTE os automáticos, lidos do fonte
+    // do motor: tipo novo que o laço atravesse sem entrar na lista escaparia
+    // da detecção de ciclo e de cadeia.
+    const laco = motor.slice(
+      motor.indexOf("async function advanceFromNodeKey"),
+      motor.indexOf("async function advanceCurrentNodeKey"),
     );
+    const blocos = laco.split(/if \(node\.node_type === "/).slice(1);
+    expect(blocos.length).toBeGreaterThanOrEqual(11);
+    const queAtravessam = blocos
+      .filter((b) => /\bcontinue;/.test(b))
+      .map((b) => b.match(/^(\w+)"/)![1]);
+    expect([...AUTO_ADVANCING_NODE_TYPES].sort()).toEqual(queAtravessam.sort());
   });
 });

@@ -166,9 +166,17 @@ export function ramosDaBuscaDeContato(termo: string): string | null {
  * metade dos e-mails da produção tem dígito (985 de 2.013 em 17/11/2026), e
  * sem esta régua buscar um deles traria também toda ficha cujo telefone
  * contém aqueles dígitos.
+ *
+ * ⚠️ O número COLADO do WhatsApp vem com marcas de direção invisíveis em
+ * volta (U+202A…U+202C) e editores trocam o hífen por traço tipográfico: a
+ * mesma limpeza de `telefoneDigitado` vem antes da régua, senão o número
+ * colado não era telefone e a tela dizia "nenhum contato".
  */
 export function temCaraDeTelefone(termo: string): boolean {
-  const limpo = termo.trim();
+  const limpo = termo
+    .replace(/\p{Cf}/gu, '')
+    .replace(/[‐-―−]/g, '-')
+    .trim();
   return /\d/.test(limpo) && /^[\d\s+().-]+$/.test(limpo);
 }
 
