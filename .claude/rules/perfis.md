@@ -18,6 +18,8 @@ paths:
   - "src/hooks/use-membros*"
   - "src/components/settings/invite-member-dialog.tsx"
   - "src/components/settings/settings-*.tsx"
+  - "src/components/inbox/painel/responsavel-menu.tsx"
+  - "src/lib/inbox/resultado-da-atribuicao*"
 ---
 
 # Perfis, papéis e menu — regras
@@ -153,12 +155,50 @@ Troca de LENTE no navegador, e só nele (`simulacao.ts`, o override no
   e `custom_fields` para o novo dono (971) e limpa o `perfil_id` dele (965) —
   senão, apagado o login do ex-dono, o acervo iria junto pelo CASCADE. SÓ
   essas três: as outras guardam quem CRIOU, com `ON DELETE SET NULL` (1116).
-- `remove_account_member` só realoca o perfil. Apagar o LOGIN fora do app
+- `remove_account_member` realoca o perfil e DEVOLVE À FILA as conversas em
+  que a pessoa é responsável (1148, decisão do operador #16; tarefas e
+  negócios ficam com ela). Apagar o LOGIN fora do app
   (painel do Supabase, admin API) leva pelo CASCADE só o dado da PESSOA
-  (perfil, avisos, favoritas, filtros); o que ela criou fica sem autor (1116).
+  (perfil, avisos, favoritas, filtros); o que ela criou fica sem autor (1116)
+  — e a conversa de que ela era responsável fica presa (a correção da 1148
+  rodou uma vez).
 - O celular de cada membro (1046) aparece na lista de Membros SÓ para
   administradores, como o e-mail, e com barreira no banco (RLS de
   `cb_celulares_dos_membros`). As regras estão em `meu-dia.md`.
+
+### Responsável da conversa: só MEMBRO da conta (1148)
+Porte do #682. `conversations.assigned_agent_id` não tem FK; o gatilho
+`cb_responsavel_tem_de_ser_membro` (BEFORE INSERT OR UPDATE OF
+`assigned_agent_id, account_id`) faz a troca para quem não é membro MANTER o
+anterior (se ainda for membro) ou deixar SEM responsável — nunca recusa a
+escrita. Pino `responsavel-e-membro-1148.test.ts`.
+
+- ⚠️ **SUSPENSO conta como membro** (a suspensão não reatribui nada): o
+  gatilho não olha `suspenso_em`. Quem tira o suspenso das OPÇÕES são as
+  telas e os motores (abaixo).
+- ⚠️⚠️ **Quem grava confere o que GRAVOU**: o menu Responsável
+  (`.select()` + `resultadoDaAtribuicao`: 0 linhas = falha — a RLS barra o
+  Visualizador —, outro responsável = aviso "não é mais membro" e a lista
+  relida) e o passo "Atribuir" do motor (atendente fixo que não é membro não
+  recebe; o UPDATE devolve o gravado e o registro não diz "assigned" sobre o
+  que não pegou nem sobre o que não achou — 0 linhas é "no conversation to
+  assign"). Caminho novo que atribui faz o mesmo.
+- ⚠️⚠️ **A trava é um PAR**: o gatilho lê o perfil do novo responsável `FOR
+  KEY SHARE`, e `remove_account_member` trava o ALVO `FOR UPDATE` EXPLÍCITO
+  (o UPDATE de `account_id` sozinho é NO KEY UPDATE, que não conflita com KEY
+  SHARE: a atribuição passaria pela versão velha) e o CHAMADOR `FOR SHARE`,
+  em ordem de `user_id`. Assim "atribuir a X" espera a remoção de X e relê, e
+  atribuir A QUEM REMOVE não trava (em FOR UPDATE, deadlock). Recriar uma das
+  duas peças sem a outra reabre a corrida. Resíduo (deadlock, detectado: um
+  dos dois falha e repete): atribuir ao novo dono no instante de uma
+  transferência de conta; e, durante a remoção de X, UMA instrução que tira
+  conversa de X e dá outra a X (só SQL à mão: os caminhos do app tocam uma
+  conversa por vez, e o desfazer em lote só toca encerrada, sem responsável).
+- ⚠️ **A remoção solta as conversas ANTES de mover o perfil**: a trilha
+  (1083) só acha o nome de quem saía enquanto ele é da conta. Cada conversa
+  gera uma linha "pelo <admin>" e um UPDATE no tempo real; aviso, nenhum.
+- **Na Lixeira o gatilho está em `livres`** (roda na volta): a restauração já
+  zera, na fotografia, quem saiu ou está suspenso.
 
 ### Membro SUSPENSO (1067)
 Configurações → Membros: a coluna "Situação" (Ativo / Suspenso) e a chave, à
@@ -182,9 +222,10 @@ ela ainda faz login — cai na tela de acesso suspenso.
   Rota nova nesse molde herda o corte; rota que descobrir o chamador por outro
   caminho (service role lendo `profiles` pelo id da sessão) NÃO herda.
   ⚠️ O Storage só fecha na pasta da CONTA: a pasta do PRÓPRIO usuário
-  (`<user_id>/…` em `flow-media` e `avatars`) não consulta `profiles` e
-  continua gravável por qualquer login, suspenso incluso (Codex, PR #341).
-  Os dois buckets estavam vazios em 29/09/2026; fechar é tarefa própria.
+  (`<user_id>/…`) não consulta `profiles`. No `flow-media` ela acabou
+  (1149: gravar, só owner/admin/agent ativo e só na pasta da conta); no
+  `avatars` continua gravável por qualquer login, suspenso incluso (Codex,
+  PR #341).
 - ⚠️ **As colunas estão na trava `enforce_profile_privilege_columns`**: a
   policy `profiles_update` deixa cada um editar a própria linha, e sem a trava
   a pessoa se reativaria com um PATCH.
@@ -201,8 +242,8 @@ ela ainda faz login — cai na tela de acesso suspenso.
   onde se dá NOME a quem já é responsável, a lista inteira.
 - **Os motores tratam o suspenso como fora da equipe**: o rodízio das
   automações e as opções de "criar tarefa" da IA o excluem; o passo "Atribuir"
-  com atendente específico, o nó "Transferir" do robô e a transferência do
-  agente de IA deixam a conversa na FILA; a tarefa automática
+  com atendente específico (e o que não é membro, 1148), o nó "Transferir" do
+  robô e a transferência do agente de IA não passam a conversa; a tarefa automática
   (`responsavel-da-tarefa.ts`, `ehSuspenso`) cai no responsável reserva, e o
   registro diz "está com o acesso suspenso" — nunca "saiu da conta".
 - **Remover um suspenso desfaz a suspensão** (ele sai dono de uma conta
