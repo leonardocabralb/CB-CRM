@@ -65,6 +65,16 @@
 --    guarda ex-membro" fica sem exceção. A função recriada é o corpo VIGENTE
 --    da 1110 (idêntico ao da produção, conferido em 17/11/2026) + essa linha.
 --
+-- 5. ⚠️ A CONFERÊNCIA DE COMPORTAMENTO (o modelo da 1067) roda NA PRODUÇÃO e
+--    CHAMA `remove_account_member` sobre um membro REAL não-dono (sem conta
+--    própria), num subbloco desfeito pela exceção própria P1148 — com a ficha
+--    e a conversa da prova SINTÉTICAS, criadas ali; nenhuma conversa real muda
+--    de responsável e nada persiste (trilha, aviso e conta pessoal nova são
+--    transacionais). Depois do subbloco, ABORTA a migration se a pessoa não
+--    estiver de volta na conta, ativa, ou se o número de conversas com
+--    responsável da conta mudou. Banco sem esse membro (o replay do CI) pula
+--    com NOTICE. Trava curta: `lock_timeout` de 5 s.
+--
 -- Fica como está, de propósito: `notify_conversation_assigned` (com o
 -- gatilho, o aviso só vê membro), `profiles_insert` (a 1103 já fechou),
 -- `deals.assigned_to` e as tarefas de quem sai (a decisão #16 é sobre

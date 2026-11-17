@@ -66,12 +66,13 @@ qualquer uma é pergunta ao operador.
   (17/11/2026, `perfis.md`).
 - O Visualizador continua subindo arquivo no `chat-media` (anexo fora das
   anotações); no `flow-media`, só atendente para cima (17/11/2026).
-- Botão direito e toque longo na mensagem abrem a NOSSA barra de ações
+- Botão direito e toque longo na mensagem mantêm a NOSSA barra de ações
   (também no cartão de documento); o menu do navegador só sobre o link do
-  texto — mantido no porte do upstream (17/11/2026, `inbox-conversa.md`,
-  `celular.md`).
-- A API v1 renomeia o contato que já existe quando recebe um nome, sem
-  fixá-lo — mantido no porte do upstream (17/11/2026, `api-v1.md`).
+  texto. Do porte do upstream, só se corrige erro (17/11/2026,
+  `inbox-conversa.md`, `celular.md`).
+- A API v1 continua renomeando o contato que já existe pelo `name` do
+  `POST /messages`, respeitando o nome fixado (`nome_fixado_em`); o original
+  deixou de renomear (17/11/2026, `api-v1.md`).
 - De ADMIN: "Gerenciar funil" e as abas Lista/Desempenho/Saúde
   (08/09/2026). A automação é da CONTA: qualquer admin edita, ativa,
   duplica e apaga, nunca só o autor (23/09/2026).
