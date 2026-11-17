@@ -89,9 +89,12 @@ describe("as cercas da recarga silenciosa (Codex, PR #216)", () => {
   });
 
   it("Contatos refaz a lista em silêncio, com a seleção, quando só o catálogo mudou", () => {
+    // Porte #679 (17/11/2026): também o passo para a última página que
+    // existe, quando quem o descobriu era uma recarga silenciosa.
     expect(contatos).toContain(
-      "soOCatalogo ? { silencioso: true, preservarSelecao: true } : undefined",
+      "soOCatalogo || passoSilencioso ? { silencioso: true, preservarSelecao: true } : undefined",
     );
+    expect(contatos).toContain("passoSilenciosoRef.current = !!opcoes?.silencioso;");
   });
 
   it("a volta do Funil recarrega quadro, catálogo de funis e automações, com leitores que devolvem null na falha", () => {
@@ -132,8 +135,14 @@ describe("as cercas da recarga silenciosa (Codex, PR #216)", () => {
     expect(funil).toMatch(
       /const refreshDeals = useCallback\([\s\S]{0,400}const negocios = await buscarNegocios\(funil\);[\s\S]{0,300}if \(funilAbertoRef\.current !== funil\) return;/,
     );
+    // Porte #679 (17/11/2026): a releitura das etapas é por `buscarEtapas`, e
+    // a que FALHA não grava — `loadStages` devolvia `[]` e o quadro perdia
+    // todas as colunas (ela passou a rodar a cada etapa adicionada ou
+    // removida no Gerenciar funil).
+    // E, como os negócios, nenhuma releitura das etapas grava por cima de
+    // outra pedida depois dela (a régua é a última que gravou).
     expect(funil).toMatch(
-      /const refreshStages = useCallback\([\s\S]{0,300}const funil = selectedPipelineId;\s*const etapas = await loadStages\(funil\);[\s\S]{0,300}if \(funilAbertoRef\.current !== funil\) return;\s*setStages\(etapas\);/,
+      /const refreshStages = useCallback\([\s\S]{0,300}const funil = selectedPipelineId;\s*const pedido = \+\+pedidoDasEtapasRef\.current;[\s\S]{0,400}const etapas = await buscarEtapas\(funil\);[\s\S]{0,300}if \(funilAbertoRef\.current !== funil\) return;\s*if \(!etapas\) return;[\s\S]{0,200}if \(pedido < ultimasEtapasGravadasRef\.current\) return;\s*ultimasEtapasGravadasRef\.current = pedido;\s*setStages\(etapas\);/,
     );
   });
 

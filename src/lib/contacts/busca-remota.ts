@@ -103,44 +103,100 @@ export function variantesDoTermoTelefonico(digitos: string): string[] {
 }
 
 /**
- * O valor do `.or()` para o termo digitado, ou `null` quando ele é curto
- * demais para valer uma consulta.
+ * Os ramos do `@`: ele conta como nome, como em `casaComContato`. A ficha que
+ * só existe no Direct (989) ou que a Meta manda só com o nome de usuário do
+ * WhatsApp (BSUID, Fase 11.4) não tem telefone nenhum, e é pelo @ que a
+ * equipe a conhece. O @ digitado é descartado — as colunas guardam sem ele;
+ * "@" sozinho não gera ramo (a agulha seria vazia e casaria todo mundo).
+ */
+function ramosDoArroba(limpo: string): string[] {
+  const arroba = limpo.replace(/^@/, '').trim();
+  return arroba
+    ? [ramoContem('wa_username', arroba), ramoContem('instagram_username', arroba)]
+    : [];
+}
+
+/**
+ * Os ramos do telefone: os DÍGITOS do termo e a irmã do nono dígito.
+ *
+ * ⚠️⚠️ Telefone casa contra `phone_normalized`, NUNCA contra `phone`.
+ * `phone` guarda o que o escritório DIGITOU — o formulário de contato
+ * preserva a pontuação —, então "+55 (83) 98000-0016" não tem os dígitos
+ * contíguos e um padrão de dígitos nunca casa com ele. A ficha continua no
+ * banco e some da busca; se ela não tiver nome, fica inalcançável pelos
+ * dois seletores. `phone_normalized` é coluna GERADA
+ * (`regexp_replace(phone, '\D', '', 'g')`, migration 022), sempre só
+ * dígitos, e é a mesma chave do índice único e do `upsertCsvContacts`.
+ * Medido em 20/09/2026: 1 dos 1.214 contatos da produção já está assim.
+ * (Achado do Codex no PR #231.)
+ */
+function ramosDoTelefone(limpo: string): string[] {
+  return variantesDoTermoTelefonico(limpo.replace(/\D/g, '')).map((grafia) =>
+    ramoContem('phone_normalized', grafia),
+  );
+}
+
+/**
+ * O valor do `.or()` para o termo digitado nos SELETORES de cliente (negócio,
+ * tarefa, agenda), ou `null` quando ele é curto demais para valer uma
+ * consulta.
  *
  * ⚠️ `null` é "não consulte", nunca "não achei": quem chama precisa manter
  * a diferença na tela, senão o seletor afirma "nenhum cliente" antes de a
  * primeira consulta sair — a armadilha da lista vazia virando afirmação,
  * que este repositório já pagou quatro vezes.
+ *
+ * Limite conhecido: os dígitos saem de QUALQUER termo, então "Maria 2" também
+ * pede "telefone contém 2". A tela de Contatos não tem isso
+ * (`ramosDaBuscaNaTabela`); aqui, trocar é decisão à parte.
  */
 export function ramosDaBuscaDeContato(termo: string): string | null {
   const limpo = termo.trim();
   if (limpo.length < MIN_TERMO_DE_BUSCA) return null;
+  return [ramoContem('name', limpo), ...ramosDoArroba(limpo), ...ramosDoTelefone(limpo)].join(
+    ',',
+  );
+}
 
-  const ramos = [ramoContem('name', limpo)];
+/**
+ * O termo tem CARA de telefone: só dígitos, espaço e a pontuação de quem
+ * digita um número (`+ ( ) - .`), com pelo menos um dígito.
+ *
+ * ⚠️ É o que separa "(83) 98874-5316" de "joao123@gmail.com" ou "Maria 2":
+ * metade dos e-mails da produção tem dígito (985 de 2.013 em 17/11/2026), e
+ * sem esta régua buscar um deles traria também toda ficha cujo telefone
+ * contém aqueles dígitos.
+ *
+ * ⚠️ O número COLADO do WhatsApp vem com marcas de direção invisíveis em
+ * volta (U+202A…U+202C) e editores trocam o hífen por traço tipográfico: a
+ * mesma limpeza de `telefoneDigitado` vem antes da régua, senão o número
+ * colado não era telefone e a tela dizia "nenhum contato".
+ */
+export function temCaraDeTelefone(termo: string): boolean {
+  const limpo = termo
+    .replace(/\p{Cf}/gu, '')
+    .replace(/[‐-―−]/g, '-')
+    .trim();
+  return /\d/.test(limpo) && /^[\d\s+().-]+$/.test(limpo);
+}
 
-  // O @ conta como nome, como em `casaComContato`: a ficha que só existe no
-  // Direct (989) ou que a Meta manda só com o nome de usuário do WhatsApp
-  // (BSUID, Fase 11.4) não tem telefone nenhum, e é pelo @ que a equipe a
-  // conhece. O @ digitado é descartado — as colunas guardam sem ele.
-  const arroba = limpo.replace(/^@/, '').trim();
-  if (arroba) {
-    ramos.push(ramoContem('wa_username', arroba));
-    ramos.push(ramoContem('instagram_username', arroba));
-  }
-
-  // ⚠️⚠️ Telefone casa contra `phone_normalized`, NUNCA contra `phone`.
-  // `phone` guarda o que o escritório DIGITOU — o formulário de contato
-  // preserva a pontuação —, então "+55 (83) 98000-0016" não tem os dígitos
-  // contíguos e um padrão de dígitos nunca casa com ele. A ficha continua no
-  // banco e some da busca; se ela não tiver nome, fica inalcançável pelos
-  // dois seletores. `phone_normalized` é coluna GERADA
-  // (`regexp_replace(phone, '\D', '', 'g')`, migration 022), sempre só
-  // dígitos, e é a mesma chave do índice único e do `upsertCsvContacts`.
-  // Medido em 20/09/2026: 1 dos 1.214 contatos da produção já está assim.
-  // (Achado do Codex no PR #231.)
-  const digitos = limpo.replace(/\D/g, '');
-  for (const grafia of variantesDoTermoTelefonico(digitos)) {
-    ramos.push(ramoContem('phone_normalized', grafia));
-  }
-
-  return ramos.join(',');
+/**
+ * O valor do `.or()` da TABELA de Contatos (`/contacts`, sem filtro de
+ * etiqueta), ou `null` sem termo. Porte do #679 do original, com as nossas
+ * peças: nome, e-mail, os dois `@` e — só quando o termo tem cara de
+ * telefone — os dígitos em `phone_normalized` com a irmã do nono dígito.
+ * "(83) 98874-5316" acha "+5583988745316".
+ *
+ * ⚠️ Sem o piso dos seletores: a tabela pagina com contagem exata, e uma letra
+ * sempre filtrou ali.
+ */
+export function ramosDaBuscaNaTabela(termo: string): string | null {
+  const limpo = termo.trim();
+  if (!limpo) return null;
+  return [
+    ramoContem('name', limpo),
+    ramoContem('email', limpo),
+    ...ramosDoArroba(limpo),
+    ...(temCaraDeTelefone(limpo) ? ramosDoTelefone(limpo) : []),
+  ].join(',');
 }

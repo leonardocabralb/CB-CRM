@@ -24,6 +24,11 @@
  */
 
 import { INTERACTIVE_LIMITS } from "@/lib/whatsapp/meta-api";
+import {
+  AUTO_ADVANCING_NODE_TYPES,
+  MAX_CADEIA_AUTOMATICA,
+  MAX_NOS_POR_AVANCO,
+} from "./types";
 import { ehTipoDaMidiaDoNo } from "./tipo-da-midia";
 import { destinoDaResposta } from "./resposta-na-ficha";
 import { ehMeta } from "@/lib/cb-channels/transporte";
@@ -136,7 +141,130 @@ export function validateFlowForActivation(
     }
   }
 
+  // ⚠️ Ciclo de nós que não esperam o cliente (porte #674): mensagem →
+  // condição → mensagem mandava dezenas de mensagens até o teto do motor
+  // (`advance_loop_overflow`). E a cadeia longa demais para um avanço
+  // (porte #683) parava no meio, depois de mandar o que mandou.
+  for (const ciclo of findAutoAdvancingCycles(nodes)) {
+    issues.push({
+      severity: "error",
+      scope: "node",
+      node_key: ciclo[0],
+      message: `Os nós ${ciclo.map((k) => `"${k}"`).join(", ")} formam um ciclo que não espera o cliente: o robô repetiria as mensagens até parar no teto de ${MAX_NOS_POR_AVANCO} passos. Ponha no caminho um nó que espera a resposta ou um fim.`,
+    });
+  }
+  const maisLonga = longestAutoAdvancingChain(nodes);
+  if (maisLonga && maisLonga.length > MAX_CADEIA_AUTOMATICA) {
+    issues.push({
+      severity: "error",
+      scope: "node",
+      node_key: maisLonga.start,
+      message: `A partir de "${maisLonga.start}" há ${maisLonga.length} nós seguidos que não esperam o cliente, e o robô percorre no máximo ${MAX_CADEIA_AUTOMATICA} de uma vez. Divida o caminho com um nó que espera a resposta.`,
+    });
+  }
+
   return issues;
+}
+
+/**
+ * A maior sequência de nós que o motor atravessa sem esperar o cliente
+ * (`AUTO_ADVANCING_NODE_TYPES`), e de onde ela parte. Porte do #683: um
+ * avanço percorre a cadeia inteira E o nó que espera ou encerra, então a
+ * ativação aceita até `MAX_CADEIA_AUTOMATICA`. Ciclo não conta duas vezes
+ * (o `emCurso` o corta) — ele é reprovado à parte, por
+ * `findAutoAdvancingCycles`.
+ */
+export function longestAutoAdvancingChain(
+  nodes: NodeInput[],
+): { start: string; length: number } | null {
+  const automaticos = nosAutomaticos(nodes);
+  const conhecido = new Map<string, number>();
+  const emCurso = new Set<string>();
+  const comprimentoDesde = (chave: string): number => {
+    const ja = conhecido.get(chave);
+    if (ja !== undefined) return ja;
+    if (emCurso.has(chave)) return 0;
+    emCurso.add(chave);
+    let maiorSeguinte = 0;
+    for (const seguinte of outgoingEdges(automaticos.get(chave)!)) {
+      if (automaticos.has(seguinte)) {
+        maiorSeguinte = Math.max(maiorSeguinte, comprimentoDesde(seguinte));
+      }
+    }
+    emCurso.delete(chave);
+    conhecido.set(chave, maiorSeguinte + 1);
+    return maiorSeguinte + 1;
+  };
+
+  let maisLonga: { start: string; length: number } | null = null;
+  for (const chave of automaticos.keys()) {
+    const length = comprimentoDesde(chave);
+    if (!maisLonga || length > maisLonga.length) maisLonga = { start: chave, length };
+  }
+  return maisLonga;
+}
+
+/**
+ * Os ciclos formados SÓ por nós que não esperam o cliente (componentes
+ * fortemente conexos de Tarjan sobre eles, mais o nó que aponta para si
+ * mesmo), cada um na ordem dos nós do robô. Porte do #674, com os NOSSOS
+ * tipos automáticos (`move_deal_stage` incluso). Ciclo que passa por botões,
+ * lista ou "Coletar resposta" é legítimo: ele espera o cliente a cada volta.
+ */
+export function findAutoAdvancingCycles(nodes: NodeInput[]): string[][] {
+  const automaticos = nosAutomaticos(nodes);
+  const seguintes = (chave: string): string[] =>
+    outgoingEdges(automaticos.get(chave)!).filter((s) => automaticos.has(s));
+
+  const indice = new Map<string, number>();
+  const menor = new Map<string, number>();
+  const naPilha = new Set<string>();
+  const pilha: string[] = [];
+  const ciclos: string[][] = [];
+  let contador = 0;
+
+  const visitar = (chave: string): void => {
+    indice.set(chave, contador);
+    menor.set(chave, contador);
+    contador += 1;
+    pilha.push(chave);
+    naPilha.add(chave);
+    for (const s of seguintes(chave)) {
+      if (!indice.has(s)) {
+        visitar(s);
+        menor.set(chave, Math.min(menor.get(chave)!, menor.get(s)!));
+      } else if (naPilha.has(s)) {
+        menor.set(chave, Math.min(menor.get(chave)!, indice.get(s)!));
+      }
+    }
+    if (menor.get(chave) !== indice.get(chave)) return;
+    const componente: string[] = [];
+    let membro: string;
+    do {
+      membro = pilha.pop()!;
+      naPilha.delete(membro);
+      componente.push(membro);
+    } while (membro !== chave);
+    if (componente.length > 1 || seguintes(chave).includes(chave)) {
+      ciclos.push([...automaticos.keys()].filter((k) => componente.includes(k)));
+    }
+  };
+
+  for (const chave of automaticos.keys()) {
+    if (!indice.has(chave)) visitar(chave);
+  }
+  return ciclos;
+}
+
+/** Os nós automáticos por chave (a primeira, se a chave repetir). */
+function nosAutomaticos(nodes: NodeInput[]): Map<string, NodeInput> {
+  const automaticos = new Map<string, NodeInput>();
+  for (const n of nodes) {
+    if (AUTO_ADVANCING_NODE_TYPES.has(n.node_type) && !automaticos.has(n.node_key)) {
+      automaticos.set(n.node_key, n);
+    }
+  }
+  return automaticos;
 }
 
 // ============================================================

@@ -1921,6 +1921,7 @@
       "changeColor": "Change color",
       "toastFailedSave": "Failed to save pipeline",
       "toastSaved": "Pipeline saved",
+      "toastStagesDeletedElsewhere": "{count, plural, one {A stage was deleted by someone else while you were editing and was not recreated.} other {# stages were deleted by someone else while you were editing and were not recreated.}}",
       "toastFailedAddStage": "Failed to add stage",
       "toastMoveOrDeleteDeals": "Move or delete deals in this stage first",
       "toastFailedDeleteStage": "Failed to delete stage",

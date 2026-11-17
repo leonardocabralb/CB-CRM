@@ -70,7 +70,14 @@ describe("Gerenciar funil", () => {
     // Reaberto durante o salvamento (ou a lixeira), o diálogo leria o banco
     // de antes, e salvar de novo desfaria o que acabou de ser gravado.
     expect(settings).toMatch(/await gravacaoRef\.current\?\.catch\(\(\) => undefined\);\s*const \[funil, etapas\] = await Promise\.all/);
-    expect(settings).toMatch(/const \[renameRes, stagesRes\] = await registrarGravacao\(/);
+    // Porte #679 (17/11/2026): o salvamento inteiro — a leitura dos ids que
+    // ainda existem e o upsert só deles — é UMA gravação registrada.
+    expect(settings).toMatch(/const resultado = await registrarGravacao\(salvarFunil\(\)\);/);
+    expect(settings).toMatch(/async function salvarFunil\(\)[\s\S]{0,400}\.from\("pipeline_stages"\)\s*\.select\("id"\)/);
+    // E o UPDATE do funil confere a linha: apagado por outra pessoa, ele casa
+    // zero linhas sem erro, e a tela dizia "Funil salvo".
+    expect(settings).toMatch(/\.eq\("id", pipeline\.id\)\s*\.select\("id"\),/);
+    expect(settings).toContain("if (!renameRes.data?.length) return { ok: false };");
     expect(settings).toContain("return registrarGravacao(adicionarEtapa());");
     expect(settings).toContain("return registrarGravacao(removerEtapa(stageId));");
     expect(settings).toMatch(/gravacaoRef\.current = Promise\.allSettled\(\[anteriores, gravacao\]\);/);

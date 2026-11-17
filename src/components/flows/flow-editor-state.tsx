@@ -140,7 +140,12 @@ export interface FlowEditorContextValue {
   removeNode: (key: string) => void;
 
   // Actions
-  save: () => Promise<void>;
+  /**
+   * PUT do robô. Devolve se GRAVOU: a ativação para quando não gravou
+   * (porte #679) — senão o servidor validava e ativava a versão ANTERIOR
+   * enquanto a tela mostrava a nova.
+   */
+  save: () => Promise<boolean>;
   setStatus: (status: BuilderState["status"]) => Promise<void>;
   deleteFlow: () => Promise<void>;
 
@@ -168,6 +173,31 @@ export function uniqueNodeKey(base: string, existing: BuilderNode[]): string {
   let i = 2;
   while (existing.some((n) => n.node_key === `${base}_${i}`)) i += 1;
   return `${base}_${i}`;
+}
+
+/**
+ * O nó novo do tipo, com a chave única entre `existing` (porte #679).
+ * Puro: quem chama decide de QUAL lista — ver `addNode`.
+ */
+export function buildNewNode(type: NodeType, existing: BuilderNode[]): BuilderNode {
+  return {
+    node_key: uniqueNodeKey(slugify(NODE_META[type].slugSeed, type), existing),
+    node_type: type,
+    config: defaultConfigFor(type),
+  };
+}
+
+/**
+ * O estado com o nó no fim. O primeiro "start" vira a entrada sozinho (poupa
+ * um clique); entrada já escolhida não muda.
+ */
+export function appendNode(state: BuilderState, node: BuilderNode): BuilderState {
+  return {
+    ...state,
+    nodes: [...state.nodes, node],
+    entry_node_id:
+      state.entry_node_id ?? (node.node_type === "start" ? node.node_key : null),
+  };
 }
 
 export function defaultConfigFor(type: NodeType): Record<string, unknown> {
@@ -312,6 +342,13 @@ export function FlowEditorProvider({
     setDirty(true);
     setStateRaw(updaterOrValue);
   }, []);
+  // A lista de nós mais recente, para `addNode` calcular a chave na HORA
+  // (porte #679). Acompanha o estado depois de cada render e é adiantada
+  // pelo próprio `addNode` (duas adições no mesmo tique).
+  const latestNodesRef = useRef(state.nodes);
+  useEffect(() => {
+    latestNodesRef.current = state.nodes;
+  }, [state.nodes]);
 
   // Cross-view "look here" signal (see FlowEditorContextValue docs).
   // Tracked via a ref alongside state so a rapid second click on a
@@ -408,9 +445,11 @@ export function FlowEditorProvider({
       }
       setDirty(false);
       toast.success(t("saved"));
+      return true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : t("saveFailed");
       toast.error(msg);
+      return false;
     } finally {
       setSaving(false);
     }
@@ -428,8 +467,11 @@ export function FlowEditorProvider({
         // Always save first so the activation validator sees the
         // latest state — the user shouldn't have to remember "save
         // then activate".
-        if (next === "active") {
-          await save();
+        // ⚠️ O "Salvar" que FALHA para a ativação (porte #679): o `save`
+        // já mostrou o erro, e seguir ativaria a versão ANTERIOR gravada
+        // no banco — a tela mostrando uma e o robô rodando outra.
+        if (next === "active" && !(await save())) {
+          return;
         }
         const res = await fetch(`/api/flows/${initialFlow.id}/activate`, {
           method: "POST",
@@ -530,28 +572,16 @@ export function FlowEditorProvider({
 
   const addNode = useCallback(
     (type: NodeType): string => {
-      const meta = NODE_META[type];
-      const base = slugify(meta.slugSeed, type);
-      let createdKey = base;
-      setState((s) => {
-        const node_key = uniqueNodeKey(base, s.nodes);
-        createdKey = node_key;
-        const next: BuilderNode = {
-          node_key,
-          node_type: type,
-          config: defaultConfigFor(type),
-        };
-        return {
-          ...s,
-          nodes: [...s.nodes, next],
-          // If this is the first node and it's a start, pick it as
-          // the entry automatically. Saves a click.
-          entry_node_id:
-            s.entry_node_id ??
-            (type === "start" ? node_key : s.entry_node_id ?? null),
-        };
-      });
-      return createdKey;
+      // ⚠️ A chave sai da lista mais recente, FORA do atualizador (porte
+      // #679). Calculada dentro dele, ela só existia quando o React rodava o
+      // atualizador — e na 1ª adição depois de abrir ou salvar o
+      // `setDirty(true)` deixa o atualizador para o próximo render: a função
+      // devolvia a chave BASE, que é a do nó antigo do mesmo tipo, e o
+      // canvas centralizava o nó antigo (a lista abria o antigo).
+      const node = buildNewNode(type, latestNodesRef.current);
+      latestNodesRef.current = [...latestNodesRef.current, node];
+      setState((s) => appendNode(s, node));
+      return node.node_key;
     },
     [setState],
   );

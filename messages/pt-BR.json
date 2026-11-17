@@ -1914,6 +1914,7 @@
       "changeColor": "Alterar cor",
       "toastFailedSave": "Falha ao salvar o funil",
       "toastSaved": "Funil salvo",
+      "toastStagesDeletedElsewhere": "{count, plural, one {Uma etapa foi excluída por outra pessoa enquanto você editava e não foi recriada.} other {# etapas foram excluídas por outra pessoa enquanto você editava e não foram recriadas.}}",
       "toastFailedAddStage": "Falha ao adicionar a etapa",
       "toastMoveOrDeleteDeals": "Mova ou exclua os negócios desta etapa primeiro",
       "toastFailedDeleteStage": "Falha ao excluir a etapa",

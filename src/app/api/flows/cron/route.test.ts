@@ -13,9 +13,12 @@ type Linha = Record<string, unknown>
 const h = vi.hoisted(() => ({
   runs: [] as Record<string, unknown>[],
   selects: [] as string[],
+  /** O `gt('id', …)` de cada página lida (null = a primeira). */
+  paginas: [] as (string | null)[],
   updates: [] as { payload: Record<string, unknown>; filtros: [string, unknown][] }[],
   eventos: [] as Record<string, unknown>[],
   erroAoEncerrar: false,
+  erroNaLeitura: false,
 }))
 
 vi.mock('@/lib/flows/admin-client', () => ({
@@ -26,6 +29,10 @@ vi.mock('@/lib/flows/admin-client', () => ({
       }
       if (tabela !== 'flow_runs') throw new Error(`tabela inesperada: ${tabela}`)
       let update: { payload: Linha; filtros: [string, unknown][] } | null = null
+      // A leitura POR CHAVE (porte #683): ordem por id, `gt` no último visto
+      // e o limite da página, como o PostgREST.
+      let depoisDe: string | null = null
+      let limite = Infinity
       const b: Record<string, unknown> = {
         select: (colunas: string) => {
           if (!update) h.selects.push(colunas)
@@ -40,9 +47,21 @@ vi.mock('@/lib/flows/admin-client', () => ({
           update?.filtros.push([k, v])
           return b
         },
+        order: () => b,
+        gt: (_k: string, v: string) => ((depoisDe = v), b),
+        limit: (n: number) => ((limite = n), b),
         then: (ok: (v: unknown) => unknown) => {
           if (!update) {
-            return Promise.resolve({ data: h.runs.filter((r) => r.status === 'active'), error: null }).then(ok)
+            h.paginas.push(depoisDe)
+            if (h.erroNaLeitura) {
+              return Promise.resolve({ data: null, error: { message: 'banco fora' } }).then(ok)
+            }
+            const pagina = h.runs
+              .filter((r) => r.status === 'active')
+              .sort((a, z) => (String(a.id) < String(z.id) ? -1 : 1))
+              .filter((r) => depoisDe === null || String(r.id) > depoisDe)
+              .slice(0, limite)
+            return Promise.resolve({ data: pagina, error: null }).then(ok)
           }
           if (h.erroAoEncerrar && update.payload.status === 'stopped_by_agent') {
             return Promise.resolve({ data: null, error: { message: 'banco fora' } }).then(ok)
@@ -84,9 +103,11 @@ const encerramentos = () => h.updates.filter((u) => u.payload.status === 'stoppe
 beforeEach(() => {
   vi.stubEnv('AUTOMATION_CRON_SECRET', SEGREDO)
   h.selects = []
+  h.paginas = []
   h.updates = []
   h.eventos = []
   h.erroAoEncerrar = false
+  h.erroNaLeitura = false
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
@@ -113,13 +134,14 @@ describe('cron dos robôs — a run do robô que não está ativo', () => {
     const r = await varrer()
 
     expect(r).toEqual({ swept: 0, paradas: 2 })
+    // Na ordem da chave (id): a leitura é por chave desde o porte #683.
     expect(encerramentos().map((u) => u.filtros)).toEqual([
       [
-        ['id', 'pausado'],
+        ['id', 'arquivado'],
         ['status', 'active'],
       ],
       [
-        ['id', 'arquivado'],
+        ['id', 'pausado'],
         ['status', 'active'],
       ],
     ])
@@ -165,5 +187,28 @@ describe('cron dos robôs — a run do robô que não está ativo', () => {
 
     expect(await varrer()).toEqual({ swept: 1, paradas: 0 })
     expect(h.runs.find((x) => x.id === 'pausado')?.status).toBe('active')
+  })
+})
+
+describe('cron dos robôs — leitura POR CHAVE (porte #683)', () => {
+  it('⚠️ passa de 1.000 execuções ativas: lê todas, página por página, e varre todas', async () => {
+    // Sem paginar, o PostgREST cortava em 1.000 e a 1.001ª nunca vencia.
+    h.runs = Array.from({ length: 1500 }, (_, i) =>
+      run(`r${String(i).padStart(4, '0')}`, { fallback_policy: { on_timeout_hours: 24 }, status: 'active' }, 30),
+    )
+
+    expect(await varrer()).toEqual({ swept: 1500, paradas: 0 })
+    // Duas páginas: a primeira sem chave, a segunda depois da 1.000ª.
+    expect(h.paginas).toEqual([null, 'r0999'])
+    expect(h.runs.every((r) => r.status === 'timed_out')).toBe(true)
+  })
+
+  it('a leitura que falha é 500 e nada é varrido (nunca a lista pela metade)', async () => {
+    h.erroNaLeitura = true
+    h.runs = [run('velho', { fallback_policy: { on_timeout_hours: 24 }, status: 'active' }, 30)]
+
+    const r = (await GET(pedido())) as Response
+    expect(r.status).toBe(500)
+    expect(h.updates).toEqual([])
   })
 })
