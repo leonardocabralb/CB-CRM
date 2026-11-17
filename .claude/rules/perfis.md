@@ -190,10 +190,12 @@ escrita. Pino `responsavel-e-membro-1148.test.ts`.
   em ordem de `user_id`. Assim "atribuir a X" espera a remoção de X e relê, e
   atribuir A QUEM REMOVE não trava (em FOR UPDATE, deadlock). Recriar uma das
   duas peças sem a outra reabre a corrida. Resíduo (deadlock, detectado: um
-  dos dois falha e repete): atribuir ao novo dono no instante de uma
-  transferência de conta; e, durante a remoção de X, UMA instrução que tira
-  conversa de X e dá outra a X (só SQL à mão: os caminhos do app tocam uma
-  conversa por vez, e o desfazer em lote só toca encerrada, sem responsável).
+  dos dois falha e pode repetir): atribuir ao novo dono no instante de uma
+  transferência de conta; e, durante a remoção de X, o caminho que trava uma
+  conversa e depois escreve noutra que é (ou passa a ser) de X —
+  `cb_unir_fichas` (trava as duas conversas e passa à que fica o responsável
+  X da que sai), o passo "Atribuir" no modo "todas as conversas do contato"
+  (um UPDATE sobre várias) e SQL à mão.
 - ⚠️ **A remoção solta as conversas ANTES de mover o perfil**: a trilha
   (1083) só acha o nome de quem saía enquanto ele é da conta. Cada conversa
   gera uma linha "pelo <admin>" e um UPDATE no tempo real; aviso, nenhum.

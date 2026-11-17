@@ -45,9 +45,13 @@
 --       FOR UPDATE), e a atribuição A ELE durante a remoção não espera — em
 --       FOR UPDATE, "passar a conversa de X para quem remove" e "remover X"
 --       se prenderiam (deadlock).
---    Resíduo aceito: atribuir ao NOVO dono no mesmo instante de uma
---    transferência de conta pode dar deadlock — o Postgres detecta, um dos
---    dois falha e repete.
+--    Resíduo aceito (deadlock, que o Postgres detecta: um dos dois falha e
+--    pode repetir): atribuir ao NOVO dono no mesmo instante de uma
+--    transferência de conta; e, durante a remoção de X, um caminho que trava
+--    uma conversa e depois escreve noutra que é de X (ou passa a ser) —
+--    `cb_unir_fichas` (trava as duas conversas e passa à que fica o
+--    responsável X da que sai) e o passo "Atribuir" no modo "todas as
+--    conversas do contato" (um UPDATE só sobre várias, uma delas já de X).
 --
 -- 3. A CORREÇÃO, uma vez: a conversa cujo responsável já não é membro da
 --    conta volta para a fila. 0 na produção em 17/11/2026 (vale para as
@@ -67,13 +71,18 @@
 --
 -- 5. ⚠️ A CONFERÊNCIA DE COMPORTAMENTO (o modelo da 1067) roda NA PRODUÇÃO e
 --    CHAMA `remove_account_member` sobre um membro REAL não-dono (sem conta
---    própria), num subbloco desfeito pela exceção própria P1148 — com a ficha
---    e a conversa da prova SINTÉTICAS, criadas ali; nenhuma conversa real muda
---    de responsável e nada persiste (trilha, aviso e conta pessoal nova são
---    transacionais). Depois do subbloco, ABORTA a migration se a pessoa não
---    estiver de volta na conta, ativa, ou se o número de conversas com
---    responsável da conta mudou. Banco sem esse membro (o replay do CI) pula
---    com NOTICE. Trava curta: `lock_timeout` de 5 s.
+--    própria) — o de MENOS conversas atribuídas, de preferência nenhuma —,
+--    num subbloco desfeito pela exceção própria P1148, com a ficha e a
+--    conversa da prova SINTÉTICAS, criadas ali. Nada persiste (trilha, aviso
+--    e conta pessoal nova são transacionais), mas, DENTRO da transação, as
+--    conversas reais do escolhido passam pela remoção e ficam travadas até o
+--    desfazer: uma transação do app que já travou uma delas e escreve em
+--    `conversations` fecharia um ciclo (deadlock detectado — cai uma das
+--    duas; se for a migration, nada fica aplicado). Escolher quem não tem
+--    conversa tira esse risco. Depois do subbloco, ABORTA a migration se a
+--    pessoa não estiver de volta na conta, ativa, ou se o número de
+--    conversas com responsável da conta mudou. Banco sem esse membro (o
+--    replay do CI) pula com NOTICE. Trava curta: `lock_timeout` de 5 s.
 --
 -- Fica como está, de propósito: `notify_conversation_assigned` (com o
 -- gatilho, o aviso só vê membro), `profiles_insert` (a 1103 já fechou),
@@ -499,13 +508,14 @@ END $$;
 -- O modelo da 1067: tudo num subbloco desfeito pela exceção própria P1148 —
 -- nada sobra no banco (a trilha, o aviso do sino e a conta pessoal nova são
 -- transacionais; o tempo real só vê o que foi confirmado). A FICHA e a
--- CONVERSA da prova são sintéticas, criadas aqui: nenhuma conversa real muda
--- de responsável. A remoção é de um membro real não-dono (o caminho só existe
--- com ele), desfeita junto. Banco sem membro não-dono numa conta com dono (o
--- replay do CI) pula com NOTICE (regra 2).
+-- CONVERSA da prova são sintéticas, criadas aqui. A remoção é de um membro
+-- real não-dono (o caminho só existe com ele), desfeita junto: o de MENOS
+-- conversas atribuídas, porque a remoção trava as dele até o desfazer (item 5
+-- do cabeçalho). Banco sem membro não-dono numa conta com dono (o replay do
+-- CI) pula com NOTICE (regra 2).
 --
 -- ⚠️ Roda com a trava do CREATE TRIGGER presa (escrita em `conversations`
--- espera): só leitura por índice e poucas linhas.
+-- espera). As contagens por conta varrem a conta (barato no tamanho atual).
 -- ------------------------------------------------------------
 DO $$
 DECLARE
@@ -534,7 +544,12 @@ BEGIN
     -- `idx_accounts_one_per_owner`): quem já é dono de outra conta não serve
     -- à prova (0 assim na produção em 17/11/2026).
     AND NOT EXISTS (SELECT 1 FROM public.accounts o WHERE o.owner_user_id = p.user_id)
-  ORDER BY (p.account_role = 'admin'), p.created_at
+  -- Quem tem MENOS conversas atribuídas primeiro (de preferência nenhuma): a
+  -- remoção trava as conversas reais dele até o desfazer.
+  ORDER BY (SELECT count(*) FROM public.conversations c
+             WHERE c.account_id = p.account_id
+               AND c.assigned_agent_id = p.user_id),
+           (p.account_role = 'admin'), p.created_at
   LIMIT 1;
 
   IF v_alvo IS NULL THEN
