@@ -15,8 +15,13 @@
  *     using the template's `header_media_url` (or `header_handle`).
  *     Meta requires the media component on every send even though
  *     the URL hasn't changed since approval.
- *   - TEXT headers with `{{1}}` need `headerText` from the caller.
- *   - Body variables come in as `body: string[]`, indexed by {{N}}.
+ *   - TEXT headers with `{{1}}` (or one NAMED variable) need `headerText`
+ *     from the caller.
+ *   - Body variables come in as `body: string[]`, indexed by {{N}}. For a
+ *     template with NAMED variables (`{{nome_do_cliente}}`), the values
+ *     follow `extractTemplateVariables` order and go out with their
+ *     `parameter_name` — Meta pairs named values by name. The positional
+ *     path is the code it always was (a branch of its own).
  *   - URL buttons with `{{1}}` need `buttonUrlParams[i]` keyed by
  *     button index. URL buttons without variables, plus QUICK_REPLY
  *     and PHONE_NUMBER buttons, don't need send-time parameters.
@@ -31,12 +36,19 @@
  */
 
 import type { MessageTemplate, TemplateButton } from '@/types';
-import { extractVariableIndices } from './template-validators';
+import {
+  extractTemplateVariables,
+  extractVariableIndices,
+  isNamedVariable,
+} from './template-validators';
 
 export interface SendTimeParams {
-  /** Values for body {{1}}, {{2}}, … indexed by variable position. */
+  /**
+   * Values for body {{1}}, {{2}}, … indexed by variable position — or, for
+   * NAMED variables, in `extractTemplateVariables` order.
+   */
   body?: string[];
-  /** Value for TEXT-header {{1}}, when the header has a variable. */
+  /** Value for TEXT-header {{1}} (or its named variable), when it has one. */
   headerText?: string;
   /** Override the template's static media URL for this send. */
   headerMediaUrl?: string;
@@ -62,7 +74,7 @@ export type MetaSendComponent =
     };
 
 type MetaSendParameter =
-  | { type: 'text'; text: string }
+  | { type: 'text'; text: string; parameter_name?: string }
   | { type: 'image'; image: { link?: string; id?: string } }
   | { type: 'video'; video: { link?: string; id?: string } }
   | { type: 'document'; document: { link?: string; id?: string } }
@@ -81,16 +93,26 @@ function buildHeaderComponent(
     // (no variables) just ride along inside the template itself; no
     // header component required on send.
     const varCount = extractVariableIndices(template.header_content ?? '').length;
-    if (varCount === 0) return null;
+    // NOMEADO (`{{nome}}`): o mesmo valor, com o nome (a Meta casa por ele).
+    const [nome] = extractTemplateVariables(template.header_content ?? '').filter(
+      isNamedVariable,
+    );
+    if (varCount === 0 && !nome) return null;
     const value = params.headerText;
     if (!value || !value.trim()) {
       throw new Error(
-        'Header text variable {{1}} requires a value — pass headerText.',
+        nome
+          ? `Header text variable {{${nome}}} requires a value — pass headerText.`
+          : 'Header text variable {{1}} requires a value — pass headerText.',
       );
     }
     return {
       type: 'header',
-      parameters: [{ type: 'text', text: value }],
+      parameters: [
+        nome
+          ? { type: 'text', parameter_name: nome, text: value }
+          : { type: 'text', text: value },
+      ],
     };
   }
 
@@ -127,6 +149,27 @@ function buildBodyComponent(
   template: MessageTemplate,
   params: SendTimeParams,
 ): MetaSendComponent | null {
+  // NOMEADO: o valor `i` é o da chave `i` (`extractTemplateVariables`), e
+  // cada um vai com o nome. Sem este ramo o modelo nomeado contava ZERO
+  // variáveis, ia sem valores e a Meta recusava (#132000).
+  const nomes = extractTemplateVariables(template.body_text).filter(isNamedVariable);
+  if (nomes.length > 0) {
+    const valores = params.body ?? [];
+    if (valores.length < nomes.length) {
+      throw new Error(
+        `Body has ${nomes.length} variable(s) but only ${valores.length} value(s) were supplied.`,
+      );
+    }
+    return {
+      type: 'body',
+      parameters: nomes.map((nome, i) => ({
+        type: 'text',
+        parameter_name: nome,
+        text: String(valores[i]),
+      })),
+    };
+  }
+
   const varCount = extractVariableIndices(template.body_text).length;
   const body = params.body ?? [];
   if (varCount === 0 && body.length === 0) return null;

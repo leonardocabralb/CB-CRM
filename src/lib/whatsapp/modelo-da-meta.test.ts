@@ -89,6 +89,37 @@ describe('conteudoDoModeloDaMeta — a mesma conversão da sincronização e do 
       'Authentication',
     );
   });
+
+  // Modelo com variáveis NOMEADAS (D3, 17/11/2026): a Meta manda os exemplos
+  // por nome; a linha os guarda na ordem das chaves, a mesma do envio.
+  it('exemplos nomeados viram `sample_values` na ordem das chaves', () => {
+    const c = conteudoDoModeloDaMeta({
+      ...base,
+      components: [
+        {
+          type: 'HEADER',
+          format: 'TEXT',
+          text: 'Oi {{primeiro_nome}}',
+          example: { header_text_named_params: [{ param_name: 'primeiro_nome', example: 'Ana' }] },
+        },
+        {
+          type: 'BODY',
+          text: 'Pedido {{pedido}} para {{cliente}}; {{sem_exemplo}}',
+          example: {
+            body_text_named_params: [
+              { param_name: 'pedido', example: '335628' },
+              { param_name: 'cliente', example: 'Maria' },
+            ],
+          },
+        },
+      ],
+    });
+    expect(c.sample_values).toEqual({
+      body: ['Maria', '335628', ''],
+      header: ['Ana'],
+    });
+    expect(c.body_text).toBe('Pedido {{pedido}} para {{cliente}}; {{sem_exemplo}}');
+  });
 });
 
 describe('lerModeloNaMeta', () => {

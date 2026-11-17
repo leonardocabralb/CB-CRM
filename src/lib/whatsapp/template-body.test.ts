@@ -64,6 +64,22 @@ describe('renderTemplateBody', () => {
       'twice and twice'
     );
   });
+
+  // Porte do #700 (D3, 17/11/2026): a lista segue a ordem das chaves
+  // (`extractTemplateVariables`), a mesma do construtor do envio.
+  it('substitutes NAMED placeholders in key order', () => {
+    expect(
+      renderTemplateBody('Oi {{nome}}, até {{data}} — {{nome}}', ['segunda', 'Ana'])
+    ).toBe('Oi Ana, até segunda — Ana');
+    expect(renderTemplateBody('Retorno em {{detalhes}}', [])).toBe(
+      'Retorno em {{detalhes}}'
+    );
+  });
+
+  it('keeps the positional edge cases as they were', () => {
+    expect(renderTemplateBody('{{1}} {{3}}', ['a', 'b', 'c'])).toBe('a c');
+    expect(renderTemplateBody('{{01}} {{0}}', ['a'])).toBe('a {{0}}');
+  });
 });
 
 describe('templateBodyParams', () => {

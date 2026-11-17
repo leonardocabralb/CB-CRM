@@ -135,6 +135,18 @@ que falta de uma vez: mova esse arquivo para fora da pasta, rode o
 a migration devolvida é mais antiga que as já aplicadas, e sem ele o
 `push` a recusa.
 
+> ⚠️ **A `1150_cb_modelos_unicos_por_conta.sql` (restritiva) para se a
+> conta tiver um modelo da Meta repetido.** Ela troca a regra de modelo
+> único — antes por quem criou, agora por conta e número — e não apaga
+> nada: se achar em `message_templates` duas linhas com a mesma conta, o
+> mesmo número (ou nenhum), o mesmo nome e o mesmo idioma, o `db push`
+> falha com a lista (`1150: N modelo(s) repetido(s)…`) e nada muda. Para
+> seguir: em cada grupo, fique com a linha vinculada à Meta
+> (`meta_template_id` preenchido; entre duas, a de `updated_at` mais
+> recente), apague as outras no *SQL Editor* — **não** pelo Excluir da
+> tela de modelos, que apaga o modelo também na Meta — e rode o
+> `db push` de novo.
+
 Se algo der errado, o teste que vale é o mesmo que o CI faz: as
 migrations reaplicam num banco vazio, do zero, em ordem. Você pode rodar
 isso localmente com `supabase db start` (precisa de Docker).

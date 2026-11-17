@@ -12,6 +12,8 @@ const MODELO = {
   id: ID,
   name: 'aviso_de_pedido',
   status: 'APPROVED',
+  // A edição abaixo mantém a categoria: trocá-la num APROVADO é 400 (D1).
+  category: 'Marketing',
   meta_template_id: 'meta-1',
   language: 'pt_BR',
 }
@@ -145,5 +147,28 @@ describe('escritas de message_templates levam a conta', () => {
 
     expect(patches).toEqual([expect.objectContaining({ submission_error: 'meta recusou' })])
     expect(filtrosDasEscritas[0]).toContainEqual(['account_id', 'conta-1'])
+  })
+})
+
+describe('variável NOMEADA na edição (D3 do porte, 17/11/2026)', () => {
+  it('400 com o código que a tela traduz, antes da Meta e de qualquer escrita', async () => {
+    const res = await PATCH(
+      new Request(`http://localhost/api/whatsapp/templates/${ID}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'aviso_de_pedido',
+          category: 'Marketing',
+          language: 'pt_BR',
+          body_text: 'Olá {{nome}}',
+        }),
+      }),
+      { params },
+    )
+
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ code: 'variavel_nomeada' })
+    expect(meta.editMessageTemplate).not.toHaveBeenCalled()
+    expect(filtrosDasEscritas).toHaveLength(0)
   })
 })

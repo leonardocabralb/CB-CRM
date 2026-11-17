@@ -223,11 +223,18 @@ export function resolveVariables(
 ): string[] {
   // Keys are typically "1","2",... — numeric-aware sort keeps
   // {{1}} before {{10}}.
+  // Modelo NOMEADO (`{{nome}}`, D3 de 17/11/2026): as chaves são os NOMES, na
+  // ordem do CÓDIGO do caractere — a de `extractTemplateVariables`, com que o
+  // servidor casa cada valor com o nome. `localeCompare` dependia do idioma do
+  // navegador. As chaves que sobram de outro modelo saem no passo 3
+  // (`variaveisDoModelo`). Posições antes de nomes: misturadas pelo código do
+  // caractere, "1a" < "2" < "10" < "1a" daria voltas (ordem que não fecha).
   const keys = Object.keys(variables).sort((a, b) => {
-    const an = Number(a);
-    const bn = Number(b);
-    if (Number.isFinite(an) && Number.isFinite(bn)) return an - bn;
-    return a.localeCompare(b);
+    const posA = /^\d+$/.test(a);
+    const posB = /^\d+$/.test(b);
+    if (posA && posB) return Number(a) - Number(b);
+    if (posA !== posB) return posA ? -1 : 1;
+    return a < b ? -1 : a > b ? 1 : 0;
   });
 
   return keys.map((key) => {

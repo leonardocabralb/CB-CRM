@@ -612,3 +612,37 @@ describe('templates/submit — limite por usuário', () => {
     expect(submitMessageTemplate).toHaveBeenCalledTimes(30)
   })
 })
+
+describe('templates/submit — variável NOMEADA (D3 do porte, 17/11/2026)', () => {
+  it('`{{nome}}` no corpo: 400 com o código que a tela traduz, sem busca e sem Meta', async () => {
+    const banco = bancoFalso({})
+    requireRole.mockResolvedValue({
+      supabase: banco.client,
+      accountId: 'acct-1',
+      userId: 'admin-que-clicou',
+    })
+    const { POST } = await import('./route')
+
+    const r = (await POST(pedido({ ...CORPO, body_text: 'Olá {{nome}}' }))) as unknown as Resposta
+
+    expect(r.init?.status).toBe(400)
+    expect(r.body).toMatchObject({ code: 'variavel_nomeada' })
+    expect(submitMessageTemplate).not.toHaveBeenCalled()
+    expect(banco.inserts).toHaveLength(0)
+  })
+
+  it('outra recusa da validação continua SEM código', async () => {
+    const banco = bancoFalso({})
+    requireRole.mockResolvedValue({
+      supabase: banco.client,
+      accountId: 'acct-1',
+      userId: 'admin-que-clicou',
+    })
+    const { POST } = await import('./route')
+
+    const r = (await POST(pedido({ ...CORPO, body_text: 'Oi {{1}} e {{3}}' }))) as unknown as Resposta
+
+    expect(r.init?.status).toBe(400)
+    expect(r.body.code).toBeUndefined()
+  })
+})
