@@ -28,9 +28,11 @@ let createdConversation: Record<string, unknown> | null = null
 // A corrida (porte do #680): outra requisição cria a conversa entre a busca
 // e o INSERT, que leva o 23505 da UNIQUE da 0036.
 let conversationCreatedConcurrently: Record<string, unknown> | null = null
-// A leitura de `conversations` que FALHA: sempre, ou só a releitura depois
-// do INSERT recusado.
-let conversationReadFails: 'sempre' | 'depois_do_insert' | null = null
+// A leitura de `conversations` que FALHA: sempre, só a releitura depois do
+// INSERT recusado, ou com o id que nem é uuid (22P02 = não existe).
+let conversationReadFails: 'sempre' | 'depois_do_insert' | 'id_invalido' | null = null
+// A leitura de `contacts` que FALHA (o soluço do banco, não "não existe").
+let contactReadFails = false
 
 const CONTACT = {
   id: 'contact-1',
@@ -63,8 +65,14 @@ function makeSupabaseMock() {
             error: null,
           }
         case 'contacts':
+          if (contactReadFails) {
+            return { data: null, error: { code: 'XX000', message: 'leitura falhou' } }
+          }
           return { data: contactRow, error: null }
         case 'conversations':
+          if (conversationReadFails === 'id_invalido') {
+            return { data: null, error: { code: '22P02', message: 'invalid input syntax for type uuid' } }
+          }
           if (
             conversationReadFails === 'sempre' ||
             (conversationReadFails === 'depois_do_insert' &&
@@ -206,6 +214,8 @@ vi.mock('@/lib/whatsapp/meta-api', async (importOriginal) => ({
 }))
 
 import { POST } from './route'
+// A régua REAL da bolha: a resposta da rota tem de ser lida como a tela a lê.
+import { falhaDaResposta } from '@/lib/inbox/falha-do-envio'
 
 function postContactTemplate(overrides: Record<string, unknown> = {}) {
   return POST(
@@ -233,6 +243,7 @@ describe('POST /api/whatsapp/send — contact_id template path', () => {
     createdConversation = null
     conversationCreatedConcurrently = null
     conversationReadFails = null
+    contactReadFails = false
     contactRow = CONTACT
     callerRole = 'admin'
     supabaseMock = makeSupabaseMock()
@@ -259,19 +270,20 @@ describe('POST /api/whatsapp/send — contact_id template path', () => {
     expect(messageInserts[0]).toMatchObject({ conversation_id: 'conv-raced' })
   })
 
-  it('leitura da conversa que FALHA é erro: 500 sem tentar criar nem enviar', async () => {
+  it('leitura da conversa que FALHA é erro: 503 "barrado", sem tentar criar nem enviar', async () => {
     conversationReadFails = 'sempre'
 
     const res = await postContactTemplate()
     const json = await res.json()
 
-    expect(res.status).toBe(500)
+    expect(res.status).toBe(503)
     expect(json.error).toMatch(/look up the conversation/i)
+    expect(falhaDaResposta(res.status, json).motivo).toBe('barrado')
     expect(conversationInserts).toHaveLength(0)
     expect(sendTemplateMessage).not.toHaveBeenCalled()
   })
 
-  it('corrida com a releitura que falha: 500 sem enviar', async () => {
+  it('corrida com a releitura que falha: 503 sem enviar', async () => {
     conversationCreatedConcurrently = {
       id: 'conv-raced',
       account_id: 'acct-1',
@@ -283,10 +295,23 @@ describe('POST /api/whatsapp/send — contact_id template path', () => {
     const res = await postContactTemplate()
     const json = await res.json()
 
-    expect(res.status).toBe(500)
+    expect(res.status).toBe(503)
     expect(json.error).toMatch(/look up the conversation/i)
     expect(sendTemplateMessage).not.toHaveBeenCalled()
     expect(messageInserts).toHaveLength(0)
+  })
+
+  it('leitura do CONTATO que falha é erro (503 "barrado"), não "Contact not found"', async () => {
+    contactReadFails = true
+
+    const res = await postContactTemplate()
+    const json = await res.json()
+
+    expect(res.status).toBe(503)
+    expect(json.code).toBe('lookup_failed')
+    expect(falhaDaResposta(res.status, json).motivo).toBe('barrado')
+    expect(conversationInserts).toHaveLength(0)
+    expect(sendTemplateMessage).not.toHaveBeenCalled()
   })
 
   it('creates a conversation for a contact with none, then sends the template', async () => {
@@ -432,6 +457,71 @@ describe('POST /api/whatsapp/send — role enforcement', () => {
 
     expect(res.status).toBe(200)
     expect(sendTemplateMessage).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// O caminho da caixa de entrada (`conversation_id`): a leitura da conversa que
+// FALHA não é "não encontrada" (CLAUDE.md, 8b) — o `.single()` de antes dava
+// 404 também no soluço do banco. Nada saiu: a bolha tem de ler "barrado",
+// nunca "pode ter saído" (o 5xx sem motivo).
+// ---------------------------------------------------------------------------
+describe('POST /api/whatsapp/send — leitura da conversa pelo id', () => {
+  beforeEach(() => {
+    conversationInserts.length = 0
+    messageInserts.length = 0
+    existingConversation = null
+    createdConversation = null
+    conversationCreatedConcurrently = null
+    conversationReadFails = null
+    contactReadFails = false
+    contactRow = CONTACT
+    callerRole = 'agent'
+    supabaseMock = makeSupabaseMock()
+  })
+
+  afterEach(() => {
+    conversationReadFails = null
+    vi.clearAllMocks()
+  })
+
+  const enviarTexto = () =>
+    POST(
+      new Request('http://localhost/api/whatsapp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversation_id: '00000000-0000-4000-8000-000000000001',
+          message_type: 'text',
+          content_text: 'Bom dia',
+        }),
+      }),
+    )
+
+  it('leitura que falha: 503 "barrado" (nada saiu), nunca 404 nem "pode ter saído"', async () => {
+    conversationReadFails = 'sempre'
+
+    const res = await enviarTexto()
+    const json = await res.json()
+
+    expect(res.status).toBe(503)
+    expect(json.code).toBe('lookup_failed')
+    const falha = falhaDaResposta(res.status, json)
+    expect(falha.motivo).toBe('barrado')
+    expect(falha.detalhe).toMatch(/load the conversation/i)
+    expect(messageInserts).toHaveLength(0)
+  })
+
+  it('conversa que não existe (ou de outra conta) segue 404', async () => {
+    const res = await enviarTexto()
+    expect(res.status).toBe(404)
+    expect((await res.json()).error).toMatch(/conversation not found/i)
+  })
+
+  it('id que nem é uuid (22P02) é "não encontrada", não falha do banco', async () => {
+    conversationReadFails = 'id_invalido'
+    const res = await enviarTexto()
+    expect(res.status).toBe(404)
   })
 })
 

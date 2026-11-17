@@ -15,6 +15,7 @@ import {
 } from '@/lib/whatsapp/send-message'
 import { alvoDeEnvio, FRASE_SO_NUMERO_OFICIAL } from '@/lib/whatsapp/alvo-de-envio'
 import { isUniqueViolation } from '@/lib/contacts/dedupe'
+import type { MotivoDoEnvio } from '@/lib/inbox/falha-do-envio'
 import {
   motivoDaFalhaDoNucleo,
   registrarTentativaDaEquipe,
@@ -119,9 +120,15 @@ export async function POST(request: Request) {
         .select('id')
         .eq('id', conversationIdInput)
         .eq('account_id', accountId)
-        .single()
+        .maybeSingle()
 
-      if (convError || !data) {
+      // Erro de leitura NÃO é "não encontrada" (CLAUDE.md, 8b): o `.single()`
+      // de antes devolvia 404 também no soluço do banco.
+      if (convError && !idQueNaoExiste(convError)) {
+        console.error('Error loading the conversation for send:', convError.message)
+        return leituraFalhou('Failed to load the conversation')
+      }
+      if (!data) {
         return NextResponse.json(
           { error: 'Conversation not found' },
           { status: 404 }
@@ -138,7 +145,11 @@ export async function POST(request: Request) {
         .eq('account_id', accountId)
         .maybeSingle()
 
-      if (contactErr || !contactRow) {
+      if (contactErr && !idQueNaoExiste(contactErr)) {
+        console.error('Error loading the contact for send:', contactErr.message)
+        return leituraFalhou('Failed to load the contact')
+      }
+      if (!contactRow) {
         return NextResponse.json(
           { error: 'Contact not found' },
           { status: 404 }
@@ -151,13 +162,11 @@ export async function POST(request: Request) {
         contact_id
       )
       if ('erro' in resolved) {
+        if (resolved.erro === 'leitura') {
+          return leituraFalhou('Failed to look up the conversation for this contact')
+        }
         return NextResponse.json(
-          {
-            error:
-              resolved.erro === 'leitura'
-                ? 'Failed to look up the conversation for this contact'
-                : 'Failed to open a conversation for this contact',
-          },
+          { error: 'Failed to open a conversation for this contact' },
           { status: 500 }
         )
       }
@@ -336,6 +345,25 @@ export async function POST(request: Request) {
 }
 
 type SendSupabase = Awaited<ReturnType<typeof createClient>>
+
+/**
+ * A leitura do banco que FALHOU antes do envio: nada saiu. 503 com
+ * `motivo: 'barrado'` — o 5xx sem motivo a bolha leria como "pode ter saído"
+ * (`falhaDaResposta`), e o 404 de antes afirmava "não encontrada" sobre um
+ * soluço do banco (CLAUDE.md, 8b).
+ */
+function leituraFalhou(texto: string) {
+  const motivo: MotivoDoEnvio = 'barrado'
+  return NextResponse.json(
+    { error: texto, code: 'lookup_failed', motivo, detalhe: texto },
+    { status: 503 },
+  )
+}
+
+/** Id que nem é uuid (22P02) não existe: é "não encontrada", não falha do banco. */
+function idQueNaoExiste(erro: { code?: string }): boolean {
+  return erro.code === '22P02'
+}
 
 /**
  * Return the contact's conversation id in this account, creating one if
