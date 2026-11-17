@@ -24,7 +24,7 @@ const sql = fs.readFileSync(path.join(__dirname, '1150_cb_modelos_unicos_por_con
 const semComentarios = sql.replace(/--.*$/gm, '');
 
 // O corpo da função do gatilho (roda só quando uma conexão é apagada) e a
-// prova desfeita (o último bloco DO): fora deles, nada escreve em linha.
+// prova desfeita (o bloco DO do 'P1150'): fora deles, nada escreve em linha.
 const inicioDaFuncao = semComentarios.indexOf(
   'CREATE OR REPLACE FUNCTION public.cb_solta_modelos_da_conexao()',
 );
@@ -32,7 +32,12 @@ const corpoDaFuncao = semComentarios.slice(
   inicioDaFuncao,
   semComentarios.indexOf('$$;', semComentarios.indexOf('AS $$', inicioDaFuncao)) + 3,
 );
-const prova = semComentarios.slice(semComentarios.lastIndexOf('DO $$'));
+const marcaDaProva = semComentarios.indexOf("ERRCODE = 'P1150'");
+const inicioDaProva = semComentarios.lastIndexOf('DO $$', marcaDaProva);
+const prova = semComentarios.slice(
+  inicioDaProva,
+  semComentarios.indexOf('END $$;', marcaDaProva) + 'END $$;'.length,
+);
 const aplicada = semComentarios.replace(corpoDaFuncao, '').replace(prova, '');
 
 describe('1150 — modelo único por conta e número', () => {
@@ -88,6 +93,19 @@ describe('1150 — modelo único por conta e número', () => {
   it('os por autor da 903 saem', () => {
     expect(sql).toContain('DROP INDEX IF EXISTS public.message_templates_user_name_lang_global_key;');
     expect(sql).toContain('DROP INDEX IF EXISTS public.message_templates_user_name_lang_channel_key;');
+  });
+
+  it('⚠️ a trava EXCLUSIVA (DROP INDEX) vem DEPOIS da prova, e depois dela só catálogo', () => {
+    // O DROP INDEX segura até a LEITURA de `message_templates` até o COMMIT
+    // (supabase.md): a prova, que escreve em `cb_channels` com as ações das
+    // FKs, roda antes dele.
+    const primeiroDrop = semComentarios.indexOf('DROP INDEX');
+    expect(inicioDaProva).toBeGreaterThan(-1);
+    expect(primeiroDrop).toBeGreaterThan(inicioDaProva + prova.length);
+    const depoisDaTrava = semComentarios.slice(primeiroDrop);
+    expect(depoisDaTrava).not.toMatch(/\b(INSERT\s+INTO|DELETE\s+FROM|UPDATE\s+(public\.)?\w+\s+SET)\b/i);
+    // Instrução, não o texto que a conferência compara (`'CREATE UNIQUE INDEX…'`).
+    expect(depoisDaTrava).not.toMatch(/^\s*CREATE\s+(UNIQUE\s+)?INDEX\b/im);
   });
 
   it('a conferência das duplicatas vem ANTES dos índices e recusa com a lista', () => {

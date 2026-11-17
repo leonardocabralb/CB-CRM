@@ -325,7 +325,10 @@ the list.
 (`{{customer_name}}` — the default in Meta's template editor) takes its
 values in the alphabetical order of the names — the order of JavaScript's
 `sort()` (`["customer_name", "order_id"]`) —, in the list and in `body`; the
-CRM sends each value with its name. This needs the template synced to the
+CRM sends each value with its name. That order compares character codes,
+not numbers or words: digits come before `_` and before letters, and
+uppercase before lowercase — `item10` comes before `item2`, `data1` before
+`data_1`, and `Zip` before `city`. This needs the template synced to the
 CRM: without the local copy the values go unnamed and Meta refuses the send.
 A text header's named variable goes in `headerText`.
 

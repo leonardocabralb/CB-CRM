@@ -248,8 +248,8 @@ Volta para `main` por PR no CB-CRM.
   o embutido nulo; com `!inner` some quem não tem o embutido (toda conversa
   de grupo). Recorte por campo do contato vai em JS. Sem FK não há embed
   (buscar por id).
-- `onConflict`/upsert só com índice único TOTAL: os parciais da 903 em
-  `message_templates`/`ai_configs` não servem. Upsert exige as colunas NOT
+- `onConflict`/upsert só com índice único TOTAL: os parciais de
+  `message_templates` (1150) e `ai_configs` (903) não servem. Upsert exige as colunas NOT
   NULL → atualização parcial por RPC ou lookup + update. `maybeSingle` só com
   recorte que garante UMA linha (o canal, ou `.is('channel_id', null)`).
 - `storage.exists()`: objeto ausente resolve `{ data: false, error }` → ler

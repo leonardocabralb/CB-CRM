@@ -52,7 +52,8 @@ UPDATE/INSERT/DELETE fora do app, saiba o que ele aciona:
   10 min no passado não vira linha.
 - **DELETE em `cb_channels`** solta os pinos, tira a conexão das automações,
   desliga (`draft`) o robô ativo restrito a ela (1077),
-  dobra a janela em `sem_carimbo` e anula `messages.channel_id`; agendada que
+  dobra a janela em `sem_carimbo`, anula `messages.channel_id` e solta os
+  modelos dela (1150: o que repete um global é APAGADO); agendada que
   aponta para ela BLOQUEIA (FK RESTRICT da 925 — a rota limpa o acervo antes).
   **DELETE em `pipeline_stages`** tira a etapa das automações e zera
   `default_stage_id` das conexões; card na etapa bloqueia.
@@ -322,9 +323,8 @@ Pino `rls-leitura-1032.test.ts`.
   o UPDATE revalida o CHECK e a exclusão falharia.
 - **Está na publicação realtime desde a 1059, SEM lista de colunas** (a
   armadilha da 909). REPLICA IDENTITY padrão basta: o app assina só INSERT.
-  Carga em massa na trilha (a da Kommo gravou 1.171 eventos num segundo)
-  atravessa o servidor de tempo real, como a das mensagens; só recebe quem
-  está com a conversa daquele contato aberta. O hook está em
+  Carga em massa na trilha atravessa o servidor de tempo real (só recebe
+  quem está com a conversa daquele contato aberta). O hook está em
   `.claude/rules/funil.md`.
 
 ### Gatilhos que espelham regra de TS

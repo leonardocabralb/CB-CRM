@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { NextIntlClientProvider, type AbstractIntlMessages } from 'next-intl';
@@ -80,5 +82,24 @@ describe('variaveisDoModelo — o que o "Avançar" deixa para o envio', () => {
     expect(variaveisDoModelo(nomeado, 'Olá {{nome}}')).toBe(nomeado);
     const posicional = { '1': fixo('a'), '7': fixo('sobra') };
     expect(variaveisDoModelo(posicional, 'Oi {{1}}')).toBe(posicional);
+  });
+});
+
+describe('o "Avançar" do passo 3 poda antes de seguir', () => {
+  // Sem a poda, a chave que sobrou de OUTRO modelo (o assistente não zera
+  // `variables` ao trocar de modelo) deslocaria os valores no envio.
+  it('chama `variaveisDoModelo`, grava o podado e só então segue', () => {
+    const fonte = readFileSync(
+      join(process.cwd(), 'src/components/broadcasts/step3-personalize.tsx'),
+      'utf8',
+    );
+    const poda = fonte.indexOf(
+      'const doModelo = variaveisDoModelo(variables, template.body_text);',
+    );
+    const grava = fonte.indexOf('if (doModelo !== variables) onUpdate(doModelo);', poda);
+    const segue = fonte.indexOf('onNext();', grava);
+    expect(poda).toBeGreaterThan(0);
+    expect(grava).toBeGreaterThan(poda);
+    expect(segue).toBeGreaterThan(grava);
   });
 });

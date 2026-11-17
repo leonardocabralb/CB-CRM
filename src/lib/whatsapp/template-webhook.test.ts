@@ -548,8 +548,9 @@ describe('handleTemplateWebhookChange — unknown template stub (#534, porte da 
   it('⚠️ looks for a same-name row in the channel OR without a channel — the sync rule', async () => {
     // A sincronização adota a linha sem canal; o stub nascendo ao lado dela
     // fazia o `maybeSingle` da sincronização falhar para aquele modelo em
-    // toda sincronização (revisão da Fase 6). O índice único leva o `user_id`
-    // (903), então nem o autor diferente segura a duplicata.
+    // toda sincronização (revisão da Fase 6). Os índices únicos (por conta
+    // desde a 1150) são parciais: a linha do número e a global convivem, e só
+    // esta busca segura a duplicata.
     const warn = vi.spyOn(console, 'warn');
     const { stub, calls } = makeSupabaseStub(
       { data: [], error: null },

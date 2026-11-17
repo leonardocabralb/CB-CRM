@@ -251,7 +251,15 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
 ### Modelos da Meta
 
 Moram em `.claude/rules/modelos-da-meta.md` (catálogo, índices por conta,
-submissão e sincronização, categoria, variáveis nomeadas, stub do webhook).
+submissão e sincronização, categoria, variáveis nomeadas, stub do webhook):
+leia-a antes de mexer num caminho que ENVIA modelo. Dela, valem aqui:
+
+- ⚠️ O núcleo MONTA o modelo antes da Meta (`buildSendComponents`): o que
+  falta é 400 `bad_request`, nunca `meta_error` ("pode ter saído").
+- ⚠️⚠️ `resolveTemplateRow` leva o 5º parâmetro NOSSO, `channelId` (o
+  catálogo é POR WABA), nos 5 chamadores: `send-message.ts`,
+  `automations/meta-send.ts`, `api/whatsapp/broadcast/route.ts`,
+  `broadcast-core.ts` e `broadcast-resume.ts`. Conferir a cada merge.
 
 ### Graph API e configuração da conexão
 

@@ -386,11 +386,11 @@ async function createStubForUnknownTemplate(p: StubParams): Promise<void> {
   const conteudo = conteudoDoModeloDaMeta(leitura.modelo)
 
   // A linha com o mesmo nome e idioma NESTE canal OU sem canal, de qualquer
-  // autor: é a régua da sincronização (e da submissão), que adota as duas. O
-  // índice único leva o `user_id` e os dois índices da 903 são parciais —
-  // o stub nasceria ao lado dela, e o `maybeSingle` da sincronização passaria
-  // a falhar para aquele modelo em toda sincronização. O id do canal vem do
-  // banco, não de fora, então o `.or()` é seguro.
+  // autor: é a régua da sincronização (e da submissão), que adota as duas. Os
+  // índices únicos (por CONTA desde a 1150) são parciais e deixam a linha do
+  // número conviver com a global: sem procurar a global, o stub nasceria ao
+  // lado dela e o modelo teria duas linhas. O id do canal vem do banco, não
+  // de fora, então o `.or()` é seguro.
   const { data: existente, error: existenteError } = await supabase
     .from('message_templates')
     .select('id')

@@ -1652,12 +1652,16 @@ function ValoresGravadosSemModelo({
   const valores = (cfg.variables as Record<string, unknown> | undefined) ?? {}
   const reservas = (cfg.variaveis_reserva as Record<string, unknown> | undefined) ?? {}
   const botoes = (cfg.button_params as Record<string, unknown> | undefined) ?? {}
-  // Posições em ordem numérica; nomes (modelo NOMEADO) na ordem do envio.
+  // Posições em ordem numérica, ANTES dos nomes (modelo NOMEADO), que vêm na
+  // ordem do envio (código do caractere). As duas réguas num comparador só
+  // não são transitivas ("2" < "10" < "1a" < "2") e a ordem saía ao acaso.
+  const ehPosicao = (k: string) => /^\d+$/.test(k)
   const posicoes = [...new Set([...Object.keys(valores), ...Object.keys(reservas)])].sort(
     (a, b) => {
-      const an = Number(a)
-      const bn = Number(b)
-      if (Number.isFinite(an) && Number.isFinite(bn)) return an - bn
+      const pa = ehPosicao(a)
+      const pb = ehPosicao(b)
+      if (pa && pb) return Number(a) - Number(b)
+      if (pa !== pb) return pa ? -1 : 1
       return a < b ? -1 : a > b ? 1 : 0
     },
   )

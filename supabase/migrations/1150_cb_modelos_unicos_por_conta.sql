@@ -34,9 +34,11 @@
 --
 -- RESTRITIVA (índice único que o app antigo poderia violar numa corrida):
 -- aplicar DEPOIS do deploy. O CREATE INDEX trava a ESCRITA em
--- `message_templates` enquanto lê a tabela (15 linhas), e o gatilho trava
--- `cb_channels` até o fim (milissegundos: o resto é catálogo e a prova
--- desfeita). Idempotente.
+-- `message_templates` enquanto lê a tabela (15 linhas), e o gatilho trava a
+-- escrita em `cb_channels` até o fim (milissegundos). O DROP INDEX dos por
+-- autor pega a trava EXCLUSIVA (até a LEITURA de modelos espera): vem DEPOIS
+-- da prova, e depois dele só conferência de catálogo (`supabase.md`).
+-- Idempotente.
 -- ============================================================
 
 SET LOCAL lock_timeout = '3s';
@@ -80,9 +82,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS message_templates_conta_canal_nome_idioma_key
 CREATE UNIQUE INDEX IF NOT EXISTS message_templates_conta_nome_idioma_global_key
   ON public.message_templates (account_id, name, language) NULLS NOT DISTINCT
   WHERE channel_id IS NULL;
-
-DROP INDEX IF EXISTS public.message_templates_user_name_lang_global_key;
-DROP INDEX IF EXISTS public.message_templates_user_name_lang_channel_key;
 
 -- ------------------------------------------------------------
 -- Conexão apagada: os modelos dela viram globais, menos o que REPETIRIA uma
@@ -134,68 +133,11 @@ CREATE TRIGGER cb_channels_solta_modelos
 REVOKE EXECUTE ON FUNCTION public.cb_solta_modelos_da_conexao() FROM PUBLIC, anon, authenticated;
 
 -- ------------------------------------------------------------
--- Conferência (só catálogo; vale no banco vazio): os dois por conta existem
--- com ESTA forma, nenhum índice único da tabela ficou com `user_id` (um
--- nome diferente numa instalação deixaria o por autor de pé), e o gatilho
--- está de pé sem a função exposta como RPC.
--- ------------------------------------------------------------
-DO $$
-DECLARE
-  v_def text;
-BEGIN
-  SELECT pg_get_indexdef(c.oid) INTO v_def
-    FROM pg_class c
-   WHERE c.relname = 'message_templates_conta_canal_nome_idioma_key'
-     AND c.relnamespace = 'public'::regnamespace;
-  IF v_def IS DISTINCT FROM
-     'CREATE UNIQUE INDEX message_templates_conta_canal_nome_idioma_key ON public.message_templates USING btree (account_id, channel_id, name, language) NULLS NOT DISTINCT WHERE (channel_id IS NOT NULL)'
-  THEN
-    RAISE EXCEPTION '1150: índice por conta e número com outra forma: %', coalesce(v_def, 'ausente');
-  END IF;
-
-  SELECT pg_get_indexdef(c.oid) INTO v_def
-    FROM pg_class c
-   WHERE c.relname = 'message_templates_conta_nome_idioma_global_key'
-     AND c.relnamespace = 'public'::regnamespace;
-  IF v_def IS DISTINCT FROM
-     'CREATE UNIQUE INDEX message_templates_conta_nome_idioma_global_key ON public.message_templates USING btree (account_id, name, language) NULLS NOT DISTINCT WHERE (channel_id IS NULL)'
-  THEN
-    RAISE EXCEPTION '1150: índice global por conta com outra forma: %', coalesce(v_def, 'ausente');
-  END IF;
-
-  IF EXISTS (
-    SELECT 1
-      FROM pg_index i
-      JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY (i.indkey)
-     WHERE i.indrelid = 'public.message_templates'::regclass
-       AND i.indisunique
-       AND a.attname = 'user_id'
-  ) THEN
-    RAISE EXCEPTION '1150: ainda há índice único com user_id em message_templates';
-  END IF;
-
-  -- tgtype: bit 0 = ROW, bit 1 = BEFORE, bit 3 = DELETE (pg_trigger.h).
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_trigger
-     WHERE tgname = 'cb_channels_solta_modelos'
-       AND tgrelid = 'public.cb_channels'::regclass
-       AND tgfoid = 'public.cb_solta_modelos_da_conexao()'::regprocedure
-       AND (tgtype & 1) = 1
-       AND (tgtype & 2) = 2
-       AND (tgtype & 8) = 8
-  ) THEN
-    RAISE EXCEPTION '1150: o gatilho BEFORE DELETE de cb_channels não está de pé';
-  END IF;
-  IF has_function_privilege('anon', 'public.cb_solta_modelos_da_conexao()', 'EXECUTE')
-     OR has_function_privilege('authenticated', 'public.cb_solta_modelos_da_conexao()', 'EXECUTE') THEN
-    RAISE EXCEPTION '1150: função de gatilho exposta como RPC';
-  END IF;
-END $$;
-
--- ------------------------------------------------------------
 -- A prova de verdade CHAMA a função (o corpo plpgsql só é analisado quando
--- roda): precisa de uma conta com dono — no banco vazio do replay não há o
--- que provar — e se DESFAZ pelo SQLSTATE próprio, nunca `WHEN OTHERS`, que
+-- roda). Vem ANTES do DROP INDEX: os por autor ainda de pé não a atrapalham,
+-- e a trava exclusiva dele não segura a leitura de modelos durante ela.
+-- Precisa de uma conta com dono — no banco vazio do replay não há o que
+-- provar — e se DESFAZ pelo SQLSTATE próprio, nunca `WHEN OTHERS`, que
 -- engoliria um erro de verdade. Nada é gravado: a conexão e os modelos de
 -- prova somem no desfazer, e um desfazer não chega ao tempo real.
 --   1. A global e a linha da conexão com o mesmo nome e idioma: apagar a
@@ -267,4 +209,70 @@ BEGIN
   EXCEPTION WHEN SQLSTATE 'P1150' THEN
     NULL;
   END;
+END $$;
+
+-- ------------------------------------------------------------
+-- Os por autor da 903 saem. Trava EXCLUSIVA de `message_templates` até o
+-- COMMIT: daqui em diante, só catálogo.
+-- ------------------------------------------------------------
+DROP INDEX IF EXISTS public.message_templates_user_name_lang_global_key;
+DROP INDEX IF EXISTS public.message_templates_user_name_lang_channel_key;
+
+-- ------------------------------------------------------------
+-- Conferência (só catálogo; vale no banco vazio): os dois por conta existem
+-- com ESTA forma, nenhum índice único da tabela ficou com `user_id` (um
+-- nome diferente numa instalação deixaria o por autor de pé), e o gatilho
+-- está de pé sem a função exposta como RPC.
+-- ------------------------------------------------------------
+DO $$
+DECLARE
+  v_def text;
+BEGIN
+  SELECT pg_get_indexdef(c.oid) INTO v_def
+    FROM pg_class c
+   WHERE c.relname = 'message_templates_conta_canal_nome_idioma_key'
+     AND c.relnamespace = 'public'::regnamespace;
+  IF v_def IS DISTINCT FROM
+     'CREATE UNIQUE INDEX message_templates_conta_canal_nome_idioma_key ON public.message_templates USING btree (account_id, channel_id, name, language) NULLS NOT DISTINCT WHERE (channel_id IS NOT NULL)'
+  THEN
+    RAISE EXCEPTION '1150: índice por conta e número com outra forma: %', coalesce(v_def, 'ausente');
+  END IF;
+
+  SELECT pg_get_indexdef(c.oid) INTO v_def
+    FROM pg_class c
+   WHERE c.relname = 'message_templates_conta_nome_idioma_global_key'
+     AND c.relnamespace = 'public'::regnamespace;
+  IF v_def IS DISTINCT FROM
+     'CREATE UNIQUE INDEX message_templates_conta_nome_idioma_global_key ON public.message_templates USING btree (account_id, name, language) NULLS NOT DISTINCT WHERE (channel_id IS NULL)'
+  THEN
+    RAISE EXCEPTION '1150: índice global por conta com outra forma: %', coalesce(v_def, 'ausente');
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+      FROM pg_index i
+      JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY (i.indkey)
+     WHERE i.indrelid = 'public.message_templates'::regclass
+       AND i.indisunique
+       AND a.attname = 'user_id'
+  ) THEN
+    RAISE EXCEPTION '1150: ainda há índice único com user_id em message_templates';
+  END IF;
+
+  -- tgtype: bit 0 = ROW, bit 1 = BEFORE, bit 3 = DELETE (pg_trigger.h).
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger
+     WHERE tgname = 'cb_channels_solta_modelos'
+       AND tgrelid = 'public.cb_channels'::regclass
+       AND tgfoid = 'public.cb_solta_modelos_da_conexao()'::regprocedure
+       AND (tgtype & 1) = 1
+       AND (tgtype & 2) = 2
+       AND (tgtype & 8) = 8
+  ) THEN
+    RAISE EXCEPTION '1150: o gatilho BEFORE DELETE de cb_channels não está de pé';
+  END IF;
+  IF has_function_privilege('anon', 'public.cb_solta_modelos_da_conexao()', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.cb_solta_modelos_da_conexao()', 'EXECUTE') THEN
+    RAISE EXCEPTION '1150: função de gatilho exposta como RPC';
+  END IF;
 END $$;

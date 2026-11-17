@@ -74,8 +74,9 @@ type CamposDoModelo = ReturnType<typeof camposDoModelo>
  * ⚠️ Até 23/09/2026 a busca era pelo AUTOR (`user_id`), DEPOIS da Meta, e o
  * erro era descartado. Dois danos: com outro admin a busca não achava o
  * modelo do colega e nascia um rascunho HOMÔNIMO (os índices únicos da 903
- * são por autor e deixam passar — a sync daquele modelo passava a falhar no
- * `maybeSingle` e `resolveTemplateRow` escolhia entre as duas sem critério);
+ * eram por autor e deixavam passar; por conta desde a 1150 — a sync daquele
+ * modelo passava a falhar no `maybeSingle` e `resolveTemplateRow` escolhia
+ * entre as duas sem critério);
  * e reenviar pela tela "Criar" um nome que já existia fazia a Meta recusar
  * e o caminho de falha REBAIXAR a linha aprovada para rascunho sem
  * `meta_template_id` — o modelo sumia dos seletores de disparo, da caixa de
