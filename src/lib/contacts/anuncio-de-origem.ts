@@ -137,11 +137,14 @@ export function lerReferralDaMeta(bruto: unknown): AnuncioDeOrigem | null {
  *
  * Na conexão por QR code, o clique chega em `contextInfo.externalAdReply` (o
  * `ContextInfo.ExternalAdReplyInfo` do proto da Baileys): `sourceType`,
- * `sourceId` — o id do anúncio da Meta, medido no banco da Evolution em
- * 04/11/2026 nas leads da campanha de mensagem do Trabalhista —, `sourceUrl` e
- * `ctwaClid`. São os quatro do `referral` da Meta com outros nomes, e o resto
- * da regra (tipo conhecido, primeira origem em bloco, último clique) é o
- * mesmo.
+ * `sourceId` (o id do anúncio da Meta), `sourceUrl` e `ctwaClid`. São os
+ * quatro do `referral` da Meta com outros nomes, e o resto da regra (tipo
+ * conhecido, primeira origem em bloco, último clique) é o mesmo. Medido no
+ * banco da Evolution em 16/11/2026 (30 dias, ~1.000 chegadas por anúncio, a
+ * campanha de mensagem do Trabalhista): `sourceType` = `ad` e `sourceId` em
+ * texto em TODAS; `ctwaClid` em 87%; `sourceUrl` `fb.me` no Facebook e
+ * `www.instagram.com` no Instagram (aqui o `utm_source` acerta o
+ * posicionamento, ao contrário do `fb.me` da Meta).
  *
  * ⚠️⚠️ `externalAdReply` SOZINHO não é anúncio. A Evolution 2.4 monta um em
  * toda PRÉVIA DE LINK (`generateLinkPreview`, no commit da nossa imagem:
@@ -149,8 +152,12 @@ export function lerReferralDaMeta(bruto: unknown): AnuncioDeOrigem | null {
  * `renderLargerThumbnail`), e é com ele que chega a mensagem de outro sistema
  * sobre a Evolution que escreva ao escritório. Por isso o critério é ter
  * `sourceId` OU `ctwaClid`, que a prévia não tem — nunca o link, que ela tem.
- * Com `sourceId` e tipo fora de `ad`/`post`, nada da primeira origem é
- * gravado (a regra de `valoresDoAnuncio`), e o log diz o tipo que veio.
+ * Nem a origem da conversão (`entryPointConversionSource`): ela vem também em
+ * link `wa.me` (`click_to_chat_link`) e em busca (`global_search_new_chat`),
+ * e as ~30 mensagens por mês com `ctwa_ad` sem `externalAdReply` não trazem id
+ * nenhum para gravar. Com `sourceId` e tipo fora de `ad`/`post`, nada da
+ * primeira origem é gravado (a regra de `valoresDoAnuncio`), e o log diz o
+ * tipo que veio.
  *
  * PARSE, nunca `as`, como na Meta: o proto declara os quatro como texto, e
  * outro tipo vira ausente.

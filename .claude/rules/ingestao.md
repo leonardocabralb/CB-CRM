@@ -332,10 +332,10 @@ por `anuncioDaMensagem`, só sem `fromMe`; grupo não passa por ali).
   em toda PRÉVIA DE LINK (`title`, `body`, `thumbnailUrl`, `sourceUrl`,
   `mediaUrl`), inclusive a de outro sistema que escreva ao escritório.
   Anúncio = `sourceId` OU `ctwaClid` (a prévia não tem nenhum), no
-  `contextInfo` de cima (o patch da citação sobe o do texto) ou no do corpo.
-  Medido só o `sourceId` (banco da Evolution, 04/11/2026); `ctwaClid`,
-  `sourceType` e a origem da conversão saíram do proto da Baileys. O log
-  `[anuncio-de-origem]` (`via`) diz o tipo e se vieram id e clique.
+  `contextInfo` de cima (o patch da citação sobe o do texto) ou no do corpo
+  (mídia; a figurinha animada embrulhada). Nunca a origem da conversão:
+  vem também em link `wa.me` e em busca. Medido em 16/11/2026: ~1.000
+  chegadas em 30 dias, todas `ad` com `sourceId`, `ctwaClid` em 87%.
 - O Instagram Direct também não lê: `instagram/webhook.ts` interpreta o
   `referral` (`ref`, `source`, `type`) e `persistir.ts` o descarta (D5) — o
   mesmo buraco, para anúncio de clique-para-Direct.

@@ -17,7 +17,7 @@
 | 0 | Medir a conta pela API (token local) e uma mensagem de anúncio na Evolution | ⏳ esperando o token local (`~/.config/meta-ads/token.env`) |
 | 1 | Catálogo dos anúncios por ID (anúncio → conjunto → campanha) e conserto das duas armadilhas da sincronização | — |
 | 2 | Origem do lead por card: registro da chegada, pelos caminhos de hoje, e carga das fichas | — |
-| 3 | Origem nas conexões por QR code (Evolution) | 🟡 a ficha (campos de traqueamento, como a Meta): branch `feat/anuncio-de-origem-na-evolution` (16/11/2026). Falta medir `ctwaClid`/`sourceType` (abaixo) e o registro por card (Fase 2) |
+| 3 | Origem nas conexões por QR code (Evolution) | 🟡 a ficha (campos de traqueamento, como a Meta): PR #524 (16/11/2026), com o payload real medido. Falta o registro por card (Fase 2) |
 | 4 | Custo por desqualificado no Desempenho e na Saúde | ✅ PR #409; `1091` aplicada em 13/10/2026; etapas marcadas nos três funis comerciais ("Desqualificado" no Bancário e no Previdenciário, "Desqualificado - Sem Direito" no Trabalhista) |
 
 Base: PR #407 (cartão pede só o token; selo Ativa/Pausada), mesclado em
@@ -154,18 +154,23 @@ Ler `.claude/rules/whatsapp-evolution.md` antes.
   prévia de link que a Evolution monta (`generateLinkPreview`, conferido no
   código do commit da imagem: `title`, `body`, `thumbnailUrl`, `sourceUrl`,
   `mediaUrl`, `renderLargerThumbnail`) não tem nenhum dos dois.
-- ⚠️ **Falta medir** (o SSH à VPS foi barrado na sessão do PR): se vêm o
-  `ctwaClid` e o `sourceType` (e com que valor), e o que trazem
-  `conversionSource`/`entryPointConversionSource`. Até lá, os nomes saíram do
-  proto da Baileys. Sem `sourceType` `ad`/`post`, só o `ctwa_clid` é gravado
-  e o log `[anuncio-de-origem]` (`via: evolution`) avisa "tipo
-  desconhecido"; sem `ctwaClid` também, nada é gravado. A consulta (só
-  leitura, só forma e contagem, no banco `evolution`): agrupar as recebidas
-  dos últimos 30 dias com `"contextInfo" ? 'externalAdReply'` por conexão,
-  `externalAdReply->>'sourceType'`, `->>'sourceApp'`, presença de
-  `->>'ctwaClid'` e de `->'sourceId'`, `"contextInfo"->>'conversionSource'` e
-  `->>'entryPointConversionSource'`; e listar as chaves
-  (`jsonb_object_keys`) do `externalAdReply`.
+- **Medido no banco da Evolution em 16/11/2026** (30 dias, com o "pode
+  ler" do operador; só forma e contagem). 987 recebidas com
+  `externalAdReply` no `contextInfo` de cima, TODAS na Trabalhista -
+  Comercial, todas texto, todas `sourceType` `ad` com `sourceId` em texto;
+  nenhuma prévia de link entre as recebidas. `ctwaClid` em 862 (87%; 136 a
+  140 caracteres). `sourceApp` `facebook`/`instagram`, e o `sourceUrl` é
+  `fb.me` no Facebook e `www.instagram.com` no Instagram (o `utm_source` sai
+  `instagram` pelo link). Mais 12 dentro do corpo (áudio, imagem, vídeo,
+  figurinha), 2 delas na figurinha animada (`lottieStickerMessage.message`),
+  lida desde então. A origem da conversão NÃO é sinal: sem
+  `externalAdReply`, `entryPointConversionSource` vem como
+  `click_to_chat_link` (131), `global_search_new_chat` (125),
+  `phone_number_hyperlink` (36), `message_short_link` (31)…
+- **Limite medido:** 31 mensagens em 30 dias com origem de anúncio
+  (`ctwa_ad`/`FB_Ads`) e SEM `externalAdReply` em lugar nenhum: sem id nem
+  clique, nada a gravar. E 1 das 987 era encaminhada (`isForwarded`): grava
+  como se fosse clique de quem encaminhou (aceito).
 - **Pendência — nomes de campanha, conjunto e anúncio pelo id:** não entrou.
   É a Fase 1 (o catálogo por id, sincronizado pelo cron do Meta Ads): uma
   chamada à API da Meta por mensagem que chega poria espera e limite de uso

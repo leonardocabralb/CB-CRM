@@ -1194,6 +1194,18 @@ describe('anúncio de origem (Click-to-WhatsApp)', () => {
     ).toEqual(LIDO);
   });
 
+  it('figurinha ANIMADA: o clique mora dentro do invólucro (lottieStickerMessage.message), medido em 16/11', () => {
+    expect(
+      anuncioDaMensagem(
+        item({
+          lottieStickerMessage: {
+            message: { stickerMessage: { mimetype: 'application/was', contextInfo: { externalAdReply: CLIQUE } } },
+          },
+        }),
+      ),
+    ).toEqual(LIDO);
+  });
+
   it('⚠️ a PRÉVIA DE LINK que a Evolution monta não é anúncio: a mensagem segue sem a chave', () => {
     const previa = item(
       { conversation: 'Veja https://exemplo.com.br/artigo' },

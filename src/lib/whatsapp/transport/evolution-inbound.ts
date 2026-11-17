@@ -696,18 +696,24 @@ export function quotedProviderId(item: EvolutionUpsert): string | null {
  * é `lerAnuncioDaEvolution` (nunca a simples presença de `externalAdReply`).
  *
  * As mesmas duas moradas da citação (`quotedProviderId`): o `contextInfo` de
- * CIMA, onde o patch da citação da nossa imagem sobe o do texto — e onde o
- * `sourceId` do anúncio foi medido, no banco da Evolution, em 04/11/2026 —, e
- * o de dentro do corpo, porque a mídia não é achatada.
+ * CIMA, onde o patch da citação da nossa imagem sobe o do texto, e o de dentro
+ * do corpo, porque a mídia não é achatada. Medido no banco da Evolution em
+ * 16/11/2026 (30 dias): 987 chegadas por anúncio com ele em cima, todas texto,
+ * e 12 dentro do corpo (áudio, imagem, vídeo, figurinha) — 2 delas na
+ * figurinha ANIMADA, embrulhada em `lottieStickerMessage.message`, que o
+ * `unwrapMessage` não desce (ela não vira anexo) e por isso é descida só aqui.
  */
 export function anuncioDaMensagem(item: EvolutionUpsert): AnuncioDeOrigem | null {
   const doTopo = lerAnuncioDaEvolution(item.contextInfo);
   if (doTopo) return doTopo;
   const m = unwrapMessage(item.message);
   if (!m) return null;
-  for (const caixa of CAIXAS_COM_CONTEXTO) {
-    const doCorpo = lerAnuncioDaEvolution(asRecord(m[caixa])?.contextInfo);
-    if (doCorpo) return doCorpo;
+  const corpos = [m, asRecord(asRecord(m.lottieStickerMessage)?.message)];
+  for (const corpo of corpos) {
+    for (const caixa of CAIXAS_COM_CONTEXTO) {
+      const doCorpo = lerAnuncioDaEvolution(asRecord(corpo?.[caixa])?.contextInfo);
+      if (doCorpo) return doCorpo;
+    }
   }
   return null;
 }

@@ -1022,8 +1022,8 @@ e #122 e só foram corrigidos aqui):
   ⚠️ **Pendências:** (1) título, texto e link do anúncio não têm campo na
   conta e ficam de fora; (2) o id do anúncio do ÚLTIMO clique também não
   tem campo (o `id_do_anuncio` guarda o primeiro); (3) a Evolution —
-  ✅ lida desde 16/11/2026 (critério `sourceId` OU `ctwaClid`; o que falta
-  medir está em `docs/PLANO-anuncios-meta.md`, Fase 3). O texto original
+  ✅ lida desde 16/11/2026 (critério `sourceId` OU `ctwaClid`, medido no
+  banco da Evolution: `docs/PLANO-anuncios-meta.md`, Fase 3). O texto original
   deste item: o texto abaixo descreve o `externalAdReply` pelo proto da Baileys, mas
   nenhum payload real de anúncio foi medido, e a 2.4 monta `externalAdReply`
   também em prévia de link (não só em anúncio): medir no banco da Evolution

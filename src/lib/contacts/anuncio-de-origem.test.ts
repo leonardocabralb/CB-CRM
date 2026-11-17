@@ -213,6 +213,21 @@ describe('lerAnuncioDaEvolution', () => {
     ).toBeNull();
   });
 
+  it('anúncio no Instagram: o link vem do instagram.com (medido em 16/11) e o utm_source sai instagram', () => {
+    const doInstagram = lerAnuncioDaEvolution({
+      externalAdReply: {
+        ...CONTEXTO_DE_ANUNCIO.externalAdReply,
+        sourceApp: 'instagram',
+        sourceUrl: 'https://www.instagram.com/p/exemplo/',
+      },
+    });
+    expect(valoresDoAnuncio(doInstagram!).primeiraOrigem).toEqual({
+      utm_source: 'instagram',
+      utm_medium: 'paid',
+      id_do_anuncio: '120200000000000001',
+    });
+  });
+
   it('o clique lido da Evolution grava o MESMO que o da Meta', () => {
     const daMeta = lerReferralDaMeta({
       source_type: 'ad',
