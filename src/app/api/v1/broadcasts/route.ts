@@ -35,6 +35,10 @@
 import { after } from 'next/server';
 
 import { requireApiKey } from '@/lib/auth/api-context';
+import {
+  claimBroadcastDelivery,
+  releaseBroadcastDelivery,
+} from '@/lib/whatsapp/broadcast-resume';
 
 // The `after()` fan-out below sends to every recipient sequentially and
 // runs within this route's max duration (the same constraint the
@@ -124,10 +128,25 @@ export async function POST(request: Request) {
       })),
     });
 
+    // ⚠️ NOSSO (posse do envio, 1147): a trava da retomada TAMBÉM aqui. Sem
+    // ela, o "Retomar" da tela da campanha durante este envio achava a trava
+    // livre e mandava de novo, pelo servidor, o que o `after()` ainda ia
+    // mandar — o modelo pago em dobro. `ocupada` = outra passada já entrega
+    // os pendentes (a campanha acabou de nascer, então só uma retomada que
+    // chegou antes); `erro` = segue sem a trava, como era antes.
+    const trava = await claimBroadcastDelivery(ctx.supabase, ctx.accountId, plan.broadcastId);
+
     // Fan out after the response is sent. Uses the same service-role
     // client — no request-scoped auth needed for the Meta calls or
     // the account-scoped row updates.
-    after(() => deliverBroadcast(ctx.supabase, plan));
+    after(async () => {
+      if (trava === 'ocupada') return;
+      try {
+        await deliverBroadcast(ctx.supabase, plan);
+      } finally {
+        if (trava === 'tomada') await releaseBroadcastDelivery(ctx.supabase, plan.broadcastId);
+      }
+    });
 
     return ok(
       {

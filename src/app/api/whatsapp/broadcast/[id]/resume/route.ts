@@ -70,12 +70,27 @@ export async function POST(
     // from the same 'pending' rows and message everyone twice — and a
     // WhatsApp message cannot be recalled. The claim is one conditional
     // UPDATE, so exactly one caller wins.
-    const claimed = await claimBroadcastDelivery(supabase, accountId, id);
-    if (!claimed) {
+    //
+    // NOSSO (1147): "running" inclui o ASSISTENTE enviando do navegador (a
+    // posse dele) — é o caso que mandava o modelo em dobro. O `code` deixa a
+    // tela dizer isso no idioma dela (e recarregar para mostrar o andamento).
+    const trava = await claimBroadcastDelivery(supabase, accountId, id);
+    if (trava === 'erro') {
+      return NextResponse.json(
+        {
+          error:
+            'Could not check whether this broadcast is already sending. Nothing was sent — try again.',
+          code: 'claim_failed',
+        },
+        { status: 500 }
+      );
+    }
+    if (trava === 'ocupada') {
       return NextResponse.json(
         {
           error:
             'A delivery pass is already running for this broadcast. Wait for it to finish before resuming again.',
+          code: 'delivery_in_flight',
         },
         { status: 409 }
       );
@@ -129,7 +144,14 @@ export async function POST(
     // Planning failed after the claim — release it, or the campaign is
     // locked out of resuming until the staleness window expires.
     if (claimedId) {
-      await releaseBroadcastDelivery(supabaseAdmin(), claimedId).catch(() => {});
+      const admin = supabaseAdmin();
+      // NOSSO (1147): tomar a trava APAGOU a posse do assistente — ele não
+      // fecha mais esta campanha. Um planejamento que falha depois disso
+      // (nada a retomar, conexão ou modelo) a deixaria em `sending` para
+      // sempre, sem como excluir. O fecho é derivado das linhas: com
+      // pendentes, ela segue `sending` e o Retomar volta.
+      await finalizeBroadcastStatus(admin, claimedId).catch(() => {});
+      await releaseBroadcastDelivery(admin, claimedId).catch(() => {});
     }
     if (error instanceof BroadcastError) {
       return NextResponse.json(

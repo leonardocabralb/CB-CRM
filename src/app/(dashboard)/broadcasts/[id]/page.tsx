@@ -46,6 +46,13 @@ import {
 } from '@/lib/broadcast-status';
 import { useTranslations } from 'next-intl';
 import { nomeDoContato } from '@/lib/contacts/identidade';
+import {
+  lerDestinatariosDaCampanha,
+  painelDaRetomada,
+} from '@/lib/broadcast-painel';
+import { disparoEmAndamento } from '@/lib/whatsapp/broadcast-posse';
+import { MAX_PAGINAS, PAGINA } from '@/lib/supabase/paginar';
+import { neutralizarFormula } from '@/lib/csv';
 
 interface StatCardProps {
   label: string;
@@ -131,9 +138,13 @@ const RECIPIENT_STATUSES: readonly RecipientStatus[] = [
 /**
  * CSV export helper — RFC 4180 quoting. Quote every field so
  * commas/newlines/quotes round-trip cleanly.
+ *
+ * ⚠️ NOSSO: aspas NÃO impedem o Excel de avaliar `=…` — o nome do contato
+ * vem do push name do WhatsApp. `neutralizarFormula` (`src/lib/csv.ts`)
+ * em todo campo, como nos outros exportadores.
  */
 function toCsv(rows: string[][]): string {
-  const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
+  const escape = (v: string) => `"${neutralizarFormula(v).replace(/"/g, '""')}"`;
   return rows.map((r) => r.map(escape).join(',')).join('\n');
 }
 
@@ -169,6 +180,9 @@ export default function BroadcastDetailPage() {
   );
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // NOSSO (1147): há envio rodando (o assistente ou a retomada)? `null` = não
+  // sei — a faixa de cima não afirma "parou no meio" sobre ignorância.
+  const [emAndamento, setEmAndamento] = useState<boolean | null>(null);
   const [resumingScope, setResumingScope] = useState<
     'pending' | 'failed' | null
   >(null);
@@ -184,16 +198,27 @@ export default function BroadcastDetailPage() {
         .single();
 
       if (bcError) throw bcError;
+
+      // ⚠️ O andamento ANTES dos destinatários: lido depois, um envio que
+      // terminasse entre as duas leituras deixaria linhas `pending` velhas na
+      // tela com "ninguém enviando" — o "parou no meio" falso que leva ao
+      // Retomar. Nesta ordem, os pendentes lidos são de DEPOIS da resposta.
+      const andamento = await disparoEmAndamento(supabase, broadcastId);
+
+      // NOSSO (#679 do original): todos, por chave — o `select` cru parava
+      // em 1.000 sem aviso. Falha ou teto = erro, nunca a lista parcial.
+      const { linhas, motivo } = await lerDestinatariosDaCampanha(supabase, broadcastId);
+      if (!linhas) {
+        throw new Error(
+          motivo === 'teto'
+            ? t('recipientsOverCeiling', { max: (MAX_PAGINAS * PAGINA).toLocaleString() })
+            : t('recipientsLoadFailed'),
+        );
+      }
+
       setBroadcast(bc);
-
-      const { data: recs, error: recsError } = await supabase
-        .from('broadcast_recipients')
-        .select('*, contact:contacts(*)')
-        .eq('broadcast_id', broadcastId)
-        .order('created_at', { ascending: false });
-
-      if (recsError) throw recsError;
-      setRecipients(recs ?? []);
+      setEmAndamento(andamento);
+      setRecipients(linhas);
     } catch (err) {
       setError(err instanceof Error ? err.message : t('notFound'));
     } finally {
@@ -255,6 +280,19 @@ export default function BroadcastDetailPage() {
         body: JSON.stringify({ scope }),
       });
       const payload = await res.json().catch(() => ({}));
+
+      if (res.status === 409 && payload?.code === 'delivery_in_flight') {
+        // NOSSO (1147): o envio está rodando (o assistente noutra aba ou a
+        // retomada) e o servidor não reenviou nada. Recarrega para a faixa
+        // passar a dizer "em andamento".
+        toast.error(t('toastResumeInFlight'));
+        await fetchData();
+        return;
+      }
+      if (payload?.code === 'claim_failed') {
+        toast.error(t('toastResumeClaimFailed'));
+        return;
+      }
 
       if (!res.ok) {
         toast.error(
@@ -342,7 +380,17 @@ export default function BroadcastDetailPage() {
   // A campaign whose tab went away sits in 'sending' with recipients
   // still pending and nothing left to move them. Name that state rather
   // than leaving a permanently pulsing "sending" badge.
-  const isStalled = broadcast.status === 'sending' && pendingCount > 0;
+  //
+  // ⚠️⚠️ NOSSO (1147): "parado" e o Retomar só quando NINGUÉM está enviando.
+  // Antes, o assistente enviando do navegador de quem disparou também tinha
+  // `sending` + pendentes, e o Retomar mandava o modelo pago em dobro.
+  const painel = painelDaRetomada({
+    status: broadcast.status,
+    pendentes: pendingCount,
+    falhos: retryableCount,
+    emAndamento,
+  });
+  const isStalled = painel === 'parado';
 
   const funnelSteps: FunnelStep[] = [
     { label: t('stats.sent'), value: broadcast.sent_count, color: 'bg-primary' },
@@ -439,9 +487,22 @@ export default function BroadcastDetailPage() {
         )}
       </div>
 
+      {/* NOSSO (1147): com envio rodando (ou sem como saber), no lugar do
+          Retomar, a faixa que diz isso. */}
+      {(painel === 'em_andamento' || painel === 'desconhecido') && (
+        <div className="rounded-xl border border-border bg-card p-4 text-sm">
+          <p className="font-medium text-foreground">
+            {painel === 'em_andamento' ? t('inFlightTitle') : t('inFlightUnknownTitle')}
+          </p>
+          <p className="mt-0.5 text-muted-foreground">
+            {painel === 'em_andamento' ? t('inFlightHint') : t('inFlightUnknownHint')}
+          </p>
+        </div>
+      )}
+
       {/* Resume / retry (issue #472). Only rendered when there is
-          actually something outstanding. */}
-      {(pendingCount > 0 || retryableCount > 0) && (
+          actually something outstanding — and nobody is sending it. */}
+      {(painel === 'parado' || painel === 'retentar') && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
           <div className="text-sm">
             <p className="font-medium text-foreground">

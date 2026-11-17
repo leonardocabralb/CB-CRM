@@ -11,6 +11,7 @@ import { Step2SelectAudience } from '@/components/broadcasts/step2-select-audien
 import { Step3Personalize } from '@/components/broadcasts/step3-personalize';
 import { Step4ScheduleSend } from '@/components/broadcasts/step4-schedule-send';
 import { useBroadcastSending } from '@/hooks/use-broadcast-sending';
+import { PRAZO_DA_POSSE_MS } from '@/lib/whatsapp/broadcast-posse';
 import { Check } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
@@ -53,7 +54,7 @@ export default function NewBroadcastPage() {
     if (!template) return;
 
     try {
-      const broadcastId = await createAndSendBroadcast({
+      const { broadcastId, interrupcao } = await createAndSendBroadcast({
         name,
         template,
         audience: {
@@ -67,6 +68,15 @@ export default function NewBroadcastPage() {
         headerMediaUrl,
         channelId,
       });
+      // NOSSO (posse do envio, 1147): o assistente parou antes do fim e NÃO
+      // reenviou — quem falta fica pendente para quem assumiu ou para o
+      // Retomar da página da campanha, para onde a pessoa vai agora.
+      if (interrupcao === 'posse_perdida') toast.warning(t('toastSendTakenOver'));
+      if (interrupcao === 'posse_incerta') {
+        toast.error(
+          t('toastSendInterrupted', { minutes: Math.round(PRAZO_DA_POSSE_MS / 60_000) }),
+        );
+      }
       router.push(`/broadcasts/${broadcastId}`);
     } catch (err) {
       // Previously swallowed with console.error — the wizard would

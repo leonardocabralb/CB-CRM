@@ -1243,6 +1243,13 @@ export interface Broadcast {
    * send. Added in migration 041.
    */
   delivery_locked_at?: string | null;
+  /**
+   * NOSSO (1147): posse do envio pelo ASSISTENTE (navegador), com prazo pelo
+   * relógio do banco e o token de quem a tem. A retomada só assume com ela
+   * vencida e a apaga ao assumir. Ver `src/lib/whatsapp/broadcast-posse.ts`.
+   */
+  delivery_lease_until?: string | null;
+  delivery_lease_token?: string | null;
   created_at: string;
 }
 
