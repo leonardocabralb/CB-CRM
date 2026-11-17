@@ -14,12 +14,20 @@ a ancestralidade continua em `aee1b01f` e tudo entra por PORTE MANUAL
 
 | Lote | Sessão | Situação | Branch | PR (base = integração) |
 |---|---|---|---|---|
-| A — Contatos, funil e robô | `lote-a` | aberto | `fix/porte-upstream-2026-11-a` | — |
-| B — Pequenos | `lote-b` | aberto | `fix/porte-upstream-2026-11-b` | — |
-| C — API pública, webhooks e MCP | `lote-c` | aberto | `fix/porte-upstream-2026-11-c` | — |
-| D — Modelos da Meta | `lote-d` | aberto | `fix/porte-upstream-2026-11-d` | — |
-| E — Equipe e permissões | `lote-e` | aberto | `fix/porte-upstream-2026-11-e` | — |
-| F — Disparo | `lote-f` | aberto | `fix/porte-upstream-2026-11-f` | — |
+| A — Contatos, funil e robô | `lote-a` | implementando (checkpoint 1 aprovado em 17/11) | `fix/porte-upstream-2026-11-a` | — |
+| B — Pequenos | `lote-b` | implementando (checkpoint 1 aprovado em 17/11) | `fix/porte-upstream-2026-11-b` | — |
+| C — API pública, webhooks e MCP | `lote-c` | implementando (checkpoint 1 aprovado em 17/11) | `fix/porte-upstream-2026-11-c` | — |
+| D — Modelos da Meta | `lote-d` | implementando (checkpoint 1 aprovado em 17/11) | `fix/porte-upstream-2026-11-d` | — |
+| E — Equipe e permissões | `lote-e` | implementando (checkpoint 1 aprovado em 17/11) | `fix/porte-upstream-2026-11-e` | — |
+| F — Disparo | `lote-f` | implementando (checkpoint 1 aprovado em 17/11) | `fix/porte-upstream-2026-11-f` | — |
+
+Decisões dos checkpoints 1 (17/11), além das recomendações de cada lote:
+B não faz escrita "sem efeito" em aviso real; C prova o C4 só por teste; E
+confere a 1148 na produção pelo modelo da 1067 (subbloco desfeito, dado
+sintético, conferência que aborta) e só atribui a conversa do lead de teste se
+nenhuma automação ligada escutar atribuição; F faz a trava do envio pela API;
+o modelo nomeado de teste na Meta (D) fica para depois do merge, com o OK do
+operador.
 
 Branch de integração: `chore/porte-upstream-2026-11` (cortada do `main` em
 `c86812b1`). Pasta do orquestrador:
@@ -30,8 +38,7 @@ Branch de integração: `chore/porte-upstream-2026-11` (cortada do `main` em
 - **#16 Remover membro devolve as conversas à fila: SIM** (com a correção das
   que já estão assim — hoje nenhuma na produção).
 - **#17 "O Visualizador continua podendo subir arquivo fora das anotações?":
-  SIM** → nada muda no `chat-media`. (Leitura literal da resposta; se a
-  intenção era fechar, o operador avisa e vira item do Lote E.)
+  SIM** → nada muda no `chat-media` (confirmado pelo operador em 17/11).
 - **#18 Botão direito na mensagem: MANTER o nosso comportamento**; só corrigir
   erro, se existir (checagem no Lote B).
 - **#19 A API renomeia o contato existente: MANTER como está.**
@@ -165,8 +172,21 @@ compartilhados:
 - `src/lib/whatsapp/broadcast-core.ts` e `src/app/api/v1/broadcasts/route.ts`:
   dono = Lote C. O Lote F, se precisar deles para a posse do envio, combina
   com o orquestrador.
-- `.claude/rules/whatsapp-envio.md`: D edita só "Modelos da Meta"; F só
-  "Disparo"; A só "Robô e fluxos".
+- `.claude/rules/whatsapp-envio.md` estava a 41 bytes do teto (17/11): só o
+  Lote D a edita, movendo "Modelos da Meta" para
+  `.claude/rules/modelos-da-meta.md` (+ uma linha no índice da seção 13 do
+  `CLAUDE.md`, único lote que toca o `CLAUDE.md`). A e F mandam as notas de
+  "Robô e fluxos" e "Disparo" no PR ("Para o orquestrador").
+- `src/app/api/v1/broadcasts/route.ts`: C mexe só no objeto da resposta
+  (`duplicates`); F mexe só no bloco do `after()` (a trava da retomada no envio
+  pela API).
+- `src/hooks/use-broadcast-sending.ts`: dono = F; o D altera SÓ a função
+  `resolveVariables` (variáveis nomeadas).
+- `mcp-server/`: dono = C (inclui a frase das variáveis nomeadas que o D
+  definiu). `docs/public-api.md`: dono = C, menos os parágrafos das nomeadas
+  (bloco `params` do `POST /messages` e a frase do `POST /broadcasts`), do D.
+- `docs/DECISOES-DO-OPERADOR.md`: só o Lote E (#16–#19). `docs/ATUALIZAR.md`:
+  só o Lote D (nota da 1150).
 - `docs/MERGE-UPSTREAM.md`, `docs/MIGRATIONS-APLICADAS.md`, este plano: só o
   orquestrador.
 
