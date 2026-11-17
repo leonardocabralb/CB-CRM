@@ -39,6 +39,15 @@ automação, em `.claude/rules/automacoes-passos.md`.
   lookup + insert/update. E `.maybeSingle()` só com recorte de canal
   (`.is('channel_id', null)` para o padrão), senão estoura com modelo
   homônimo em outra WABA.
+- ⚠️⚠️ **Apagar uma CONEXÃO solta os modelos dela**
+  (`cb_channels_solta_modelos`, BEFORE DELETE, 1150): a linha que repetiria
+  uma GLOBAL da conta (mesmo nome e idioma; idioma nulo conta) é APAGADA e a
+  global fica; as outras viram globais ali mesmo — não só pelo SET NULL da
+  FK, que roda no fim da instrução e faria colidir duas conexões apagadas
+  juntas (apagar a conta). Sem isso, o índice global por conta dava 23505 e a
+  remoção falhava. Nada muda na Meta; nenhuma FK aponta para
+  `message_templates`. A prova da 1150 chama o gatilho; pino
+  `modelos-por-conta-1150.test.ts`.
 - ⚠️ **Submit e sincronização escolhem a MESMA linha** (`escolherLinhaDoModelo`,
   `linha-do-modelo.ts`): da conta, nome + idioma, a do número ou a global;
   prefere a do número, depois a vinculada (`meta_template_id`), depois a mais

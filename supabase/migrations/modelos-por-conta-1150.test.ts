@@ -8,20 +8,72 @@ import path from 'node:path';
 // ela seria o modelo de outro número ou o vinculado à Meta: a nossa PARA com
 // a lista e não apaga nada.
 //
+// Apagar a CONEXÃO: o SET NULL da FK faria dos modelos dela globais, e o
+// que repete uma global daria 23505 — o gatilho `cb_channels_solta_modelos`
+// apaga SÓ essa linha (a global fica) e anula as outras.
+//
 // LIMITE DECLARADO: lê o `.sql`. A prova com dado (outro autor, autor nulo,
 // outro número, global ao lado do número, outra conta, idioma nulo, recusa
-// com a lista e conferência do índice que sobrou) rodou num Postgres local
-// com as migrations até a 1150 (`cenarios-1150.sql`, descrito no PR).
+// com a lista, conferência do índice que sobrou, conexão apagada com e sem
+// global e duas conexões numa instrução) rodou num Postgres local com as
+// migrations até a 1150 (`cenarios-1150.sql`, descrito no PR); a própria
+// migration chama o gatilho numa prova desfeita quando há conta.
 // ============================================================
 
 const sql = fs.readFileSync(path.join(__dirname, '1150_cb_modelos_unicos_por_conta.sql'), 'utf8');
 const semComentarios = sql.replace(/--.*$/gm, '');
 
+// O corpo da função do gatilho (roda só quando uma conexão é apagada) e a
+// prova desfeita (o último bloco DO): fora deles, nada escreve em linha.
+const inicioDaFuncao = semComentarios.indexOf(
+  'CREATE OR REPLACE FUNCTION public.cb_solta_modelos_da_conexao()',
+);
+const corpoDaFuncao = semComentarios.slice(
+  inicioDaFuncao,
+  semComentarios.indexOf('$$;', semComentarios.indexOf('AS $$', inicioDaFuncao)) + 3,
+);
+const prova = semComentarios.slice(semComentarios.lastIndexOf('DO $$'));
+const aplicada = semComentarios.replace(corpoDaFuncao, '').replace(prova, '');
+
 describe('1150 — modelo único por conta e número', () => {
-  it('não apaga nem muda linha nenhuma', () => {
-    expect(semComentarios).not.toMatch(/\bDELETE\s+FROM\b/i);
-    expect(semComentarios).not.toMatch(/\bUPDATE\s+public\./i);
+  it('ao ser aplicada, não apaga nem muda linha nenhuma', () => {
+    expect(inicioDaFuncao).toBeGreaterThan(-1);
+    expect(prova).toContain("ERRCODE = 'P1150'");
+    expect(aplicada).not.toMatch(/\bDELETE\s+FROM\b/i);
+    expect(aplicada).not.toMatch(/\bUPDATE\s+(public\.)?\w+\s+SET\b/i);
     expect(semComentarios).not.toMatch(/\bTRUNCATE\b/i);
+  });
+
+  it('conexão apagada: o gatilho BEFORE DELETE, na forma da 1077', () => {
+    expect(semComentarios).toMatch(
+      /CREATE TRIGGER cb_channels_solta_modelos\s+BEFORE DELETE ON public\.cb_channels\s+FOR EACH ROW EXECUTE FUNCTION public\.cb_solta_modelos_da_conexao\(\);/,
+    );
+    expect(corpoDaFuncao).toMatch(/SECURITY DEFINER\s+SET search_path TO 'public'/);
+    expect(corpoDaFuncao).toContain('RETURN OLD;');
+    expect(semComentarios).toContain(
+      'REVOKE EXECUTE ON FUNCTION public.cb_solta_modelos_da_conexao() FROM PUBLIC, anon, authenticated;',
+    );
+  });
+
+  it('o gatilho apaga SÓ a linha da conexão que repetiria uma global; as outras viram globais', () => {
+    expect(corpoDaFuncao.match(/\bDELETE\b/g)).toHaveLength(1);
+    expect(corpoDaFuncao).toMatch(
+      /DELETE FROM message_templates t\s+WHERE t\.channel_id = OLD\.id\s+AND EXISTS \(/,
+    );
+    expect(corpoDaFuncao).toMatch(
+      /g\.account_id = t\.account_id\s+AND g\.channel_id IS NULL\s+AND g\.name = t\.name\s+AND g\.language IS NOT DISTINCT FROM t\.language/,
+    );
+    expect(corpoDaFuncao).toMatch(
+      /UPDATE message_templates\s+SET channel_id = NULL\s+WHERE channel_id = OLD\.id;/,
+    );
+  });
+
+  it('a prova CHAMA o gatilho e se desfaz pelo SQLSTATE próprio, nunca WHEN OTHERS', () => {
+    expect(prova).toMatch(/DELETE FROM public\.cb_channels WHERE id = v_canal;/);
+    expect(prova).toMatch(/RAISE EXCEPTION USING ERRCODE = 'P1150'/);
+    expect(prova).toMatch(/EXCEPTION WHEN SQLSTATE 'P1150' THEN\s+NULL;/);
+    expect(prova).toMatch(/RAISE NOTICE '1150: banco sem conta, nada a provar\.'/);
+    expect(semComentarios).not.toMatch(/WHEN OTHERS/i);
   });
 
   it('os dois índices por conta, com a régua da 903 (número × global) e NULLS NOT DISTINCT', () => {
@@ -46,8 +98,10 @@ describe('1150 — modelo único por conta e número', () => {
     expect(semComentarios).toMatch(/RAISE EXCEPTION E'1150: % modelo\(s\) repetido\(s\)/);
   });
 
-  it('a conferência final cobra a forma dos índices e nenhum único com user_id', () => {
+  it('a conferência final cobra a forma dos índices, nenhum único com user_id e o gatilho de pé', () => {
     expect(semComentarios).toContain('pg_get_indexdef');
     expect(semComentarios).toMatch(/AND a\.attname = 'user_id'/);
+    expect(semComentarios).toMatch(/WHERE tgname = 'cb_channels_solta_modelos'/);
+    expect(semComentarios).toMatch(/has_function_privilege\('anon', 'public\.cb_solta_modelos_da_conexao\(\)', 'EXECUTE'\)/);
   });
 });
