@@ -51,7 +51,11 @@
  * Título, texto e link do anúncio não têm campo na conta e ficam de fora
  * (pendência escrita no `docs/PLANO-funil-comercial.md`, Fase 5a). Nomes de
  * campanha, conjunto e anúncio não vêm no clique: saem da API de anúncios
- * pelo `source_id`.
+ * pelo `source_id` (pendência no `docs/PLANO-anuncios-meta.md`, Fase 1).
+ *
+ * São DOIS leitores para o mesmo `AnuncioDeOrigem`, e daí em diante a regra é
+ * uma só: `lerReferralDaMeta` (o `referral` da conexão oficial) e
+ * `lerAnuncioDaEvolution` (o `externalAdReply` das conexões por QR code).
  */
 
 import { CAMPOS_DE_TRAQUEAMENTO } from './campos-de-traqueamento';
@@ -122,6 +126,47 @@ export function lerReferralDaMeta(bruto: unknown): AnuncioDeOrigem | null {
     ctwaClid: texto(r.ctwa_clid),
   };
   if (!anuncio.idDaOrigem && !anuncio.link && !anuncio.ctwaClid) return null;
+  return anuncio;
+}
+
+/**
+ * Puro: o anúncio de uma mensagem da EVOLUTION, lido de UM `contextInfo`, ou
+ * `null` quando a mensagem não veio de um clique em anúncio. Quem procura nos
+ * dois lugares onde o `contextInfo` mora (o de cima do item e o de dentro do
+ * corpo) é `anuncioDaMensagem`, em `evolution-inbound.ts`.
+ *
+ * Na conexão por QR code, o clique chega em `contextInfo.externalAdReply` (o
+ * `ContextInfo.ExternalAdReplyInfo` do proto da Baileys): `sourceType`,
+ * `sourceId` — o id do anúncio da Meta, medido no banco da Evolution em
+ * 04/11/2026 nas leads da campanha de mensagem do Trabalhista —, `sourceUrl` e
+ * `ctwaClid`. São os quatro do `referral` da Meta com outros nomes, e o resto
+ * da regra (tipo conhecido, primeira origem em bloco, último clique) é o
+ * mesmo.
+ *
+ * ⚠️⚠️ `externalAdReply` SOZINHO não é anúncio. A Evolution 2.4 monta um em
+ * toda PRÉVIA DE LINK (`generateLinkPreview`, no commit da nossa imagem:
+ * `title`, `body`, `thumbnailUrl`, `sourceUrl`, `mediaUrl` e
+ * `renderLargerThumbnail`), e é com ele que chega a mensagem de outro sistema
+ * sobre a Evolution que escreva ao escritório. Por isso o critério é ter
+ * `sourceId` OU `ctwaClid`, que a prévia não tem — nunca o link, que ela tem.
+ * Com `sourceId` e tipo fora de `ad`/`post`, nada da primeira origem é
+ * gravado (a regra de `valoresDoAnuncio`), e o log diz o tipo que veio.
+ *
+ * PARSE, nunca `as`, como na Meta: o proto declara os quatro como texto, e
+ * outro tipo vira ausente.
+ */
+export function lerAnuncioDaEvolution(contexto: unknown): AnuncioDeOrigem | null {
+  if (!contexto || typeof contexto !== 'object' || Array.isArray(contexto)) return null;
+  const bruto = (contexto as Record<string, unknown>).externalAdReply;
+  if (!bruto || typeof bruto !== 'object' || Array.isArray(bruto)) return null;
+  const r = bruto as Record<string, unknown>;
+  const anuncio: AnuncioDeOrigem = {
+    tipo: texto(r.sourceType),
+    idDaOrigem: texto(r.sourceId),
+    link: texto(r.sourceUrl),
+    ctwaClid: texto(r.ctwaClid),
+  };
+  if (!anuncio.idDaOrigem && !anuncio.ctwaClid) return null;
   return anuncio;
 }
 

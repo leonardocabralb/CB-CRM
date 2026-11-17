@@ -10,6 +10,7 @@
 // ============================================================
 
 import type { NormalizedInbound } from '@/lib/whatsapp/inbound-store';
+import { lerAnuncioDaEvolution, type AnuncioDeOrigem } from '@/lib/contacts/anuncio-de-origem';
 import { PREFIXO_DE_TIPO_NAO_SUPORTADO } from '@/lib/ia-agentes/quem-responde';
 import {
   MAX_CONTATOS,
@@ -689,6 +690,28 @@ export function quotedProviderId(item: EvolutionUpsert): string | null {
   return null;
 }
 
+/**
+ * O anúncio de origem (Click-to-WhatsApp) da mensagem, se ela veio de um
+ * clique num anúncio — `null` em quase toda mensagem. O que conta como anúncio
+ * é `lerAnuncioDaEvolution` (nunca a simples presença de `externalAdReply`).
+ *
+ * As mesmas duas moradas da citação (`quotedProviderId`): o `contextInfo` de
+ * CIMA, onde o patch da citação da nossa imagem sobe o do texto — e onde o
+ * `sourceId` do anúncio foi medido, no banco da Evolution, em 04/11/2026 —, e
+ * o de dentro do corpo, porque a mídia não é achatada.
+ */
+export function anuncioDaMensagem(item: EvolutionUpsert): AnuncioDeOrigem | null {
+  const doTopo = lerAnuncioDaEvolution(item.contextInfo);
+  if (doTopo) return doTopo;
+  const m = unwrapMessage(item.message);
+  if (!m) return null;
+  for (const caixa of CAIXAS_COM_CONTEXTO) {
+    const doCorpo = lerAnuncioDaEvolution(asRecord(m[caixa])?.contextInfo);
+    if (doCorpo) return doCorpo;
+  }
+  return null;
+}
+
 export function isReaction(message?: Record<string, unknown> | null): boolean {
   return !!asRecord(unwrapMessage(message)?.reactionMessage);
 }
@@ -809,6 +832,9 @@ export function normalizeUpsert(
   const contentType = detectContentType(item.message);
   const opcoesDeResposta =
     contentType === 'template' ? extractOpcoesDeResposta(item.message) : null;
+  // Só a mensagem DO CLIENTE carrega a origem: o `fromMe` é a equipe (ou o
+  // eco do CRM), e o caminho do celular nem a lê.
+  const anuncio = item.key?.fromMe === true ? null : anuncioDaMensagem(item);
 
   return {
     accountId,
@@ -842,6 +868,9 @@ export function normalizeUpsert(
     ...(opcoesDeResposta ? { opcoesDeResposta } : {}),
     // A escolha num botão ou numa lista não abre turno do agente de IA (1111).
     ...(ehEscolhaDeOpcao(item.message) ? { escolhaDeOpcao: true } : {}),
+    // O clique num anúncio, só quando houve um — vai para os campos de
+    // traqueamento da ficha em `persistInboundMessage`.
+    ...(anuncio ? { anuncio } : {}),
     // Preenchido pelo webhook, que tem as credenciais para chamar
     // chat/getBase64FromMediaMessage — ver evolution-media.ts.
     mediaUrl: null,

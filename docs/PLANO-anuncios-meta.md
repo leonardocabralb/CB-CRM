@@ -17,7 +17,7 @@
 | 0 | Medir a conta pela API (token local) e uma mensagem de anúncio na Evolution | ⏳ esperando o token local (`~/.config/meta-ads/token.env`) |
 | 1 | Catálogo dos anúncios por ID (anúncio → conjunto → campanha) e conserto das duas armadilhas da sincronização | — |
 | 2 | Origem do lead por card: registro da chegada, pelos caminhos de hoje, e carga das fichas | — |
-| 3 | Origem nas conexões por QR code (Evolution) | depois da medição |
+| 3 | Origem nas conexões por QR code (Evolution) | 🟡 a ficha (campos de traqueamento, como a Meta): branch `feat/anuncio-de-origem-na-evolution` (16/11/2026). Falta medir `ctwaClid`/`sourceType` (abaixo) e o registro por card (Fase 2) |
 | 4 | Custo por desqualificado no Desempenho e na Saúde | ✅ PR #409; `1091` aplicada em 13/10/2026; etapas marcadas nos três funis comerciais ("Desqualificado" no Bancário e no Previdenciário, "Desqualificado - Sem Direito" no Trabalhista) |
 
 Base: PR #407 (cartão pede só o token; selo Ativa/Pausada), mesclado em
@@ -74,8 +74,9 @@ nem na Saúde.
   confirmar na Fase 0); `ctwa_clid` em 0. São campos da FICHA (primeira
   origem e último clique, para o cliente inteiro): um cliente que volta por
   anúncio de outra área não ganha origem nova.
-- **Buraco:** a campanha de mensagem do Trabalhista leva a números por QR
-  code, que não leem o anúncio de origem.
+- **Buraco (até 16/11/2026):** a campanha de mensagem do Trabalhista leva a
+  números por QR code, que não liam o anúncio de origem. A Fase 3 o fecha na
+  ficha.
 
 ## Como não cruzar informação quando a conta muda
 
@@ -143,6 +144,37 @@ Ler `.claude/rules/ingestao.md`, `.claude/rules/webhooks.md` e
 **Fase 3 — Evolution.** Ler o anúncio de origem na mensagem que chega pelas
 conexões por QR code, pelo critério medido na Fase 0, e registrar a chegada.
 Ler `.claude/rules/whatsapp-evolution.md` antes.
+
+- **Feito (16/11/2026, pedido do operador):** a ficha ganha os campos de
+  traqueamento pela MESMA regra da Meta (`lerAnuncioDaEvolution` →
+  `gravarAnuncioLido`, em `persistInboundMessage`; só mensagem de cliente
+  1:1). Onde o clique mora: o `contextInfo` de cima do item (o patch da
+  citação sobe o do texto; é onde o `sourceId` foi medido em 04/11) e o de
+  dentro do corpo (mídia). Critério de anúncio: `sourceId` OU `ctwaClid`. A
+  prévia de link que a Evolution monta (`generateLinkPreview`, conferido no
+  código do commit da imagem: `title`, `body`, `thumbnailUrl`, `sourceUrl`,
+  `mediaUrl`, `renderLargerThumbnail`) não tem nenhum dos dois.
+- ⚠️ **Falta medir** (o SSH à VPS foi barrado na sessão do PR): se vêm o
+  `ctwaClid` e o `sourceType` (e com que valor), e o que trazem
+  `conversionSource`/`entryPointConversionSource`. Até lá, os nomes saíram do
+  proto da Baileys. Sem `sourceType` `ad`/`post`, só o `ctwa_clid` é gravado
+  e o log `[anuncio-de-origem]` (`via: evolution`) avisa "tipo
+  desconhecido"; sem `ctwaClid` também, nada é gravado. A consulta (só
+  leitura, só forma e contagem, no banco `evolution`): agrupar as recebidas
+  dos últimos 30 dias com `"contextInfo" ? 'externalAdReply'` por conexão,
+  `externalAdReply->>'sourceType'`, `->>'sourceApp'`, presença de
+  `->>'ctwaClid'` e de `->'sourceId'`, `"contextInfo"->>'conversionSource'` e
+  `->>'entryPointConversionSource'`; e listar as chaves
+  (`jsonb_object_keys`) do `externalAdReply`.
+- **Pendência — nomes de campanha, conjunto e anúncio pelo id:** não entrou.
+  É a Fase 1 (o catálogo por id, sincronizado pelo cron do Meta Ads): uma
+  chamada à API da Meta por mensagem que chega poria espera e limite de uso
+  dentro da ingestão, e os nomes da ficha são primeira origem (entrariam
+  DEPOIS do bloco, quebrando a regra do "tudo ou nada"). Até lá, a análise
+  resolve os nomes pelo `id_do_anuncio` sob demanda (D4).
+- **Limite:** a mensagem 1:1 RETIDA sem telefone (1010) que destrava como
+  `tardia` ou `historica` não grava o anúncio (esses caminhos não fazem nada
+  além do fio); a `nova` grava.
 
 **Fase 4 — custo por desqualificado.** As etapas de desqualificação passam a
 ser MARCADAS em Gerenciar funil, como as etapas "Faltou" do no-show; o
