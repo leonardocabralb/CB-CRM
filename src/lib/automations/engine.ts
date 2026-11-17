@@ -2117,8 +2117,10 @@ async function runStep(
       // 1148: o gatilho do banco mantém o anterior (ou deixa sem ninguém)
       // quando a pessoa não é membro da conta — a remoção dela no meio, ou a
       // leitura acima que falhou. O registro não diz "assigned" sobre o que
-      // não pegou.
+      // não pegou — nem sobre o que não achou (0 linhas: a ficha sem
+      // conversa, o lead de anúncio da API v1).
       const gravados = (gravadas ?? []) as { assigned_agent_id: string | null }[];
+      if (gravados.length === 0) return 'no conversation to assign';
       if (gravados.some((c) => c.assigned_agent_id !== agentId)) {
         return responsavelForaDaConta(agentId);
       }

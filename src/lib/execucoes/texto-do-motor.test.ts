@@ -163,6 +163,7 @@ describe('as frases nos dois dicionários (chave montada)', () => {
       'no agent resolved',
       'agent a is suspended — conversation left unassigned',
       'agent a is not a member of the account — conversation not assigned',
+      'no conversation to assign',
       'a not updated: empty value',
       'field a not writable from automations',
       'name not updated: the value is not a name',

@@ -446,7 +446,10 @@ BEGIN
   -- A remoção: as duas peças novas e as guardas que vieram de antes (a lição
   -- da 922: um REPLACE que esquece um trecho apaga a guarda em silêncio).
   v_corpo := pg_get_functiondef('public.remove_account_member(uuid)'::regprocedure);
-  IF v_corpo !~ 'FOR UPDATE' OR v_corpo !~ 'FOR SHARE' THEN
+  -- As INSTRUÇÕES, não as palavras: o comentário do corpo também cita
+  -- "FOR UPDATE" e "FOR SHARE", e a palavra solta passaria sem a trava.
+  IF position('WHERE user_id = p_user_id FOR UPDATE' IN v_corpo) = 0
+     OR position('WHERE user_id = auth.uid() FOR SHARE' IN v_corpo) = 0 THEN
     RAISE EXCEPTION '1148: remove_account_member perdeu a trava';
   END IF;
   IF position('SET assigned_agent_id = NULL' IN v_corpo) = 0

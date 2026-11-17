@@ -162,6 +162,9 @@ Troca de LENTE no navegador, e só nele (`simulacao.ts`, o override no
   (perfil, avisos, favoritas, filtros); o que ela criou fica sem autor (1116)
   — e a conversa de que ela era responsável fica presa (a correção da 1148
   rodou uma vez).
+- O celular de cada membro (1046) aparece na lista de Membros SÓ para
+  administradores, como o e-mail, e com barreira no banco (RLS de
+  `cb_celulares_dos_membros`). As regras estão em `meu-dia.md`.
 
 ### Responsável da conversa: só MEMBRO da conta (1148)
 Porte do #682. `conversations.assigned_agent_id` não tem FK; o gatilho
@@ -178,23 +181,24 @@ escrita. Pino `responsavel-e-membro-1148.test.ts`.
   Visualizador —, outro responsável = aviso "não é mais membro" e a lista
   relida) e o passo "Atribuir" do motor (atendente fixo que não é membro não
   recebe; o UPDATE devolve o gravado e o registro não diz "assigned" sobre o
-  que não pegou). Caminho novo que atribui faz o mesmo.
+  que não pegou nem sobre o que não achou — 0 linhas é "no conversation to
+  assign"). Caminho novo que atribui faz o mesmo.
 - ⚠️⚠️ **A trava é um PAR**: o gatilho lê o perfil do novo responsável `FOR
   KEY SHARE`, e `remove_account_member` trava o ALVO `FOR UPDATE` EXPLÍCITO
   (o UPDATE de `account_id` sozinho é NO KEY UPDATE, que não conflita com KEY
   SHARE: a atribuição passaria pela versão velha) e o CHAMADOR `FOR SHARE`,
   em ordem de `user_id`. Assim "atribuir a X" espera a remoção de X e relê, e
   atribuir A QUEM REMOVE não trava (em FOR UPDATE, deadlock). Recriar uma das
-  duas peças sem a outra reabre a corrida. Resíduo: atribuir ao novo dono no
-  instante de uma transferência de conta pode dar deadlock (detectado).
+  duas peças sem a outra reabre a corrida. Resíduo (deadlock, detectado: um
+  dos dois falha e repete): atribuir ao novo dono no instante de uma
+  transferência de conta; e, durante a remoção de X, UMA instrução que tira
+  conversa de X e dá outra a X (só SQL à mão: os caminhos do app tocam uma
+  conversa por vez, e o desfazer em lote só toca encerrada, sem responsável).
 - ⚠️ **A remoção solta as conversas ANTES de mover o perfil**: a trilha
   (1083) só acha o nome de quem saía enquanto ele é da conta. Cada conversa
   gera uma linha "pelo <admin>" e um UPDATE no tempo real; aviso, nenhum.
 - **Na Lixeira o gatilho está em `livres`** (roda na volta): a restauração já
   zera, na fotografia, quem saiu ou está suspenso.
-- O celular de cada membro (1046) aparece na lista de Membros SÓ para
-  administradores, como o e-mail, e com barreira no banco (RLS de
-  `cb_celulares_dos_membros`). As regras estão em `meu-dia.md`.
 
 ### Membro SUSPENSO (1067)
 Configurações → Membros: a coluna "Situação" (Ativo / Suspenso) e a chave, à

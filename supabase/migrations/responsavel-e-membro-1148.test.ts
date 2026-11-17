@@ -170,7 +170,8 @@ describe('1149 — (d) as policies VIGENTES do flow-media', () => {
 
   it('nenhuma (escrita nem leitura) aceita a pasta por usuário', () => {
     for (const nome of [...ESCRITA, LEITURA]) {
-      expect(ultima(nome).texto, nome).not.toMatch(/auth\.uid\(\)::text\s*=\s*\(storage\.foldername/i);
+      // `auth.uid()::text = …` ou `(SELECT auth.uid())::text = …`.
+      expect(ultima(nome).texto, nome).not.toMatch(/auth\.uid\(\)\)?::text\s*=\s*\(storage\.foldername/i);
     }
   });
 });

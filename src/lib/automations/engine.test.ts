@@ -177,6 +177,8 @@ const h = vi.hoisted(() => ({
      * valor = o gatilho do banco recusou quem não é membro.
      */
     responsavelGravado: undefined as string | null | undefined,
+    /** O UPDATE do "Atribuir" não acha conversa nenhuma (0 linhas). */
+    semConversaNoUpdate: false,
   },
 }));
 
@@ -220,6 +222,7 @@ vi.mock('./admin-client', () => {
         // O "Atribuir conversa" pede o responsável de volta (1148): o que o
         // banco gravou, que o gatilho pode ter trocado.
         if (/\bassigned_agent_id\b/.test(ops.colunas)) {
+          if (state.semConversaNoUpdate) return { data: [], error: null };
           const pedido = (ops.payload as { assigned_agent_id?: string | null }).assigned_agent_id ?? null;
           return {
             data: [
@@ -877,6 +880,7 @@ beforeEach(() => {
   ];
   h.state.erroNoPerfil = null;
   h.state.responsavelGravado = undefined;
+  h.state.semConversaNoUpdate = false;
 });
 
 describe('runAutomationsForTrigger — tenant isolation', () => {
@@ -2014,6 +2018,26 @@ describe('assign_conversation — alvo', () => {
     const detalhes = detalhesDoAtribuir();
     expect(detalhes).toContain('agent agente-1 is not a member of the account — conversation not assigned');
     expect(detalhes).not.toContain('assigned to agente-1');
+  });
+
+  it('1148: o UPDATE não achou conversa (ficha sem conversa) — o registro diz isso, não "assigned"', async () => {
+    // O lead de anúncio que entra pela API v1 tem ficha e card, sem conversa.
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [passoAtribuir];
+    h.state.membros = [agenteDaConta];
+    h.state.semConversaNoUpdate = true;
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: {},
+    });
+
+    const detalhes = detalhesDoAtribuir();
+    expect(detalhes).toContain('no conversation to assign');
+    expect(detalhes.some((d) => d?.startsWith('assigned to'))).toBe(false);
   });
 });
 

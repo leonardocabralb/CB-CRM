@@ -1074,6 +1074,7 @@
         "semResponsavel": "nobody available to assign",
         "responsavelSuspenso": "{nome} is suspended: the conversation was left unassigned",
         "responsavelForaDaConta": "{nome} is not a member of the account: the conversation was not assigned",
+        "semConversaParaAtribuir": "no conversation to assign",
         "campoVazio": "empty value: the field was not changed",
         "campoNaoGravavel": "this field can't be changed by an automation",
         "nomeRecusado": "the value doesn't look like a name: the name was not changed",
