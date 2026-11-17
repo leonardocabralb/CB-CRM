@@ -5,9 +5,11 @@ paths:
   - "src/lib/pipelines/etapas-padrao*"
   - "src/components/inbox/painel/painel-do-contato.tsx"
   - "src/app/*/pipelines/page.tsx"
+  - "src/components/pipelines/pipeline-settings.tsx"
+  - "src/lib/pipelines/etapas-para-salvar*"
 ---
 
-# Painel da conversa × negócio mudado por fora; etapas do funil novo
+# Painel da conversa × negócio mudado por fora; etapas do funil novo e do Gerenciar funil
 
 A regra geral do funil está em `funil.md`. Validação de 25/10/2026.
 
@@ -52,3 +54,21 @@ e o seletor de etapa ficou na antiga até recarregar (medido).
 - **Nada lê etapa pelo NOME** (ganho/perdido, degrau e situação são MARCAS;
   v1, automações e robô apontam por id). Por isso "Ganho" nasce SEM
   `resultado`, como a "Won": marcá-la é decisão do operador.
+
+### Gerenciar funil: etapa na hora, "Salvar" sem ressuscitar (porte #679)
+
+O diálogo em si (lê do banco a cada abertura, `aberturaRef`, `gravacaoRef`)
+está em `funil.md`, "Concorrência do quadro".
+
+- **Adicionar e remover etapa avisam o quadro na hora** (`onStagesChanged`,
+  logo depois da escrita que deu certo e antes da cerca da abertura): a etapa
+  já está no banco, e o quadro só mudava depois do "Salvar".
+- ⚠️ **`refreshStages` relê por `buscarEtapas`**: o `loadStages` devolve `[]`
+  na falha e o quadro perdia todas as colunas. Falhou = o quadro fica.
+- ⚠️⚠️ **O "Salvar" grava só as etapas que AINDA existem**
+  (`etapasParaSalvar`, ids lidos logo antes, dentro da mesma gravação
+  registrada): o `upsert` por `id` INSERE a que não acha, e a etapa que outro
+  admin apagou com a janela aberta voltava. A descartada vira toast
+  (`toastStagesDeletedElsewhere`). Leitura que falha não grava nada. Fresta
+  que fica: apagar entre a leitura e o upsert. Nunca o `reconcileStages` do
+  original (semeia pelas props).

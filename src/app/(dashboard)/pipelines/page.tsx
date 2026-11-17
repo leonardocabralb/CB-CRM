@@ -766,12 +766,17 @@ function PipelinesPageInner() {
     if (!selectedPipelineId) return;
     versaoDoQuadroRef.current += 1;
     const funil = selectedPipelineId;
-    const etapas = await loadStages(funil);
+    // ⚠️ `buscarEtapas`, não `loadStages`: na falha este devolve `[]`, e o
+    // quadro perdia TODAS as colunas até recarregar a página — desde o porte
+    // #679 isto roda a cada etapa adicionada ou removida no Gerenciar funil.
+    // Falhou: o quadro fica como está.
+    const etapas = await buscarEtapas(funil);
     // A mesma cerca do `refreshDeals`, para quem salva em Gerenciar funil e
     // troca de funil logo depois.
     if (funilAbertoRef.current !== funil) return;
+    if (!etapas) return;
     setStages(etapas);
-  }, [loadStages, selectedPipelineId]);
+  }, [buscarEtapas, selectedPipelineId]);
 
   const refreshDeals = useCallback(async () => {
     if (!selectedPipelineId) return;

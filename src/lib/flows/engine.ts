@@ -39,7 +39,7 @@ import {
   engineSendMedia,
   engineSendText,
 } from "./meta-send";
-import { decideFallback, resolveFallbackPolicy } from "./fallback";
+import { decideFallback, resolveFallbackPolicy, type FallbackAction } from "./fallback";
 import {
   abortActiveRunsForContact,
   encerrarRunDeRoboDesativado,
@@ -74,6 +74,7 @@ import {
   type StartNodeConfig,
   type KeywordTriggerConfig,
   type MoveDealStageNodeConfig,
+  MAX_NOS_POR_AVANCO,
 } from "./types";
 
 // ============================================================
@@ -322,21 +323,23 @@ async function loadFlow(
  * `node_key`. The advance loop is then in-memory — a 5-node
  * auto-advancing chain costs one SELECT, not five.
  *
- * Returns an empty map on error so the caller can still dispatch
- * cleanly (every subsequent .get() returns undefined → the run
- * fails with node_not_found, same as the old per-node lookup).
+ * ⚠️ `null` = "não sei" (porte #683): a leitura que FALHA não é robô sem
+ * nós. O mapa vazio de antes fazia a run ATIVA de um robô sadio terminar
+ * `failed` (`current_node_not_found`) por um erro passageiro do banco, e o
+ * robô novo nascer e falhar no primeiro nó. Quem chama decide o que "não
+ * sei" quer dizer ali.
  */
 async function loadAllNodes(
   db: AdminClient,
   flowId: string,
-): Promise<Map<string, FlowNodeRow>> {
+): Promise<Map<string, FlowNodeRow> | null> {
   const { data, error } = await db
     .from("flow_nodes")
     .select("*")
     .eq("flow_id", flowId);
   if (error) {
     console.error("[flows] loadAllNodes error:", error.message);
-    return new Map();
+    return null;
   }
   const map = new Map<string, FlowNodeRow>();
   for (const row of (data ?? []) as FlowNodeRow[]) {
@@ -764,9 +767,10 @@ async function advanceFromNodeKey(
   nodes: Map<string, FlowNodeRow>,
 ): Promise<{ outcome: "advanced" | "completed" | "handed_off" }> {
   let currentKey: string | null = startNodeKey;
-  // Defensive cap — if a flow has a cycle (which the validator
-  // SHOULD catch but doesn't yet in v1), we bail rather than loop.
-  for (let safety = 0; safety < 64; safety += 1) {
+  // Defensive cap — a ativação recusa ciclo de nós automáticos e cadeia
+  // acima de `MAX_CADEIA_AUTOMATICA` (porte #674/#683; o mesmo teto, em
+  // `types.ts`). O corte fica para o robô que escapou da validação.
+  for (let safety = 0; safety < MAX_NOS_POR_AVANCO; safety += 1) {
     if (!currentKey) {
       await logEvent(db, run.id, "error", null, {
         reason: "next_node_key was null mid-advance",
@@ -1170,6 +1174,17 @@ export async function dispatchInboundToFlows(
         loadAllNodes(db, activeRun.flow_id),
       ]);
       if (!robo || robo.status === "active") {
+        // ⚠️ Os nós não vieram ("não sei", porte #683): a run de um robô
+        // ativo NÃO termina por um erro passageiro. A mensagem fica com o
+        // robô — IA e automações de mensagem continuam caladas, como em
+        // qualquer resposta que o robô trata — e a próxima mensagem tenta
+        // de novo. Antes, a run virava `failed` (`current_node_not_found`).
+        if (!nodes) {
+          await logEvent(db, activeRun.id, "error", activeRun.current_node_key, {
+            reason: "nodes_load_failed",
+          });
+          return { consumed: true, flow_run_id: activeRun.id, outcome: "run_error" };
+        }
         return handleReplyForActiveRun(db, activeRun, input.message, nodes);
       }
       const fim = await encerrarRunDeRoboDesativado(db, activeRun.id);
@@ -1195,6 +1210,10 @@ export async function dispatchInboundToFlows(
       return { consumed: false, outcome: "no_match" };
     }
     const nodes = await loadAllNodes(db, flow.id);
+    // Os nós não vieram: nenhuma run nasce às cegas (antes ela nascia e
+    // terminava `failed` no primeiro nó, com a mensagem engolida). A
+    // mensagem segue como se não houvesse robô (porte #683).
+    if (!nodes) return { consumed: false, outcome: "no_match" };
     return startNewRun(db, flow, input, nodes);
   } catch (err) {
     console.error(
@@ -1324,20 +1343,35 @@ async function handleReplyForActiveRun(
     (await loadFlow(db, run.flow_id))?.fallback_policy,
   );
   const newReprompts = run.reprompt_count + 1;
-  await db
-    .from("flow_runs")
-    .update({ reprompt_count: newReprompts })
-    .eq("id", run.id);
-
   const action = decideFallback({ policy, reprompt_count: newReprompts });
-  await logEvent(db, run.id, "fallback_fired", run.current_node_key, {
+  // ⚠️⚠️ A CERCA (porte #683): o contador — e, quando a política esgota, o
+  // fim da run — só muda se a run ainda está como foi lida. Quem perde a
+  // corrida não manda nada (ver `reivindicarFallback`).
+  const venceu = await reivindicarFallback(db, run, currentNode.node_key, newReprompts, action);
+  if (action.type === "ignore") {
+    // Don't consume — let automations have a shot at it. Nada sai ao
+    // cliente: perder a corrida aqui não muda nada.
+    if (venceu) {
+      await logEvent(db, run.id, "fallback_fired", currentNode.node_key, {
+        action: action.type,
+        reprompt_count: newReprompts,
+      });
+    }
+    return { consumed: false, flow_run_id: run.id, outcome: "no_match" };
+  }
+  if (!venceu) {
+    // Outra resposta do cliente, chegada junto, já re-perguntou ou encerrou
+    // (ou o robô andou). Esta fica com o robô e não manda nada.
+    await logEvent(db, run.id, "error", currentNode.node_key, {
+      reason: "lost_race_during_fallback",
+      action: action.type,
+    });
+    return { consumed: true, flow_run_id: run.id, outcome: "duplicate_inbound_ignored" };
+  }
+  await logEvent(db, run.id, "fallback_fired", currentNode.node_key, {
     action: action.type,
     reprompt_count: newReprompts,
   });
-  if (action.type === "ignore") {
-    // Don't consume — let automations have a shot at it.
-    return { consumed: false, flow_run_id: run.id, outcome: "no_match" };
-  }
   if (action.type === "reprompt") {
     // Re-send the same prompt. Same node, no current_node_key change.
     if (
@@ -1400,12 +1434,56 @@ async function handleReplyForActiveRun(
     await logEvent(db, run.id, "handoff", run.current_node_key, {
       reason: "fallback_exhausted",
     });
-    await endRun(db, run.id, "handed_off", "fallback_exhausted");
+    // A run já saiu `handed_off` na reivindicação (uma vez só).
     return { consumed: true, flow_run_id: run.id, outcome: "handed_off" };
   }
-  // action.type === 'end'
-  await endRun(db, run.id, "completed", "fallback_exhausted_end");
+  // action.type === 'end' — a run já saiu `completed` na reivindicação.
   return { consumed: true, flow_run_id: run.id, outcome: "completed" };
+}
+
+/**
+ * ⚠️⚠️ A CERCA da re-pergunta e do esgotamento (porte #683, SEM o
+ * `transition_seq` da 052 do original, que não temos). Duas respostas fora
+ * do esperado chegando juntas (dois POSTs do webhook) liam a mesma run e
+ * gravavam o contador sem condição: as duas re-perguntavam — os botões
+ * chegavam em dobro — ou as duas passavam à equipe. Agora o UPDATE só passa
+ * com a run ainda como foi lida (ativa, no mesmo nó, com o mesmo contador),
+ * e a política que ESGOTA já encerra a run neste mesmo UPDATE. Quem perde,
+ * ou leva erro do banco ("não sei"), não manda nada: a próxima mensagem
+ * decide de novo. O contrato de falha da re-pergunta segue o NOSSO
+ * (`reprompt_interactive_failed` encerra a run).
+ */
+async function reivindicarFallback(
+  db: AdminClient,
+  run: FlowRunRow,
+  noAtual: string,
+  novoContador: number,
+  acao: FallbackAction,
+): Promise<boolean> {
+  const fim =
+    acao.type === "handoff"
+      ? { status: "handed_off", end_reason: "fallback_exhausted" }
+      : acao.type === "end"
+        ? { status: "completed", end_reason: "fallback_exhausted_end" }
+        : null;
+  const { data, error } = await db
+    .from("flow_runs")
+    .update({
+      reprompt_count: novoContador,
+      ...(fim ? { ...fim, ended_at: new Date().toISOString() } : {}),
+    })
+    .eq("id", run.id)
+    .eq("status", "active")
+    .eq("current_node_key", noAtual)
+    .eq("reprompt_count", run.reprompt_count)
+    .select("id");
+  if (error) {
+    console.error("[flows] reivindicarFallback error:", error.message);
+    return false;
+  }
+  if (!Array.isArray(data) || data.length === 0) return false;
+  run.reprompt_count = novoContador;
+  return true;
 }
 
 async function startNewRun(
@@ -1549,6 +1627,8 @@ export async function startFlowForContact(args: {
   if (!flow.entry_node_id) return { ok: false, detail: "robô sem nó de entrada" };
 
   const nodes = await loadAllNodes(db, flow.id);
+  // "Não sei" não é "sem nós" (porte #683): a run ativa do contato fica.
+  if (!nodes) return { ok: false, detail: "falha ao ler os nós do robô" };
   if (nodes.size === 0) return { ok: false, detail: "robô sem nós" };
 
   const encerradas = await abortActiveRunsForContact({

@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   MIN_TERMO_DE_BUSCA,
   ramosDaBuscaDeContato,
+  ramosDaBuscaNaTabela,
+  temCaraDeTelefone,
   variantesDoTermoTelefonico,
 } from './busca-remota';
 import { variantesDoNonoDigito } from './telefone';
@@ -134,5 +136,101 @@ describe('ramosDaBuscaDeContato', () => {
     expect(nome('l*k*a')).toBe('name.imatch."l\\\\*k\\\\*a"');
     expect(nome('50%')).toBe('name.imatch."50%"');
     expect(nome('a_b')).toBe('name.imatch."a_b"');
+  });
+
+  it('⚠️ a saída dos SELETORES não muda com a busca da tabela (porte #679, 17/11/2026)', () => {
+    // Os seletores de cliente (negócio, tarefa, agenda) seguem a régua de
+    // antes: a busca da tela de Contatos ganhou função própria
+    // (`ramosDaBuscaNaTabela`), montada com as mesmas peças. A fotografia foi
+    // tirada ANTES de separar as peças.
+    const termos = [
+      'ab',
+      'ana',
+      '@joana',
+      'ana.silva',
+      '(83) 98000-0016',
+      '98000-0016',
+      '+55 83 8000-0016',
+      '5583980000016',
+      'silva, jr',
+      'l*k*a',
+      'joao123@gmail.com',
+      'Maria 2',
+    ];
+    expect(Object.fromEntries(termos.map((t) => [t, ramosDaBuscaDeContato(t)]))).toMatchInlineSnapshot(`
+      {
+        "(83) 98000-0016": "name.imatch."\\\\(83\\\\) 98000-0016",wa_username.imatch."\\\\(83\\\\) 98000-0016",instagram_username.imatch."\\\\(83\\\\) 98000-0016",phone_normalized.imatch."83980000016",phone_normalized.imatch."8380000016"",
+        "+55 83 8000-0016": "name.imatch."\\\\+55 83 8000-0016",wa_username.imatch."\\\\+55 83 8000-0016",instagram_username.imatch."\\\\+55 83 8000-0016",phone_normalized.imatch."558380000016",phone_normalized.imatch."5583980000016"",
+        "5583980000016": "name.imatch."5583980000016",wa_username.imatch."5583980000016",instagram_username.imatch."5583980000016",phone_normalized.imatch."5583980000016",phone_normalized.imatch."558380000016"",
+        "98000-0016": "name.imatch."98000-0016",wa_username.imatch."98000-0016",instagram_username.imatch."98000-0016",phone_normalized.imatch."980000016",phone_normalized.imatch."80000016"",
+        "@joana": "name.imatch."@joana",wa_username.imatch."joana",instagram_username.imatch."joana"",
+        "Maria 2": "name.imatch."Maria 2",wa_username.imatch."Maria 2",instagram_username.imatch."Maria 2",phone_normalized.imatch."2"",
+        "ab": "name.imatch."ab",wa_username.imatch."ab",instagram_username.imatch."ab"",
+        "ana": "name.imatch."ana",wa_username.imatch."ana",instagram_username.imatch."ana"",
+        "ana.silva": "name.imatch."ana\\\\.silva",wa_username.imatch."ana\\\\.silva",instagram_username.imatch."ana\\\\.silva"",
+        "joao123@gmail.com": "name.imatch."joao123@gmail\\\\.com",wa_username.imatch."joao123@gmail\\\\.com",instagram_username.imatch."joao123@gmail\\\\.com",phone_normalized.imatch."123"",
+        "l*k*a": "name.imatch."l\\\\*k\\\\*a",wa_username.imatch."l\\\\*k\\\\*a",instagram_username.imatch."l\\\\*k\\\\*a"",
+        "silva, jr": "name.imatch."silva, jr",wa_username.imatch."silva, jr",instagram_username.imatch."silva, jr"",
+      }
+    `);
+  });
+});
+
+describe('temCaraDeTelefone', () => {
+  it('número digitado de qualquer jeito', () => {
+    for (const termo of ['(83) 98874-5316', '+55 83 98874-5316', '83988745316', '8', '(83)', ' 98874.5316 ']) {
+      expect(temCaraDeTelefone(termo)).toBe(true);
+    }
+  });
+
+  it('e-mail, nome com número e pontuação solta não são telefone', () => {
+    for (const termo of ['joao123@gmail.com', 'Maria 2', 'ana', '( )', '+', '', '83 ana']) {
+      expect(temCaraDeTelefone(termo)).toBe(false);
+    }
+  });
+});
+
+describe('ramosDaBuscaNaTabela (tela de Contatos, porte #679)', () => {
+  it('sem termo, sem filtro', () => {
+    expect(ramosDaBuscaNaTabela('')).toBeNull();
+    expect(ramosDaBuscaNaTabela('   ')).toBeNull();
+  });
+
+  it('⚠️ uma letra continua filtrando: a tabela não tem o piso dos seletores', () => {
+    expect(ramosDaBuscaNaTabela('a')).toBe(
+      'name.imatch."a",email.imatch."a",wa_username.imatch."a",instagram_username.imatch."a"',
+    );
+  });
+
+  it('telefone formatado acha a ficha gravada só com dígitos, nas duas grafias do nono', () => {
+    const ramos = ramosDaBuscaNaTabela('(83) 98874-5316')!;
+    expect(ramos).toContain('phone_normalized.imatch."83988745316"');
+    expect(ramos).toContain('phone_normalized.imatch."8388745316"');
+    // Nunca contra `phone`, que guarda o que foi digitado.
+    expect(ramos.split(',').some((r) => r.startsWith('phone.'))).toBe(false);
+  });
+
+  it('⚠️ e-mail com dígito NÃO vira busca de telefone (49% dos e-mails têm dígito)', () => {
+    const ramos = ramosDaBuscaNaTabela('joao123@gmail.com')!;
+    expect(ramos).not.toContain('phone_normalized');
+    expect(ramos).toContain('email.imatch."joao123@gmail\\\\.com"');
+  });
+
+  it('nome com número também não', () => {
+    expect(ramosDaBuscaNaTabela('Maria 2')).not.toContain('phone_normalized');
+  });
+
+  it('o @ acha a ficha do Direct e a só-BSUID, sem o @ digitado', () => {
+    const ramos = ramosDaBuscaNaTabela('@joana')!;
+    expect(ramos).toContain('wa_username.imatch."joana"');
+    expect(ramos).toContain('instagram_username.imatch."joana"');
+    expect(ramosDaBuscaNaTabela('@')).toBe('name.imatch."@",email.imatch."@"');
+  });
+
+  it('o termo perigoso viaja literal e inteiro (vírgula, parêntese, curinga)', () => {
+    expect(ramosDaBuscaNaTabela('silva, jr')).toBe(
+      'name.imatch."silva, jr",email.imatch."silva, jr",wa_username.imatch."silva, jr",instagram_username.imatch."silva, jr"',
+    );
+    expect(ramosDaBuscaNaTabela('l*k*a')!.split(',')[0]).toBe('name.imatch."l\\\\*k\\\\*a"');
   });
 });

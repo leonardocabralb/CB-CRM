@@ -30,11 +30,11 @@ import {
   alcancaProposta,
   desqualificacaoQueVale,
   ehDegrau,
-  marcaDaReuniaoQueVale,
   sugerirClasse,
   type Degrau,
 } from "@/lib/funil/degraus";
 import { lerSituacaoDoCliente } from "@/lib/pipelines/situacao-do-cliente";
+import { etapasParaSalvar } from "@/lib/pipelines/etapas-para-salvar";
 import {
   CARTOES_DE_CUSTO,
   escreverPainel,
@@ -231,49 +231,13 @@ export function PipelineSettings({
 
   async function handleSave() {
     setSaving(true);
-
-    // One upsert for all stages — batches N stage writes into a single
-    // round-trip. Previous implementation did N sequential UPDATEs which
-    // latency-scaled linearly with stage count.
-    const stageRows = localStages.map((s, i) => ({
-      id: s.id,
-      pipeline_id: s.pipeline_id,
-      name: s.name,
-      color: s.color,
-      position: i,
-      // 950: etapa marcada carimba ganho/perdido por gatilho no banco.
-      resultado: s.resultado ?? null,
-      // 975: o degrau do funil de eficiência — independente do resultado.
-      degrau: s.degrau ?? null,
-      // 1058/1063: o que entrar na etapa diz sobre a reunião (aviso de
-      // no-show, tela Reuniões). Da proposta em diante ela não vale — o degrau
-      // já diz "compareceu, com proposta" — e é limpa aqui.
-      desfecho_da_reuniao: marcaDaReuniaoQueVale(s.degrau, s.desfecho_da_reuniao),
-      // 1065: o que o botão de avançar recomenda depois dela (NULL = automático).
-      proximas_etapas: s.proximas_etapas ?? null,
-      // 1070: o que estar nela diz sobre o contrato (faixa da conversa).
-      situacao_do_cliente: s.situacao_do_cliente ?? null,
-      // 1091: desqualificação — só vale na perda (o CHECK recusa o resto).
-      desqualificacao: desqualificacaoQueVale(s.degrau, s.desqualificacao),
-      // 1112: o campo Lista do motivo de quem entra na etapa (nulo = não
-      // pergunta). Com o catálogo que falhou, volta o valor lido do banco.
-      campo_do_motivo_id: s.campo_do_motivo_id ?? null,
-    }));
-
     const abertura = aberturaRef.current;
-    const [renameRes, stagesRes] = await registrarGravacao(
-      Promise.all([
-        supabase
-          .from("pipelines")
-          .update({ name: name.trim(), painel: escreverPainel(painel) })
-          .eq("id", pipeline.id),
-        supabase.from("pipeline_stages").upsert(stageRows, { onConflict: "id" }),
-      ]),
-    );
-
+    // A leitura dos ids entra na MESMA gravação registrada: a reabertura
+    // espera o salvamento inteiro, não só o upsert.
+    const resultado = await registrarGravacao(salvarFunil());
     setSaving(false);
 
-    if (renameRes.error || stagesRes.error) {
+    if (!resultado.ok) {
       toast.error(t("toastFailedSave"));
       return;
     }
@@ -284,6 +248,42 @@ export function PipelineSettings({
     onPipelinesChanged();
     onStagesChanged();
     toast.success(t("toastSaved"));
+    // A etapa que outro admin apagou com esta janela aberta não voltou — e o
+    // que foi mudado nela não foi gravado. Dizer, em vez de sumir calado.
+    if (resultado.descartadas > 0) {
+      toast.warning(t("toastStagesDeletedElsewhere", { count: resultado.descartadas }));
+    }
+  }
+
+  /**
+   * Nome, painel e etapas. ⚠️ As etapas vão num `upsert` por `id` (uma ida só
+   * ao banco), e o upsert INSERE a que não acha: a etapa que outro admin
+   * apagou com esta janela aberta voltava (porte #679). Por isso lê antes os
+   * ids que ainda existem e grava só esses (`etapasParaSalvar`); a leitura
+   * que falha não grava nada.
+   */
+  async function salvarFunil(): Promise<{ ok: false } | { ok: true; descartadas: number }> {
+    const existentes = await supabase
+      .from("pipeline_stages")
+      .select("id")
+      .eq("pipeline_id", pipeline.id);
+    if (existentes.error) return { ok: false };
+    const stageRows = etapasParaSalvar(
+      localStages,
+      new Set((existentes.data ?? []).map((linha) => linha.id as string)),
+    );
+
+    const [renameRes, stagesRes] = await Promise.all([
+      supabase
+        .from("pipelines")
+        .update({ name: name.trim(), painel: escreverPainel(painel) })
+        .eq("id", pipeline.id),
+      stageRows.length > 0
+        ? supabase.from("pipeline_stages").upsert(stageRows, { onConflict: "id" })
+        : Promise.resolve({ error: null }),
+    ]);
+    if (renameRes.error || stagesRes.error) return { ok: false };
+    return { ok: true, descartadas: localStages.length - stageRows.length };
   }
 
   function handleAddStage() {
@@ -308,6 +308,10 @@ export function PipelineSettings({
       toast.error(t("toastFailedAddStage"));
       return;
     }
+    // A etapa já está no banco: o quadro mostra a coluna AGORA, não só depois
+    // do "Salvar" (porte #679). Antes da cerca da abertura — o quadro reflete
+    // o banco mesmo que esta janela já tenha sido fechada.
+    onStagesChanged();
     if (aberturaRef.current !== abertura) return;
     // Pela atualização funcional: outra escrita pode ter mexido na lista
     // enquanto esta estava no ar (duas lixeiras seguidas, por exemplo).
@@ -389,6 +393,8 @@ export function PipelineSettings({
       toast.error(t("toastFailedDeleteStage"));
       return;
     }
+    // A coluna sai do quadro agora (porte #679), como no "Adicionar".
+    onStagesChanged();
     if (aberturaRef.current !== abertura) return;
     setLocalStages((atual) => atual.filter((s) => s.id !== stageId));
   }

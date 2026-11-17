@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
+import { validateFlowForActivation, type ValidationIssue } from '@/lib/flows/validate'
 
 /**
  * GET   /api/flows/[id]  — fetch one flow with its nodes.
@@ -141,6 +142,15 @@ export async function PUT(
 
   const admin = supabaseAdmin()
 
+  // ⚠️ Robô ATIVO: o que vai ao ar passa pelo validador da ativação (porte
+  // do "validate live saves" do #674). Sem isto, ativar um robô válido e
+  // depois salvar um ciclo de nós que não esperam o cliente — ou uma cadeia
+  // acima do teto do motor — punha o defeito no ar sem passar por ativação
+  // nenhuma. Antes de qualquer escrita. A conexão e as referências (acervo,
+  // campos) continuam conferidas só na ativação.
+  const recusa = await recusaDoRoboAtivo(admin, id, body)
+  if (recusa) return NextResponse.json(recusa.corpo, { status: recusa.status })
+
   // ⚠️⚠️ OS NÓS NUMA TRANSAÇÃO (1104, adaptado do #674 do original). Até aqui
   // eram duas idas ao banco: apagar TODOS e inserir os novos. Com o INSERT
   // recusado (tipo fora do CHECK de `node_type` — nó novo exige migration —,
@@ -205,6 +215,64 @@ export async function PUT(
       .order('created_at', { ascending: true }),
   ])
   return NextResponse.json({ flow, nodes: nodes ?? [] })
+}
+
+/**
+ * Salvar robô ATIVO: o robô COMO FICARIA (o corpo por cima do que está no
+ * banco; sem `nodes`, os nós de hoje) passa por `validateFlowForActivation`.
+ * Problema que impede ativar é 422 com a lista — o editor já mostra os
+ * mesmos no painel. Robô em rascunho ou arquivado salva como sempre
+ * (rascunho pode ficar incompleto). Leitura que falha é 500: salvar sem
+ * conferir seria o defeito que isto existe para impedir.
+ */
+async function recusaDoRoboAtivo(
+  admin: ReturnType<typeof supabaseAdmin>,
+  flowId: string,
+  body: PutBody,
+): Promise<{ status: number; corpo: { error: string; issues?: ValidationIssue[] } } | null> {
+  const { data: atual, error } = await admin
+    .from('flows')
+    .select('name, status, trigger_type, trigger_config, entry_node_id')
+    .eq('id', flowId)
+    .maybeSingle()
+  if (error) return { status: 500, corpo: { error: error.message } }
+  const robo = atual as {
+    name: string
+    status: string
+    trigger_type: 'keyword' | 'first_inbound_message' | 'manual'
+    trigger_config: Record<string, unknown> | null
+    entry_node_id: string | null
+  } | null
+  if (!robo || robo.status !== 'active') return null
+
+  let nos = body.nodes
+  if (nos === undefined) {
+    const { data, error: nosErr } = await admin
+      .from('flow_nodes')
+      .select('node_key, node_type, config')
+      .eq('flow_id', flowId)
+    if (nosErr) return { status: 500, corpo: { error: nosErr.message } }
+    nos = (data ?? []) as NonNullable<PutBody['nodes']>
+  }
+
+  const issues = validateFlowForActivation(
+    {
+      name: body.name ?? robo.name,
+      trigger_type: body.trigger_type ?? robo.trigger_type,
+      trigger_config: body.trigger_config ?? robo.trigger_config ?? {},
+      entry_node_id: body.entry_node_id !== undefined ? body.entry_node_id : robo.entry_node_id,
+    },
+    nos,
+  )
+  if (!issues.some((i) => i.severity === 'error')) return null
+  return {
+    status: 422,
+    corpo: {
+      error:
+        'Este robô está ativo: corrija os problemas apontados no editor antes de salvar, ou desative-o.',
+      issues,
+    },
+  }
 }
 
 export async function DELETE(

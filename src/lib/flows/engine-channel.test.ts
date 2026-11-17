@@ -39,6 +39,8 @@ let flowsNoBanco: Record<string, unknown>[];
 let nosNoBanco: Record<string, unknown>[];
 /** O run que `loadActiveRunForContact` enxerga. Vazio = nenhum em curso. */
 let runsAtivos: Record<string, unknown>[];
+/** A leitura de `flow_nodes` falha (erro passageiro do banco). */
+let erroNosNos: boolean;
 
 vi.mock("./admin-client", () => ({
   supabaseAdmin: () => makeDb(),
@@ -48,6 +50,10 @@ function makeDb() {
   let table = "";
   let mode: "select" | "insert" | "update" = "select";
   let payload: Record<string, unknown> = {};
+  // Os filtros de um UPDATE em `flow_runs`, aplicados como o banco: a linha
+  // só muda (e só volta no `.select()`) se casar com TODOS. É o que deixa a
+  // cerca da re-pergunta (porte #683) e a do avanço serem exercitadas.
+  let filtros: [string, unknown][] = [];
 
   const builder: Record<string, unknown> = {
     select: () => builder,
@@ -65,17 +71,22 @@ function makeDb() {
     update: (p: Record<string, unknown>) => {
       mode = "update";
       payload = p;
-      if (table === "flow_runs") {
-        estado.runs["r1"] = { ...(estado.runs["r1"] ?? {}), ...p };
-      }
+      filtros = [];
       return builder;
     },
-    eq: () => builder,
-    is: () => builder,
+    eq: (k: string, v: unknown) => {
+      if (mode === "update") filtros.push([k, v]);
+      return builder;
+    },
+    is: (k: string, v: unknown) => {
+      if (mode === "update") filtros.push([k, v]);
+      return builder;
+    },
     order: () => builder,
     limit: () => {
       if (table === "flow_runs" && mode === "select") {
-        return Promise.resolve({ data: runsAtivos, error: null });
+        // Uma CÓPIA por leitura, como o banco: cada requisição tem a sua.
+        return Promise.resolve({ data: runsAtivos.map((r) => ({ ...r })), error: null });
       }
       return Promise.resolve({ data: [], error: null });
     },
@@ -85,17 +96,27 @@ function makeDb() {
       }
       if (table === "flow_runs" && mode === "insert") {
         estado.runInserido = payload;
-        estado.runs["r1"] = { ...payload, id: "r1" };
+        estado.runs["r1"] = { reprompt_count: 0, vars: {}, ...payload, id: "r1" };
         return Promise.resolve({ data: { ...payload, id: "r1" }, error: null });
       }
       return Promise.resolve({ data: null, error: null });
     },
     single: () => builder.maybeSingle as never,
     then: (resolve: (v: unknown) => void) => {
+      if (table === "flow_runs" && mode === "update") {
+        const linha = { ...(runsAtivos[0] ?? {}), ...(estado.runs["r1"] ?? {}) };
+        const casa = filtros.every(([k, v]) =>
+          v === null ? linha[k] === null || linha[k] === undefined : linha[k] === v,
+        );
+        if (!casa) return resolve({ data: [], error: null });
+        estado.runs["r1"] = { ...(estado.runs["r1"] ?? {}), ...payload };
+        return resolve({ data: [{ id: "r1" }], error: null });
+      }
       if (table === "flows" && mode === "select") {
         return resolve({ data: flowsNoBanco, error: null });
       }
       if (table === "flow_nodes" && mode === "select") {
+        if (erroNosNos) return resolve({ data: null, error: { message: "banco fora" } });
         return resolve({ data: nosNoBanco, error: null });
       }
       if (table === "messages" && mode === "select") {
@@ -163,6 +184,7 @@ beforeEach(() => {
   flowsNoBanco = [{ ...FLOW_BASE }];
   nosNoBanco = NODES;
   runsAtivos = [];
+  erroNosNos = false;
   sendInteractiveButtons.mockReset();
   sendInteractiveList.mockReset();
   sendText.mockReset();
@@ -632,5 +654,154 @@ describe("collect_input: a pergunta sai pelo canal do run (revisão da Fase 4)",
     expect(sendText).toHaveBeenCalledWith(
       expect.objectContaining({ text: "Qual seu nome?", preferredChannelId: "ch-oficial" }),
     );
+  });
+});
+
+// ============================================================
+// Porte #683 (17/11/2026): a leitura dos nós que falha é "não sei", e a
+// re-pergunta tem cerca.
+// ============================================================
+
+describe("leitura dos nós que FALHA = não sei (porte #683)", () => {
+  const runNoMenu = () => ({
+    id: "r1",
+    flow_id: "f1",
+    account_id: "acct",
+    user_id: "u1",
+    contact_id: "c1",
+    conversation_id: "conv1",
+    status: "active",
+    current_node_key: "menu",
+    vars: {},
+    reprompt_count: 0,
+    channel_id: "ch-oficial",
+  });
+  const resposta = {
+    ...INPUT,
+    message: { kind: "text" as const, text: "oi de novo", meta_message_id: "wamid.9" },
+    isFirstInboundMessage: false,
+  };
+
+  it("⚠️ a run ATIVA não termina: a mensagem fica com o robô e a próxima tenta de novo", async () => {
+    runsAtivos = [runNoMenu()];
+    erroNosNos = true;
+    const { dispatchInboundToFlows } = await import("./engine");
+
+    const r = await dispatchInboundToFlows(resposta);
+
+    expect(r).toEqual({ consumed: true, flow_run_id: "r1", outcome: "run_error" });
+    // Nada foi gravado na run (antes: `failed` + `current_node_not_found`).
+    expect(estado.runs["r1"]).toBeUndefined();
+    expect(estado.eventos.some((e) => e.payload.reason === "nodes_load_failed")).toBe(true);
+    expect(sendInteractiveButtons).not.toHaveBeenCalled();
+  });
+
+  it("robô novo não nasce às cegas: a mensagem segue como se não houvesse robô", async () => {
+    erroNosNos = true;
+    const { dispatchInboundToFlows } = await import("./engine");
+
+    const r = await dispatchInboundToFlows(INPUT);
+
+    expect(r).toEqual({ consumed: false, outcome: "no_match" });
+    expect(estado.runInserido).toBeNull();
+  });
+
+  it("startFlowForContact diz que não leu, em vez de \"robô sem nós\"", async () => {
+    erroNosNos = true;
+    const { startFlowForContact } = await import("./engine");
+
+    const r = await startFlowForContact({
+      accountId: "acct",
+      userId: "u1",
+      contactId: "c1",
+      conversationId: "conv1",
+      flowId: "f1",
+    });
+
+    expect(r).toEqual({ ok: false, detail: "falha ao ler os nós do robô" });
+    expect(estado.runInserido).toBeNull();
+  });
+});
+
+describe("re-pergunta com cerca: duas respostas juntas (porte #683)", () => {
+  const lista = {
+    id: "n2",
+    flow_id: "f1",
+    node_key: "menu",
+    node_type: "send_list",
+    config: {
+      text: "Escolha",
+      button_label: "Ver",
+      sections: [{ title: "", rows: [{ reply_id: "a", title: "A", next_node_key: "end" }] }],
+    },
+  };
+  const runNoMenu = (reprompt_count: number) => ({
+    id: "r1",
+    flow_id: "f1",
+    account_id: "acct",
+    user_id: "u1",
+    contact_id: "c1",
+    conversation_id: "conv1",
+    status: "active",
+    current_node_key: "menu",
+    vars: {},
+    reprompt_count,
+    channel_id: "ch-oficial",
+  });
+  const resposta = (texto: string, id: string) => ({
+    ...INPUT,
+    message: { kind: "text" as const, text: texto, meta_message_id: id },
+    isFirstInboundMessage: false,
+  });
+
+  it("⚠️ só UMA re-pergunta sai; a outra resposta fica com o robô sem mandar nada", async () => {
+    nosNoBanco = [NODES[0], lista, NODES[2]];
+    runsAtivos = [runNoMenu(0)];
+    sendInteractiveList.mockResolvedValue({ whatsapp_message_id: "wamid.out" });
+    const { dispatchInboundToFlows } = await import("./engine");
+
+    const [a, b] = await Promise.all([
+      dispatchInboundToFlows(resposta("hã?", "wamid.a")),
+      dispatchInboundToFlows(resposta("hein?", "wamid.b")),
+    ]);
+
+    expect(sendInteractiveList).toHaveBeenCalledTimes(1);
+    expect([a.outcome, b.outcome].sort()).toEqual(["duplicate_inbound_ignored", "fallback_fired"]);
+    expect(a.consumed && b.consumed).toBe(true);
+    expect(estado.runs["r1"]?.reprompt_count).toBe(1);
+    expect(estado.eventos.filter((e) => e.payload.reason === "lost_race_during_fallback")).toHaveLength(1);
+  });
+
+  it("⚠️ a política que esgota encerra UMA vez, no mesmo UPDATE da cerca", async () => {
+    // Padrão: 2 re-perguntas; a 3ª resposta fora do esperado passa à equipe.
+    nosNoBanco = [NODES[0], lista, NODES[2]];
+    runsAtivos = [runNoMenu(2)];
+    const { dispatchInboundToFlows } = await import("./engine");
+
+    const [a, b] = await Promise.all([
+      dispatchInboundToFlows(resposta("hã?", "wamid.a")),
+      dispatchInboundToFlows(resposta("hein?", "wamid.b")),
+    ]);
+
+    expect([a.outcome, b.outcome].sort()).toEqual(["duplicate_inbound_ignored", "handed_off"]);
+    expect(estado.runs["r1"]?.status).toBe("handed_off");
+    expect(estado.runs["r1"]?.end_reason).toBe("fallback_exhausted");
+    expect(estado.eventos.filter((e) => e.tipo === "handoff")).toHaveLength(1);
+    expect(sendInteractiveList).not.toHaveBeenCalled();
+  });
+
+  it("o robô que já andou (outro nó) não re-pergunta o nó velho", async () => {
+    nosNoBanco = [NODES[0], lista, NODES[2]];
+    runsAtivos = [runNoMenu(0)];
+    // A run foi lida no "menu", mas antes da cerca outra resposta a levou
+    // adiante: o UPDATE condicional não casa.
+    estado.runs["r1"] = { current_node_key: "end" };
+    sendInteractiveList.mockResolvedValue({ whatsapp_message_id: "wamid.out" });
+    const { dispatchInboundToFlows } = await import("./engine");
+
+    const r = await dispatchInboundToFlows(resposta("hã?", "wamid.c"));
+
+    expect(r.outcome).toBe("duplicate_inbound_ignored");
+    expect(sendInteractiveList).not.toHaveBeenCalled();
   });
 });
