@@ -74,6 +74,7 @@ import {
   type StartNodeConfig,
   type KeywordTriggerConfig,
   type MoveDealStageNodeConfig,
+  AUTO_ADVANCING_NODE_TYPES,
   MAX_NOS_POR_AVANCO,
 } from "./types";
 
@@ -210,16 +211,15 @@ export function entryTriggerTexts(message: ParsedInbound): string[] {
   );
 }
 
-/** Nodes that advance to a next_node_key without waiting for input. */
+/**
+ * Nodes that advance to a next_node_key without waiting for input. A lista
+ * é UMA só (`AUTO_ADVANCING_NODE_TYPES`, `types.ts`): é ela que a ativação
+ * usa para recusar ciclo e cadeia longa (porte #674/#683). Duas listas
+ * divergiriam com o primeiro tipo novo, e o validador deixaria passar o laço
+ * que o motor percorre.
+ */
 export function isAutoAdvancing(node_type: string): boolean {
-  return (
-    node_type === "start" ||
-    node_type === "send_message" ||
-    node_type === "send_media" ||
-    node_type === "condition" ||
-    node_type === "set_tag" ||
-    node_type === "move_deal_stage"
-  );
+  return AUTO_ADVANCING_NODE_TYPES.has(node_type);
 }
 
 /** Nodes that send a prompt and suspend awaiting a customer reply. */

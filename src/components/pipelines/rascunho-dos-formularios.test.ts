@@ -107,4 +107,28 @@ describe("Gerenciar funil", () => {
     expect(settings).toContain(`disabled={situacao !== "pronto" || !newStageName.trim()}`);
     expect(settings).toMatch(/\{situacao === "pronto" &&\s*localStages\.some\(\(s\) => s\.degrau\)/);
   });
+
+  it("adicionar e remover etapa avisam o quadro na hora, depois de gravar e antes da cerca da abertura (porte #679)", () => {
+    // Sem o aviso, a coluna nova só aparecia depois do "Salvar" — e quem
+    // fechava a janela ficava com o quadro sem ela (ou com a removida, onde o
+    // arrasto falha). Antes da cerca: o quadro reflete o banco mesmo com a
+    // janela já fechada.
+    const trecho = (de: string, ate: string) =>
+      settings.slice(settings.indexOf(de), settings.indexOf(ate));
+    const adicionar = trecho("async function adicionarEtapa", "function handleRemoveStage");
+    const remover = trecho("async function removerEtapa", "async function handleDeletePipeline");
+    for (const [corpo, falha] of [
+      [adicionar, 'toast.error(t("toastFailedAddStage"));'],
+      [remover, 'toast.error(t("toastFailedDeleteStage"));'],
+    ] as const) {
+      const posFalha = corpo.indexOf(falha);
+      const aviso = corpo.indexOf("onStagesChanged();");
+      const cerca = corpo.indexOf("if (aberturaRef.current !== abertura) return;", posFalha);
+      expect(posFalha).toBeGreaterThan(-1);
+      // Depois da gravação que deu certo (a falha retorna antes)…
+      expect(aviso).toBeGreaterThan(posFalha);
+      // …e antes da cerca da abertura.
+      expect(cerca).toBeGreaterThan(aviso);
+    }
+  });
 });

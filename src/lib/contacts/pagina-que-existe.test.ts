@@ -1,6 +1,33 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { paginaQueExiste } from './pagina-que-existe';
+
+// Pino de forma: a tela de Contatos é componente com efeito e Supabase. O que
+// fica pinado é o que liga a regra pura à tela — sem isso, a volta à última
+// página e o 416 só seriam provados à mão.
+describe('a tela de Contatos usa a volta à última página (porte #679)', () => {
+  const pagina = readFileSync(
+    join(process.cwd(), 'src/app/(dashboard)/contacts/page.tsx'),
+    'utf8',
+  );
+
+  it('o 416 `PGRST103` é página vazia sem contagem, nunca "Falha ao carregar"', () => {
+    expect(pagina).toContain("const alemDoFim = error?.code === 'PGRST103';");
+    expect(pagina).toMatch(/if \(error && !alemDoFim\) \{\s*toast\.error\(t\('toastFailedLoad'\)\);/);
+    expect(pagina).toContain('totalConhecido = alemDoFim ? null : exactCount;');
+  });
+
+  it('página vazia que não é a primeira salta para a que existe, herdando o modo silencioso', () => {
+    expect(pagina).toMatch(
+      /if \(contactRows\.length === 0 && page > 0\) \{\s*const destino = paginaQueExiste\(page, totalConhecido, PAGE_SIZE\);\s*if \(destino !== page\) \{/,
+    );
+    expect(pagina).toMatch(
+      /passoSilenciosoRef\.current = !!opcoes\?\.silencioso;\s*setPage\(destino\);\s*return;/,
+    );
+  });
+});
 
 describe('paginaQueExiste (porte #679)', () => {
   it('com o total exato, vai direto para a última página que existe', () => {
