@@ -64,10 +64,12 @@ automação, em `.claude/rules/automacoes-passos.md`.
   API v1) segue a ordem do `sort()` do JavaScript — código do caractere, nunca
   `localeCompare` (o navegador monta, o servidor casa) —, e a doc pública a
   promete. O POSICIONAL é o código de antes, num ramo próprio (pinos
-  "posicional idêntico"): não unificar. `resolveVariables` (disparo) segue as
-  chaves do MODELO: o assistente não zera `variables` ao trocar de modelo, e a
-  chave que sobra deslocaria os valores. Criar ou editar com `{{nome}}` pela
-  tela é recusado antes da Meta (`validateTemplatePayload`): o nomeado nasce no
+  "posicional idêntico"): não unificar. No disparo pela tela, o "Avançar" do
+  passo 3 poda `variables` às chaves do MODELO (`variaveisDoModelo`: o
+  assistente não as zera ao trocar de modelo, e a que sobra deslocaria os
+  valores) e `resolveVariables` ordena os nomes pela mesma régua. Criar ou
+  editar com `{{nome}}` pela tela é recusado antes da Meta
+  (`validateTemplatePayload`): o nomeado nasce no
   painel da Meta e chega pela sincronização (os exemplos `*_named_params`
   viram `sample_values` na ordem das chaves).
 - ⚠️⚠️ **O stub do modelo criado direto no painel da Meta

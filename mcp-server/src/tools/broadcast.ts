@@ -32,9 +32,7 @@ export function registerBroadcastTools(server: McpServer, client: WacrmClient): 
               params: z
                 .array(z.string())
                 .optional()
-                .describe(
-                  'Template body variables for this recipient, in order ({{1}}, {{2}}…); for named variables ({{customer_name}}), sorted by variable name.',
-                ),
+                .describe('Positional template body variables for this recipient.'),
             }),
           )
           .min(1)

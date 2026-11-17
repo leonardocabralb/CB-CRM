@@ -8,7 +8,7 @@ import type { MessageTemplate } from '@/types';
 // O passo só lê o banco num efeito (que não roda no desenho estático).
 vi.mock('@/lib/supabase/client', () => ({ createClient: () => ({}) }));
 
-import { Step3Personalize } from './step3-personalize';
+import { Step3Personalize, variaveisDoModelo } from './step3-personalize';
 
 // ============================================================
 // Passo 3 do disparo com modelo de variáveis NOMEADAS (D3 do porte do
@@ -60,5 +60,25 @@ describe('Step3Personalize', () => {
   it('posicional: os mesmos cartões de antes', () => {
     const html = desenhar(modelo('Oi {{1}}, pedido {{2}}.'));
     expect(ordemDasMarcas(html).slice(0, 2)).toEqual(['{{1}}', '{{2}}']);
+  });
+});
+
+describe('variaveisDoModelo — o que o "Avançar" deixa para o envio', () => {
+  const fixo = (value: string) => ({ type: 'static' as const, value });
+
+  it('nomeado: só as chaves DESTE modelo', () => {
+    expect(
+      variaveisDoModelo(
+        { antiga: fixo('x'), '1': fixo('y'), nome: fixo('Ana') },
+        'Olá {{nome}}',
+      ),
+    ).toEqual({ nome: fixo('Ana') });
+  });
+
+  it('nada a podar, ou posicional: o MESMO objeto (o assistente não regrava)', () => {
+    const nomeado = { nome: fixo('Ana') };
+    expect(variaveisDoModelo(nomeado, 'Olá {{nome}}')).toBe(nomeado);
+    const posicional = { '1': fixo('a'), '7': fixo('sobra') };
+    expect(variaveisDoModelo(posicional, 'Oi {{1}}')).toBe(posicional);
   });
 });

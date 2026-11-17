@@ -1727,9 +1727,12 @@ export type SendListStepConfig = InteractiveMessagePayload;
 export interface SendTemplateStepConfig extends ChannelScopedStepConfig {
   template_name: string;
   language?: string;
-  /** O `{{N}}` do CORPO, pela posição ("1", "2", …). Aceita `{{contact.*}}`. */
+  /**
+   * O `{{N}}` do CORPO, pela posição ("1", "2", …) — ou pelo NOME no modelo
+   * de variáveis nomeadas (`{{nome}}` → "nome"). Aceita `{{contact.*}}`.
+   */
   variables?: Record<string, string>;
-  /** Texto de reserva por posição, para o valor que sair vazio. */
+  /** Texto de reserva por posição (ou nome), para o valor que sair vazio. */
   variaveis_reserva?: Record<string, string>;
   /** O `{{1}}` de um cabeçalho de TEXTO, e a reserva dele. */
   header_text?: string;

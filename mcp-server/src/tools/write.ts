@@ -19,9 +19,7 @@ const templateSchema = z
     params: z
       .array(z.string())
       .optional()
-      .describe(
-        'Body variables in order ({{1}}, {{2}}…); for a template with named variables ({{customer_name}}), sorted by variable name.',
-      ),
+      .describe('Positional body variables, in order.'),
   })
   .describe('Template payload — required when type is "template".');
 

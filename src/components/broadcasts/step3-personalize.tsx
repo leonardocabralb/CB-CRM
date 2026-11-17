@@ -54,6 +54,27 @@ function isValidHttpUrl(value: string): boolean {
   }
 }
 
+/**
+ * Os valores do disparo restritos às variáveis DESTE modelo, quando ele é
+ * NOMEADO (D3, 17/11/2026). O assistente não zera `variables` ao trocar de
+ * modelo, e `resolveVariables` ordena TODAS as chaves: com nomes, a que sobrou
+ * do modelo anterior entraria no meio da lista e deslocaria os valores — o
+ * cliente receberia o de outra variável. No posicional nada muda (a chave que
+ * sobra fica no fim e é cortada pela contagem no envio): devolve o mesmo objeto.
+ */
+export function variaveisDoModelo(
+  variables: Record<string, VariableMapping>,
+  bodyText: string,
+): Record<string, VariableMapping> {
+  const nomes = extractTemplateVariables(bodyText).filter(isNamedVariable);
+  if (nomes.length === 0) return variables;
+  const doModelo = new Set(nomes);
+  const podado = Object.fromEntries(
+    Object.entries(variables).filter(([chave]) => doModelo.has(chave)),
+  );
+  return Object.keys(podado).length === Object.keys(variables).length ? variables : podado;
+}
+
 const contactFields = [
   { value: 'name', labelKey: 'name' },
   { value: 'phone', labelKey: 'phone' },
@@ -464,7 +485,11 @@ export function Step3Personalize({
           {t('back')}
         </Button>
         <Button
-          onClick={onNext}
+          onClick={() => {
+            const doModelo = variaveisDoModelo(variables, template.body_text);
+            if (doModelo !== variables) onUpdate(doModelo);
+            onNext();
+          }}
           disabled={unmappedKeys.length > 0 || headerMediaError !== null}
           className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >

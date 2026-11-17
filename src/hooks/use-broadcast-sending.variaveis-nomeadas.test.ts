@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { resolveVariables } from './use-broadcast-sending';
+import { variaveisDoModelo } from '@/components/broadcasts/step3-personalize';
 import { buildSendComponents } from '@/lib/whatsapp/template-send-builder';
 import { extractTemplateVariables } from '@/lib/whatsapp/template-validators';
 import type { Contact, MessageTemplate } from '@/types';
@@ -8,10 +9,11 @@ import type { Contact, MessageTemplate } from '@/types';
 // ============================================================
 // Disparo pela tela com modelo de variáveis NOMEADAS (D3 do porte do
 // upstream, 17/11/2026). A lista de valores de cada destinatário é montada no
-// navegador e casada com os nomes no servidor (`buildSendComponents`): a ordem
-// tem de ser a das chaves do MODELO. O assistente não zera `variables` ao
-// trocar de modelo — uma chave que sobrou do anterior não pode deslocar os
-// valores (o cliente receberia o de outra variável).
+// navegador (`resolveVariables`) e casada com os nomes no servidor
+// (`buildSendComponents`, pela ordem de `extractTemplateVariables`): as duas
+// ordens têm de ser a MESMA, em qualquer idioma de navegador. E o assistente
+// não zera `variables` ao trocar de modelo — a chave que sobrou sai no passo 3
+// (`variaveisDoModelo`), senão deslocaria os valores.
 // ============================================================
 
 const contato = {
@@ -36,22 +38,35 @@ const modelo = (body_text: string) =>
     created_at: '2026-11-17T00:00:00Z',
   }) as MessageTemplate;
 
-describe('resolveVariables — modelo nomeado', () => {
-  const nomeado = modelo('Olá {{nome}}, sua reunião é {{data}}.');
+const fixo = (value: string) => ({ type: 'static' as const, value });
 
-  it('segue a ordem das chaves do modelo; a chave que sobrou não desloca nada', () => {
-    const valores = resolveVariables(
-      {
-        // Do modelo escolhido antes, e nunca apagadas pelo assistente:
-        aaa_antiga: { type: 'static', value: 'NÃO' },
-        zzz_antiga: { type: 'static', value: 'NÃO' },
-        nome: { type: 'field', value: 'name' },
-        data: { type: 'static', value: 'segunda' },
-      },
-      contato,
-      undefined,
-      extractTemplateVariables(nomeado.body_text),
+describe('resolveVariables — modelo nomeado', () => {
+  it('ordena os nomes como o servidor (código do caractere, não o idioma)', () => {
+    // `localeCompare` poria `data_1` antes de `data1`; o servidor, depois.
+    const nomeado = modelo('{{data_1}} {{data1}} {{b}} {{a_b}} {{ab}}');
+    const variaveis = Object.fromEntries(
+      extractTemplateVariables(nomeado.body_text).map((k) => [k, fixo(`valor de ${k}`)]),
     );
+    const valores = resolveVariables(variaveis, contato);
+    const [corpo] = buildSendComponents(nomeado, { body: valores });
+    for (const p of (corpo as { parameters: { parameter_name: string; text: string }[] }).parameters) {
+      expect(p.text).toBe(`valor de ${p.parameter_name}`);
+    }
+  });
+
+  it('a chave de OUTRO modelo sai no passo 3 e não desloca nada', () => {
+    const nomeado = modelo('Olá {{nome}}, sua reunião é {{data}}.');
+    const doAssistente = {
+      // Do modelo escolhido antes, e nunca apagadas pelo assistente:
+      aaa_antiga: fixo('NÃO'),
+      zzz_antiga: fixo('NÃO'),
+      nome: { type: 'field' as const, value: 'name' },
+      data: fixo('segunda'),
+    };
+    // Sem a poda, o valor de `aaa_antiga` iria como `data`:
+    expect(resolveVariables(doAssistente, contato)[0]).toBe('NÃO');
+
+    const valores = resolveVariables(variaveisDoModelo(doAssistente, nomeado.body_text), contato);
     expect(valores).toEqual(['segunda', 'Maria']);
     expect(buildSendComponents(nomeado, { body: valores })).toEqual([
       {
@@ -64,16 +79,10 @@ describe('resolveVariables — modelo nomeado', () => {
     ]);
   });
 
-  it('o posicional fica como era (ordem numérica das chaves de `variables`)', () => {
-    const variaveis = {
-      '10': { type: 'static' as const, value: 'dez' },
-      '2': { type: 'static' as const, value: 'dois' },
-      '1': { type: 'static' as const, value: 'um' },
-    };
+  it('o posicional fica como era (ordem numérica; a chave que sobra não é podada)', () => {
+    const variaveis = { '10': fixo('dez'), '2': fixo('dois'), '1': fixo('um'), '11': fixo('sobra') };
     const posicional = modelo('{{1}} {{2}} … {{10}}');
-    expect(
-      resolveVariables(variaveis, contato, undefined, extractTemplateVariables(posicional.body_text)),
-    ).toEqual(['um', 'dois', 'dez']);
-    expect(resolveVariables(variaveis, contato)).toEqual(['um', 'dois', 'dez']);
+    expect(variaveisDoModelo(variaveis, posicional.body_text)).toBe(variaveis);
+    expect(resolveVariables(variaveis, contato)).toEqual(['um', 'dois', 'dez', 'sobra']);
   });
 });
