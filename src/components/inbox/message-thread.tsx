@@ -164,18 +164,14 @@ import { vivaParaEnviar } from "@/lib/cb-channels/viva-para-enviar";
 import { IconeDoTransporte } from "@/components/channels/transporte-icone";
 import { identidadeDoContato, nomeDoContato } from "@/lib/contacts/identidade";
 import { alvoDeEnvio } from "@/lib/whatsapp/alvo-de-envio";
+// O MESMO texto que o servidor grava (`templateContentText`): a cópia local
+// daqui lia só `{{1}}`, e o modelo nomeado nascia com `{{nome}}` cru na bolha.
+import { renderTemplateBody } from "@/lib/whatsapp/template-body";
 
 interface ReplyDraft {
   id: string;
   authorLabel: string;
   preview: string;
-}
-
-function renderTemplateBody(body: string, params: string[]): string {
-  return body.replace(/\{\{(\d+)\}\}/g, (_, raw) => {
-    const idx = Number(raw) - 1;
-    return params[idx] ?? `{{${raw}}}`;
-  });
 }
 
 interface MessageThreadProps {

@@ -186,7 +186,9 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
   re-pergunta que falha ENCERRA o run): libera o contato na hora e deixa a
   falha visível, ao preço de perder o fluxo num erro transitório. O do
   original mantém o run vivo até `max_reprompts`. Num merge fica o nosso —
-  pino `engine-channel.test.ts`.
+  pino `engine-channel.test.ts`. ⚠️ Re-pergunta e esgotamento têm CERCA
+  (`reivindicarFallback`, porte #683): só muda a run ainda ativa, no mesmo nó
+  e contador, e esgotar encerra no mesmo UPDATE; quem perde não envia. Limite: a resposta que CASA (botão, `collect_input`) não reivindica antes de avançar — toque e texto juntos podem mandar a re-pergunta depois do passo novo (o original cerca os dois com `transition_seq`, da 052).
 - `{{vars}}` só nos textos VISÍVEIS (`camposDosBotoes`/`camposDaLista`), NUNCA
   no `reply_id` — é ele que casa a resposta do cliente. Botões, lista e a
   pergunta do `collect_input` saem pelo canal do NÓ (senão o do run), nunca
@@ -237,65 +239,27 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
 - ⚠️ **Robô que deixa de estar ATIVO encerra a run de quem estava nele**
   (`stopped_by_agent` + `robo_desativado`, `encerrarRunDeRoboDesativado`): na
   resposta do cliente (`dispatchInboundToFlows`, que segue como se não
-  houvesse run — gatilhos, automações, IA) e no cron dos robôs. Leitura do
-  robô que falha = "não sei": a run segue. O `cancelled` do #674 não existe
-  aqui (CHECK da 0955).
+  houvesse run — gatilhos, automações, IA) e no cron dos robôs (lido por
+  chave). Leitura do robô OU dos nós que falha = "não sei" (porte #683): a run
+  ativa segue (`run_error`, a mensagem fica com o robô) e robô novo não nasce.
+  O `cancelled` do #674 não existe aqui (CHECK da 0955).
+- ⚠️ **Ciclo de nós automáticos e cadeia acima de `MAX_CADEIA_AUTOMATICA` (63;
+  o motor corta em 64) reprovam ATIVAR e SALVAR robô ativo** (PUT 422; porte
+  #674/#683). Tipo novo que o laço atravessa entra em
+  `AUTO_ADVANCING_NODE_TYPES` (`types.ts`).
 
 ### Modelos da Meta
 
-- ⚠️ **O núcleo MONTA o modelo antes de tentar** (`buildSendComponents`):
-  mídia de cabeçalho sem arquivo, valores a menos, variável de cabeçalho vazia
-  e botão de URL sem o final são 400 `bad_request` ANTES da Meta — nunca
-  `meta_error` ("pode ter saído"). Corpo VAZIO vai à Meta, que recusa. O robô
-  tem a régua dele (`faltaNoModelo`).
-- ⚠️⚠️ **`resolveTemplateRow` (`template-body.ts`) tem o 5º parâmetro NOSSO,
-  `channelId`, e os 5 call sites o passam.** O catálogo da Meta é POR WABA: sem
-  o recorte, numa conta com dois números o atendente vê o preview de um modelo
-  e o cliente recebe outro. Conferir os 5 a cada merge.
-- ⚠️⚠️ **`message_templates` tem índices PARCIAIS (903)**: `.upsert(…,
-  { onConflict })` não funciona (42P10) — lookup + insert/update. E
-  `.maybeSingle()` só com recorte de canal (`.is('channel_id', null)` para o
-  padrão), senão estoura com modelo homônimo em outra WABA.
-- ⚠️ **Submit** (`templates/submit/route.ts`): busca o modelo local pela CONTA
-  (nome + idioma + canal igual ou nulo, preferindo o do canal e o vinculado)
-  ANTES de chamar a Meta; erro de busca é 500 sem chamar a Meta. Recusa da
-  Meta com linha VINCULADA (`meta_template_id`) não grava nada. O rascunho da
-  recusa é regravado com a cerca `.is('meta_template_id', null)` NO UPDATE
-  (outra aba pode ter vinculado no meio); zero linhas ou 23505 = busca de novo.
-  `modelo_ja_existe` só com linha vinculada E recusa 4xx que não é limite,
-  nunca 5xx/rede/tempo. O UPDATE nunca leva `user_id`. O upstream faz o
-  `.upsert` com `onConflict` — num merge cru, toda criação aceita pela Meta
-  volta 500. Pino `submit/route.test.ts`.
-- ⚠️⚠️ **O stub do modelo criado direto no painel da Meta
-  (`template-webhook.ts`) nasce COMPLETO, com canal e DONO.** A conexão sai de
-  `cb_channels.waba_id` (`kind='meta'`, exatamente UMA; duas viram só log),
-  nunca de `whatsapp_config`; `channel_id` da conexão (linha sem canal valeria
-  para todo número); `user_id` = dono da conta (CASCADE de `auth.users`). O
-  corpo vem de `lerModeloNaMeta` + `conteudoDoModeloDaMeta`, a MESMA conversão
-  da sincronização: com `body_text: ''`, `buildSendComponents` contava zero
-  variáveis e descartava os parâmetros, e o envio passava a ser recusado.
-  Leitura que falha = nenhum stub. Não nasce com linha de mesmo nome e idioma
-  no canal OU sem canal, nem para evento de SAÍDA (`PENDING_DELETION`,
-  `DELETED`, `ARCHIVED` — ressuscitaria o modelo apagado). A rota passa
-  `wabaId: entry.id`. Pino `template-webhook.test.ts`.
-- A amostra do cabeçalho de mídia (`template-header-handle.ts`) é lida por
-  `lerComTeto`, com `content-length` conferido antes: a URL é colada pelo admin
-  e o corpo inteiro na memória deixava o processo derrubável. Pino
-  `template-header-handle.test.ts`.
-- Catálogo de modelos (`template-manager.tsx`): leitura SEM
-  `.eq('user_id', …)` e escrita só para admin (`useCan('edit-settings')`). O
-  upstream filtra pelo autor e devolve o catálogo vazio a todo membro que não o
-  criou. Pino `src/components/settings/catalogo-da-conta.test.ts`.
-- Broadcast e rotas de modelo resolvem a conexão por `resolveMetaChannel`,
-  nunca pelo espelho `whatsapp_config`.
-- Evento de modelo que não é troca de situação (FLAGGED, LOCKED…) não grava;
-  `ARCHIVED` vira PENDING (NOSSO: sai do seletor, como na sincronização).
-- ⚠️ **A bolha do modelo desenha cabeçalho de TEXTO, rodapé e botões** pela
-  linha local (`modeloDaMensagem`, lida por `useModelosDaConta`): a do canal
-  da mensagem, senão a sem canal, nunca a de outro número — menos a mensagem
-  SEM canal (histórico; conexão apagada), que enxerga todos, como
-  `resolveTemplateRow` sem canal; vários idiomas sem corpo que case = nenhum. Cabeçalho de mídia ou com `{{1}}` fica de fora (o
-  que saiu não é gravado): a bolha só afirma o que o cliente viu.
+Moram em `.claude/rules/modelos-da-meta.md` (catálogo, índices por conta,
+submissão e sincronização, categoria, variáveis nomeadas, stub do webhook):
+leia-a antes de mexer num caminho que ENVIA modelo. Dela, valem aqui:
+
+- ⚠️ O núcleo MONTA o modelo antes da Meta (`buildSendComponents`): o que
+  falta é 400 `bad_request`, nunca `meta_error` ("pode ter saído").
+- ⚠️⚠️ `resolveTemplateRow` leva o 5º parâmetro NOSSO, `channelId` (o
+  catálogo é POR WABA), nos 5 chamadores: `send-message.ts`,
+  `automations/meta-send.ts`, `api/whatsapp/broadcast/route.ts`,
+  `broadcast-core.ts` e `broadcast-resume.ts`. Conferir a cada merge.
 
 ### Graph API e configuração da conexão
 
@@ -335,10 +299,22 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
   `pessoasDoCsv` + `fichasDoCsvNaBase`). Contar por outra via mostrava 1.000
   contatos onde havia milhares e ignorava a exclusão. "Todos os contatos" é
   lido POR CHAVE (`buscarPorChave`): por OFFSET, ficha criada no meio da
-  leitura repetia um destinatário, e o modelo pago chegava em dobro. Pinos
+  leitura repetia um destinatário, e o modelo pago chegava em dobro — e os
+  destinatários na tela da campanha também (`lerDestinatariosDaCampanha`;
+  nulo = erro, nunca lista parcial). Pinos
   `use-broadcast-sending.contagem.test.ts` e `.paginacao.test.ts`. O
   `paged-query.ts` (do original) pagina por POSIÇÃO e sem teto: dele, só o
   `chunk` tem uso.
+- ⚠️⚠️ **POSSE do envio (1147)**: o assistente a toma ao criar a campanha e a
+  renova (5 min, relógio do BANCO, por TOKEN) antes de cada lote e após cada
+  espera do 429 (`broadcast-posse.ts`, `enviarLoteComPosse`); a ROTA do lote
+  a renova antes do 1º envio e a cada minuto (sem ela, 409 com o que saiu).
+  Perdeu = PARA sem gravar o resto do lote e nunca reenvia. A retomada (e a
+  API v1, antes do `after()`) só trava com a posse vencida, e a APAGA; o
+  planejamento que falha depois fecha a campanha pelas linhas. A tela troca
+  "parou no meio"/Retomar por "em andamento" (`cb_disparo_em_andamento`;
+  nulo = não sei). Sem isso o Retomar durante o envio mandava o modelo pago
+  em dobro.
 - ⚠️ **A retomada (`broadcast-resume.ts`) manda até 1.000 por pedido e lê até
   25 páginas para achá-las** (#658), das linhas mais antigas: a página só de
   fichas sem telefone não a encerra mais. Página por POSIÇÃO: a linha lida

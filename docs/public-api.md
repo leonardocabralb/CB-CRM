@@ -321,6 +321,17 @@ The object form needs a template the CRM has synced from Meta — it reads
 the template to place each value; for a template the CRM doesn't know, send
 the list.
 
+**Named variables.** A template created with named variables
+(`{{customer_name}}` — the default in Meta's template editor) takes its
+values in the alphabetical order of the names — the order of JavaScript's
+`sort()` (`["customer_name", "order_id"]`) —, in the list and in `body`; the
+CRM sends each value with its name. That order compares character codes,
+not numbers or words: digits come before `_` and before letters, and
+uppercase before lowercase — `item10` comes before `item2`, `data1` before
+`data_1`, and `Zip` before `city`. This needs the template synced to the
+CRM: without the local copy the values go unnamed and Meta refuses the send.
+A text header's named variable goes in `headerText`.
+
 When the CRM knows the template, it is filled in **before** anything goes to
 Meta. If something is missing, the call answers `400 bad_request` and
 `message` says what: a media header (image, video, document) with no file —
@@ -944,7 +955,9 @@ curl -X POST https://your-crm.example.com/api/v1/broadcasts \
 `channel_id` is optional — see
 [Choosing which number to send from](#choosing-which-number-to-send-from).
 `params` is one list per recipient, in the order of the template's
-`{{1}}`, `{{2}}`… variables; recipients may carry lists of different
+`{{1}}`, `{{2}}`… variables — or, for a template with named variables, in
+the alphabetical order of the names (see "Named variables" under
+`POST /api/v1/messages`); recipients may carry lists of different
 lengths.
 
 **Migration required:** apply
@@ -958,11 +971,12 @@ Phone numbers outside the [rule](#phone-numbers) are dropped and counted
 as `rejected`. A number with no contact yet gets one, as
 `POST /api/v1/contacts` would create it. Recipients that resolve to the
 **same contact** — the same number twice, or two spellings of it — are
-messaged once, and the extra ones are dropped **without** being counted:
-`accepted + rejected` can be less than the number of recipients you sent.
-`total_recipients` and `accepted` are both the number of contacts the
-campaign will message. If no recipient is usable, the call fails with
-`400 bad_request` and nothing is created. Response (202):
+messaged once (the first one listed, with its `params`), and the extra ones
+are counted in `duplicates`: `accepted + rejected + duplicates` is the
+number of recipients you sent. `total_recipients` and `accepted` are both
+the number of contacts the campaign will message. If no recipient is
+usable, the call fails with `400 bad_request` and nothing is created.
+Response (202):
 
 ```json
 {
@@ -972,6 +986,7 @@ campaign will message. If no recipient is usable, the call fails with
     "total_recipients": 2,
     "accepted": 2,
     "rejected": 0,
+    "duplicates": 0,
     "channel_id": "…"
   }
 }
@@ -1397,7 +1412,9 @@ GET /api/v1/contacts?limit=50&cursor=eyJ…
 
 Cursors are keyset-based (stable under concurrent inserts). Pass the
 cursor back verbatim — don't parse it. `next_cursor: null` means the
-last page.
+last page. Pass back only a cursor the API gave you: a malformed or
+tampered one is ignored and you get the first page again (one carrying an
+impossible date can make the request fail instead).
 
 ## Webhooks
 
@@ -1466,10 +1483,10 @@ If you listen for "won", also check `deal.status` on `deal.created`.
 
 All under scope `webhooks:manage`.
 
-- `POST /api/v1/webhooks` — register `{ "url": "https://…", "events": ["message.received"] }`. `url` must be `https://`. **The response includes `secret` exactly once** — store it to verify signatures; wacrm keeps only an encrypted copy.
+- `POST /api/v1/webhooks` — register `{ "url": "https://…", "events": ["message.received"] }`. `url` must be `https://` and must not embed a username or password (`https://user:pass@…` is rejected with `400`; verify deliveries with the signing secret instead). **The response includes `secret` exactly once** — store it to verify signatures; wacrm keeps only an encrypted copy.
 - `GET /api/v1/webhooks` — list your endpoints (never returns the secret). Not paginated: `meta.next_cursor` is always `null`.
 - `GET /api/v1/webhooks/{id}` — read one.
-- `PATCH /api/v1/webhooks/{id}` — update `url`, `events`, or `is_active` (re-enabling clears the failure counter).
+- `PATCH /api/v1/webhooks/{id}` — update `url` (same rules as on create), `events`, or `is_active` (re-enabling clears the failure counter).
 - `DELETE /api/v1/webhooks/{id}` — remove one.
 
 ```bash
@@ -1673,7 +1690,9 @@ deliveries, and the endpoint ends up switched off.
 **Target restrictions (SSRF).** The `url` must be `https://` and must
 resolve to a public address — requests to `localhost`, private/RFC1918
 ranges, link-local (incl. cloud metadata `169.254.169.254`), and similar
-internal targets are refused at delivery time.
+internal targets are refused at delivery time. A URL with a username or
+password in it (`https://user:pass@…`) is refused when you register or
+change it: no delivery could go out to it.
 
 ## Roadmap
 

@@ -32,12 +32,14 @@ export function registerBroadcastTools(server: McpServer, client: WacrmClient): 
               params: z
                 .array(z.string())
                 .optional()
-                .describe('Positional template body variables for this recipient.'),
+                .describe('Template body variables for this recipient, in order ({{1}}, {{2}}…); for a template with named variables ({{customer_name}}), values go in the alphabetical order of the names (JavaScript sort()).'),
             }),
           )
           .min(1)
           .max(1000)
-          .describe('Recipients (1–1000). Invalid numbers are dropped and counted as rejected.'),
+          .describe(
+            'Recipients (1–1000). Invalid numbers are dropped and counted as rejected. A number listed twice (or two spellings of the same number) is messaged once, and the extra entries are counted as duplicates.',
+          ),
         channel_id: z
           .string()
           .optional()

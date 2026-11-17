@@ -10,6 +10,7 @@
  */
 
 import { normalizeStatus } from '@/lib/whatsapp/template-status-normalize'
+import { extractTemplateVariables } from '@/lib/whatsapp/template-validators'
 import type { TemplateButton, TemplateSampleValues } from '@/types'
 
 const META_API_BASE = 'https://graph.facebook.com/v21.0'
@@ -34,7 +35,15 @@ interface MetaTemplateComponent {
     header_text?: string[]
     header_handle?: string[]
     body_text?: string[][]
+    /** Modelo com variáveis NOMEADAS: um exemplo por nome, sem ordem garantida. */
+    body_text_named_params?: ParametroNomeado[]
+    header_text_named_params?: ParametroNomeado[]
   }
+}
+
+interface ParametroNomeado {
+  param_name?: string
+  example?: string
 }
 
 export interface MetaTemplate {
@@ -104,14 +113,36 @@ function parseButtons(metaButtons: MetaButton[] | undefined): TemplateButton[] {
   return out
 }
 
+/**
+ * Os exemplos de um modelo NOMEADO na ordem das chaves
+ * (`extractTemplateVariables`) — a mesma em que os valores de envio são
+ * casados com elas; nome sem exemplo fica vazio. `undefined` = o modelo não
+ * mandou exemplos nomeados.
+ */
+function exemplosNomeados(
+  texto: string | undefined,
+  parametros: ParametroNomeado[] | undefined,
+): string[] | undefined {
+  if (!Array.isArray(parametros) || parametros.length === 0) return undefined
+  return extractTemplateVariables(texto ?? '').map((chave) => {
+    const p = parametros.find((x) => x?.param_name === chave)
+    return typeof p?.example === 'string' ? p.example : ''
+  })
+}
+
 function extractSampleValues(
   body: MetaTemplateComponent | undefined,
   header: MetaTemplateComponent | undefined,
 ): TemplateSampleValues | null {
   // Meta returns body_text as a 2D array — one row per example set.
-  // We take the first row (most templates have exactly one).
-  const bodySample = body?.example?.body_text?.[0]
-  const headerSample = header?.example?.header_text
+  // We take the first row (most templates have exactly one). A template
+  // with NAMED variables brings `*_named_params` instead.
+  const bodySample =
+    body?.example?.body_text?.[0] ??
+    exemplosNomeados(body?.text, body?.example?.body_text_named_params)
+  const headerSample =
+    header?.example?.header_text ??
+    exemplosNomeados(header?.text, header?.example?.header_text_named_params)
   if (!bodySample?.length && !headerSample?.length) return null
   const sv: TemplateSampleValues = {}
   if (bodySample?.length) sv.body = bodySample

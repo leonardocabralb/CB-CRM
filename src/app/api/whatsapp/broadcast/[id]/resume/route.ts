@@ -46,6 +46,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   let claimedId: string | null = null;
+  let contaDoClaim: string | null = null;
 
   try {
     // Same gate as the batch send endpoint: running a broadcast is a
@@ -70,17 +71,33 @@ export async function POST(
     // from the same 'pending' rows and message everyone twice — and a
     // WhatsApp message cannot be recalled. The claim is one conditional
     // UPDATE, so exactly one caller wins.
-    const claimed = await claimBroadcastDelivery(supabase, accountId, id);
-    if (!claimed) {
+    //
+    // NOSSO (1147): "running" inclui o ASSISTENTE enviando do navegador (a
+    // posse dele) — é o caso que mandava o modelo em dobro. O `code` deixa a
+    // tela dizer isso no idioma dela (e recarregar para mostrar o andamento).
+    const trava = await claimBroadcastDelivery(supabase, accountId, id);
+    if (trava === 'erro') {
+      return NextResponse.json(
+        {
+          error:
+            'Could not check whether this broadcast is already sending. Nothing was sent — try again.',
+          code: 'claim_failed',
+        },
+        { status: 500 }
+      );
+    }
+    if (trava === 'ocupada') {
       return NextResponse.json(
         {
           error:
             'A delivery pass is already running for this broadcast. Wait for it to finish before resuming again.',
+          code: 'delivery_in_flight',
         },
         { status: 409 }
       );
     }
     claimedId = id;
+    contaDoClaim = accountId;
 
     const { plan, remaining, unsendable } = await planBroadcastResume(
       supabase,
@@ -107,7 +124,7 @@ export async function POST(
         // Don't leave it mid-flight — settle whatever did land.
         await finalizeBroadcastStatus(admin, id).catch(() => {});
       } finally {
-        await releaseBroadcastDelivery(admin, id);
+        await releaseBroadcastDelivery(admin, id, accountId);
       }
     });
 
@@ -128,8 +145,15 @@ export async function POST(
   } catch (error) {
     // Planning failed after the claim — release it, or the campaign is
     // locked out of resuming until the staleness window expires.
-    if (claimedId) {
-      await releaseBroadcastDelivery(supabaseAdmin(), claimedId).catch(() => {});
+    if (claimedId && contaDoClaim) {
+      const admin = supabaseAdmin();
+      // NOSSO (1147): tomar a trava APAGOU a posse do assistente — ele não
+      // fecha mais esta campanha. Um planejamento que falha depois disso
+      // (nada a retomar, conexão ou modelo) a deixaria em `sending` para
+      // sempre, sem como excluir. O fecho é derivado das linhas: com
+      // pendentes, ela segue `sending` e o Retomar volta.
+      await finalizeBroadcastStatus(admin, claimedId).catch(() => {});
+      await releaseBroadcastDelivery(admin, claimedId, contaDoClaim).catch(() => {});
     }
     if (error instanceof BroadcastError) {
       return NextResponse.json(

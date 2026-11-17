@@ -61,47 +61,81 @@ function scopeStatuses(scope: ResumeScope): string[] {
 }
 
 /**
+ * O resultado de tentar a trava: `tomada` (a passada é sua), `ocupada`
+ * (outra passada ou o assistente está enviando — ou a campanha não é desta
+ * conta) ou `erro` (não deu para saber).
+ */
+export type TravaDaEntrega = 'tomada' | 'ocupada' | 'erro';
+
+/**
  * Take the delivery lock for a broadcast.
  *
  * One conditional UPDATE, so the claim is atomic: a concurrent caller's
- * WHERE no longer matches and it gets `false`. Returns false when the
- * broadcast doesn't exist on this account, too — the caller treats both
- * as "not yours to run".
+ * WHERE no longer matches and it gets `ocupada`. A broadcast that doesn't
+ * exist on this account is `ocupada` too — the caller treats both as "not
+ * yours to run".
+ *
+ * ⚠️⚠️ NOSSO (posse do envio, 1147): a trava só é tomada com a POSSE do
+ * assistente livre ou vencida (`delivery_lease_until`), e tomá-la APAGA a
+ * posse na mesma escrita. Sem isso, o Retomar clicado enquanto o assistente
+ * enviava do navegador mandava pelo servidor os mesmos pendentes — o modelo
+ * pago em dobro. Com a posse apagada, o assistente que acordar depois perde a
+ * renovação e para sem reenviar.
  */
 export async function claimBroadcastDelivery(
   db: SupabaseClient,
   accountId: string,
   broadcastId: string,
   now: Date = new Date()
-): Promise<boolean> {
+): Promise<TravaDaEntrega> {
+  const agora = now.toISOString();
   const staleCutoff = new Date(
     now.getTime() - DELIVERY_LOCK_STALE_MS
   ).toISOString();
 
-  const { data, error } = await db
-    .from('broadcasts')
-    .update({ delivery_locked_at: now.toISOString() })
-    .eq('id', broadcastId)
-    .eq('account_id', accountId)
-    .or(`delivery_locked_at.is.null,delivery_locked_at.lt.${staleCutoff}`)
-    .select('id');
+  try {
+    const { data, error } = await db
+      .from('broadcasts')
+      .update({
+        delivery_locked_at: agora,
+        delivery_lease_until: null,
+        delivery_lease_token: null,
+      })
+      .eq('id', broadcastId)
+      .eq('account_id', accountId)
+      // A trava livre (ou velha) E a posse do assistente livre (ou vencida).
+      .or(
+        `and(or(delivery_locked_at.is.null,delivery_locked_at.lt.${staleCutoff}),or(delivery_lease_until.is.null,delivery_lease_until.lt.${agora}))`
+      )
+      .select('id');
 
-  if (error) {
-    console.error('[broadcast-resume] claim failed:', error.message);
-    return false;
+    if (error) {
+      console.error('[broadcast-resume] claim failed:', error.message);
+      return 'erro';
+    }
+    return Array.isArray(data) && data.length > 0 ? 'tomada' : 'ocupada';
+  } catch (err) {
+    console.error('[broadcast-resume] claim failed:', err);
+    return 'erro';
   }
-  return Array.isArray(data) && data.length > 0;
 }
 
-/** Release the delivery lock. Best-effort; a stale lock self-expires. */
+/**
+ * Release the delivery lock. Best-effort; a stale lock self-expires.
+ * Recortada pela CONTA, como o `claimBroadcastDelivery`: os chamadores rodam
+ * em service role (a API v1 e o `after()` da retomada), e toda escrita ali
+ * leva `.eq('account_id')` (CLAUDE.md, 8e).
+ */
 export async function releaseBroadcastDelivery(
   db: SupabaseClient,
-  broadcastId: string
+  broadcastId: string,
+  accountId: string
 ): Promise<void> {
   const { error } = await db
     .from('broadcasts')
     .update({ delivery_locked_at: null })
-    .eq('id', broadcastId);
+    .eq('id', broadcastId)
+    .eq('account_id', accountId);
   if (error) {
     console.error('[broadcast-resume] release failed:', error.message);
   }

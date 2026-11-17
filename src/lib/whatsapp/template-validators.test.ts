@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  extractTemplateVariables,
   extractVariableIndices,
+  isNamedVariable,
   TEMPLATE_LIMITS,
   validateBody,
   validateButtons,
@@ -273,5 +275,60 @@ describe('validateTemplatePayload — integration', () => {
         body_text: 'Hi {{1}}',
       }),
     ).toThrow(/exactly 1 sample/);
+  });
+});
+
+// ── Variáveis NOMEADAS (`{{nome}}`, porte do #700, D3 do plano de 17/11/2026) ──
+
+describe('extractTemplateVariables', () => {
+  it('posicional: as posições em ordem numérica, como `extractVariableIndices`', () => {
+    expect(extractTemplateVariables('{{2}} then {{10}} then {{1}}')).toEqual(['1', '2', '10']);
+    for (const texto of ['Hi {{1}} {{2}}', '{{1}} {{3}}', '{{0}} {{1}}', 'x {{01}}', 'nada']) {
+      expect(extractTemplateVariables(texto)).toEqual(
+        extractVariableIndices(texto).map(String),
+      );
+    }
+  });
+
+  it('nomeado: sem repetição, na ordem do `sort()` do JavaScript', () => {
+    expect(
+      extractTemplateVariables('Oi {{nome_do_cliente}}, pedido {{pedido}} de {{nome_do_cliente}}'),
+    ).toEqual(['nome_do_cliente', 'pedido']);
+    // Código do caractere (dígitos < `_` < letras), igual em todo lugar —
+    // `localeCompare` poria `data_1` antes de `data1`.
+    const nomes = ['data_1', 'data1', 'b', 'a_b', 'ab'];
+    expect(extractTemplateVariables(nomes.map((n) => `{{${n}}}`).join(' '))).toEqual(
+      [...nomes].sort(),
+    );
+  });
+
+  it('modelo misto fica com o nomeado', () => {
+    expect(extractTemplateVariables('{{1}} e {{nome}}')).toEqual(['nome']);
+  });
+
+  it('sem variável, lista vazia', () => {
+    expect(extractTemplateVariables('Sem variáveis')).toEqual([]);
+  });
+
+  it('diz se a chave é nomeada', () => {
+    expect(isNamedVariable('servico')).toBe(true);
+    expect(isNamedVariable('1')).toBe(false);
+  });
+});
+
+describe('criar/editar modelo com variável nomeada é recusado antes da Meta', () => {
+  it('no corpo, no cabeçalho de texto e no rodapé', () => {
+    expect(() => validateBody('Oi {{nome}}')).toThrow(/Named variables/);
+    expect(() =>
+      validateHeader({ header_type: 'text', header_content: 'Oi {{nome}}' }),
+    ).toThrow(/Named variables/);
+    expect(() => validateFooter('Até {{nome}}')).toThrow(/cannot contain/);
+  });
+
+  it('o posicional segue passando como antes', () => {
+    expect(validateBody('Oi {{1}}, pedido {{2}}')).toEqual([1, 2]);
+    expect(validateHeader({ header_type: 'text', header_content: 'Oi {{1}}' })).toEqual({
+      variableCount: 1,
+    });
   });
 });

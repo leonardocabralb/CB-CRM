@@ -29,6 +29,7 @@ const h = vi.hoisted(() => ({
   escritasDiretasNosNos: [] as string[],
   flow: {} as Record<string, unknown>,
   nos: [] as Record<string, unknown>[],
+  erroAoLerORobo: false,
 }))
 
 vi.mock('@/lib/auth/account', () => ({
@@ -90,7 +91,10 @@ vi.mock('@/lib/flows/admin-client', () => ({
         insert: () => (h.escritasDiretasNosNos.push(`${tabela}:insert`), (op = 'insert'), b),
         order: () => b,
         eq: () => b,
-        maybeSingle: async () => ({ data: tabela === 'flows' ? h.flow : null, error: null }),
+        maybeSingle: async () =>
+          tabela === 'flows' && h.erroAoLerORobo
+            ? { data: null, error: { message: 'banco fora' } }
+            : { data: tabela === 'flows' ? h.flow : null, error: null },
         then: (ok: (v: unknown) => unknown) => {
           if (tabela === 'flows' && op === 'update' && payload) {
             h.ordem.push('cabecalho')
@@ -132,8 +136,11 @@ beforeEach(() => {
   h.rpcs = []
   h.patches = []
   h.escritasDiretasNosNos = []
-  h.flow = { id: 'robo-1', name: 'Robô', entry_node_id: 'inicio', status: 'active' }
+  // Rascunho: os casos da transação (1104) salvam grafos incompletos de
+  // propósito. O robô ATIVO passa pelo validador (porte #674, abaixo).
+  h.flow = { id: 'robo-1', name: 'Robô', entry_node_id: 'inicio', status: 'draft' }
   h.nos = NOS_DE_ANTES.map((n) => ({ ...n }))
+  h.erroAoLerORobo = false
 })
 
 describe('PUT /api/flows/[id] — os nós numa transação (1104)', () => {
@@ -249,5 +256,69 @@ describe('o fonte da rota', () => {
   it('não escreve em flow_nodes direto — só pela função', () => {
     expect(fonte).toMatch(/\.rpc\('cb_trocar_nos_do_robo'/)
     expect(fonte).not.toMatch(/from\('flow_nodes'\)\s*\.(delete|insert|upsert)\(/)
+  })
+})
+
+describe('PUT de robô ATIVO passa pelo validador da ativação (porte #674/#683)', () => {
+  const CICLO = [
+    { node_key: 'inicio', node_type: 'start', config: { next_node_key: 'm1' } },
+    { node_key: 'm1', node_type: 'send_message', config: { text: 'oi', next_node_key: 'c1' } },
+    {
+      node_key: 'c1',
+      node_type: 'condition',
+      config: { subject: 'var', subject_key: 'x', operator: 'equals', value: '1', true_next: 'm1', false_next: 'fim' },
+    },
+    { node_key: 'fim', node_type: 'end', config: {} },
+  ]
+
+  beforeEach(() => {
+    h.flow = {
+      id: 'robo-1',
+      name: 'Robô',
+      entry_node_id: 'inicio',
+      status: 'active',
+      trigger_type: 'manual',
+      trigger_config: {},
+    }
+  })
+
+  it('⚠️⚠️ o ciclo que não espera o cliente é 422 com a lista, e NADA é gravado', async () => {
+    const r = await salvar({ nodes: CICLO })
+
+    expect(r.status).toBe(422)
+    expect(r.corpo.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ severity: 'error', node_key: 'm1', message: expect.stringContaining('ciclo') }),
+      ]),
+    )
+    expect(h.rpcs).toEqual([])
+    expect(h.patches).toEqual([])
+    expect(h.nos).toEqual(NOS_DE_ANTES)
+  })
+
+  it('o mesmo ciclo num RASCUNHO salva (rascunho pode ficar incompleto)', async () => {
+    h.flow.status = 'draft'
+    expect((await salvar({ nodes: CICLO })).status).toBe(200)
+    expect(h.rpcs).toHaveLength(1)
+  })
+
+  it('robô ativo válido salva como sempre', async () => {
+    const r = await salvar({ name: 'Robô renomeado', nodes: NOS_DE_ANTES.map(({ node_key, node_type, config }) => ({ node_key, node_type, config })) })
+    expect(r.status).toBe(200)
+    expect(h.patches[0]).toMatchObject({ name: 'Robô renomeado' })
+  })
+
+  it('só o cabeçalho: confere com os nós de HOJE (a entrada nova que não existe é recusada)', async () => {
+    const r = await salvar({ entry_node_id: 'nao-existe' })
+    expect(r.status).toBe(422)
+    expect(h.patches).toEqual([])
+  })
+
+  it('a leitura do robô que falha é 500, nunca "salvou sem conferir"', async () => {
+    h.erroAoLerORobo = true
+    const r = await salvar({ nodes: CICLO })
+    expect(r.status).toBe(500)
+    expect(h.rpcs).toEqual([])
+    expect(h.patches).toEqual([])
   })
 })

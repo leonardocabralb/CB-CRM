@@ -55,6 +55,10 @@ uma hora atrás, sem aviso. A caixa de entrada tem o seu próprio mecanismo
 - ⚠️⚠️ **A recarga PODA a seleção** às linhas que continuam na página
   (`podarSelecao`): a ação em massa age sobre `selected` inteiro, e um id que
   saiu da tela seguiria marcado — e seria apagado sem ninguém o ver marcado.
+- ⚠️ **Página que esvaziou volta para a última que existe**
+  (`paginaQueExiste`, porte #679), e o passo HERDA o modo: a recarga
+  silenciosa continua silenciosa (poda a seleção à página nova, via
+  `passoSilenciosoRef`); as outras zeram a seleção. Página 0 nunca volta.
 - ⚠️ **Recarrega também o catálogo de etiquetas** (`fetchTags`): senão a
   etiqueta nova some da linha, a renomeada fica com o nome velho e a apagada
   segue filtrando. ⚠️⚠️ E troca o mapa SÓ quando o conteúdo mudou

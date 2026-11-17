@@ -42,8 +42,8 @@ UPDATE/INSERT/DELETE fora do app, saiba o que ele aciona:
   robô ou da equipe, 1080/1118) não é fala: nem "alguém falou?" nem a pausa.
   GENTE que saiu (`gravada_em`) pausa a IA (1049) e PRÉ-ARMA follow-up (1138).
 - **`conversations`**: encerrar limpa a espera; atribuir (`assigned_agent_id`
-  novo, não nulo, por outra pessoa ou por SQL) cria aviso no sino do
-  responsável. Encerrar — inclusive o lote da 1018/1034 — limpa agente e
+  novo, não nulo, por outra pessoa ou SQL) avisa no sino do responsável; só
+  pega membro da conta (1148: senão, o anterior ou ninguém). Encerrar — inclusive o lote da 1018/1034 — limpa agente e
   pausa da IA e descarta os turnos dela sem resposta, menos a retomada que
   segue (`cb_ia_turnos`, 1109/1146). Despausar à mão
   (`ai_autoreply_disabled` → false) religa a IA.
@@ -52,7 +52,8 @@ UPDATE/INSERT/DELETE fora do app, saiba o que ele aciona:
   10 min no passado não vira linha.
 - **DELETE em `cb_channels`** solta os pinos, tira a conexão das automações,
   desliga (`draft`) o robô ativo restrito a ela (1077),
-  dobra a janela em `sem_carimbo` e anula `messages.channel_id`; agendada que
+  dobra a janela em `sem_carimbo`, anula `messages.channel_id` e solta os
+  modelos dela (1150: o que repete um global é APAGADO); agendada que
   aponta para ela BLOQUEIA (FK RESTRICT da 925 — a rota limpa o acervo antes).
   **DELETE em `pipeline_stages`** tira a etapa das automações e zera
   `default_stage_id` das conexões; card na etapa bloqueia.
@@ -158,7 +159,6 @@ UPDATE/INSERT/DELETE fora do app, saiba o que ele aciona:
   3 dígitos: `scripts/reparar-historico-de-migrations.sql` (só versão de
   exatamente 3 dígitos). Mudou o formato do nome: repita script,
   `docs/ATUALIZAR.md` e `CHANGELOG.md`.
-- Aplicou: entrada em `docs/MIGRATIONS-APLICADAS.md`.
 
 ### Ordem de aplicação e forma
 - ADITIVA (o app novo lê ou grava a coluna): ANTES do deploy — sem ela o
@@ -323,9 +323,8 @@ Pino `rls-leitura-1032.test.ts`.
   o UPDATE revalida o CHECK e a exclusão falharia.
 - **Está na publicação realtime desde a 1059, SEM lista de colunas** (a
   armadilha da 909). REPLICA IDENTITY padrão basta: o app assina só INSERT.
-  Carga em massa na trilha (a da Kommo gravou 1.171 eventos num segundo)
-  atravessa o servidor de tempo real, como a das mensagens; só recebe quem
-  está com a conversa daquele contato aberta. O hook está em
+  Carga em massa na trilha atravessa o servidor de tempo real (só recebe
+  quem está com a conversa daquele contato aberta). O hook está em
   `.claude/rules/funil.md`.
 
 ### Gatilhos que espelham regra de TS

@@ -59,15 +59,20 @@ decide mais "mesma pessoa".
   `fichaQueVenceuPorBsuid` (`src/lib/contacts/bsuid.ts`). Na tela ela aparece
   pelo `@` do WhatsApp (`identidadeDoContato`, nunca o BSUID); o telefone é
   apagável quando há outra identidade (`podeFicarSemTelefone`: Instagram OU
-  BSUID). As três buscas (`casaComABusca`, `casaComContato`,
-  `ramosDaBuscaDeContato` — que o seletor da agenda também usa) casam pelos
-  dois `@`; "@" sozinho não casa nada (agulha vazia). Limite escrito: a busca
-  de /contatos (RPC 025) e o `?search=` da v1 não olham o `@`.
+  BSUID). As buscas (`casaComABusca`, `casaComContato` e as duas de
+  `busca-remota.ts`) casam pelos dois `@`; "@" sozinho não casa nada.
+  Limite: o filtro por etiqueta (RPC 025) e o `?search=` da v1 não olham o
+  `@`.
+- ⚠️ **/contatos casa telefone pelos dígitos só com termo de cara de
+  telefone** (`temCaraDeTelefone`, porte #679): metade dos e-mails tem
+  dígito e traria todo telefone com eles. Na RPC 025 vão os dígitos contra
+  `phone` cru, sem a irmã do nono dígito. Os seletores tiram dígitos de
+  qualquer termo (limite deles).
 - Fundir fichas NÃO é `merge_duplicate_contacts` (apaga tarefas do perdedor e
   agrupa por grafia exata): é `cb_unir_fichas` (1092, abaixo).
 - ⚠️ **Busca por texto livre casa LITERALMENTE** (`src/lib/postgrest/literal.ts`):
-  a de /contatos, o `?search=` da v1 e os seletores de cliente
-  (`busca-remota.ts`) montam o `.or()` com `ramoContem` (`imatch` com o termo
+  as de `busca-remota.ts` (/contatos e seletores) e o `?search=` da v1
+  montam o `.or()` com `ramoContem` (`imatch` com o termo
   escapado, entre aspas), e o termo da RPC 025 vai por `escaparLike`. Cru,
   vírgula e parêntese quebravam o `.or()` (400, "falha ao carregar") e `%`,
   `_` e `*` viravam curingas — o PostgREST troca TODO `*` de um

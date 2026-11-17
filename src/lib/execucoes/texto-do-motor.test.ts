@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import en from '../../../messages/en.json'
@@ -60,6 +62,16 @@ describe('lerTextoDoMotor', () => {
     expect(lerTextoDoMotor('Error: Connection Closed')).toEqual([{ chave: 'conexaoCaiu', valores: {} }])
     expect(lerTextoDoMotor('number 5511900000000 is not on WhatsApp')).toEqual([
       { chave: 'semWhatsApp', valores: { numero: '5511900000000' } },
+    ])
+  })
+
+  it('1148: o atendente fixo fora da conta vira a frase — o texto escrito no MOTOR, por extenso', () => {
+    // O motor não é importável aqui (traria o banco junto): o teste lê o fonte.
+    const motor = readFileSync(join(process.cwd(), 'src/lib/automations/engine.ts'), 'utf8')
+    expect(motor).toContain('`agent ${agentId} is not a member of the account — conversation not assigned`')
+    // O nome entra no lugar do id (`textoComNomes`; quem saiu vira "(ex-membro)").
+    expect(lerTextoDoMotor('agent "(ex-membro)" is not a member of the account — conversation not assigned')).toEqual([
+      { chave: 'responsavelForaDaConta', valores: { nome: '"(ex-membro)"' } },
     ])
   })
 
@@ -150,6 +162,8 @@ describe('as frases nos dois dicionários (chave montada)', () => {
       'tag a already present',
       'no agent resolved',
       'agent a is suspended — conversation left unassigned',
+      'agent a is not a member of the account — conversation not assigned',
+      'no conversation to assign',
       'a not updated: empty value',
       'field a not writable from automations',
       'name not updated: the value is not a name',

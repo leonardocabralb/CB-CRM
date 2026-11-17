@@ -24,7 +24,11 @@ interface ClaimCall {
   or?: string;
 }
 
-function claimDb(returnedRows: unknown[], calls: ClaimCall[]): SupabaseClient {
+function claimDb(
+  returnedRows: unknown[],
+  calls: ClaimCall[],
+  error: { message: string } | null = null,
+): SupabaseClient {
   return {
     from() {
       const call: ClaimCall = { update: {}, filters: {} };
@@ -42,7 +46,7 @@ function claimDb(returnedRows: unknown[], calls: ClaimCall[]): SupabaseClient {
           call.or = expr;
           return b;
         },
-        select: async () => ({ data: returnedRows, error: null }),
+        select: async () => ({ data: error ? null : returnedRows, error }),
         then: (resolve: (r: { error: null }) => unknown) =>
           resolve({ error: null }),
       };
@@ -54,14 +58,14 @@ function claimDb(returnedRows: unknown[], calls: ClaimCall[]): SupabaseClient {
 describe('claimBroadcastDelivery', () => {
   it('claims when the conditional UPDATE matched a row', async () => {
     const calls: ClaimCall[] = [];
-    const ok = await claimBroadcastDelivery(
+    const trava = await claimBroadcastDelivery(
       claimDb([{ id: 'bc-1' }], calls),
       'acct-1',
       'bc-1',
       new Date('2026-08-11T12:00:00Z'),
     );
 
-    expect(ok).toBe(true);
+    expect(trava).toBe('tomada');
     expect(calls[0].filters).toEqual({ id: 'bc-1', account_id: 'acct-1' });
     expect(calls[0].update.delivery_locked_at).toBe(
       '2026-08-11T12:00:00.000Z',
@@ -70,12 +74,12 @@ describe('claimBroadcastDelivery', () => {
 
   it('refuses when another pass already holds the lock', async () => {
     // The UPDATE's WHERE didn't match — someone else got there first.
-    const ok = await claimBroadcastDelivery(
+    const trava = await claimBroadcastDelivery(
       claimDb([], []),
       'acct-1',
       'bc-1',
     );
-    expect(ok).toBe(false);
+    expect(trava).toBe('ocupada');
   });
 
   it('treats a lock older than the staleness window as abandoned', async () => {
@@ -88,9 +92,47 @@ describe('claimBroadcastDelivery', () => {
     );
     // 30 minutes before "now" — a pass whose process died is recoverable
     // without touching the database by hand.
-    expect(calls[0].or).toBe(
-      'delivery_locked_at.is.null,delivery_locked_at.lt.2026-08-11T11:30:00.000Z',
+    expect(calls[0].or).toContain(
+      'or(delivery_locked_at.is.null,delivery_locked_at.lt.2026-08-11T11:30:00.000Z)',
     );
+  });
+
+  // ⚠️⚠️ NOSSO (posse do envio, 1147): o Retomar clicado enquanto o assistente
+  // enviava do navegador achava a trava livre e mandava o modelo em dobro.
+  it('⚠️ só toma com a POSSE do assistente livre ou vencida', async () => {
+    const calls: ClaimCall[] = [];
+    await claimBroadcastDelivery(
+      claimDb([{ id: 'bc-1' }], calls),
+      'acct-1',
+      'bc-1',
+      new Date('2026-08-11T12:00:00Z'),
+    );
+    expect(calls[0].or).toBe(
+      'and(' +
+        'or(delivery_locked_at.is.null,delivery_locked_at.lt.2026-08-11T11:30:00.000Z),' +
+        'or(delivery_lease_until.is.null,delivery_lease_until.lt.2026-08-11T12:00:00.000Z)' +
+        ')',
+    );
+  });
+
+  it('⚠️ tomar APAGA a posse e o token na mesma escrita (a aba que acordar perde a renovação)', async () => {
+    const calls: ClaimCall[] = [];
+    await claimBroadcastDelivery(claimDb([{ id: 'bc-1' }], calls), 'acct-1', 'bc-1');
+    expect(calls[0].update).toMatchObject({
+      delivery_lease_until: null,
+      delivery_lease_token: null,
+    });
+  });
+
+  it('erro do banco ou exceção = "erro", nunca "ocupada" nem "tomada"', async () => {
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(
+      await claimBroadcastDelivery(claimDb([], [], { message: 'timeout' }), 'acct-1', 'bc-1'),
+    ).toBe('erro');
+    expect(
+      await claimBroadcastDelivery({} as unknown as SupabaseClient, 'acct-1', 'bc-1'),
+    ).toBe('erro');
+    erro.mockRestore();
   });
 
   it('is scoped to the account, so another tenant cannot claim it', async () => {
@@ -103,9 +145,10 @@ describe('claimBroadcastDelivery', () => {
 describe('releaseBroadcastDelivery', () => {
   it('clears the lock', async () => {
     const calls: ClaimCall[] = [];
-    await releaseBroadcastDelivery(claimDb([], calls), 'bc-1');
+    await releaseBroadcastDelivery(claimDb([], calls), 'bc-1', 'acct-9');
     expect(calls[0].update).toEqual({ delivery_locked_at: null });
-    expect(calls[0].filters).toEqual({ id: 'bc-1' });
+    // Recortada pela conta: os chamadores rodam em service role (8e).
+    expect(calls[0].filters).toEqual({ id: 'bc-1', account_id: 'acct-9' });
   });
 });
 

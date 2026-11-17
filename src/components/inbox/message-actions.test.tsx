@@ -88,6 +88,27 @@ describe('MessageActions — no toque', () => {
     );
   });
 
+  it('o `contextmenu` que o Android manda DEPOIS do prazo não tira a barra de cima do dedo', () => {
+    // Com o dedo ainda no lugar, a barra já aberta pelo toque não volta ao
+    // topo da bolha (numa mensagem comprida, fora da tela). A guarda vem
+    // ANTES de zerar a posição.
+    const src = fonte('message-actions.tsx');
+    const corpo = src.slice(
+      src.indexOf('const handleContextMenu'),
+      src.indexOf('const aoTocar'),
+    );
+    const guarda = corpo.indexOf('if (abriuNoToqueRef.current) return;');
+    expect(guarda).toBeGreaterThan(-1);
+    expect(guarda).toBeLessThan(corpo.indexOf('setTopoNoToque(null)'));
+    // A marca não sobra depois de um toque cancelado (sem `touchend`):
+    // ligada, o botão direito seguinte cairia na guarda e não abriria nada.
+    expect(src).toContain('onTouchCancel={aoCancelarOToque}');
+    const cancelar = src.slice(src.indexOf('const aoCancelarOToque'));
+    expect(cancelar.slice(0, cancelar.indexOf('};'))).toContain(
+      'abriuNoToqueRef.current = false;',
+    );
+  });
+
   it('o link do texto e a linha falam da MESMA marca', () => {
     // Renomear um lado sem o outro faz o toque longo no link abrir a barra.
     expect(fonte('message-actions.tsx')).toContain('closest("[data-menu-do-navegador]")');

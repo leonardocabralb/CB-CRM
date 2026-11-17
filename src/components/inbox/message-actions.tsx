@@ -216,6 +216,11 @@ export function MessageActions({
       abrirPeloToque();
       return;
     }
+    // ⚠️ E DEPOIS do prazo, com o dedo ainda no lugar (o "tocar e manter
+    // pressionado" do Android em médio ou longo, ou a corrida dos 500 ms): a
+    // barra que o dedo já abriu fica onde está. Sem isto ela pulava para o
+    // topo da bolha — numa mensagem comprida, para fora da tela.
+    if (abriuNoToqueRef.current) return;
     setTopoNoToque(null);
     setTouchOpen(true);
   };
@@ -263,6 +268,14 @@ export function MessageActions({
       abriuNoToqueRef.current = false;
       e.preventDefault();
     }
+  };
+
+  // Sem `touchend` não há clique a segurar. A marca não pode sobrar: ligada,
+  // o botão direito seguinte (aparelho híbrido) cairia na guarda do
+  // `handleContextMenu` e não abriria a barra.
+  const aoCancelarOToque = () => {
+    soltarToque();
+    abriuNoToqueRef.current = false;
   };
 
   // Aberta pelo toque (ou pelo botão direito), a barra fecha no próximo toque
@@ -341,7 +354,7 @@ export function MessageActions({
       onTouchStart={aoTocar}
       onTouchMove={aoMoverODedo}
       onTouchEnd={aoSoltarODedo}
-      onTouchCancel={soltarToque}
+      onTouchCancel={aoCancelarOToque}
     >
       {/* `min-w-0` lets this flex child actually respect the 75% cap.
        *  Default `min-width: auto` lets content (a long quote preview,

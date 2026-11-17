@@ -8,10 +8,12 @@ import {
 } from '@/lib/whatsapp/meta-api'
 import {
   validateTemplatePayload,
+  VariavelNomeadaRecusada,
   type TemplatePayload,
 } from '@/lib/whatsapp/template-validators'
 import { buildMetaTemplatePayload } from '@/lib/whatsapp/template-components'
 import { ensureMediaHeaderHandle } from '@/lib/whatsapp/template-header-handle'
+import { canEditTemplateCategory } from '@/lib/whatsapp/template-category-edit'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 import { barrarPorPapel } from '@/lib/auth/barrar-por-papel'
 
@@ -106,7 +108,7 @@ export async function PATCH(
     // meta_template_id and status — fetch explicitly.
     const { data: existing, error: lookupErr } = await supabase
       .from('message_templates')
-      .select('id, name, status, meta_template_id, language, channel_id')
+      .select('id, name, status, category, meta_template_id, language, channel_id')
       .eq('id', id)
       .eq('account_id', accountId)
       .maybeSingle()
@@ -147,7 +149,29 @@ export async function PATCH(
       validateTemplatePayload(payload)
     } catch (e) {
       return NextResponse.json(
-        { error: e instanceof Error ? e.message : 'Validation failed.' },
+        {
+          error: e instanceof Error ? e.message : 'Validation failed.',
+          // `{{nome}}`: a tela troca pela frase do dicionário (D3).
+          ...(e instanceof VariavelNomeadaRecusada ? { code: e.code } : {}),
+        },
+        { status: 400 },
+      )
+    }
+
+    // A Meta não troca a categoria de um modelo APROVADO (e é a categoria
+    // DELA que define o preço): recusado aqui, antes da Meta e do upload do
+    // cabeçalho. Nos outros estados a categoria nova vai à Meta — antes ela
+    // era gravada só aqui, e a Meta seguia com a antiga até a sincronização.
+    // `code` deixa a tela trocar a frase pela do dicionário (aba aberta antes
+    // de o modelo ser aprovado).
+    const categoriaMudou = payload.category !== existing.category
+    if (categoriaMudou && !canEditTemplateCategory(existing.status)) {
+      return NextResponse.json(
+        {
+          error:
+            "Meta doesn't allow changing the category of an approved template. Create a new template instead.",
+          code: 'categoria_travada',
+        },
         { status: 400 },
       )
     }
@@ -185,6 +209,7 @@ export async function PATCH(
           metaTemplateId: existing.meta_template_id,
           accessToken,
           components: metaPayload.components,
+          category: categoriaMudou ? metaPayload.category : undefined,
         })
       } catch (e) {
         const message = e instanceof Error ? e.message : 'Meta edit failed.'

@@ -16,6 +16,17 @@ import {
   rateLimitResponse,
   RATE_LIMITS,
 } from '@/lib/rate-limit'
+import { renovarPosseDoDisparo } from '@/lib/whatsapp/broadcast-posse'
+
+/**
+ * NOSSO (posse do envio, 1147): a posse que o assistente manda junto do lote
+ * é renovada AQUI antes do primeiro envio e de novo a cada este tanto,
+ * enquanto o lote anda. A posse vale 5 min: renovada só no navegador, um lote
+ * que se arrastasse no servidor (a Meta lenta ou pendurada — o `fetch` não tem
+ * prazo) ou um pedido que chegasse atrasado deixava a retomada assumir no
+ * meio, e os dois mandavam os mesmos pendentes.
+ */
+const RENOVAR_A_POSSE_NO_LOTE_MS = 60_000
 
 interface BroadcastResult {
   phone: string
@@ -152,6 +163,12 @@ export async function POST(request: Request) {
       template_language,
       template_params,
     } = body
+    // NOSSO (1147): a campanha e o token da posse do assistente. Sem os dois
+    // (o pedido de uma aba aberta antes do deploy) a rota manda como antes.
+    const posseDoLote =
+      typeof body.broadcast_id === 'string' && typeof body.posse === 'string'
+        ? { broadcastId: body.broadcast_id as string, token: body.posse as string }
+        : null
 
     // Normalize to a list of {phone, params} regardless of shape.
     let recipients: NewRecipient[]
@@ -233,8 +250,28 @@ export async function POST(request: Request) {
     const results: BroadcastResult[] = []
     let sentCount = 0
     let failedCount = 0
+    // `0` força a renovação antes do PRIMEIRO envio: o pedido pode ter
+    // chegado atrasado, depois de a posse vencer e a retomada assumir.
+    let posseRenovadaEm = 0
+    let semPosse: 'posse_perdida' | 'posse_incerta' | null = null
 
     for (const recipient of recipients) {
+      if (posseDoLote && Date.now() - posseRenovadaEm >= RENOVAR_A_POSSE_NO_LOTE_MS) {
+        const posse = await renovarPosseDoDisparo(
+          supabase,
+          posseDoLote.broadcastId,
+          posseDoLote.token,
+        )
+        if (posse.situacao !== 'mantida') {
+          // ⚠️⚠️ Sem posse, nem mais um envio: quem assumiu (a retomada) manda
+          // os que faltam. O que já saiu volta em `results` para o navegador
+          // gravar; o resto fica `pending`.
+          semPosse = posse.situacao === 'perdida' ? 'posse_perdida' : 'posse_incerta'
+          break
+        }
+        posseRenovadaEm = Date.now()
+      }
+
       const sanitized = sanitizePhoneForMeta(recipient.phone)
 
       if (!isValidE164(sanitized)) {
@@ -313,6 +350,24 @@ export async function POST(request: Request) {
         })
         failedCount++
       }
+    }
+
+    if (semPosse) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: semPosse,
+          error:
+            semPosse === 'posse_perdida'
+              ? 'Another delivery took over this broadcast; the rest of this batch was not sent.'
+              : 'Could not confirm this tab still owns the delivery; the rest of this batch was not sent.',
+          total: recipients.length,
+          sent: sentCount,
+          failed: failedCount,
+          results,
+        },
+        { status: 409 },
+      )
     }
 
     return NextResponse.json({

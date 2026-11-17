@@ -311,6 +311,35 @@ export type FlowNodeConfig =
 
 export type FlowNodeType = FlowNodeConfig["node_type"];
 
+/**
+ * Os nós que o laço do motor ATRAVESSA sem esperar o cliente
+ * (`advanceFromNodeKey`: os que fazem `continue`). Os outros param o laço:
+ * `collect_input`, `send_buttons` e `send_list` esperam a resposta;
+ * `handoff` e `end` encerram. Porte do #674/#683 com os NOSSOS tipos
+ * (`move_deal_stage` é nosso, 1053). Nó novo que atravesse entra aqui — é o
+ * que a ativação usa para recusar ciclo e cadeia longa demais.
+ */
+export const AUTO_ADVANCING_NODE_TYPES: ReadonlySet<string> = new Set<FlowNodeType>([
+  "start",
+  "send_message",
+  "send_media",
+  "condition",
+  "set_tag",
+  "move_deal_stage",
+]);
+
+/**
+ * Teto de nós por avanço do motor: acima dele a run termina
+ * `advance_loop_overflow` — depois de mandar o que mandou até ali.
+ */
+export const MAX_NOS_POR_AVANCO = 64;
+
+/**
+ * A maior cadeia de nós automáticos que a ativação aceita: um avanço
+ * atravessa a cadeia inteira e ainda processa o nó que espera ou encerra.
+ */
+export const MAX_CADEIA_AUTOMATICA = MAX_NOS_POR_AVANCO - 1;
+
 // ============================================================
 // Triggers (matches `flows.trigger_type` + `trigger_config`)
 // ============================================================
@@ -493,6 +522,12 @@ export interface DispatchInboundResult {
     | "handed_off"
     | "fallback_fired"
     | "duplicate_inbound_ignored"
+    /**
+     * A leitura dos nós da run ATIVA falhou (porte #683): a mensagem fica
+     * com o robô (`consumed: true`), a run segue ativa e a próxima mensagem
+     * tenta de novo — nunca `failed` por erro passageiro.
+     */
+    | "run_error"
     | "no_match";
 }
 

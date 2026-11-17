@@ -1196,9 +1196,11 @@ function AbaEnviados() {
         toast.error(
           corpo.error === "url_invalida"
             ? t("urlInvalida")
-            : corpo.error === "eventos_invalidos"
-              ? t("eventosInvalidos")
-              : t("criarFalhou")
+            : corpo.error === "url_com_credencial"
+              ? t("urlComCredencial")
+              : corpo.error === "eventos_invalidos"
+                ? t("eventosInvalidos")
+                : t("criarFalhou")
         );
         return;
       }

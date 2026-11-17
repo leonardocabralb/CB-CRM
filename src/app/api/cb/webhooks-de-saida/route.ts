@@ -20,11 +20,11 @@ import { requireRole, toErrorResponse } from "@/lib/auth/account";
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
 import {
   generateWebhookSecret,
-  normalizeWebhookUrl,
   serializeWebhookEndpoint,
   WEBHOOK_PUBLIC_COLUMNS,
 } from "@/lib/webhooks/endpoints";
 import { normalizeEvents } from "@/lib/webhooks/events";
+import { conferirUrlDoEndereco } from "@/lib/webhooks/url-do-endereco";
 import { encrypt } from "@/lib/whatsapp/encryption";
 
 export async function GET() {
@@ -73,10 +73,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "corpo_invalido" }, { status: 400 });
     }
 
-    const url = normalizeWebhookUrl(corpo.url);
-    if (!url) {
-      return NextResponse.json({ error: "url_invalida" }, { status: 400 });
+    // `url_invalida` ou `url_com_credencial` (usuário e senha na URL): a
+    // tela escolhe a frase pelo código.
+    const conferida = conferirUrlDoEndereco(corpo.url);
+    if (!conferida.ok) {
+      return NextResponse.json({ error: conferida.motivo }, { status: 400 });
     }
+    const url = conferida.url;
     const eventos = normalizeEvents(corpo.events);
     if (!eventos) {
       return NextResponse.json({ error: "eventos_invalidos" }, { status: 400 });

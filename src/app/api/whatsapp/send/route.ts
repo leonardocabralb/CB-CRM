@@ -14,6 +14,8 @@ import {
   SendMessageError,
 } from '@/lib/whatsapp/send-message'
 import { alvoDeEnvio, FRASE_SO_NUMERO_OFICIAL } from '@/lib/whatsapp/alvo-de-envio'
+import { isUniqueViolation } from '@/lib/contacts/dedupe'
+import type { MotivoDoEnvio } from '@/lib/inbox/falha-do-envio'
 import {
   motivoDaFalhaDoNucleo,
   registrarTentativaDaEquipe,
@@ -118,9 +120,15 @@ export async function POST(request: Request) {
         .select('id')
         .eq('id', conversationIdInput)
         .eq('account_id', accountId)
-        .single()
+        .maybeSingle()
 
-      if (convError || !data) {
+      // Erro de leitura NÃO é "não encontrada" (CLAUDE.md, 8b): o `.single()`
+      // de antes devolvia 404 também no soluço do banco.
+      if (convError && !idQueNaoExiste(convError)) {
+        console.error('Error loading the conversation for send:', convError.message)
+        return leituraFalhou('Failed to load the conversation')
+      }
+      if (!data) {
         return NextResponse.json(
           { error: 'Conversation not found' },
           { status: 404 }
@@ -137,7 +145,11 @@ export async function POST(request: Request) {
         .eq('account_id', accountId)
         .maybeSingle()
 
-      if (contactErr || !contactRow) {
+      if (contactErr && !idQueNaoExiste(contactErr)) {
+        console.error('Error loading the contact for send:', contactErr.message)
+        return leituraFalhou('Failed to load the contact')
+      }
+      if (!contactRow) {
         return NextResponse.json(
           { error: 'Contact not found' },
           { status: 404 }
@@ -149,13 +161,16 @@ export async function POST(request: Request) {
         accountId,
         contact_id
       )
-      if (!resolved) {
+      if ('erro' in resolved) {
+        if (resolved.erro === 'leitura') {
+          return leituraFalhou('Failed to look up the conversation for this contact')
+        }
         return NextResponse.json(
           { error: 'Failed to open a conversation for this contact' },
           { status: 500 }
         )
       }
-      conversationId = resolved
+      conversationId = resolved.id
     }
 
     // ----------------------------------------------------------
@@ -332,26 +347,61 @@ export async function POST(request: Request) {
 type SendSupabase = Awaited<ReturnType<typeof createClient>>
 
 /**
+ * A leitura do banco que FALHOU antes do envio: nada saiu. 503 com
+ * `motivo: 'barrado'` — o 5xx sem motivo a bolha leria como "pode ter saído"
+ * (`falhaDaResposta`), e o 404 de antes afirmava "não encontrada" sobre um
+ * soluço do banco (CLAUDE.md, 8b).
+ */
+function leituraFalhou(texto: string) {
+  const motivo: MotivoDoEnvio = 'barrado'
+  return NextResponse.json(
+    { error: texto, code: 'lookup_failed', motivo, detalhe: texto },
+    { status: 503 },
+  )
+}
+
+/** Id que nem é uuid (22P02) não existe: é "não encontrada", não falha do banco. */
+function idQueNaoExiste(erro: { code?: string }): boolean {
+  return erro.code === '22P02'
+}
+
+/**
  * Return the contact's conversation id in this account, creating one if
  * it doesn't exist yet. Mirrors the webhook's find-or-create so an
  * inbound-then-outbound (or outbound-first) sequence converges on a single
  * thread per contact. Runs under the caller's RLS — the conversations_insert
  * policy requires account agent membership, which the caller already is,
  * and accounts_select lets any member read the owner column below.
+ *
+ * ⚠️ `erro: 'leitura'` × `erro: 'criacao'` — a receita de
+ * `/api/cb/conversas/abrir`: a leitura que falha NÃO é "não existe conversa"
+ * (o `error` era descartado, o INSERT batia na UNIQUE da 0036 e a resposta
+ * culpava a criação), e o 23505 da corrida relê a conversa que a outra
+ * requisição criou (porte do #680 do original).
  */
 async function findOrCreateConversation(
   supabase: SendSupabase,
   accountId: string,
   contactId: string,
-): Promise<string | null> {
-  const { data: existing } = await supabase
-    .from('conversations')
-    .select('id')
-    .eq('account_id', accountId)
-    .eq('contact_id', contactId)
-    .maybeSingle()
+): Promise<{ id: string } | { erro: 'leitura' | 'criacao' }> {
+  // `null` = a leitura FALHOU; `{ id: null }` = o contato não tem conversa.
+  const buscar = async (): Promise<{ id: string | null } | null> => {
+    const { data, error } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('account_id', accountId)
+      .eq('contact_id', contactId)
+      .maybeSingle()
+    if (error) {
+      console.error('Error looking up the conversation for contact send:', error.message)
+      return null
+    }
+    return { id: (data?.id as string | undefined) ?? null }
+  }
 
-  if (existing) return existing.id
+  const existente = await buscar()
+  if (!existente) return { erro: 'leitura' }
+  if (existente.id) return { id: existente.id }
 
   // `conversations.user_id` CASCADEia de `auth.users`: gravar o operador
   // faria o offboarding dele (apagar o login no dashboard) levar a conversa
@@ -369,7 +419,7 @@ async function findOrCreateConversation(
       'Error resolving account owner for contact send:',
       contaErr?.message ?? 'owner_user_id empty',
     )
-    return null
+    return { erro: 'criacao' }
   }
 
   const { data: created, error } = await supabase
@@ -382,12 +432,22 @@ async function findOrCreateConversation(
     .select('id')
     .single()
 
-  if (error) {
-    console.error('Error creating conversation for contact send:', error.message)
-    return null
+  if (!error && created) return { id: created.id as string }
+
+  // A ingestão, outra aba ou um colega criou a conversa deste contato entre
+  // a busca e o INSERT: a UNIQUE da 0036 recusa a segunda. Segue com a que
+  // venceu — o envio sai na conversa única do contato.
+  if (isUniqueViolation(error)) {
+    const correu = await buscar()
+    if (!correu) return { erro: 'leitura' }
+    if (correu.id) return { id: correu.id }
   }
 
-  return created.id
+  console.error(
+    'Error creating conversation for contact send:',
+    error?.message ?? 'insert returned no row',
+  )
+  return { erro: 'criacao' }
 }
 
 /** channel_id atual da conversa (sem resolver o padrao). */

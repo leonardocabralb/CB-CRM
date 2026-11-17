@@ -263,7 +263,10 @@ mudança (`source`). O formato completo, com exemplo, está em
   também o `deal.status` desse aviso.
 
 **Configurações → Webhooks → Enviados → Novo endereço.** A URL precisa ser
-`https://` e alcançável da internet. Marque só os eventos que o seu fluxo
+`https://` e alcançável da internet, e não pode levar usuário e senha
+(`https://usuario:senha@…` é recusada: nenhum aviso sairia para ela). Quem
+prova ao seu sistema que o aviso veio do CRM é o segredo de assinatura.
+Marque só os eventos que o seu fluxo
 usa — o endereço novo nasce sem nenhum marcado. O segredo é mostrado uma
 única vez — guarde-o no sistema que vai **receber**, para conferir a
 assinatura. Os eventos de um endereço já criado podem ser trocados na mesma
