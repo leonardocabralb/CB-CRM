@@ -14,12 +14,16 @@ a ancestralidade continua em `aee1b01f` e tudo entra por PORTE MANUAL
 
 | Lote | Sessão | Situação | Branch | PR (base = integração) |
 |---|---|---|---|---|
-| A — Contatos, funil e robô | `lote-a` | implementando (checkpoint 1 aprovado em 17/11) | `fix/porte-upstream-2026-11-a` | — |
-| B — Pequenos | `lote-b` | implementando (checkpoint 1 aprovado em 17/11) | `fix/porte-upstream-2026-11-b` | — |
-| C — API pública, webhooks e MCP | `lote-c` | implementando (checkpoint 1 aprovado em 17/11) | `fix/porte-upstream-2026-11-c` | — |
-| D — Modelos da Meta | `lote-d` | implementando (checkpoint 1 aprovado em 17/11) | `fix/porte-upstream-2026-11-d` | — |
-| E — Equipe e permissões | `lote-e` | implementando (checkpoint 1 aprovado em 17/11) | `fix/porte-upstream-2026-11-e` | — |
-| F — Disparo | `lote-f` | implementando (checkpoint 1 aprovado em 17/11) | `fix/porte-upstream-2026-11-f` | — |
+| A — Contatos, funil e robô | `lote-a` | integrado; revisão independente aprovada | `fix/porte-upstream-2026-11-a` | #529 |
+| B — Pequenos | `lote-b` | integrado; revisão independente aprovada | `fix/porte-upstream-2026-11-b` | #526 |
+| C — API pública, webhooks e MCP | `lote-c` | integrado; revisão independente aprovada | `fix/porte-upstream-2026-11-c` | #527 |
+| D — Modelos da Meta | `lote-d` | integrado; revisão aprovada, ajustes do orquestrador (`00ce643d`) | `fix/porte-upstream-2026-11-d` | #530 |
+| E — Equipe e permissões | `lote-e` | integrado; revisão aprovada, ajustes do orquestrador (`3a4f2ac3`) | `fix/porte-upstream-2026-11-e` | #531 |
+| F — Disparo | `lote-f` | integrado; revisão aprovada, ajustes do orquestrador (`2184bad5`) | `fix/porte-upstream-2026-11-f` | #528 |
+
+Os seis lotes foram mesclados na integração (17/11/2026) e revistos, cada um,
+por um revisor independente: nenhum P1 nem P2. Os P3 que valiam foram
+corrigidos na integração; o resto está na §13.
 
 Decisões dos checkpoints 1 (17/11), além das recomendações de cada lote:
 B não faz escrita "sem efeito" em aviso real; C prova o C4 só por teste; E
@@ -491,3 +495,34 @@ reconferido no código do produto, que diverge deste; PR de desenvolvimento
 com Codex e CI; versão; publicação nos repositórios de distribuição e de
 clientes com o OK do operador; atualização do servidor de teste; instrução
 para os servidores de clientes.
+
+## 13. Fica para depois (achados das revisões, fora do escopo do porte)
+
+Nenhum é regressão deste porte; os marcados "antes" já existiam.
+
+- **Disparo (antes, regra 8e):** lote cuja chamada falha marca `failed` as
+  linhas `pending` antes de a rota anotar o envio (`use-broadcast-sending.ts`,
+  ~457–461), e o "Tentar de novo os que falharam" pode reenviar a quem
+  recebeu. O mais sério da lista.
+- **Disparo:** o caminho `erro` da trava na API v1 entrega sem trava (reler a
+  campanha antes de seguir); uma chamada à Meta mais longa que a posse (~60 s)
+  abre uma janela; o roteiro não cobre o terceiro desfecho (posse incerta).
+- **Equipe:** remover quem é dono de OUTRA conta falha em
+  `idx_accounts_one_per_owner`; o nó "Transferir" do robô e a passagem da IA
+  não releem o que gravaram; o "Reabrir" do fio aceita 0 linhas sem erro
+  (antes).
+- **Modelos:** a rota de apagar conexão promove a sucessora antes do DELETE
+  (não atômico); envio real de modelo NOMEADO à Meta e o PATCH de categoria em
+  REJECTED/PAUSED só provados com dublê (o teste real pede o OK do operador).
+- **Pequenos:** o 503 `lookup_failed` sem "Tentar de novo";
+  `currentConversationChannel` engole erro de leitura e vira 409
+  `channel_changed` falso; a recontagem que falha não tenta de novo.
+- **Contatos e robô:** lista de contatos sem desempate por id; seletores com
+  dígitos ("Maria 2"); a rota de ativação com `nodes ?? []`; a RPC da 025 usa
+  os dígitos do termo com cara de telefone também no nome e no e-mail; o
+  caminho da resposta que casa não tem cerca; mensagens do validador em
+  português literal.
+- **Webhooks:** o passo "Enviar webhook" da automação aceita URL com
+  credencial e `http`.
+- **Dependência:** o aviso de vulnerabilidade do Next 16.4.3 (a atualização é
+  decisão à parte).
