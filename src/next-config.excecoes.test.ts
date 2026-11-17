@@ -17,7 +17,8 @@ async function cacheControlFor(pathname: string) {
 }
 
 describe("Cache-Control — arquivos de public/ usados a toda hora", () => {
-  // O codificador da nota de voz, o fundo do fio e as peças da marca padrão
+  // O codificador da nota de voz, os dois fundos do fio (o neutro e o do
+  // Atlas, da marca padrão) e as peças da marca padrão
   // (`public/marca/`, o logo da barra lateral e do login em toda página):
   // com no-store o navegador os baixaria de novo a cada gravação, conversa
   // ou página aberta. Sem cabeçalho nosso, vale o `public, max-age=0` do
@@ -25,6 +26,7 @@ describe("Cache-Control — arquivos de public/ usados a toda hora", () => {
   it.each([
     "/opus/encoderWorker.min.js",
     "/inbox-doodle.svg",
+    "/inbox-doodle-atlas.svg",
     "/marca/atlas-simbolo.png",
     "/marca/atlas-horizontal-escuro.png",
   ])("deixa %s com o cache do próprio Next", async (pathname) => {
@@ -33,7 +35,14 @@ describe("Cache-Control — arquivos de public/ usados a toda hora", () => {
 
   // A exclusão é só desses: uma tela que COMEÇA com o mesmo texto continua
   // fora de cache compartilhado (`/marca` sem a barra é página, não pasta).
-  it.each(["/opus", "/inbox-doodle", "/marca", "/marcadores"])(
+  it.each([
+    "/opus",
+    "/inbox-doodle",
+    "/inbox-doodle-atlas",
+    "/inbox-doodle-x.svg",
+    "/marca",
+    "/marcadores",
+  ])(
     "mantém %s privado",
     async (pathname) => {
       expect(await cacheControlFor(pathname)).toBe("private, no-store");

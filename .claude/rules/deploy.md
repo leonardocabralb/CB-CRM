@@ -71,8 +71,9 @@ passou na máquina). Por isso:
   `AGENTS.md` cru do upstream devolve os marcadores.
 - Páginas saem com `Cache-Control: private, no-store` (#626 do original):
   `public` deixaria um cache compartilhado servir a página de uma pessoa a
-  outra. Exceções: `opus/`, `inbox-doodle.svg` e `marca/` (o logo padrão em
-  toda página), senão o navegador baixa o gravador a cada nota de voz.
+  outra. Exceções: `opus/`, os dois fundos do fio (`inbox-doodle.svg` e
+  `inbox-doodle-atlas.svg`) e `marca/` (o logo padrão em toda página),
+  senão o navegador baixa o gravador a cada nota de voz.
   Arquivo novo de `public/` usado a toda hora entra na exceção. Pino NOSSO
   `src/next-config.excecoes.test.ts` (o `next-config.test.ts` é o do
   original, igual).
