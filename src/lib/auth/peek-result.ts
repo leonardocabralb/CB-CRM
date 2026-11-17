@@ -1,15 +1,3 @@
-// ============================================================
-// A resposta de `GET /api/invitations/[token]/peek` lida pela página do
-// convite (`/join/[token]`). Porte do #682 do original, com o MESMO nome e a
-// mesma API (um merge futuro resolve o arquivo inteiro de qualquer lado).
-//
-// ⚠️ A página fazia `as PeekResult` no corpo, sem olhar o status. O 429 do
-// limite por IP (`rateLimitResponse`: `{ error, retry_after_seconds }`) não
-// tem `ok` nem `reason`, e `FAIL_COPY[undefined].title` LANÇAVA: a página do
-// convite quebrava inteira. Agora o 429 é um estado próprio, e qualquer corpo
-// que não seja um dos conhecidos vira `server_error` (com "Tentar novamente").
-// ============================================================
-
 export interface PeekOk {
   ok: true;
   account_name: string;
@@ -34,7 +22,6 @@ export interface PeekFail {
 
 export type PeekResult = PeekOk | PeekFail;
 
-/** As falhas PASSAGEIRAS: a página oferece "Tentar novamente". */
 export const RETRYABLE_PEEK_FAIL_REASONS: ReadonlySet<PeekFailReason> = new Set([
   'rate_limited',
   'server_error',
