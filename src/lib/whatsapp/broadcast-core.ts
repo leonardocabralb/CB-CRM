@@ -382,24 +382,36 @@ export async function finalizeBroadcastStatus(
   db: SupabaseClient,
   broadcastId: string
 ): Promise<void> {
-  const countWhere = async (status: string): Promise<number> => {
-    const { count } = await db
+  // NOSSO (porte de 17/11/2026): contagem que FALHA é "não sei", nunca 0 —
+  // "0 pendentes" de um soluço do banco fecharia como "Enviado" a campanha
+  // parada com pendentes. Sem saber, não fecha: a campanha fica como está.
+  const countWhere = async (status: string): Promise<number | null> => {
+    const { count, error } = await db
       .from('broadcast_recipients')
       .select('id', { count: 'exact', head: true })
       .eq('broadcast_id', broadcastId)
       .eq('status', status);
+    if (error) {
+      console.error('[broadcast-core] finalize count failed:', error.message);
+      return null;
+    }
     return count ?? 0;
   };
 
   // Still work outstanding (a capped resume pass) — leave it 'sending'
   // so the UI keeps offering Resume.
-  if ((await countWhere('pending')) > 0) return;
+  const pendentes = await countWhere('pending');
+  if (pendentes === null || pendentes > 0) return;
 
   const failed = await countWhere('failed');
-  const { count: total } = await db
+  const { count: total, error: totalErr } = await db
     .from('broadcast_recipients')
     .select('id', { count: 'exact', head: true })
     .eq('broadcast_id', broadcastId);
+  if (failed === null || totalErr) {
+    if (totalErr) console.error('[broadcast-core] finalize count failed:', totalErr.message);
+    return;
+  }
 
   await db
     .from('broadcasts')

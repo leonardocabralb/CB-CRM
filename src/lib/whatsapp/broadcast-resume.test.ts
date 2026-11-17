@@ -145,9 +145,10 @@ describe('claimBroadcastDelivery', () => {
 describe('releaseBroadcastDelivery', () => {
   it('clears the lock', async () => {
     const calls: ClaimCall[] = [];
-    await releaseBroadcastDelivery(claimDb([], calls), 'bc-1');
+    await releaseBroadcastDelivery(claimDb([], calls), 'bc-1', 'acct-9');
     expect(calls[0].update).toEqual({ delivery_locked_at: null });
-    expect(calls[0].filters).toEqual({ id: 'bc-1' });
+    // Recortada pela conta: os chamadores rodam em service role (8e).
+    expect(calls[0].filters).toEqual({ id: 'bc-1', account_id: 'acct-9' });
   });
 });
 

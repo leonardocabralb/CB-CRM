@@ -120,15 +120,22 @@ export async function claimBroadcastDelivery(
   }
 }
 
-/** Release the delivery lock. Best-effort; a stale lock self-expires. */
+/**
+ * Release the delivery lock. Best-effort; a stale lock self-expires.
+ * Recortada pela CONTA, como o `claimBroadcastDelivery`: os chamadores rodam
+ * em service role (a API v1 e o `after()` da retomada), e toda escrita ali
+ * leva `.eq('account_id')` (CLAUDE.md, 8e).
+ */
 export async function releaseBroadcastDelivery(
   db: SupabaseClient,
-  broadcastId: string
+  broadcastId: string,
+  accountId: string
 ): Promise<void> {
   const { error } = await db
     .from('broadcasts')
     .update({ delivery_locked_at: null })
-    .eq('id', broadcastId);
+    .eq('id', broadcastId)
+    .eq('account_id', accountId);
   if (error) {
     console.error('[broadcast-resume] release failed:', error.message);
   }

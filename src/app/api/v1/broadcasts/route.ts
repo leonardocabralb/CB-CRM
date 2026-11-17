@@ -140,11 +140,18 @@ export async function POST(request: Request) {
     // client — no request-scoped auth needed for the Meta calls or
     // the account-scoped row updates.
     after(async () => {
-      if (trava === 'ocupada') return;
+      if (trava === 'ocupada') {
+        // Não acontece na prática (a campanha acabou de nascer); se acontecer,
+        // o 202 já saiu e quem entrega é a outra passada — fica no log.
+        console.warn('[v1/broadcasts] trava ocupada: outra passada entrega', plan.broadcastId);
+        return;
+      }
       try {
         await deliverBroadcast(ctx.supabase, plan);
       } finally {
-        if (trava === 'tomada') await releaseBroadcastDelivery(ctx.supabase, plan.broadcastId);
+        if (trava === 'tomada') {
+          await releaseBroadcastDelivery(ctx.supabase, plan.broadcastId, ctx.accountId);
+        }
       }
     });
 

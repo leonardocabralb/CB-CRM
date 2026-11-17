@@ -13,6 +13,15 @@ import {
 } from '@/lib/supabase/paginar';
 
 /**
+ * Em quantos minutos a trava da RETOMADA fica velha: o `DELIVERY_LOCK_STALE_MS`
+ * de `broadcast-resume.ts`, que importa código de servidor e não pode vir à
+ * tela. É o que a faixa "Envio em andamento" promete quando quem enviava era o
+ * servidor e a passada caiu. Pino em
+ * `supabase/migrations/posse-do-disparo-1147.test.ts`.
+ */
+export const MINUTOS_DA_TRAVA_DA_RETOMADA = 30;
+
+/**
  * O que a faixa de cima da campanha mostra.
  *
  * - `em_andamento`: um envio está rodando (a posse do assistente ou a trava

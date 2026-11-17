@@ -129,7 +129,7 @@ describe('POST /api/whatsapp/broadcast/[id]/resume — a posse e a trava (1147)'
     expect(res.status).toBe(400)
     expect(res.body.code).toBe('nothing_to_resume')
     expect(finalizeBroadcastStatus).toHaveBeenCalledWith({ cliente: 'servico' }, 'b1')
-    expect(releaseBroadcastDelivery).toHaveBeenCalledWith({ cliente: 'servico' }, 'b1')
+    expect(releaseBroadcastDelivery).toHaveBeenCalledWith({ cliente: 'servico' }, 'b1', 'conta-1')
     expect(finalizeBroadcastStatus.mock.invocationCallOrder[0]).toBeLessThan(
       releaseBroadcastDelivery.mock.invocationCallOrder[0],
     )

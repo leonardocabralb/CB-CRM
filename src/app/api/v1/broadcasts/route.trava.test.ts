@@ -101,7 +101,7 @@ describe('POST /api/v1/broadcasts — a trava da retomada (1147)', () => {
     await POST(pedido())
     await rodarDepoisDaResposta()
     expect(deliverBroadcast).toHaveBeenCalledWith({ cliente: 'da-api' }, PLANO)
-    expect(releaseBroadcastDelivery).toHaveBeenCalledWith({ cliente: 'da-api' }, 'b1')
+    expect(releaseBroadcastDelivery).toHaveBeenCalledWith({ cliente: 'da-api' }, 'b1', 'conta-1')
     expect(deliverBroadcast.mock.invocationCallOrder[0]).toBeLessThan(
       releaseBroadcastDelivery.mock.invocationCallOrder[0],
     )

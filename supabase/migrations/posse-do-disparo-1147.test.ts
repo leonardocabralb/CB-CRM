@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { MINUTOS_DA_TRAVA_DA_RETOMADA } from '../../src/lib/broadcast-painel';
 import { PRAZO_DA_POSSE_MS } from '../../src/lib/whatsapp/broadcast-posse';
 import { DELIVERY_LOCK_STALE_MS } from '../../src/lib/whatsapp/broadcast-resume';
 
@@ -46,6 +47,9 @@ describe('1147 — posse do envio do disparo', () => {
     expect(DELIVERY_LOCK_STALE_MS).toBe(30 * 60 * 1000);
     expect(funcao('cb_tomar_posse_do_disparo')).toContain("now() - INTERVAL '30 minutes'");
     expect(funcao('cb_disparo_em_andamento')).toContain("now() - INTERVAL '30 minutes'");
+    // A faixa da campanha promete esse prazo com a cópia da tela (o módulo do
+    // servidor não vai ao navegador).
+    expect(MINUTOS_DA_TRAVA_DA_RETOMADA * 60 * 1000).toBe(DELIVERY_LOCK_STALE_MS);
   });
 
   it('INVOKER, sem DEFINER: quem decide quem escreve é a RLS (e o papel escrito)', () => {

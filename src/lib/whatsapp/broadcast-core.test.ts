@@ -198,6 +198,8 @@ function statusDb(
   counts: Record<string, number>,
   total: number,
   writes: { update?: Record<string, unknown> },
+  // Contagens que FALHAM: o nome da situação, ou 'total' para a contagem geral.
+  falhas: ReadonlySet<string> = new Set(),
 ) {
   return {
     from(table: string) {
@@ -212,11 +214,18 @@ function statusDb(
           if (table === 'broadcasts') writes.update = row;
           return b;
         },
-        then: (resolve: (r: { count: number; error: null }) => unknown) =>
-          resolve({
-            count: status === null ? total : (counts[status] ?? 0),
-            error: null,
-          }),
+        then: (
+          resolve: (r: {
+            count: number | null;
+            error: { message: string } | null;
+          }) => unknown,
+        ) =>
+          falhas.has(status ?? 'total')
+            ? resolve({ count: null, error: { message: 'timeout' } })
+            : resolve({
+                count: status === null ? total : (counts[status] ?? 0),
+                error: null,
+              }),
       };
       return b;
     },
@@ -260,6 +269,21 @@ describe('finalizeBroadcastStatus', () => {
     );
     expect(writes.update?.status).toBe('sent');
   });
+
+  // NOSSO (porte de 17/11/2026): contagem que falha é "não sei", nunca 0.
+  // "0 pendentes" de um soluço do banco fechava como "Enviado" a campanha
+  // parada com pendentes, e o Retomar sumia da tela.
+  it.each(['pending', 'failed', 'total'])(
+    'não fecha a campanha quando a contagem "%s" falha',
+    async (qual) => {
+      const writes: { update?: Record<string, unknown> } = {};
+      await finalizeBroadcastStatus(
+        statusDb({ pending: 0, failed: 0 }, 10, writes, new Set([qual])),
+        'b-1',
+      );
+      expect(writes.update).toBeUndefined();
+    },
+  );
 });
 
 // ============================================================

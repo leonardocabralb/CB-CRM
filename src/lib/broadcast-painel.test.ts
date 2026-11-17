@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -164,5 +166,39 @@ describe('lerDestinatariosDaCampanha', () => {
     const { linhas, motivo } = await lerDestinatariosDaCampanha(db, 'bc-1');
     expect(motivo).toBeNull();
     expect(linhas).toHaveLength(MAX_PAGINAS * PAGINA);
+  });
+});
+
+// ============================================================
+// A PÁGINA da campanha (`broadcasts/[id]/page.tsx`) — o que só se vê lendo o
+// fonte: a ordem das leituras, a regra da faixa e o CSV.
+// ============================================================
+describe('a página da campanha usa as regras daqui', () => {
+  const pagina = readFileSync(
+    join(process.cwd(), 'src/app/(dashboard)/broadcasts/[id]/page.tsx'),
+    'utf8',
+  );
+
+  it('⚠️ lê o ANDAMENTO antes dos destinatários', () => {
+    // Na ordem inversa, um envio que terminasse entre as duas leituras deixava
+    // pendentes velhos com "ninguém enviando": o "parou no meio" falso.
+    const andamento = pagina.indexOf('await disparoEmAndamento(supabase, broadcastId)');
+    const destinatarios = pagina.indexOf('await lerDestinatariosDaCampanha(supabase, broadcastId)');
+    expect(andamento).toBeGreaterThan(0);
+    expect(destinatarios).toBeGreaterThan(andamento);
+  });
+
+  it('a faixa sai de `painelDaRetomada`, e o Retomar só com "parado" ou "retentar"', () => {
+    expect(pagina).toContain('const painel = painelDaRetomada({');
+    expect(pagina).toContain("{(painel === 'parado' || painel === 'retentar') && (");
+  });
+
+  it('a faixa "em andamento" promete os dois prazos de verdade (aba e servidor)', () => {
+    expect(pagina).toContain('minutosAba: Math.round(PRAZO_DA_POSSE_MS / 60_000)');
+    expect(pagina).toContain('minutosServidor: MINUTOS_DA_TRAVA_DA_RETOMADA');
+  });
+
+  it('o CSV passa todo campo por `neutralizarFormula`', () => {
+    expect(pagina).toContain('`"${neutralizarFormula(v).replace(/"/g, \'""\')}"`');
   });
 });

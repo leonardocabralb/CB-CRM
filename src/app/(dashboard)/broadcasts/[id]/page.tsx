@@ -48,9 +48,10 @@ import { useTranslations } from 'next-intl';
 import { nomeDoContato } from '@/lib/contacts/identidade';
 import {
   lerDestinatariosDaCampanha,
+  MINUTOS_DA_TRAVA_DA_RETOMADA,
   painelDaRetomada,
 } from '@/lib/broadcast-painel';
-import { disparoEmAndamento } from '@/lib/whatsapp/broadcast-posse';
+import { disparoEmAndamento, PRAZO_DA_POSSE_MS } from '@/lib/whatsapp/broadcast-posse';
 import { MAX_PAGINAS, PAGINA } from '@/lib/supabase/paginar';
 import { neutralizarFormula } from '@/lib/csv';
 
@@ -495,7 +496,15 @@ export default function BroadcastDetailPage() {
             {painel === 'em_andamento' ? t('inFlightTitle') : t('inFlightUnknownTitle')}
           </p>
           <p className="mt-0.5 text-muted-foreground">
-            {painel === 'em_andamento' ? t('inFlightHint') : t('inFlightUnknownHint')}
+            {/* A página não se atualiza sozinha: o Retomar volta ao recarregar,
+                depois que a posse da aba (5 min) ou a trava da retomada no
+                servidor (30 min) vence. */}
+            {painel === 'em_andamento'
+              ? t('inFlightHint', {
+                  minutosAba: Math.round(PRAZO_DA_POSSE_MS / 60_000),
+                  minutosServidor: MINUTOS_DA_TRAVA_DA_RETOMADA,
+                })
+              : t('inFlightUnknownHint')}
           </p>
         </div>
       )}

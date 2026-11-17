@@ -46,6 +46,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   let claimedId: string | null = null;
+  let contaDoClaim: string | null = null;
 
   try {
     // Same gate as the batch send endpoint: running a broadcast is a
@@ -96,6 +97,7 @@ export async function POST(
       );
     }
     claimedId = id;
+    contaDoClaim = accountId;
 
     const { plan, remaining, unsendable } = await planBroadcastResume(
       supabase,
@@ -122,7 +124,7 @@ export async function POST(
         // Don't leave it mid-flight — settle whatever did land.
         await finalizeBroadcastStatus(admin, id).catch(() => {});
       } finally {
-        await releaseBroadcastDelivery(admin, id);
+        await releaseBroadcastDelivery(admin, id, accountId);
       }
     });
 
@@ -143,7 +145,7 @@ export async function POST(
   } catch (error) {
     // Planning failed after the claim — release it, or the campaign is
     // locked out of resuming until the staleness window expires.
-    if (claimedId) {
+    if (claimedId && contaDoClaim) {
       const admin = supabaseAdmin();
       // NOSSO (1147): tomar a trava APAGOU a posse do assistente — ele não
       // fecha mais esta campanha. Um planejamento que falha depois disso
@@ -151,7 +153,7 @@ export async function POST(
       // sempre, sem como excluir. O fecho é derivado das linhas: com
       // pendentes, ela segue `sending` e o Retomar volta.
       await finalizeBroadcastStatus(admin, claimedId).catch(() => {});
-      await releaseBroadcastDelivery(admin, claimedId).catch(() => {});
+      await releaseBroadcastDelivery(admin, claimedId, contaDoClaim).catch(() => {});
     }
     if (error instanceof BroadcastError) {
       return NextResponse.json(
