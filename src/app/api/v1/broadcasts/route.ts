@@ -25,6 +25,8 @@
 // Response (202):
 //   { "data": { "broadcast_id", "status": "sending",
 //               "total_recipients", "accepted", "rejected",
+//               "duplicates",     // recipients that hit a contact already
+//                                 // listed — messaged once (#681)
 //               "channel_id" } }   // the connection it went out through
 //                                  // (null only on the legacy single-number
 //                                  // config, which has no cb_channels row)
@@ -134,6 +136,7 @@ export async function POST(request: Request) {
         total_recipients: plan.planned.length,
         accepted: plan.planned.length,
         rejected: plan.rejected,
+        duplicates: plan.duplicates,
         // Por QUAL número a campanha saiu — o que quem integra deve registrar
         // para auditoria (o mesmo contrato do 201 de `/messages`). Com o campo
         // omitido no pedido, é a única forma de saber qual o núcleo escolheu.

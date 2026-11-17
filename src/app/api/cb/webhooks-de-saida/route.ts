@@ -19,8 +19,8 @@ import { supabaseAdmin } from "@/lib/automations/admin-client";
 import { requireRole, toErrorResponse } from "@/lib/auth/account";
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
 import {
+  checkWebhookUrl,
   generateWebhookSecret,
-  normalizeWebhookUrl,
   serializeWebhookEndpoint,
   WEBHOOK_PUBLIC_COLUMNS,
 } from "@/lib/webhooks/endpoints";
@@ -73,10 +73,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "corpo_invalido" }, { status: 400 });
     }
 
-    const url = normalizeWebhookUrl(corpo.url);
-    if (!url) {
-      return NextResponse.json({ error: "url_invalida" }, { status: 400 });
+    // `url_invalida` ou `url_com_credencial` (usuário e senha na URL): a
+    // tela escolhe a frase pelo código.
+    const urlCheck = checkWebhookUrl(corpo.url);
+    if (!urlCheck.ok) {
+      return NextResponse.json({ error: urlCheck.motivo }, { status: 400 });
     }
+    const url = urlCheck.url;
     const eventos = normalizeEvents(corpo.events);
     if (!eventos) {
       return NextResponse.json({ error: "eventos_invalidos" }, { status: 400 });

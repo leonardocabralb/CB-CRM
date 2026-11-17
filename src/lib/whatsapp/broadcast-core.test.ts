@@ -485,6 +485,58 @@ describe('createBroadcast: o telefone do destinatário passa pela régua', () =>
     expect(findOrCreateContact).toHaveBeenCalledTimes(1);
   });
 
+  it('porte do #681: duas grafias do MESMO número saem uma vez e são contadas em `duplicates`', async () => {
+    // O find-or-create real acha a ficha pela PESSOA, não pela grafia: aqui,
+    // pelos dígitos lidos.
+    vi.mocked(findOrCreateContact).mockClear();
+    vi.mocked(findOrCreateContact).mockImplementation(async (_db, _acc, _u, input) => ({
+      id: `c:${String(input.phone).replace(/\D/g, '')}`,
+      created: false,
+    }));
+    const { db, calls } = makeDb({
+      data: [{ broadcast_id: 'b-1', recipient_id: 'r-1', contact_id: 'c:14155550123' }],
+      error: null,
+    });
+
+    const plan = await createBroadcast(db, 'acc', 'user', {
+      templateName: 'promo',
+      recipients: [
+        { to: '+14155550123', params: ['first'] },
+        { to: '+1 415 555 0123', params: ['second'] },
+        { to: 'invalid' },
+      ],
+    });
+
+    expect(plan.rejected).toBe(1);
+    expect(plan.duplicates).toBe(1);
+    // Fica o PRIMEIRO (com os parâmetros dele), e a soma fecha com o pedido.
+    expect(plan.planned).toEqual([
+      { recipientRowId: 'r-1', phone: '14155550123', params: ['first'] },
+    ]);
+    expect(plan.planned.length + plan.rejected + plan.duplicates).toBe(3);
+    expect((calls.rpc[0].args as { p_contact_ids: string[] }).p_contact_ids).toEqual([
+      'c:14155550123',
+    ]);
+  });
+
+  it('sem repetido, `duplicates` é 0', async () => {
+    comContatoPorTelefone();
+    const { db } = makeDb({
+      data: [
+        { broadcast_id: 'b-1', recipient_id: 'r-1', contact_id: 'c:+14155550123' },
+        { broadcast_id: 'b-1', recipient_id: 'r-2', contact_id: 'c:+14155550124' },
+      ],
+      error: null,
+    });
+
+    const plan = await createBroadcast(db, 'acc', 'user', {
+      templateName: 'promo',
+      recipients: [{ to: '+14155550123' }, { to: '+14155550124' }],
+    });
+
+    expect(plan.duplicates).toBe(0);
+  });
+
   it('nenhum destinatário válido → 400 com a regra escrita, sem criar contato nem campanha', async () => {
     comContatoPorTelefone();
     const { db, calls } = makeDb({ data: [], error: null });

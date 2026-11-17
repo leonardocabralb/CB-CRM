@@ -128,6 +128,12 @@ I/O), a porta, o admin em `/api/cb/webhooks*` e a seção de Configurações.
   CADASTRADA (não alimenta o "Listen for test event" do n8n).
 - ⚠️ **Toda entrega, real e teste, passa pela guarda de `ssrf.ts`** antes de
   postar (a do original, por octetos, com o IPv6 mapeado). Não divergir dela.
+- ⚠️ **URL com usuário e senha é recusada no CADASTRO** (`checkWebhookUrl`,
+  porte do #681), nas QUATRO portas que gravam a URL (v1 e sessão, POST e
+  PATCH): o `fetch` do Node recusa URL com credencial, e toda entrega
+  falharia até desligar o endpoint, com a senha na listagem. A v1 responde a
+  frase do original; a de sessão, o `motivo` que a tela traduz. Porta nova
+  usa a mesma função. Pino `endpoints.rotas.test.ts`.
 - ⚠️⚠️ **O teste LÊ o começo do corpo** (até `TETO_DO_TRECHO` = 2 KB, só
   `content-type` textual; `resultado-do-teste.ts`): no 404 do n8n é o corpo
   que diz o motivo. Com isso, um DNS rebinding que vença `ssrf.ts` lê 2 KB de

@@ -6302,6 +6302,7 @@
       "urlDeDestino": "URL de destino",
       "urlDeDestinoAjuda": "Precisa ser https:// e ser alcançável da internet.",
       "urlInvalida": "A URL precisa começar com https:// e ser alcançável de fora.",
+      "urlComCredencial": "A URL não pode levar usuário e senha (https://usuario:senha@…). Para o seu sistema conferir que o aviso veio do CRM, use o segredo de assinatura que aparece ao criar o endereço.",
       "eventos": "Eventos",
       "eventosInvalidos": "Escolha pelo menos um evento.",
       "segredoAvisoSaida": "Ele aparece uma única vez. Guarde-o no sistema que vai RECEBER, para conferir a assinatura de cada entrega.",
@@ -6577,7 +6578,7 @@
         "fichaUnida": "<b>Contato unido a outro</b> — quando um admin une duas fichas, o id da que saiu continua respondendo em <code>GET</code> e <code>PATCH /api/v1/contacts/'{id}'</code> (e nas etiquetas e nos campos), com o id da ficha que ficou na resposta, e a busca <code>?search=</code> só de dígitos (8 ou mais) acha a ficha pelo telefone antigo. O card apagado na união (fica um por funil, o mais avançado) responde <code>404</code>: a história dele passou para o card que ficou.",
         "usuario": "<b>Responsável não encontrado</b> — use o id de usuário do membro, não o id de outra coisa da mesma tela.",
         "testUrl": "<b>Nada chega no n8n</b> — a Test URL só escuta 120 segundos. Cadastre a Production URL, com o fluxo publicado.",
-        "url": "<b>Endereço recusado</b> — o CRM só entrega em https:// público: http, localhost e IP interno não servem.",
+        "url": "<b>Endereço recusado</b> — o CRM só entrega em https:// público: http, localhost, IP interno e URL com usuário e senha (<code>https://usuario:senha@…</code>) não servem. Para provar que o aviso veio do CRM, use o segredo de assinatura.",
         "desligado": "<b>Endereço desligado</b> — depois de {falhas} falhas seguidas o CRM para de entregar. Conserte o destino e clique em Religar em Webhooks → Enviados.",
         "fichaNaLixeira": "<b>Contato excluído no CRM</b> — ele vai para a Lixeira por 90 dias. Enquanto isso o id responde <code>404</code> (as conversas dele também), mas um admin pode restaurá-lo com o <b>mesmo id</b> e as conversas e mensagens como estavam. Não recrie o contato no primeiro <code>404</code>: com uma ficha nova do mesmo telefone, ele só volta <b>unido</b> a ela, e o id antigo passa a responder com a ficha que ficou."
       },

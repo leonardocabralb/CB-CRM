@@ -67,6 +67,19 @@ export function encodeCursor(row: { created_at: string; id: string }): string {
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Porte do #681 do original. Só o `Date.parse` não guarda a interpolação crua:
+// o V8 lê "2020-01-01 (,id.not.is.null)" como data (o parêntese é comentário
+// para ele), e também "1" e "Jan 1 2026". ⚠️ A régua exige o FUSO: é a forma
+// que o PostgREST devolve para `timestamptz`, o tipo do `created_at` das nove
+// tabelas paginadas (medido em 17/11/2026). Rota paginada nova sobre coluna
+// SEM fuso teria o próprio cursor recusado — e o n8n repetiria a 1ª página.
+const ISO_TIMESTAMP_RE =
+  /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}(:?\d{2})?)$/;
+
+function isIsoTimestamp(value: string): boolean {
+  return ISO_TIMESTAMP_RE.test(value) && !Number.isNaN(Date.parse(value));
+}
+
 /** Decode a cursor string, or null if missing/malformed/untrusted. */
 export function decodeCursor(value: string | null): Cursor | null {
   if (!value) return null;
@@ -80,8 +93,7 @@ export function decodeCursor(value: string | null): Cursor | null {
     // ISO-8601 timestamp and a UUID. This is what keeps the raw
     // interpolation in `keysetFilter` safe.
     if (!UUID_RE.test(id)) return null;
-    const ts = Date.parse(createdAt);
-    if (Number.isNaN(ts)) return null;
+    if (!isIsoTimestamp(createdAt)) return null;
     return { createdAt, id };
   } catch {
     return null;
