@@ -43,6 +43,10 @@ no menu): `.claude/rules/integracoes-atlas-acoes.md`.
   recusa parâmetro vazio). A versão do upstream ordenava as chaves e
   compactava as lacunas. Posição acima de 50 é ignorada no motor e recusada na
   ativação (um laço por posição).
+- ⚠️ **Modelo NOMEADO (`{{nome}}`)**: a chave é o nome (`variables.nome`), o
+  valor vai em `nomeados`, e `recortarAoModelo` monta o corpo na ordem do
+  MODELO (pelas chaves do passo, um nome faltando deslocaria os outros). Sem a
+  linha local, falha com a frase (iria sem os nomes). Teto de 50 nomes.
 - ⚠️ **O que FALTOU é conferido em `sendViaMeta` (`faltaNoModelo`)**, ANTES da
   Meta: só lá a linha do modelo é conhecida (o catálogo é por WABA). E
   `recortarAoModelo` corta o que SOBROU: corpo além dos `{{N}}` (o construtor

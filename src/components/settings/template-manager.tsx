@@ -64,6 +64,7 @@ import {
   extractVariableIndices,
   TEMPLATE_LIMITS,
 } from '@/lib/whatsapp/template-validators';
+import { canEditTemplateCategory } from '@/lib/whatsapp/template-category-edit';
 
 const CATEGORIES = ['Marketing', 'Utility', 'Authentication'] as const;
 type HeaderFormat = 'none' | 'text' | 'image' | 'video' | 'document';
@@ -179,6 +180,12 @@ export function TemplateManager() {
   // submit handler from POST /submit to PATCH /[id] and changes the
   // dialog title + CTA. Set to the template id to pre-fill from a row.
   const [editingId, setEditingId] = useState<string | null>(null);
+  // A Meta não troca a categoria de um modelo APROVADO (é a dela que define
+  // o preço): ao editar um, o seletor trava e diz por quê. Derivado no
+  // render, da linha que está sendo editada.
+  const editingTemplate = templates.find((template) => template.id === editingId);
+  const categoryLocked =
+    editingTemplate !== undefined && !canEditTemplateCategory(editingTemplate.status);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   // Template selected for the confirm-delete dialog. The destructive
   // action goes through this two-step so a slip on the trash icon
@@ -325,6 +332,11 @@ export function TemplateManager() {
           throw new Error(
             t('submitTemplateExists', { error: String(data.error ?? '') }),
           );
+        }
+        // O modelo foi aprovado depois de o diálogo abrir: a rota recusa
+        // trocar a categoria de um APROVADO (o seletor já trava ao abrir).
+        if (data?.code === 'categoria_travada') {
+          throw new Error(t('categoryLockedApproved'));
         }
         throw new Error(
           data?.error || t(isEdit ? 'editFailedHttp' : 'submitFailedHttp', { status: res.status }),
@@ -810,6 +822,7 @@ export function TemplateManager() {
                       category: val as MessageTemplate['category'],
                     })
                   }
+                  disabled={categoryLocked}
                 >
                   <SelectTrigger className="w-full bg-muted border-border text-foreground">
                     <SelectValue />
@@ -826,6 +839,11 @@ export function TemplateManager() {
                     ))}
                   </SelectContent>
                 </Select>
+                {categoryLocked && (
+                  <p className="text-[11px] text-muted-foreground">
+                    {t('categoryFixed')}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">

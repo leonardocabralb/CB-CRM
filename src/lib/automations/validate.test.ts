@@ -740,7 +740,7 @@ describe('previdenciário — Fase 2 (modelo, tarefa, janela)', () => {
   const paths = (steps: { step_type: string; step_config: Record<string, unknown> }[]) =>
     validateStepsForActivation(steps).map((i) => i.path)
 
-  it('send_template: valores por POSIÇÃO; chave que não é posição é recusada', () => {
+  it('send_template: valores por POSIÇÃO ou pelo NOME da variável; outra chave é recusada', () => {
     expect(
       paths([
         {
@@ -755,12 +755,31 @@ describe('previdenciário — Fase 2 (modelo, tarefa, janela)', () => {
         },
       ])
     ).toEqual([])
+    // D3 (17/11/2026): o modelo NOMEADO (`{{nome_do_cliente}}`) grava os
+    // valores pelo nome — até aqui era recusado, e o modelo não saía.
     expect(
-      paths([{ step_type: 'send_template', step_config: { template_name: 'x', variables: { nome: 'a' } } }])
-    ).toEqual(['steps[0].variables'])
+      paths([
+        {
+          step_type: 'send_template',
+          step_config: {
+            template_name: 'x',
+            variables: { nome_do_cliente: '{{contact.name}}' },
+            variaveis_reserva: { nome_do_cliente: 'cliente' },
+          },
+        },
+      ])
+    ).toEqual([])
+    for (const chave of ['nome completo', '{{1}}', '0', '01', '']) {
+      expect(
+        paths([{ step_type: 'send_template', step_config: { template_name: 'x', variables: { [chave]: 'a' } } }])
+      ).toEqual(['steps[0].variables'])
+    }
     expect(
       paths([{ step_type: 'send_template', step_config: { template_name: 'x', variables: { '1': 5 } } }])
     ).toEqual(['steps[0].variables.1'])
+    expect(
+      paths([{ step_type: 'send_template', step_config: { template_name: 'x', variables: { nome: 5 } } }])
+    ).toEqual(['steps[0].variables.nome'])
   })
 
   it('send_template: arquivo do cabeçalho tem de ser endereço http(s)', () => {
@@ -806,6 +825,15 @@ describe('previdenciário — Fase 2 (modelo, tarefa, janela)', () => {
     expect(
       paths([{ step_type: 'send_template', step_config: { template_name: 'x', button_params: { '10': 'a' } } }])
     ).toEqual(['steps[0].button_params'])
+    // O mesmo teto para os NOMES (o motor lê só os 50 primeiros).
+    const nomes = (n: number) =>
+      Object.fromEntries(Array.from({ length: n }, (_, i) => [`v${i}`, 'a']))
+    expect(
+      paths([{ step_type: 'send_template', step_config: { template_name: 'x', variables: nomes(50) } }])
+    ).toEqual([])
+    expect(
+      paths([{ step_type: 'send_template', step_config: { template_name: 'x', variables: nomes(51) } }])
+    ).toEqual(['steps[0].variables'])
   })
 
   it('condição da janela de 24h dispensa o operando; as outras continuam exigindo', () => {

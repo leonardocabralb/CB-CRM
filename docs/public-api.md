@@ -321,6 +321,14 @@ The object form needs a template the CRM has synced from Meta — it reads
 the template to place each value; for a template the CRM doesn't know, send
 the list.
 
+**Named variables.** A template created with named variables
+(`{{customer_name}}` — the default in Meta's template editor) takes its
+values in the alphabetical order of the names — the order of JavaScript's
+`sort()` (`["customer_name", "order_id"]`) —, in the list and in `body`; the
+CRM sends each value with its name. This needs the template synced to the
+CRM: without the local copy the values go unnamed and Meta refuses the send.
+A text header's named variable goes in `headerText`.
+
 When the CRM knows the template, it is filled in **before** anything goes to
 Meta. If something is missing, the call answers `400 bad_request` and
 `message` says what: a media header (image, video, document) with no file —
@@ -944,7 +952,9 @@ curl -X POST https://your-crm.example.com/api/v1/broadcasts \
 `channel_id` is optional — see
 [Choosing which number to send from](#choosing-which-number-to-send-from).
 `params` is one list per recipient, in the order of the template's
-`{{1}}`, `{{2}}`… variables; recipients may carry lists of different
+`{{1}}`, `{{2}}`… variables — or, for a template with named variables, in
+the alphabetical order of the names (see "Named variables" under
+`POST /api/v1/messages`); recipients may carry lists of different
 lengths.
 
 **Migration required:** apply

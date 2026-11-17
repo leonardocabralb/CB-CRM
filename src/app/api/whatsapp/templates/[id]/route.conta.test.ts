@@ -12,6 +12,8 @@ const MODELO = {
   id: ID,
   name: 'aviso_de_pedido',
   status: 'APPROVED',
+  // A edição abaixo mantém a categoria: trocá-la num APROVADO é 400 (D1).
+  category: 'Marketing',
   meta_template_id: 'meta-1',
   language: 'pt_BR',
 }

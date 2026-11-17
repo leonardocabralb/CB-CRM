@@ -84,6 +84,15 @@ Two things worth knowing before choosing:
   accounts (`kind: "instagram"`); they can't be used to send, and
   `send_message` refuses them (`not_supported`).
 
+### Template variables
+
+`send_message` (`template.params`) and `send_broadcast` (`params` per
+recipient) take the body variables as a list: `{{1}}`, `{{2}}`… in order —
+or, for a template with named variables (`{{customer_name}}`), in the
+alphabetical order of the names (see "Named variables" in
+[the API reference](public-api.md)). A named template must be synced to the
+CRM.
+
 ## Safety
 
 Because sending WhatsApp messages is a real side effect, the server is

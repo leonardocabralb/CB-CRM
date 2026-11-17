@@ -15,6 +15,10 @@ import {
 } from '@/components/ui/select';
 import { ArrowLeft, ArrowRight, Eye, ImageIcon, Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import {
+  extractTemplateVariables,
+  isNamedVariable,
+} from '@/lib/whatsapp/template-validators';
 
 type VariableType = 'static' | 'field' | 'custom_field';
 
@@ -136,6 +140,12 @@ export function Step3Personalize({
   }, []);
 
   const placeholders = useMemo(() => {
+    // NOMEADO (`{{nome_do_cliente}}`, o padrão do editor da Meta): sem isto o
+    // modelo parecia não ter variável e a campanha saía sem valores — a Meta
+    // recusa cada envio (#132000). A ordem é a do envio
+    // (`extractTemplateVariables`); `resolveVariables` a segue.
+    const nomes = extractTemplateVariables(template.body_text).filter(isNamedVariable);
+    if (nomes.length > 0) return nomes.map((k) => `{{${k}}}`);
     const matches = template.body_text.match(/\{\{(\d+)\}\}/g);
     if (!matches) return [];
     return [...new Set(matches)].sort();
@@ -196,7 +206,8 @@ export function Step3Personalize({
 
   /**
    * Substitute placeholders using the first real contact where
-   * possible. Placeholders keyed by "{{N}}" map to variable key "N".
+   * possible. Placeholders keyed by "{{N}}" or "{{nome}}" map to variable
+   * key "N" / "nome".
    */
   const previewText = useMemo(() => {
     const contact = firstContact ?? {

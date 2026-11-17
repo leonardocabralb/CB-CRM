@@ -20,6 +20,10 @@ import {
   type MotivoDaDesconfianca,
 } from '@/lib/supabase/paginar';
 import { Contact, MessageTemplate } from '@/types';
+import {
+  extractTemplateVariables,
+  isNamedVariable,
+} from '@/lib/whatsapp/template-validators';
 
 export type CustomFieldOperator = 'is' | 'is_not' | 'contains';
 
@@ -202,18 +206,30 @@ export function resolveVariables(
   variables: Record<string, VariableMapping>,
   contact: Contact,
   customValues?: Map<string, string>,
+  /**
+   * As chaves do MODELO (`extractTemplateVariables`). Com variáveis NOMEADAS
+   * a ordem dos valores é a delas — a mesma com que o servidor os casa —, e
+   * nunca a das chaves de `variables`: o assistente não as zera ao trocar de
+   * modelo, e uma chave que sobrou deslocaria os valores (o cliente receberia
+   * o de outra variável). No posicional, nada muda.
+   */
+  chavesDoModelo?: readonly string[],
 ): string[] {
   // Keys are typically "1","2",... — numeric-aware sort keeps
   // {{1}} before {{10}}.
-  const keys = Object.keys(variables).sort((a, b) => {
-    const an = Number(a);
-    const bn = Number(b);
-    if (Number.isFinite(an) && Number.isFinite(bn)) return an - bn;
-    return a.localeCompare(b);
-  });
+  const keys = chavesDoModelo?.some(isNamedVariable)
+    ? [...chavesDoModelo]
+    : Object.keys(variables).sort((a, b) => {
+        const an = Number(a);
+        const bn = Number(b);
+        if (Number.isFinite(an) && Number.isFinite(bn)) return an - bn;
+        return a.localeCompare(b);
+      });
 
   return keys.map((key) => {
     const v = variables[key];
+    // Só no nomeado a chave pode faltar (o passo 3 exige todas mapeadas).
+    if (!v) return '';
     if (v.type === 'static') return v.value;
 
     if (v.type === 'field') {
@@ -985,6 +1001,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
           ),
         ],
       );
+      const chavesDoModelo = extractTemplateVariables(payload.template.body_text);
       const paramsByContact = new Map(
         contacts.map((contact) => [
           contact.id,
@@ -992,6 +1009,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
             payload.variables,
             contact,
             customValueIndex.get(contact.id),
+            chavesDoModelo,
           ),
         ]),
       );

@@ -7,7 +7,7 @@
 // `message_templates`, lida pela bolha (`use-modelos-da-conta.ts`). Adaptado
 // do #659 do original (`template-message-view.ts`), com três diferenças:
 //
-// · O recorte por CANAL de `resolveTemplateRow` (`whatsapp-envio.md`): o
+// · O recorte por CANAL de `resolveTemplateRow` (`modelos-da-meta.md`): o
 //   catálogo é POR WABA, e o mesmo nome pode existir em dois números com
 //   botões diferentes. Vale o modelo do canal da mensagem; sem ele, o global
 //   (sem canal); o de OUTRO canal, nunca. Mensagem sem canal (histórico

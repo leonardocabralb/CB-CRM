@@ -12,6 +12,10 @@ import {
   conteudoDoModeloDaMeta,
   type MetaTemplate,
 } from '@/lib/whatsapp/modelo-da-meta'
+import {
+  escolherLinhaDoModelo,
+  type LinhaDoModelo,
+} from '@/lib/whatsapp/linha-do-modelo'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 
 /**
@@ -108,12 +112,11 @@ export async function POST(request: Request) {
     const errors: { name: string; language: string; message: string }[] = []
 
     for (const t of metaTemplates) {
+      // ⚠️ SEM `account_id` e SEM `user_id`: os dois só entram na INSERÇÃO.
+      // `user_id` é o AUTOR da linha — atualizar um modelo que um colega criou
+      // não pode passá-lo a quem clicou em "Sincronizar" (a mesma regra da
+      // submissão, `camposDoModelo`).
       const row = {
-        // Account tenancy + user audit, same split as the submit
-        // route. account_id is NOT NULL on message_templates
-        // post-017, so an INSERT without it errors.
-        account_id: accountId,
-        user_id: userId,
         // Multi-canal: o catalogo da Meta e POR WABA. Carimbar a origem e o
         // que impede o modelo de um numero ser usado no outro — o atendente
         // via o preview certo e o cliente recebia outra coisa.
@@ -126,16 +129,16 @@ export async function POST(request: Request) {
       // Escopado ao canal: sem isso, sincronizar o 2o numero SOBRESCREVERIA o
       // modelo homonimo do 1o, em vez de criar o dele. Modelos anteriores a
       // 903 (channel_id NULL) sao adotados por este canal na primeira sync.
-      let lookup = supabase
+      // A linha é escolhida pela régua da SUBMISSÃO (`escolherLinhaDoModelo`):
+      // com a do canal e a global juntas, o `.maybeSingle()` de antes
+      // respondia "várias linhas" e aquele modelo nunca mais sincronizava.
+      const { data: linhas, error: lookupErr } = await supabase
         .from('message_templates')
-        .select('id')
+        .select('id, channel_id, meta_template_id')
         .eq('account_id', accountId)
         .eq('name', t.name)
         .eq('language', t.language)
-      lookup = canal.channelId
-        ? lookup.or(`channel_id.eq.${canal.channelId},channel_id.is.null`)
-        : lookup.is('channel_id', null)
-      const { data: existing, error: lookupErr } = await lookup.maybeSingle()
+        .order('created_at', { ascending: true })
 
       if (lookupErr) {
         errors.push({
@@ -145,12 +148,17 @@ export async function POST(request: Request) {
         })
         continue
       }
+      const existing = escolherLinhaDoModelo(
+        (linhas ?? []) as LinhaDoModelo[],
+        canal.channelId,
+      )
 
-      if (existing?.id) {
+      if (existing) {
         const { error: updErr } = await supabase
           .from('message_templates')
           .update(row)
           .eq('id', existing.id)
+          .eq('account_id', accountId)
         if (updErr) {
           errors.push({
             name: t.name,
@@ -163,7 +171,8 @@ export async function POST(request: Request) {
       } else {
         const { error: insErr } = await supabase
           .from('message_templates')
-          .insert(row)
+          // account_id é NOT NULL desde a 017; o autor só é gravado na criação.
+          .insert({ ...row, account_id: accountId, user_id: userId })
         if (insErr) {
           errors.push({
             name: t.name,

@@ -500,7 +500,10 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   (1137): o interruptor por conexão, o QR e o Reparear do computador, os
   alarmes dele e a sentinela do contêiner.
 - `.claude/rules/whatsapp-envio.md` — núcleo de envio, entrega incerta,
-  modelos da Meta por WABA, `resolveTemplateRow`, escopo da conversa.
+  escopo da conversa, robô, disparo.
+- `.claude/rules/modelos-da-meta.md` — modelos por WABA (`resolveTemplateRow`),
+  únicos por conta (1150), submissão e sincronização, categoria do aprovado,
+  variáveis nomeadas, stub do webhook.
 - `.claude/rules/canais.md` — peças de UI de canal, escopo vazio = todos,
   saúde das conexões, atraso de entrega (`lagging`).
 - `.claude/rules/canal-na-conversa.md` — qual número nesta conversa, cor do
