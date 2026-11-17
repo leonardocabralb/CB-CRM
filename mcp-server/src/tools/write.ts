@@ -20,7 +20,7 @@ const templateSchema = z
       .array(z.string())
       .optional()
       .describe(
-        'Body variables in order ({{1}}, {{2}}…); for a template with named variables ({{customer_name}}), sorted by name.',
+        'Body variables in order ({{1}}, {{2}}…); for a template with named variables ({{customer_name}}), values go in the alphabetical order of the names (JavaScript sort()).',
       ),
   })
   .describe('Template payload — required when type is "template".');

@@ -19,7 +19,6 @@ import { WacrmClient } from './client.js';
 import { registerTools } from './tools/index.js';
 
 // package.json version, kept in sync manually with the manifest.
-// NOSSO: `scripts/versao-do-mcp.test.ts` cobra o par (já desencontrou uma vez).
 const VERSION = '0.1.1';
 
 async function main(): Promise<void> {

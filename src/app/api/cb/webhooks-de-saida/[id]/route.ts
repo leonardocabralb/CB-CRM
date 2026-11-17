@@ -12,11 +12,11 @@ import { supabaseAdmin } from "@/lib/automations/admin-client";
 import { requireRole, toErrorResponse } from "@/lib/auth/account";
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
 import {
-  checkWebhookUrl,
   serializeWebhookEndpoint,
   WEBHOOK_PUBLIC_COLUMNS,
 } from "@/lib/webhooks/endpoints";
 import { normalizeEvents } from "@/lib/webhooks/events";
+import { conferirUrlDoEndereco } from "@/lib/webhooks/url-do-endereco";
 
 export async function PATCH(
   request: Request,
@@ -41,11 +41,11 @@ export async function PATCH(
 
     const patch: Record<string, unknown> = {};
     if ("url" in corpo) {
-      const urlCheck = checkWebhookUrl(corpo.url);
-      if (!urlCheck.ok) {
-        return NextResponse.json({ error: urlCheck.motivo }, { status: 400 });
+      const conferida = conferirUrlDoEndereco(corpo.url);
+      if (!conferida.ok) {
+        return NextResponse.json({ error: conferida.motivo }, { status: 400 });
       }
-      patch.url = urlCheck.url;
+      patch.url = conferida.url;
     }
     if ("events" in corpo) {
       const eventos = normalizeEvents(corpo.events);

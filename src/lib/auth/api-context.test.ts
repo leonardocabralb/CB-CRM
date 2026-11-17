@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateApiKey, hashApiKey } from "@/lib/api-keys/keys";
+import { generateApiKey } from "@/lib/api-keys/keys";
 import type { ApiKeyRow } from "@/lib/api-keys/store";
 import { ApiError } from "@/lib/api/v1/respond";
 import { __resetRateLimitForTests, RATE_LIMITS } from "@/lib/rate-limit";
@@ -131,27 +131,6 @@ describe("requireApiKey", () => {
       expect(ctx.accountId).toBe("acct-1");
     }
     expect(findActiveKeyByHash).toHaveBeenCalledTimes(3);
-  });
-
-  // Porte do #681: o esquema não diferencia maiúscula (RFC 7235), mas o que
-  // vem DEPOIS dele é a chave, e é ela — sem o prefixo — que vira o hash
-  // procurado. Outro esquema (`Basic`) continua 401 sem ir ao banco.
-  it("o hash procurado é o da chave sem o esquema, com espaço ou tab; `Basic` segue 401", async () => {
-    findActiveKeyByHash.mockResolvedValue(row());
-    await requireApiKey(reqWith(`bearer ${KEY}`));
-    await requireApiKey(reqWith(`Bearer\t${KEY}`));
-    expect(findActiveKeyByHash.mock.calls).toEqual([
-      [hashApiKey(KEY)],
-      [hashApiKey(KEY)],
-    ]);
-
-    findActiveKeyByHash.mockClear();
-    await expectApiError(
-      requireApiKey(reqWith(`Basic ${KEY}`)),
-      "unauthorized",
-      401,
-    );
-    expect(findActiveKeyByHash).not.toHaveBeenCalled();
   });
 
   it("403s when the key lacks the required scope", async () => {

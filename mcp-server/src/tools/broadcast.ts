@@ -33,7 +33,7 @@ export function registerBroadcastTools(server: McpServer, client: WacrmClient): 
                 .array(z.string())
                 .optional()
                 .describe(
-                  'Template body variables for this recipient, in order ({{1}}, {{2}}…); for a template with named variables ({{customer_name}}), sorted by name.',
+                  'Template body variables for this recipient, in order ({{1}}, {{2}}…); for a template with named variables ({{customer_name}}), values go in the alphabetical order of the names (JavaScript sort()).',
                 ),
             }),
           )

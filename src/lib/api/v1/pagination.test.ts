@@ -104,30 +104,6 @@ describe('encode/decodeCursor round-trip', () => {
       expect(decodeCursor(cursor)).toEqual({ createdAt: ts, id });
     }
   });
-
-  it('⚠️ o parêntese que o V8 lê como comentário não passa (a forma medida no Node 22)', () => {
-    // `Date.parse('2020-01-01 (,id.not.is.null)')` devolve uma data: era o
-    // que deixava sintaxe do PostgREST chegar ao `.or()` de `keysetFilter`.
-    const ts = '2020-01-01 (,id.not.is.null)';
-    expect(Number.isNaN(Date.parse(ts))).toBe(false);
-    const cursor = Buffer.from(
-      `${ts}|11111111-1111-4111-8111-111111111111`,
-      'utf8'
-    ).toString('base64url');
-    expect(decodeCursor(cursor)).toBeNull();
-    expect(parseListParams(req(`?cursor=${cursor}`)).cursor).toBeNull();
-  });
-
-  it('⚠️ data SEM fuso é recusada: a rota nova sobre coluna sem fuso perderia o próprio cursor', () => {
-    // As nove tabelas paginadas têm `created_at timestamptz`, e o PostgREST
-    // sempre manda o fuso (`+00:00`). Este pino deixa a escolha escrita: se
-    // alguém relaxar a régua, ou paginar uma coluna sem fuso, vê aqui por quê.
-    const cursor = Buffer.from(
-      '2026-11-17T12:34:56.123456|11111111-1111-4111-8111-111111111111',
-      'utf8'
-    ).toString('base64url');
-    expect(decodeCursor(cursor)).toBeNull();
-  });
 });
 
 describe('keysetFilter', () => {

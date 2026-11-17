@@ -1399,8 +1399,9 @@ GET /api/v1/contacts?limit=50&cursor=eyJ…
 
 Cursors are keyset-based (stable under concurrent inserts). Pass the
 cursor back verbatim — don't parse it. `next_cursor: null` means the
-last page. A malformed or tampered cursor is ignored and the first page
-is returned.
+last page. Pass back only a cursor the API gave you: a malformed or
+tampered one is ignored and you get the first page again (one carrying an
+impossible date can make the request fail instead).
 
 ## Webhooks
 
@@ -1677,8 +1678,8 @@ deliveries, and the endpoint ends up switched off.
 resolve to a public address — requests to `localhost`, private/RFC1918
 ranges, link-local (incl. cloud metadata `169.254.169.254`), and similar
 internal targets are refused at delivery time. A URL with a username or
-password in it (`https://user:pass@…`) is refused when you register it:
-no delivery could go out to it.
+password in it (`https://user:pass@…`) is refused when you register or
+change it: no delivery could go out to it.
 
 ## Roadmap
 

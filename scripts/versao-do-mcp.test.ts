@@ -5,8 +5,9 @@
 // manually"), e o `McpServer` a anuncia ao cliente (Claude, Cursor) no
 // aperto de mão. Ela desencontrou: o `package.json` foi a 0.1.1 e o
 // `index.ts` ficou na 0.1.0 até o porte do #681 do original (17/11/2026).
-// O CI não compila nem testa o `mcp-server` (é subprojeto, com `package.json`
-// próprio): sem este pino, o desencontro só aparece para quem integra.
+// O typecheck e o lint da raiz leem `mcp-server/src`, mas nada no CI testa o
+// servidor nem compara versões (é subprojeto, com `package.json` próprio): sem
+// este pino, o desencontro só aparece para quem integra.
 //
 // O par cobrado: o `index.ts`, o `package.json`, o `package-lock.json` (as
 // duas marcas da raiz) e o `server.json` (o manifesto do registro MCP, com a
