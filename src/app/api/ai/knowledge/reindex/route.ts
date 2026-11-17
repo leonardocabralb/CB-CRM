@@ -25,11 +25,13 @@ import { AiError, mensagemSeguraDeAiError } from '@/lib/ai/types'
  * o resto da base ficava como estava, sem a tela saber quais.
  *
  * ⚠️ NOSSO (diverge do original): a falha DO PROVEDOR de vetores (`AiError`)
- * continua encerrando a rodada. `ingestDocument` apaga os trechos antigos
- * ANTES de gerar os vetores, e a falha do provedor quase sempre é da conta
- * (chave recusada, cota, provedor fora do ar): seguir deixaria TODOS os
- * documentos só com busca por palavra, em vez de um. Segue adiante só a
- * falha que é do documento (banco).
+ * continua encerrando a rodada. Com ela, `ingestDocument` troca os trechos do
+ * documento (que tinham vetor) por trechos só de palavra — grava os novos e
+ * apaga os antigos, e só então lança —, e a falha do provedor quase sempre é
+ * da conta (chave recusada, cota, provedor fora do ar): seguir deixaria TODOS
+ * os documentos só com busca por palavra, em vez de um. Segue adiante só a
+ * falha que é do documento (banco) — a leitura ou o INSERT que falha deixa os
+ * trechos antigos como estavam.
  */
 export async function POST() {
   try {
