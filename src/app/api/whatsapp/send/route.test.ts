@@ -25,6 +25,12 @@ let callerRole: string = 'admin'
 // the shared send core re-loads the conversation (with its contact) from
 // just the id, so the mock must model insert-then-select-by-id.
 let createdConversation: Record<string, unknown> | null = null
+// A corrida (porte do #680): outra requisição cria a conversa entre a busca
+// e o INSERT, que leva o 23505 da UNIQUE da 0036.
+let conversationCreatedConcurrently: Record<string, unknown> | null = null
+// A leitura de `conversations` que FALHA: sempre, ou só a releitura depois
+// do INSERT recusado.
+let conversationReadFails: 'sempre' | 'depois_do_insert' | null = null
 
 const CONTACT = {
   id: 'contact-1',
@@ -59,6 +65,13 @@ function makeSupabaseMock() {
         case 'contacts':
           return { data: contactRow, error: null }
         case 'conversations':
+          if (
+            conversationReadFails === 'sempre' ||
+            (conversationReadFails === 'depois_do_insert' &&
+              conversationInserts.length > 0)
+          ) {
+            return { data: null, error: { code: 'XX000', message: 'leitura falhou' } }
+          }
           // Once created this request, a by-id reload returns it (with
           // its contact); otherwise fall back to the canned existing row.
           return { data: createdConversation ?? existingConversation, error: null }
@@ -84,6 +97,12 @@ function makeSupabaseMock() {
     const insertResult = () => {
       switch (table) {
         case 'conversations':
+          if (conversationCreatedConcurrently) {
+            return {
+              data: null,
+              error: { code: '23505', message: 'duplicate key value violates unique constraint' },
+            }
+          }
           return {
             data: {
               id: 'conv-new',
@@ -116,6 +135,11 @@ function makeSupabaseMock() {
       didInsert = true
       if (table === 'conversations') {
         conversationInserts.push(payload)
+        if (conversationCreatedConcurrently) {
+          // A outra requisição venceu: a conversa dela é a que existe.
+          existingConversation = conversationCreatedConcurrently
+          return b
+        }
         createdConversation = {
           id: 'conv-new',
           account_id: 'acct-1',
@@ -207,6 +231,8 @@ describe('POST /api/whatsapp/send — contact_id template path', () => {
     messageInserts.length = 0
     existingConversation = null
     createdConversation = null
+    conversationCreatedConcurrently = null
+    conversationReadFails = null
     contactRow = CONTACT
     callerRole = 'admin'
     supabaseMock = makeSupabaseMock()
@@ -215,6 +241,52 @@ describe('POST /api/whatsapp/send — contact_id template path', () => {
 
   afterEach(() => {
     vi.clearAllMocks()
+  })
+
+  it('corrida: o INSERT leva o 23505 e o envio segue na conversa que a outra requisição criou', async () => {
+    conversationCreatedConcurrently = {
+      id: 'conv-raced',
+      account_id: 'acct-1',
+      contact_id: 'contact-1',
+      contact: CONTACT,
+    }
+
+    const res = await postContactTemplate()
+    expect(res.status).toBe(200)
+
+    expect(conversationInserts).toHaveLength(1)
+    expect(sendTemplateMessage).toHaveBeenCalledTimes(1)
+    expect(messageInserts[0]).toMatchObject({ conversation_id: 'conv-raced' })
+  })
+
+  it('leitura da conversa que FALHA é erro: 500 sem tentar criar nem enviar', async () => {
+    conversationReadFails = 'sempre'
+
+    const res = await postContactTemplate()
+    const json = await res.json()
+
+    expect(res.status).toBe(500)
+    expect(json.error).toMatch(/look up the conversation/i)
+    expect(conversationInserts).toHaveLength(0)
+    expect(sendTemplateMessage).not.toHaveBeenCalled()
+  })
+
+  it('corrida com a releitura que falha: 500 sem enviar', async () => {
+    conversationCreatedConcurrently = {
+      id: 'conv-raced',
+      account_id: 'acct-1',
+      contact_id: 'contact-1',
+      contact: CONTACT,
+    }
+    conversationReadFails = 'depois_do_insert'
+
+    const res = await postContactTemplate()
+    const json = await res.json()
+
+    expect(res.status).toBe(500)
+    expect(json.error).toMatch(/look up the conversation/i)
+    expect(sendTemplateMessage).not.toHaveBeenCalled()
+    expect(messageInserts).toHaveLength(0)
   })
 
   it('creates a conversation for a contact with none, then sends the template', async () => {
