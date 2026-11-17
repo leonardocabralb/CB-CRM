@@ -7659,6 +7659,8 @@
     "failUsedBody": "This invitation has already been accepted. If that wasn’t you, ask the account admin to send a fresh link.",
     "failExpiredTitle": "Invite expired",
     "failExpiredBody": "This invitation has expired. Ask the account admin to send a new one — they take a few seconds to generate.",
+    "failRateLimitedTitle": "Too many attempts",
+    "failRateLimitedBody": "This invitation was checked too many times in a short period. Wait a minute, then try again.",
     "failServerErrorTitle": "Something went wrong",
     "failServerErrorBody": "We couldn’t verify this invitation right now. Try refreshing the page in a moment.",
     "conflictFallback": "You are already in another account. Sign in with a different email to join this one.",

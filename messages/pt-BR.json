@@ -7652,6 +7652,8 @@
     "failUsedBody": "Este convite já foi aceito. Se não foi você, peça ao administrador da conta para enviar um novo link.",
     "failExpiredTitle": "Convite expirado",
     "failExpiredBody": "Este convite expirou. Peça ao administrador da conta para enviar um novo — leva poucos segundos para gerar.",
+    "failRateLimitedTitle": "Muitas tentativas",
+    "failRateLimitedBody": "Este convite foi conferido vezes demais em pouco tempo. Espere um minuto e tente de novo.",
     "failServerErrorTitle": "Algo deu errado",
     "failServerErrorBody": "Não conseguimos verificar este convite agora. Tente atualizar a página em instantes.",
     "conflictFallback": "Você já está em outra conta. Entre com um e-mail diferente para participar desta.",
