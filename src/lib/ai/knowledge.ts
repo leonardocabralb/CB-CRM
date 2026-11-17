@@ -28,10 +28,12 @@ const TRECHOS_POR_EXCLUSAO = 100
  * do #683 do original): apagando primeiro, o documento ficava sem trecho
  * nenhum durante o embedding (chamada paga, segundos) e PARA SEMPRE se o
  * INSERT falhasse — a busca do agente e do rascunho não achava nada. Agora:
- * vetores → lista dos ids antigos (POR CHAVE: o PostgREST corta em 1000 sem
- * avisar, e o excedente sobraria duplicado) → INSERT dos novos → DELETE dos
+ * lista dos ids antigos (POR CHAVE: o PostgREST corta em 1000 sem avisar, e
+ * o excedente sobraria duplicado) → vetores → INSERT dos novos → DELETE dos
  * antigos por id, em lotes. Leitura ou INSERT que falha não muda nada: os
- * antigos continuam servindo.
+ * antigos continuam servindo. A lista vem ANTES da chamada paga: com o banco
+ * falhando, o reindex (que segue pelos outros documentos na falha de banco)
+ * não paga um embedding por documento à toa.
  *
  * Throws on embedding failure so the ingest route can report it — but only
  * AFTER the (embedding-less) rows are stored, so the document stays
@@ -45,22 +47,6 @@ export async function ingestDocument(
   content: string,
 ): Promise<void> {
   const chunks = chunkText(content)
-
-  // Embed if a key is set, but DON'T let an embedding failure stop the
-  // chunks from being stored: a failed embed must still leave the
-  // document searchable lexically. We record the error and rethrow it
-  // AFTER inserting (embedding-less) rows, so the route can warn
-  // "semantic indexing failed" — which is now truthful, because lexical
-  // search really does still work.
-  let embeddings: number[][] | null = null
-  let embedError: unknown = null
-  if (config.embeddingsApiKey && chunks.length > 0) {
-    try {
-      embeddings = await embedTexts(config.embeddingsApiKey, chunks)
-    } catch (err) {
-      embedError = err
-    }
-  }
 
   // Os ids de ANTES do INSERT: depois dele a lista traria os novos junto.
   const antigos = await buscarPorChave<{ id: string }>(async (depoisDe) => {
@@ -77,6 +63,22 @@ export async function ingestDocument(
     throw new Error(
       `knowledge chunks of ${documentId} not listed (${antigos.motivo}): ${antigos.erro?.message ?? ''}`,
     )
+  }
+
+  // Embed if a key is set, but DON'T let an embedding failure stop the
+  // chunks from being stored: a failed embed must still leave the
+  // document searchable lexically. We record the error and rethrow it
+  // AFTER inserting (embedding-less) rows, so the route can warn
+  // "semantic indexing failed" — which is now truthful, because lexical
+  // search really does still work.
+  let embeddings: number[][] | null = null
+  let embedError: unknown = null
+  if (config.embeddingsApiKey && chunks.length > 0) {
+    try {
+      embeddings = await embedTexts(config.embeddingsApiKey, chunks)
+    } catch (err) {
+      embedError = err
+    }
   }
 
   if (chunks.length > 0) {

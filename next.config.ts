@@ -76,11 +76,12 @@ const nextConfig: NextConfig = {
   /**
    * Quatro workers no `next build` (porte do #722 do original). O Next abre
    * `núcleos − 1` workers para coletar os dados das páginas, cada um com o
-   * binário nativo do Turbopack e o seu pool de threads: num servidor de
-   * build que se apresenta com ~64 núcleos (o da Hostinger), o limite de
-   * threads da conta estourava e o build abortava (SIGABRT). ⚠️ O número é
-   * EXATO, não só teto: numa máquina de 4 núcleos (o runner do CI) passa de
-   * 3 para 4 workers.
+   * binário nativo do Turbopack e o seu pool de threads: no servidor de build
+   * da hospedagem Node da Hostinger (que se apresenta com ~64 núcleos; o
+   * NOSSO build roda no runner do GitHub), o limite de threads estourava e o
+   * build abortava (SIGABRT). ⚠️ O número é EXATO, não só teto: no runner de
+   * 4 núcleos (repositório público) passa de 3 para 4 workers; no de 2
+   * (privado, 7 GB), de 1 para 4 — vigiar a memória do build se mudar.
    */
   experimental: {
     cpus: 4,

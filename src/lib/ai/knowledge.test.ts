@@ -85,14 +85,19 @@ function makeDb() {
         }
         return chain
       },
+      // O DELETE conta no `delete()` em si, com ou sem `.in()`: o código
+      // antigo apagava por `.delete().eq('document_id')` ANTES do INSERT, e
+      // contar só no `.in()` deixava essa ordem invisível ao teste.
       delete: () => {
+        state.events.push('delete')
         const chain = {
           eq: () => chain,
           in: (_col: string, ids: string[]) => {
-            state.events.push('delete')
             state.deletedIds = [...(state.deletedIds ?? []), ...ids]
             return Promise.resolve({ error: null })
           },
+          then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
+            Promise.resolve({ error: null }).then(resolve, reject),
         }
         return chain
       },
@@ -190,7 +195,8 @@ describe('ingestDocument', () => {
   it('os trechos antigos ficam até o embedding acabar e os novos estarem gravados', async () => {
     const { db, state } = makeDb()
     h.embedTexts.mockImplementationOnce(async (_key: string, inputs: string[]) => {
-      expect(state.events).toEqual([])
+      // Durante a chamada paga só a LISTA rodou: nada gravado, nada apagado.
+      expect(state.events).toEqual(['list'])
       return inputs.map((_, i) => [i, i])
     })
     await ingestDocument(db, 'acct', { embeddingsApiKey: 'sk-x' }, 'doc-1', 'hello world')
@@ -203,17 +209,18 @@ describe('ingestDocument', () => {
     await expect(
       ingestDocument(db, 'acct', { embeddingsApiKey: null }, 'doc-1', 'hello world'),
     ).rejects.toMatchObject({ message: 'insert failed' })
+    expect(state.events).toEqual(['list', 'insert'])
     expect(state.deletedIds).toBeNull()
   })
 
-  it('lista dos antigos que falha não grava nem apaga', async () => {
+  it('lista dos antigos que falha não paga o embedding, não grava nem apaga', async () => {
     const { db, state } = makeDb()
     state.listError = { message: 'list failed' }
     await expect(
-      ingestDocument(db, 'acct', { embeddingsApiKey: null }, 'doc-1', 'hello world'),
+      ingestDocument(db, 'acct', { embeddingsApiKey: 'sk-x' }, 'doc-1', 'hello world'),
     ).rejects.toThrow(/not listed/)
-    expect(state.inserted).toBeNull()
-    expect(state.deletedIds).toBeNull()
+    expect(h.embedTexts).not.toHaveBeenCalled()
+    expect(state.events).toEqual(['list'])
   })
 
   it('a lista dos antigos passa de 1000 POR CHAVE e apaga em lotes de 100', async () => {
