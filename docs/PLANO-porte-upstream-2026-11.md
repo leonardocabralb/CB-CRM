@@ -192,7 +192,7 @@ compartilhados:
 
 ## 4. Lote A — Contatos, funil e robô
 
-Original: #679 (`4e9bbd76`; commits `a482da9f`, `0dada1a2`) e a parte do robô
+Original: #679 (`4e9bbd76`; commits `a482da9f`, `aad10904`) e a parte do robô
 do #683 (`5262f138`; `cebea5f1`, `3de12605`); a detecção de ciclo vem do #674
 (lote anterior; ver §3.5 do MERGE-UPSTREAM).
 
@@ -302,7 +302,7 @@ da base de conhecimento).
 
 ## 6. Lote C — API pública, webhooks e MCP
 
-Original: #681 (`987e2258`; commits `e74bfb78`, `aad10904`). A doc acompanha o
+Original: #681 (`987e2258`; commits `e74bfb78`, `0dada1a2`). A doc acompanha o
 contrato no MESMO PR (CLAUDE.md, seção 11): `docs/public-api.md`,
 `docs/webhooks.md`, `docs/mcp.md` e a aba Configurações → API → Documentação
 (`src/components/settings/documentacao-de-integracao.tsx`).

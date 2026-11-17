@@ -188,7 +188,7 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
   original mantém o run vivo até `max_reprompts`. Num merge fica o nosso —
   pino `engine-channel.test.ts`. ⚠️ Re-pergunta e esgotamento têm CERCA
   (`reivindicarFallback`, porte #683): só muda a run ainda ativa, no mesmo nó
-  e contador, e esgotar encerra no mesmo UPDATE; quem perde não envia.
+  e contador, e esgotar encerra no mesmo UPDATE; quem perde não envia. Limite: a resposta que CASA (botão, `collect_input`) não reivindica antes de avançar — toque e texto juntos podem mandar a re-pergunta depois do passo novo (o original cerca os dois com `transition_seq`, da 052).
 - `{{vars}}` só nos textos VISÍVEIS (`camposDosBotoes`/`camposDaLista`), NUNCA
   no `reply_id` — é ele que casa a resposta do cliente. Botões, lista e a
   pergunta do `collect_input` saem pelo canal do NÓ (senão o do run), nunca
