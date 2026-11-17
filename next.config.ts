@@ -153,7 +153,8 @@ const nextConfig: NextConfig = {
    *   - Three paths of `public/` stay out of the no-store rule (Next's
    *     own `public, max-age=0` applies, revalidated by ETag): the
    *     voice-note encoder (`opus/`, ~380 KB, loaded on every
-   *     recording), the chat background (`inbox-doodle.svg`) and the
+   *     recording), the two chat backgrounds (`inbox-doodle.svg`, and
+   *     `inbox-doodle-atlas.svg` for the default brand) and the
    *     default brand images (`marca/`, the sidebar and login logos on
    *     every page). Under no-store the browser would download them
    *     again each time.
@@ -171,7 +172,7 @@ const nextConfig: NextConfig = {
       },
       {
         source:
-          "/:path((?!_next/static|_next/image|api|opus/|inbox-doodle\\.svg|marca/).*)",
+          "/:path((?!_next/static|_next/image|api|opus/|inbox-doodle(?:-atlas)?\\.svg|marca/).*)",
         headers: [{ key: "Cache-Control", value: "private, no-store" }],
       },
       {

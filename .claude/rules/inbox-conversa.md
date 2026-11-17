@@ -311,12 +311,12 @@ O WhatsApp quase nunca anuncia a falha; este vermelho é INFERIDO.
 
 ### Documento e cartão de contato em destaque; o fundo do fio (01/10/2026)
 
-Pedido do operador: sem miniatura, passavam por texto comum no meio do fio.
+Pedido do operador: sem miniatura, passavam por texto comum.
 
 - ⚠️ **Os dois têm superfície PRÓPRIA (`bg-card` + anel), nunca um tom da
   bolha**: o `bg-muted/50` de antes sumia no cinza do cliente. Assim as cores de
-  dentro valem nos dois lados do fio e nos temas; no escuro o cartão fica mais
-  fundo que a bolha, como no WhatsApp.
+  dentro valem nos dois lados e nos temas; no escuro o cartão fica mais fundo
+  que a bolha.
 - ⚠️ **Nada na bolha tem largura FIXA que não encolha.** Cartões sem `min-w`;
   imagem e vídeo com o teto fixo no INVÓLUCRO (`max-w-60`) e `max-w-full`
   neles; quadros de carga como o player (`w-64 max-w-full`). Senão, num fio
@@ -327,8 +327,8 @@ Pedido do operador: sem miniatura, passavam por texto comum no meio do fio.
   azul. Os tons passam de 4,5 com o branco; os `-600` de verde, laranja e
   âmbar, não.
 - **"Conversar" é o único botão preenchido do cartão**; o copiar é discreto.
-- **O desenho do fundo está a 15%** (`public/inbox-doodle.svg`), escolha do
-  operador entre 22% e 8%.
+- **Fundo a 15%** (operador, entre 22% e 8%): o símbolo do Atlas na marca
+  padrão, os ícones neutros na própria (`fundoDoFio`; `marca.md`).
 
 ### Links clicáveis na bolha e na anotação (29/09/2026)
 

@@ -58,6 +58,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { contarNovasDoCliente } from "@/lib/inbox/nao-lidas-abaixo";
 import { marcarComoNaoLida } from "@/lib/inbox/marcar-nao-lida";
+import { useMarca } from "@/components/marca/marca-provider";
+import { fundoDoFio } from "@/lib/inbox/fundo-do-fio";
 import { naOrdemDoFio } from "@/lib/inbox/ordem-do-fio";
 import { entregasNaoConfirmadas } from "@/lib/inbox/entrega-nao-confirmada";
 import { ehUuid } from "@/lib/tasks/validar";
@@ -505,18 +507,6 @@ const STATUS_OPTIONS: {
 ];
 
 /**
- * WhatsApp-style doodle background applied to the chat area (both the
- * active thread and the empty state). The SVG tile lives at
- * `/public/inbox-doodle.svg`; the slate-950 colour sits underneath so
- * the doodles read as a subtle pattern rather than a stark grid.
- *
- * Defined once at module scope so the two render paths can't drift —
- * if we ever switch the asset, both spots update together.
- */
-const DOODLE_BG_CLASSES =
-  "bg-background bg-[url('/inbox-doodle.svg')] bg-repeat";
-
-/**
  * Zera as não lidas da conversa no banco; o tempo real leva o zero à lista e
  * ao contador do menu. Os dois chamadores — ver e responder — passam pelo
  * modo anônimo (`.claude/rules/modo-anonimo.md`).
@@ -576,6 +566,7 @@ export function MessageThread({
    * "marcar como não lida" da equipe. Ao voltar para a aba, zera.
    */
   const abaVisivel = useAbaVisivel();
+  const { propria: marcaPropria } = useMarca();
 
   /**
    * O nome com que ESTA pessoa assina, ou null. Só para desenhar a bolha
@@ -2755,7 +2746,7 @@ export function MessageThread({
   // `ehGrupo` é declarado lá em cima, junto da janela de 24h.)
   if (!conversation || (!contact && !ehGrupo)) {
     return (
-      <div className={cn("flex flex-1 flex-col items-center justify-center", DOODLE_BG_CLASSES)}>
+      <div className={cn("flex flex-1 flex-col items-center justify-center", fundoDoFio(marcaPropria))}>
         <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
           <MessageSquare className="h-8 w-8 text-muted-foreground" />
         </div>
@@ -2878,7 +2869,7 @@ export function MessageThread({
     // sem erro nenhum (há pino em `src/lib/celular/teclado.test.ts`).
     <div
       data-acima-do-teclado=""
-      className={cn("flex min-w-0 flex-1 flex-col", DOODLE_BG_CLASSES)}
+      className={cn("flex min-w-0 flex-1 flex-col", fundoDoFio(marcaPropria))}
     >
       {/* Header — solid card surface sits on top of the doodle so the
           name/avatar/dropdowns stay legible. */}
