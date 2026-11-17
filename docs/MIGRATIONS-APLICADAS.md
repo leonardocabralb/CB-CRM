@@ -2273,3 +2273,35 @@ nome da época em que foram aplicadas.
   `authenticated`, as outras duas fechadas, nenhuma sobra da prova (ficha
   sintética), os 15 membros ativos de antes e nenhuma conversa com
   responsável fora da conta.
+- **1149_cb_flow_media_so_agente_na_pasta_da_conta** — `flow-media`: gravar,
+  trocar e apagar só owner, admin ou agent ATIVO, e só na pasta da conta
+  (`account-<conta>/…`); a pasta por usuário deixa de existir, também na
+  leitura (porte do #682 do original, Lote E; o `chat-media` fica como está,
+  decisão do operador #17). PR #532 (lote #531).
+
+  RESTRITIVA, aplicada DEPOIS do deploy do #532 (`ed851b7c`, no ar às 16:41
+  BRT), com a autorização explícita do operador ("Pode gravar",
+  17/11/2026), em 17/11/2026 às 16:42 BRT (histórico `20261117194216`), pela
+  Management API, com o arquivo idêntico ao do `main` publicado (sha256
+  `4587c9c6…`), cujo replay do CI passou. Antes: o replay local e os cenários
+  do Lote E (atendente e admin gravam na pasta da conta; visualizador,
+  suspenso, gente de fora e pasta por usuário recusados). Conferida na
+  produção: as quatro policies na forma nova (a pasta da conta, atendente para
+  cima nas de escrita, nenhuma com a pasta por usuário) e o bucket vazio.
+- **1150_cb_modelos_unicos_por_conta** — o modelo da Meta é único por CONTA e
+  número (os índices `message_templates_conta_canal_nome_idioma_key` e
+  `message_templates_conta_nome_idioma_global_key`, `NULLS NOT DISTINCT`) no
+  lugar dos por autor da 903; apagar uma conexão solta os modelos dela
+  (`cb_channels_solta_modelos`, BEFORE DELETE: o que repete um global é
+  apagado, os outros viram globais). Porte do #680 do original, Lote D. PR
+  #532 (lote #530).
+
+  RESTRITIVA, aplicada DEPOIS do deploy do #532, com a mesma autorização, em
+  17/11/2026 às 16:42 BRT (histórico `20261117194234`), pela Management API,
+  com o arquivo idêntico ao do `main` publicado (sha256 `37ae7c4f…`), cujo
+  replay do CI passou. Antes: o replay local; a 1150 aplicada com os índices
+  por autor de pé e modelos fictícios gravados, e os 16 cenários do Lote D.
+  Conferida na produção: os dois índices por conta e nenhum por autor, o
+  gatilho ligado com o corpo idêntico ao do arquivo (md5), a função fechada a
+  `anon`/`authenticated`, nenhuma sobra da prova, e os 15 modelos com os
+  mesmos autores de antes.
