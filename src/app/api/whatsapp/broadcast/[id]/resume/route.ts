@@ -70,12 +70,27 @@ export async function POST(
     // from the same 'pending' rows and message everyone twice — and a
     // WhatsApp message cannot be recalled. The claim is one conditional
     // UPDATE, so exactly one caller wins.
-    const claimed = await claimBroadcastDelivery(supabase, accountId, id);
-    if (!claimed) {
+    //
+    // NOSSO (1147): "running" inclui o ASSISTENTE enviando do navegador (a
+    // posse dele) — é o caso que mandava o modelo em dobro. O `code` deixa a
+    // tela dizer isso no idioma dela (e recarregar para mostrar o andamento).
+    const trava = await claimBroadcastDelivery(supabase, accountId, id);
+    if (trava === 'erro') {
+      return NextResponse.json(
+        {
+          error:
+            'Could not check whether this broadcast is already sending. Nothing was sent — try again.',
+          code: 'claim_failed',
+        },
+        { status: 500 }
+      );
+    }
+    if (trava === 'ocupada') {
       return NextResponse.json(
         {
           error:
             'A delivery pass is already running for this broadcast. Wait for it to finish before resuming again.',
+          code: 'delivery_in_flight',
         },
         { status: 409 }
       );
