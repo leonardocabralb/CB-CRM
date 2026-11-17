@@ -834,6 +834,20 @@ describe('previdenciário — Fase 2 (modelo, tarefa, janela)', () => {
     expect(
       paths([{ step_type: 'send_template', step_config: { template_name: 'x', variables: nomes(51) } }])
     ).toEqual(['steps[0].variables'])
+    // As duas listas contam JUNTAS (o motor junta os nomes): 30 + 30 nomes
+    // diferentes passam do teto; os mesmos 30 nas duas, não.
+    const deAte = (de: number, ate: number) =>
+      Object.fromEntries(Array.from({ length: ate - de }, (_, i) => [`v${de + i}`, 'a']))
+    expect(
+      paths([
+        { step_type: 'send_template', step_config: { template_name: 'x', variables: deAte(0, 30), variaveis_reserva: deAte(30, 60) } },
+      ])
+    ).toEqual(['steps[0].variables'])
+    expect(
+      paths([
+        { step_type: 'send_template', step_config: { template_name: 'x', variables: deAte(0, 30), variaveis_reserva: deAte(0, 30) } },
+      ])
+    ).toEqual([])
   })
 
   it('condição da janela de 24h dispensa o operando; as outras continuam exigindo', () => {

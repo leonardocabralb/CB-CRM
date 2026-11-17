@@ -11,6 +11,7 @@ import { decrypt } from '@/lib/whatsapp/encryption'
 import { submitMessageTemplate } from '@/lib/whatsapp/meta-api'
 import {
   validateTemplatePayload,
+  VariavelNomeadaRecusada,
   type TemplatePayload,
 } from '@/lib/whatsapp/template-validators'
 import { buildMetaTemplatePayload } from '@/lib/whatsapp/template-components'
@@ -226,7 +227,11 @@ export async function POST(request: Request) {
       validateTemplatePayload(payload)
     } catch (e) {
       return NextResponse.json(
-        { error: e instanceof Error ? e.message : 'Validation failed.' },
+        {
+          error: e instanceof Error ? e.message : 'Validation failed.',
+          // `{{nome}}`: a tela troca pela frase do dicionário (D3).
+          ...(e instanceof VariavelNomeadaRecusada ? { code: e.code } : {}),
+        },
         { status: 400 },
       )
     }

@@ -9,6 +9,7 @@ paths:
   - "src/components/settings/template-manager.tsx"
   - "src/components/inbox/template-picker*"
   - "src/components/broadcasts/step3-personalize*"
+  - "src/hooks/use-broadcast-sending*"
   - "src/lib/automations/parametros-do-modelo*"
 ---
 
@@ -69,7 +70,8 @@ automação, em `.claude/rules/automacoes-passos.md`.
   assistente não as zera ao trocar de modelo, e a que sobra deslocaria os
   valores) e `resolveVariables` ordena os nomes pela mesma régua. Criar ou
   editar com `{{nome}}` pela tela é recusado antes da Meta
-  (`validateTemplatePayload`): o nomeado nasce no
+  (`validateTemplatePayload`; 400 com `code: 'variavel_nomeada'`, que a
+  tela troca pela frase do dicionário): o nomeado nasce no
   painel da Meta e chega pela sincronização (os exemplos `*_named_params`
   viram `sample_values` na ordem das chaves).
 - ⚠️⚠️ **O stub do modelo criado direto no painel da Meta

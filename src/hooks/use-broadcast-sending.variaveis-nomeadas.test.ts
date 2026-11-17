@@ -85,4 +85,13 @@ describe('resolveVariables — modelo nomeado', () => {
     expect(variaveisDoModelo(variaveis, posicional.body_text)).toBe(variaveis);
     expect(resolveVariables(variaveis, contato)).toEqual(['um', 'dois', 'dez', 'sobra']);
   });
+
+  it('posição e nome misturados (o modelo não os mistura): posições primeiro, ordem que fecha', () => {
+    // Pelo código do caractere, "1a" < "2" — e "2" < "10" < "1a" pela régua
+    // numérica: uma ordem que dá voltas, e o resultado dependeria da entrada.
+    expect(resolveVariables({ '1a': fixo('nome'), '2': fixo('dois') }, contato)).toEqual(['dois', 'nome']);
+    expect(
+      resolveVariables({ '1a': fixo('nome'), '10': fixo('dez'), '2': fixo('dois') }, contato),
+    ).toEqual(['dois', 'dez', 'nome']);
+  });
 });

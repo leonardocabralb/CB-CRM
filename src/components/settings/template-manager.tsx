@@ -338,6 +338,11 @@ export function TemplateManager() {
         if (data?.code === 'categoria_travada') {
           throw new Error(t('categoryLockedApproved'));
         }
+        // `{{nome}}` no texto: só a sincronização traz modelo nomeado. A frase
+        // tem chaves literais (`{{1}}`), que o ICU recusa: `t.raw`.
+        if (data?.code === 'variavel_nomeada') {
+          throw new Error(String(t.raw('namedVariablesNotSupported')));
+        }
         throw new Error(
           data?.error || t(isEdit ? 'editFailedHttp' : 'submitFailedHttp', { status: res.status }),
         );

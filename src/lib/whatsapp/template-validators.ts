@@ -111,8 +111,20 @@ function temVariavelNomeada(text: string | undefined): boolean {
   return !!text && extractTemplateVariables(text).some(isNamedVariable);
 }
 
-const SEM_VARIAVEL_NOMEADA =
-  'Named variables ({{customer_name}}) are not supported here yet — use {{1}}, {{2}}…, or create the template in Meta WhatsApp Manager and use "Sync from Meta".';
+/**
+ * A recusa do `{{nome}}` na criação/edição. As rotas a devolvem com `code`
+ * (`variavel_nomeada`), e a tela troca pela frase do dicionário
+ * (`Settings.templates.namedVariablesNotSupported`); este texto em inglês
+ * fica para quem chama a rota direto, como as outras recusas daqui.
+ */
+export class VariavelNomeadaRecusada extends Error {
+  readonly code = 'variavel_nomeada';
+  constructor() {
+    super(
+      'Named variables ({{customer_name}}) are not supported here yet — use {{1}}, {{2}}…, or create the template in Meta WhatsApp Manager and use "Sync from Meta".',
+    );
+  }
+}
 
 /**
  * Meta requires contiguous, 1-indexed variables. `{{1}} {{3}}` is
@@ -138,7 +150,7 @@ export function validateBody(bodyText: string): number[] {
     );
   }
   // Antes ia à Meta sem exemplo, e ela recusava: recusado aqui, com o caminho.
-  if (temVariavelNomeada(bodyText)) throw new Error(SEM_VARIAVEL_NOMEADA);
+  if (temVariavelNomeada(bodyText)) throw new VariavelNomeadaRecusada();
   const indices = extractVariableIndices(bodyText);
   assertContiguous(indices, 'Body');
   return indices;
@@ -179,7 +191,7 @@ export function validateHeader(
         `Header text exceeds ${TEMPLATE_LIMITS.headerTextMaxLength} chars (got ${header_content.length}).`,
       );
     }
-    if (temVariavelNomeada(header_content)) throw new Error(SEM_VARIAVEL_NOMEADA);
+    if (temVariavelNomeada(header_content)) throw new VariavelNomeadaRecusada();
     const indices = extractVariableIndices(header_content);
     if (indices.length > 1) {
       throw new Error(

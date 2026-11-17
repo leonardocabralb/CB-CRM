@@ -21,7 +21,9 @@
 -- PARA com a lista, para alguém escolher qual fica (como a 0014). Medido na
 -- produção em 17/11/2026: 15 modelos, 0 duplicatas. Nenhum escritor muda:
 -- submissão, sincronização e o stub do webhook já buscam pela conta antes de
--- inserir e tratam o 23505.
+-- inserir. Na corrida (o mesmo modelo gravado duas vezes ao mesmo tempo), a
+-- submissão e o stub tratam o 23505; a sincronização o lista entre os erros
+-- daquele modelo, e a seguinte o atualiza.
 --
 -- RESTRITIVA (índice único que o app antigo poderia violar numa corrida):
 -- aplicar DEPOIS do deploy. O CREATE INDEX trava a ESCRITA em

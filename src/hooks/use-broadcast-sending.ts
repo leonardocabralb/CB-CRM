@@ -209,9 +209,13 @@ export function resolveVariables(
   // ordem do CÓDIGO do caractere — a de `extractTemplateVariables`, com que o
   // servidor casa cada valor com o nome. `localeCompare` dependia do idioma do
   // navegador. As chaves que sobram de outro modelo saem no passo 3
-  // (`variaveisDoModelo`).
+  // (`variaveisDoModelo`). Posições antes de nomes: misturadas pelo código do
+  // caractere, "1a" < "2" < "10" < "1a" daria voltas (ordem que não fecha).
   const keys = Object.keys(variables).sort((a, b) => {
-    if (/^\d+$/.test(a) && /^\d+$/.test(b)) return Number(a) - Number(b);
+    const posA = /^\d+$/.test(a);
+    const posB = /^\d+$/.test(b);
+    if (posA && posB) return Number(a) - Number(b);
+    if (posA !== posB) return posA ? -1 : 1;
     return a < b ? -1 : a > b ? 1 : 0;
   });
 
