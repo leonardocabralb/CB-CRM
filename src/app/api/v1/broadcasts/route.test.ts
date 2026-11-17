@@ -71,7 +71,30 @@ beforeEach(() => {
     broadcastId: 'b1',
     planned: [{}],
     rejected: 0,
+    duplicates: 0,
     channelId: 'canal-que-o-nucleo-escolheu',
+  })
+})
+
+describe('POST /api/v1/broadcasts — o 202 conta os repetidos (porte do #681)', () => {
+  // A conta (quem é repetido) é do núcleo, com teste em `broadcast-core.test.ts`;
+  // aqui, que o número chega à resposta ao lado de `accepted` e `rejected`.
+  it('`duplicates` do núcleo chega ao 202', async () => {
+    createBroadcast.mockResolvedValueOnce({
+      broadcastId: 'b2',
+      planned: [{}, {}],
+      rejected: 1,
+      duplicates: 2,
+      channelId: 'canal-1',
+    })
+    const res = await POST(pedido(CORPO))
+    expect(res.status).toBe(202)
+    expect((await res.json()).data).toMatchObject({
+      total_recipients: 2,
+      accepted: 2,
+      rejected: 1,
+      duplicates: 2,
+    })
   })
 })
 

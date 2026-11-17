@@ -958,11 +958,12 @@ Phone numbers outside the [rule](#phone-numbers) are dropped and counted
 as `rejected`. A number with no contact yet gets one, as
 `POST /api/v1/contacts` would create it. Recipients that resolve to the
 **same contact** — the same number twice, or two spellings of it — are
-messaged once, and the extra ones are dropped **without** being counted:
-`accepted + rejected` can be less than the number of recipients you sent.
-`total_recipients` and `accepted` are both the number of contacts the
-campaign will message. If no recipient is usable, the call fails with
-`400 bad_request` and nothing is created. Response (202):
+messaged once (the first one listed, with its `params`), and the extra ones
+are counted in `duplicates`: `accepted + rejected + duplicates` is the
+number of recipients you sent. `total_recipients` and `accepted` are both
+the number of contacts the campaign will message. If no recipient is
+usable, the call fails with `400 bad_request` and nothing is created.
+Response (202):
 
 ```json
 {
@@ -972,6 +973,7 @@ campaign will message. If no recipient is usable, the call fails with
     "total_recipients": 2,
     "accepted": 2,
     "rejected": 0,
+    "duplicates": 0,
     "channel_id": "…"
   }
 }
@@ -1397,7 +1399,9 @@ GET /api/v1/contacts?limit=50&cursor=eyJ…
 
 Cursors are keyset-based (stable under concurrent inserts). Pass the
 cursor back verbatim — don't parse it. `next_cursor: null` means the
-last page.
+last page. Pass back only a cursor the API gave you: a malformed or
+tampered one is ignored and you get the first page again (one carrying an
+impossible date can make the request fail instead).
 
 ## Webhooks
 
@@ -1466,10 +1470,10 @@ If you listen for "won", also check `deal.status` on `deal.created`.
 
 All under scope `webhooks:manage`.
 
-- `POST /api/v1/webhooks` — register `{ "url": "https://…", "events": ["message.received"] }`. `url` must be `https://`. **The response includes `secret` exactly once** — store it to verify signatures; wacrm keeps only an encrypted copy.
+- `POST /api/v1/webhooks` — register `{ "url": "https://…", "events": ["message.received"] }`. `url` must be `https://` and must not embed a username or password (`https://user:pass@…` is rejected with `400`; verify deliveries with the signing secret instead). **The response includes `secret` exactly once** — store it to verify signatures; wacrm keeps only an encrypted copy.
 - `GET /api/v1/webhooks` — list your endpoints (never returns the secret). Not paginated: `meta.next_cursor` is always `null`.
 - `GET /api/v1/webhooks/{id}` — read one.
-- `PATCH /api/v1/webhooks/{id}` — update `url`, `events`, or `is_active` (re-enabling clears the failure counter).
+- `PATCH /api/v1/webhooks/{id}` — update `url` (same rules as on create), `events`, or `is_active` (re-enabling clears the failure counter).
 - `DELETE /api/v1/webhooks/{id}` — remove one.
 
 ```bash
@@ -1673,7 +1677,9 @@ deliveries, and the endpoint ends up switched off.
 **Target restrictions (SSRF).** The `url` must be `https://` and must
 resolve to a public address — requests to `localhost`, private/RFC1918
 ranges, link-local (incl. cloud metadata `169.254.169.254`), and similar
-internal targets are refused at delivery time.
+internal targets are refused at delivery time. A URL with a username or
+password in it (`https://user:pass@…`) is refused when you register or
+change it: no delivery could go out to it.
 
 ## Roadmap
 

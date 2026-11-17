@@ -83,6 +83,17 @@ export interface BroadcastPlan {
   rejected: number;
 }
 
+/**
+ * Porte do #681: o que `createBroadcast` devolve à rota. `duplicates` são os
+ * destinatários que caíram num contato JÁ listado no mesmo pedido (o mesmo
+ * número duas vezes, ou duas grafias dele) e saíram uma vez só — antes,
+ * descartados calados. Fica fora de `BroadcastPlan` porque a retomada
+ * (`broadcast-resume.ts`) monta um plano sem esse conceito.
+ */
+export interface CreatedBroadcastPlan extends BroadcastPlan {
+  duplicates: number;
+}
+
 const MAX_RECIPIENTS = 1000;
 
 /**
@@ -96,7 +107,7 @@ export async function createBroadcast(
   accountId: string,
   auditUserId: string,
   params: CreateBroadcastParams
-): Promise<BroadcastPlan> {
+): Promise<CreatedBroadcastPlan> {
   const { name, templateName, recipients } = params;
 
   if (!templateName) {
@@ -282,6 +293,7 @@ export async function createBroadcast(
     templateRow,
     planned,
     rejected,
+    duplicates: resolved.length - deduped.length,
   };
 }
 

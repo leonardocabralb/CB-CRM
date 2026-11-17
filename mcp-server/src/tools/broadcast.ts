@@ -37,7 +37,9 @@ export function registerBroadcastTools(server: McpServer, client: WacrmClient): 
           )
           .min(1)
           .max(1000)
-          .describe('Recipients (1–1000). Invalid numbers are dropped and counted as rejected.'),
+          .describe(
+            'Recipients (1–1000). Invalid numbers are dropped and counted as rejected. A number listed twice (or two spellings of the same number) is messaged once, and the extra entries are counted as duplicates.',
+          ),
         channel_id: z
           .string()
           .optional()
