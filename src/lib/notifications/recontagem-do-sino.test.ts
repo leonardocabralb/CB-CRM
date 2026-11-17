@@ -2,7 +2,11 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { criarRecontagem, ESPERA_DA_RECONTAGEM_MS } from './recontagem-do-sino'
+import {
+  criarRecontagem,
+  ESPERA_DA_RECONTAGEM_MS,
+  ESPERA_MAXIMA_DA_RECONTAGEM_MS,
+} from './recontagem-do-sino'
 
 // O selo do sino descia sozinho (porte do #682 do original): o DELETE do
 // tempo real chega a todo conectado e o UPDATE vem sem a linha de antes. A
@@ -48,6 +52,30 @@ describe('criarRecontagem', () => {
     await vi.runAllTimersAsync()
     expect(contar).toHaveBeenCalledTimes(1)
     expect(aplicar).toHaveBeenCalledWith(3)
+  })
+
+  it('rajada que não para: a contagem sai no teto da espera, não é adiada para sempre', async () => {
+    const contar = vi.fn(async () => 1)
+    const r = criarRecontagem(contar, vi.fn())
+    for (let t = 0; t < ESPERA_MAXIMA_DA_RECONTAGEM_MS; t += 400) {
+      r.pedir()
+      await vi.advanceTimersByTimeAsync(400)
+    }
+    expect(contar).toHaveBeenCalledTimes(1)
+  })
+
+  it('banco lento: a resposta que chega vale mesmo com uma contagem mais nova ainda no ar', async () => {
+    const { contar, pedidas } = contagemManual()
+    const aplicar = vi.fn()
+    const r = criarRecontagem(contar, aplicar)
+    r.agora()
+    r.agora() // a mais nova, ainda sem resposta
+    pedidas[0](9)
+    await vi.runAllTimersAsync()
+    expect(aplicar.mock.calls).toEqual([[9]])
+    pedidas[1](4)
+    await vi.runAllTimersAsync()
+    expect(aplicar.mock.calls).toEqual([[9], [4]])
   })
 
   it('a resposta atrasada de uma contagem ANTERIOR não sobrescreve a última', async () => {

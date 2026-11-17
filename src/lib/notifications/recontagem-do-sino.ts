@@ -12,11 +12,15 @@
 //    aviso JÁ LIDO, e cada um descontava 1; o alarme da IA que devolve um
 //    aviso a "não lido" (`read_at: null`) não somava.
 // A rajada (o "marcar todas como lidas", a Lixeira em lote) vira UMA contagem
-// depois de `ESPERA_DA_RECONTAGEM_MS`, e só a ÚLTIMA contagem pedida vale: a
-// resposta atrasada de uma anterior não a sobrescreve.
+// depois de `ESPERA_DA_RECONTAGEM_MS` — e no máximo `ESPERA_MAXIMA_…` depois
+// do primeiro evento, para a rajada que não para nunca adiar para sempre. A
+// resposta mais VELHA que a já aplicada não volta o número.
 // ============================================================
 
 export const ESPERA_DA_RECONTAGEM_MS = 500;
+
+/** Teto da espera numa rajada que não para: a contagem sai mesmo assim. */
+export const ESPERA_MAXIMA_DA_RECONTAGEM_MS = 2_000;
 
 export interface Recontagem {
   /** Conta já (a carga da tela). Um pedido pendente fica coberto por ela. */
@@ -35,10 +39,15 @@ export function criarRecontagem(
   contar: () => Promise<number | null>,
   aplicar: (naoLidos: number) => void,
   esperaMs: number = ESPERA_DA_RECONTAGEM_MS,
+  esperaMaximaMs: number = ESPERA_MAXIMA_DA_RECONTAGEM_MS,
 ): Recontagem {
-  let ultima = 0;
+  /** A numeração das contagens pedidas. */
+  let pedidas = 0;
+  /** A mais nova que já chegou à tela. */
+  let aplicada = 0;
   let parado = false;
   let pendente: ReturnType<typeof setTimeout> | null = null;
+  let pendenteDesde = 0;
 
   const cancelarPendente = () => {
     if (pendente !== null) clearTimeout(pendente);
@@ -48,7 +57,7 @@ export function criarRecontagem(
   const agora = () => {
     if (parado) return;
     cancelarPendente();
-    const minha = ++ultima;
+    const minha = ++pedidas;
     void (async () => {
       let naoLidos: number | null;
       try {
@@ -56,7 +65,12 @@ export function criarRecontagem(
       } catch {
         naoLidos = null;
       }
-      if (parado || minha !== ultima || naoLidos === null) return;
+      // A mais nova que CHEGA vale, mesmo com outra ainda no ar: exigir a
+      // última pedida congelava o selo com o banco lento (cada evento novo
+      // descartava a resposta da anterior). A mais velha que a já aplicada
+      // não volta o número.
+      if (parado || naoLidos === null || minha <= aplicada) return;
+      aplicada = minha;
       aplicar(naoLidos);
     })();
   };
@@ -65,11 +79,17 @@ export function criarRecontagem(
     agora,
     pedir() {
       if (parado) return;
-      cancelarPendente();
+      const instante = Date.now();
+      if (pendente === null) pendenteDesde = instante;
+      else clearTimeout(pendente);
+      const atraso = Math.max(
+        0,
+        Math.min(esperaMs, pendenteDesde + esperaMaximaMs - instante),
+      );
       pendente = setTimeout(() => {
         pendente = null;
         agora();
-      }, esperaMs);
+      }, atraso);
     },
     parar() {
       parado = true;
