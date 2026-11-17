@@ -12,8 +12,11 @@
 //  - O PRAZO é o relógio do BANCO (`now()` dentro das funções da 1147): o do
 //    navegador pode estar errado por minutos.
 //  - O assistente toma a posse logo depois de criar a campanha e a RENOVA
-//    antes de cada lote (e depois de cada espera do 429). Posse perdida =
-//    PARA e NUNCA reenvia: quem assumiu manda os pendentes.
+//    antes de cada lote (e depois de cada espera do 429); a ROTA do lote a
+//    renova antes do 1º envio e a cada minuto do lote (`api/whatsapp/
+//    broadcast`), porque um lote lento no servidor, ou um pedido que chega
+//    atrasado, passaria do prazo. Posse perdida = PARA e NUNCA reenvia: quem
+//    assumiu manda os pendentes.
 //  - O TOKEN (gerado no navegador) é o que identifica o dono. Tomar e renovar
 //    com o mesmo token são REPETÍVEIS: o pedido que gravou e cuja resposta se
 //    perdeu, repetido, continua valendo. O original compara o próprio prazo,
@@ -31,9 +34,16 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  */
 export const PRAZO_DA_POSSE_MS = 5 * 60 * 1000;
 
-/** Tentativas por chamada (a primeira incluída), com espera de 1 s e 2 s. */
-export const TENTATIVAS_DA_POSSE = 3;
-const ESPERA_ENTRE_TENTATIVAS_MS = 1000;
+/**
+ * As esperas entre as tentativas de tomar/renovar: ~1 min no total. Repetir é
+ * seguro (o token torna o pedido repetível), e com poucas tentativas uma queda
+ * curta de rede parava a campanha inteira — o Retomar só aparece depois do
+ * prazo, e só para quem abre a página.
+ */
+const ESPERAS_ENTRE_TENTATIVAS_MS = [1_000, 2_000, 4_000, 8_000, 15_000, 30_000];
+
+/** Tentativas por chamada, a primeira incluída. */
+export const TENTATIVAS_DA_POSSE = ESPERAS_ENTRE_TENTATIVAS_MS.length + 1;
 
 export type ResultadoDaPosse =
   /** A posse é deste token até `prazo` (relógio do banco). */
@@ -71,7 +81,7 @@ async function chamarPosse(
       ultimoErro = err instanceof Error ? err.message : String(err);
     }
     if (tentativa < TENTATIVAS_DA_POSSE) {
-      await esperar(ESPERA_ENTRE_TENTATIVAS_MS * 2 ** (tentativa - 1));
+      await esperar(ESPERAS_ENTRE_TENTATIVAS_MS[tentativa - 1]);
     }
   }
   return { situacao: 'erro', mensagem: ultimoErro };

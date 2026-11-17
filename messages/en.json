@@ -2461,13 +2461,14 @@
       "toastResumeStartedCapped": "Sending {count} recipients in the background. {remaining} more will need another run.",
       "toastResumeFailed": "Could not resume: {error}",
       "toastResumeInFlight": "This broadcast is already being sent, so Resume sent nothing. Follow its progress on this page.",
+      "toastResumeClaimFailed": "Couldn't check whether this broadcast is already being sent, so nothing was sent. Try again.",
       "unknownContact": "Unknown",
       "unknownError": "unknown error"
     },
     "new": {
       "broadcastFailed": "Broadcast failed",
       "sendNotStarted": "Couldn't start sending this broadcast. Nothing was sent; try again.",
-      "toastSendTakenOver": "Another delivery took over this broadcast, so this tab stopped sending without repeating anyone. Follow its progress on the broadcast page.",
+      "toastSendTakenOver": "Another delivery took over this broadcast, and this tab repeated no one. Follow its progress on the broadcast page.",
       "toastSendInterrupted": "Sending stopped because the connection to the server dropped. Open the broadcast and select \"Resume sending\" to reach the remaining recipients: the button appears within {minutes} minutes.",
       "title": "New Broadcast",
       "subtitle": "Create and send a broadcast message to your contacts.",

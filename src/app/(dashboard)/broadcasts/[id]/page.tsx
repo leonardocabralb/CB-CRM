@@ -289,6 +289,10 @@ export default function BroadcastDetailPage() {
         await fetchData();
         return;
       }
+      if (payload?.code === 'claim_failed') {
+        toast.error(t('toastResumeClaimFailed'));
+        return;
+      }
 
       if (!res.ok) {
         toast.error(

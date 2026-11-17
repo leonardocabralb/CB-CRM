@@ -83,23 +83,27 @@ describe('tomarPosseDoDisparo / renovarPosseDoDisparo', () => {
 
   it('todas as tentativas falham: "erro" com a última mensagem (o assistente para)', async () => {
     const esperas: number[] = [];
-    const { db, chamadas } = bancoQueResponde([
-      { data: null, error: { message: 'um' } },
-      new Error('dois'),
-      { data: null, error: { message: 'três' } },
-    ]);
+    const falhas: Resposta[] = Array.from({ length: TENTATIVAS_DA_POSSE }, (_, i) =>
+      i % 2 ? new Error(`exceção ${i}`) : { data: null, error: { message: `erro ${i}` } },
+    );
+    falhas[falhas.length - 1] = { data: null, error: { message: 'a última' } };
+    const { db, chamadas } = bancoQueResponde(falhas);
 
     const r = await tomarPosseDoDisparo(db, 'bc-1', 'tok-1', async (ms) => {
       esperas.push(ms);
     });
 
-    expect(r).toEqual({ situacao: 'erro', mensagem: 'três' });
+    expect(r).toEqual({ situacao: 'erro', mensagem: 'a última' });
     expect(chamadas).toHaveLength(TENTATIVAS_DA_POSSE);
-    expect(esperas).toEqual([1000, 2000]);
+    expect(new Set(chamadas.map((c) => c.args.p_token))).toEqual(new Set(['tok-1']));
+    // ~1 min tentando: uma queda curta de rede não para a campanha inteira.
+    expect(esperas).toEqual([1_000, 2_000, 4_000, 8_000, 15_000, 30_000]);
+    expect(esperas.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(60_000);
   });
 
   it('a exceção lançada (rede) também vira "erro", nunca escapa', async () => {
-    const { db } = bancoQueResponde([new Error('a'), new Error('b'), new Error('rede caiu')]);
+    const erros = Array.from({ length: TENTATIVAS_DA_POSSE }, () => new Error('rede caiu'));
+    const { db } = bancoQueResponde(erros);
     expect(await renovarPosseDoDisparo(db, 'bc-1', 'tok-1', semEspera)).toEqual({
       situacao: 'erro',
       mensagem: 'rede caiu',

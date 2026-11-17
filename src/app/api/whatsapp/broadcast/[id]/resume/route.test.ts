@@ -14,14 +14,26 @@ const {
   markBroadcastSending,
   releaseBroadcastDelivery,
   deliverBroadcast,
+  finalizeBroadcastStatus,
   depoisDaResposta,
+  BroadcastError,
 } = vi.hoisted(() => ({
   claimBroadcastDelivery: vi.fn(),
   planBroadcastResume: vi.fn(),
   markBroadcastSending: vi.fn(),
   releaseBroadcastDelivery: vi.fn(),
   deliverBroadcast: vi.fn(),
+  finalizeBroadcastStatus: vi.fn(),
   depoisDaResposta: vi.fn(),
+  BroadcastError: class BroadcastError extends Error {
+    constructor(
+      public code: string,
+      message: string,
+      public status: number,
+    ) {
+      super(message)
+    }
+  },
 }))
 
 vi.mock('next/server', () => ({
@@ -43,9 +55,9 @@ vi.mock('@/lib/rate-limit', () => ({
 }))
 vi.mock('@/lib/flows/admin-client', () => ({ supabaseAdmin: () => ({ cliente: 'servico' }) }))
 vi.mock('@/lib/whatsapp/broadcast-core', () => ({
-  BroadcastError: class BroadcastError extends Error {},
+  BroadcastError,
   deliverBroadcast,
-  finalizeBroadcastStatus: vi.fn(),
+  finalizeBroadcastStatus,
 }))
 vi.mock('@/lib/whatsapp/broadcast-resume', () => ({
   claimBroadcastDelivery,
@@ -73,10 +85,13 @@ beforeEach(() => {
     markBroadcastSending,
     releaseBroadcastDelivery,
     deliverBroadcast,
+    finalizeBroadcastStatus,
     depoisDaResposta,
   ]) {
     f.mockReset()
   }
+  finalizeBroadcastStatus.mockResolvedValue(undefined)
+  releaseBroadcastDelivery.mockResolvedValue(undefined)
   planBroadcastResume.mockResolvedValue({
     plan: { planned: [{}, {}] },
     remaining: 0,
@@ -101,6 +116,33 @@ describe('POST /api/whatsapp/broadcast/[id]/resume — a posse e a trava (1147)'
     expect(res.body.code).toBe('claim_failed')
     expect(planBroadcastResume).not.toHaveBeenCalled()
     expect(depoisDaResposta).not.toHaveBeenCalled()
+  })
+
+  it('⚠️⚠️ planejamento que falha DEPOIS de tomar a trava: fecha a campanha pelas linhas e solta a trava', async () => {
+    // Tomar a trava apagou a posse do assistente: ele não fecha mais esta
+    // campanha. Sem o fecho, ela ficava `sending` para sempre (achado A2).
+    claimBroadcastDelivery.mockResolvedValue('tomada')
+    planBroadcastResume.mockRejectedValue(
+      new BroadcastError('nothing_to_resume', 'This broadcast has no recipients left to send', 400),
+    )
+    const res = await retomar()
+    expect(res.status).toBe(400)
+    expect(res.body.code).toBe('nothing_to_resume')
+    expect(finalizeBroadcastStatus).toHaveBeenCalledWith({ cliente: 'servico' }, 'b1')
+    expect(releaseBroadcastDelivery).toHaveBeenCalledWith({ cliente: 'servico' }, 'b1')
+    expect(finalizeBroadcastStatus.mock.invocationCallOrder[0]).toBeLessThan(
+      releaseBroadcastDelivery.mock.invocationCallOrder[0],
+    )
+    expect(depoisDaResposta).not.toHaveBeenCalled()
+  })
+
+  it('sem a trava (ocupada ou erro), não fecha nem solta nada que não é seu', async () => {
+    for (const trava of ['ocupada', 'erro']) {
+      claimBroadcastDelivery.mockResolvedValue(trava)
+      await retomar()
+    }
+    expect(finalizeBroadcastStatus).not.toHaveBeenCalled()
+    expect(releaseBroadcastDelivery).not.toHaveBeenCalled()
   })
 
   it('tomada: planeja com a sessão de quem pediu, responde 202 e entrega depois', async () => {

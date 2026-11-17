@@ -2454,13 +2454,14 @@
       "toastResumeStartedCapped": "Enviando para {count} destinatários em segundo plano. Outros {remaining} vão precisar de mais uma rodada.",
       "toastResumeFailed": "Não foi possível retomar: {error}",
       "toastResumeInFlight": "Esta campanha já está sendo enviada, e o Retomar não reenviou nada. Acompanhe por esta página.",
+      "toastResumeClaimFailed": "Não foi possível conferir se esta campanha já está sendo enviada, e nada foi enviado. Tente de novo.",
       "unknownContact": "Desconhecido",
       "unknownError": "erro desconhecido"
     },
     "new": {
       "broadcastFailed": "Falha no disparo",
       "sendNotStarted": "Não foi possível começar o envio desta campanha. Nada foi enviado; tente de novo.",
-      "toastSendTakenOver": "Outro envio assumiu esta campanha, e esta aba parou de enviar sem repetir ninguém. Acompanhe pela página da campanha.",
+      "toastSendTakenOver": "Outro envio assumiu esta campanha, e esta aba não repetiu ninguém. Acompanhe pela página da campanha.",
       "toastSendInterrupted": "O envio parou porque a conexão com o servidor caiu. Abra a campanha e use \"Retomar envio\" para alcançar quem falta: o botão aparece em até {minutes} minutos.",
       "title": "Novo Disparo",
       "subtitle": "Crie e envie uma mensagem de disparo para seus contatos.",

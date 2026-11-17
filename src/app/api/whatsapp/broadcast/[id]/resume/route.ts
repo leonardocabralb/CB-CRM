@@ -144,7 +144,14 @@ export async function POST(
     // Planning failed after the claim — release it, or the campaign is
     // locked out of resuming until the staleness window expires.
     if (claimedId) {
-      await releaseBroadcastDelivery(supabaseAdmin(), claimedId).catch(() => {});
+      const admin = supabaseAdmin();
+      // NOSSO (1147): tomar a trava APAGOU a posse do assistente — ele não
+      // fecha mais esta campanha. Um planejamento que falha depois disso
+      // (nada a retomar, conexão ou modelo) a deixaria em `sending` para
+      // sempre, sem como excluir. O fecho é derivado das linhas: com
+      // pendentes, ela segue `sending` e o Retomar volta.
+      await finalizeBroadcastStatus(admin, claimedId).catch(() => {});
+      await releaseBroadcastDelivery(admin, claimedId).catch(() => {});
     }
     if (error instanceof BroadcastError) {
       return NextResponse.json(

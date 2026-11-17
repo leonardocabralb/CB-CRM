@@ -19,9 +19,11 @@
 --    já DELE (o mesmo token: a repetição de um pedido cuja resposta se perdeu
 --    não vira "outro assumiu") E com a trava da retomada livre ou velha (mais
 --    de 30 min, a régua de `DELIVERY_LOCK_STALE_MS`).
---  - `cb_renovar_posse_do_disparo(disparo, token)`: antes de CADA lote (e
---    depois de cada espera do 429) — só com o token. Devolve nulo quando a
---    posse mudou de mãos: o assistente PARA e nunca reenvia.
+--  - `cb_renovar_posse_do_disparo(disparo, token)`: o assistente antes de
+--    CADA lote (e depois de cada espera do 429), e a ROTA do lote antes do 1º
+--    envio e a cada minuto do lote (um lote lento no servidor não deixa a
+--    posse vencer no meio) — só com o token. Devolve nulo quando a posse mudou
+--    de mãos: quem renovava PARA e nunca reenvia.
 --  - `cb_disparo_em_andamento(disparo)`: a tela troca "parou no meio" e o
 --    Retomar por "Envio em andamento" enquanto a posse vale ou a trava da
 --    retomada é recente. Nulo = não sei (a tela não afirma "parado").
