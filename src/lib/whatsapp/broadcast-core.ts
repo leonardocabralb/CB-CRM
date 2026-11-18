@@ -29,6 +29,13 @@ import { resolveTemplateRow } from '@/lib/whatsapp/template-body';
 import type { MessageTemplate } from '@/types';
 import { findOrCreateContact } from '@/lib/api/v1/contacts';
 import { resolveMetaChannel } from '@/lib/cb-channels/resolve-meta';
+import { semTokenDaMeta } from '@/lib/cb-channels/falha-da-meta';
+import {
+  desfechoDaFalha,
+  falhaDaMontagem,
+  gravarDesfechoDaReserva,
+  reservarDestinatario,
+} from '@/lib/whatsapp/broadcast-entrega';
 
 /** Thrown by createBroadcast on a caller-visible failure; route maps it. */
 export class BroadcastError extends Error {
@@ -81,6 +88,12 @@ export interface BroadcastPlan {
   planned: PlannedRecipient[];
   /** Phones rejected up front (fora da régua `telefoneDigitado`) — counted as failed. */
   rejected: number;
+  /**
+   * NOSSO (1151): de que situação `deliverBroadcast` pode RESERVAR cada linha
+   * antes de mandar — a campanha nova, `pending`; a retomada, o escopo dela.
+   * Nunca inclui `uncertain`: o que pode ter saído não é reenviado.
+   */
+  origens?: readonly string[];
 }
 
 /**
@@ -309,15 +322,41 @@ export async function createBroadcast(
  * webhooks keep advancing them. We therefore never write those columns
  * here — only the terminal `status` — otherwise a manual value would
  * race and clobber the trigger-maintained counts.
+ *
+ * ⚠️⚠️ NOSSO (1151): cada linha é MONTADA, RESERVADA (`plan.origens` →
+ * `uncertain`) e só então enviada; o desfecho é gravado com a cerca da
+ * reserva (`broadcast-entrega.ts`). Linha que não reservou (outra mão a tem,
+ * já saiu, ou a reserva falhou) é PULADA. 5xx, tempo esgotado e erro de rede
+ * deixam a linha `uncertain` — o "Tentar de novo os que falharam" mandava de
+ * novo o que podia ter saído. O processo que morre no meio deixa incerta só a
+ * linha que estava saindo.
  */
 export async function deliverBroadcast(
   db: SupabaseClient,
   plan: BroadcastPlan
 ): Promise<void> {
+  const origens = plan.origens ?? ['pending'];
   for (const recipient of plan.planned) {
+    const naoMonta = falhaDaMontagem(plan.templateRow, recipient.params);
+    if (naoMonta) {
+      // Nunca chega à Meta: nada saiu, `failed` (reenviar depois de consertar
+      // o modelo é seguro). Só sobre a situação planejada.
+      const { error } = await db
+        .from('broadcast_recipients')
+        .update({ status: 'failed', error_message: `Template cannot be sent: ${naoMonta}` })
+        .eq('id', recipient.recipientRowId)
+        .in('status', [...origens]);
+      if (error) console.error('[broadcast-core] não gravou a falha de montagem:', error.message);
+      continue;
+    }
+
+    if ((await reservarDestinatario(db, recipient.recipientRowId, origens)) !== 'reservada') {
+      continue;
+    }
+
     const variants = phoneVariants(recipient.phone);
     let sentMessageId: string | null = null;
-    let lastError: string | null = null;
+    let lastError: unknown = null;
 
     for (const variant of variants) {
       try {
@@ -334,31 +373,27 @@ export async function deliverBroadcast(
         lastError = null;
         break;
       } catch (error) {
+        lastError = error;
         const message = error instanceof Error ? error.message : 'Unknown error';
-        lastError = message;
         // Only a "recipient not allowed" error is worth another variant.
         if (!isRecipientNotAllowedError(message)) break;
       }
     }
 
     if (sentMessageId) {
-      await db
-        .from('broadcast_recipients')
-        .update({
-          status: 'sent',
-          sent_at: new Date().toISOString(),
-          whatsapp_message_id: sentMessageId,
-          error_message: null,
-        })
-        .eq('id', recipient.recipientRowId);
+      await gravarDesfechoDaReserva(db, recipient.recipientRowId, {
+        status: 'sent',
+        whatsappMessageId: sentMessageId,
+      });
     } else {
-      await db
-        .from('broadcast_recipients')
-        .update({
-          status: 'failed',
-          error_message: lastError || 'Unknown error',
-        })
-        .eq('id', recipient.recipientRowId);
+      // A mensagem da Meta ECOA o token (CLAUDE.md, 8e).
+      await gravarDesfechoDaReserva(db, recipient.recipientRowId, {
+        status: lastError === null ? 'failed' : desfechoDaFalha(lastError),
+        erro: semTokenDaMeta(
+          lastError instanceof Error ? lastError.message : 'Unknown error',
+          plan.accessToken,
+        ),
+      });
     }
   }
 
@@ -373,7 +408,9 @@ export async function deliverBroadcast(
  * so "nothing sent *this* pass" must not mark a campaign failed when
  * 800 of its 1 000 recipients went out earlier. `failed` means every
  * single recipient failed; anything else that reached Meta is `sent`,
- * with the per-recipient failures visible in `failed_count`.
+ * with the per-recipient failures visible in `failed_count`. A ENTREGA
+ * INCERTA (`uncertain`, 1151) não é pendente nem falha: a campanha com
+ * incertas fecha `sent`, e a tela as mostra à parte.
  *
  * Per-status counts stay trigger-owned (migrations 003/005) — only the
  * terminal `status` is written here.

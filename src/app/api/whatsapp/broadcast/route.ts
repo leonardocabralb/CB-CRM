@@ -17,6 +17,13 @@ import {
   RATE_LIMITS,
 } from '@/lib/rate-limit'
 import { renovarPosseDoDisparo } from '@/lib/whatsapp/broadcast-posse'
+import {
+  desfechoDaFalha,
+  falhaDaMontagem,
+  gravarDesfechoDaReserva,
+  reservarDestinatario,
+} from '@/lib/whatsapp/broadcast-entrega'
+import { semTokenDaMeta } from '@/lib/cb-channels/falha-da-meta'
 
 /**
  * NOSSO (posse do envio, 1147): a posse que o assistente manda junto do lote
@@ -30,14 +37,22 @@ const RENOVAR_A_POSSE_NO_LOTE_MS = 60_000
 
 interface BroadcastResult {
   phone: string
-  status: 'sent' | 'failed'
+  /**
+   * NOSSO (1151): `uncertain` = foi à Meta e ninguém confirmou o desfecho
+   * (5xx, tempo esgotado, rede) — PODE ter saído; a linha fica `uncertain` e
+   * nenhum reenvio a pega. `skipped` = a linha não estava mais pendente na
+   * RESERVA (outro envio a tem, ou já saiu): nada foi enviado a ela, e o
+   * navegador não grava nada.
+   */
+  status: 'sent' | 'failed' | 'uncertain' | 'skipped'
   whatsapp_message_id?: string
   error?: string
   /** O `recipient_id` que veio no pedido, devolvido para o navegador casar. */
   recipient_id?: string
   /**
-   * `true` quando ESTA rota já gravou o envio na linha de
-   * `broadcast_recipients` (ver `anotarEnvio`); o navegador não regrava.
+   * `true` quando ESTA rota já gravou o desfecho na linha de
+   * `broadcast_recipients` (o envio, a recusa ou o motivo da incerta, ver
+   * `gravarDesfechoDaReserva`); o navegador não regrava.
    */
   anotado?: boolean
 }
@@ -67,8 +82,9 @@ interface BroadcastResult {
 interface NewRecipient {
   phone: string
   /**
-   * A linha de `broadcast_recipients` deste envio. Com ela a rota anota o
-   * wamid NA HORA em que a Meta aceita (`anotarEnvio`).
+   * A linha de `broadcast_recipients` deste envio. Com ela a rota a RESERVA
+   * antes da Meta e grava o wamid NA HORA em que a Meta aceita (1151,
+   * `broadcast-entrega.ts`).
    */
   recipient_id?: string
   /** Body variable values, one per {{N}}. Legacy field. */
@@ -82,57 +98,14 @@ interface NewRecipient {
   messageParams?: SendTimeParams
 }
 
-/**
- * Grava o envio na linha do destinatário logo que a Meta o aceita: `sent`,
- * a hora e o wamid.
- *
- * ⚠️⚠️ Sem isto o wamid só chegava a `broadcast_recipients` quando o lote de
- * 10 voltava ao navegador (segundos depois do primeiro envio), e o recibo da
- * Meta que chegasse antes não achava o destinatário: esperava os 7 s da rota
- * do webhook reconferindo e, passado isso, se perdia — a campanha ficava sem
- * "entregue"/"lida" para aquele cliente (revisão do PR #277).
- *
- * ⚠️ Só sai de `pending`: a linha que já andou (outro passe de envio, o
- * recibo) não volta a `sent`. `false` (erro, RLS ou 0 linhas) deixa a
- * gravação para o navegador, como era antes. Nunca lança: a mensagem já
- * saiu, e um erro aqui não pode virar "falhou" no resultado.
- */
-async function anotarEnvio(
-  supabase: Awaited<ReturnType<typeof requireRole>>['supabase'],
-  recipientId: string,
-  wamid: string,
-): Promise<boolean> {
-  try {
-    const { data, error } = await supabase
-      .from('broadcast_recipients')
-      .update({
-        status: 'sent',
-        sent_at: new Date().toISOString(),
-        whatsapp_message_id: wamid,
-        error_message: null,
-      })
-      .eq('id', recipientId)
-      .eq('status', 'pending')
-      .select('id')
-    if (error) {
-      console.error('[broadcast] não anotou o envio na linha do destinatário:', error.message)
-      return false
-    }
-    return (data?.length ?? 0) > 0
-  } catch (err) {
-    console.error('[broadcast] não anotou o envio na linha do destinatário:', err)
-    return false
-  }
-}
-
 export async function POST(request: Request) {
   try {
     // Requires the 'agent' role — `canSendMessages` in lib/auth/roles is
     // explicit that running broadcasts is a write operation and that
     // viewers are read-only.
     //
-    // Esta rota só ESCREVE a linha do destinatário que já existe (o wamid,
-    // `anotarEnvio`, sob a RLS de quem chamou): o envio em si é uma chamada
+    // Esta rota só ESCREVE a linha do destinatário que já existe (a reserva e
+    // o desfecho, 1151, sob a RLS de quem chamou): o envio em si é uma chamada
     // à Meta, e nenhuma policy seguraria um papel que não pode disparar —
     // resolving `account_id` straight off the profile (which only needs
     // 'viewer') was the ONLY gate, and it let a viewer blast a template
@@ -250,6 +223,7 @@ export async function POST(request: Request) {
     const results: BroadcastResult[] = []
     let sentCount = 0
     let failedCount = 0
+    let uncertainCount = 0
     // `0` força a renovação antes do PRIMEIRO envio: o pedido pode ter
     // chegado atrasado, depois de a posse vencer e a retomada assumir.
     let posseRenovadaEm = 0
@@ -272,6 +246,9 @@ export async function POST(request: Request) {
         posseRenovadaEm = Date.now()
       }
 
+      const recipientId =
+        typeof recipient.recipient_id === 'string' ? recipient.recipient_id : undefined
+      const daLinha = recipientId ? { recipient_id: recipientId } : {}
       const sanitized = sanitizePhoneForMeta(recipient.phone)
 
       if (!isValidE164(sanitized)) {
@@ -279,19 +256,60 @@ export async function POST(request: Request) {
           phone: recipient.phone,
           status: 'failed',
           error: 'Invalid phone number format',
-          ...(typeof recipient.recipient_id === 'string'
-            ? { recipient_id: recipient.recipient_id }
-            : {}),
+          ...daLinha,
         })
         failedCount++
         continue
+      }
+
+      // NOSSO (1151): o modelo é MONTADO antes da reserva, como no núcleo
+      // (`send-message.ts`). O que não monta (mídia do cabeçalho faltando,
+      // valores a menos) nunca chega à Meta: `failed`, reenviar é seguro.
+      const naoMonta = falhaDaMontagem(
+        templateRow,
+        recipient.params ?? [],
+        recipient.messageParams,
+      )
+      if (naoMonta) {
+        results.push({
+          phone: recipient.phone,
+          status: 'failed',
+          error: `Template cannot be sent: ${naoMonta}`,
+          ...daLinha,
+        })
+        failedCount++
+        continue
+      }
+
+      // ⚠️⚠️ NOSSO (1151): RESERVA a linha (`pending` → `uncertain`) ANTES da
+      // Meta. Tudo o que vai à Meta passa por `uncertain`, então a queda no
+      // meio (aba, rede, deploy, chamada pendurada) deixa incerta só esta
+      // linha, nunca a dá por não enviada — e a mão que não reservou (o
+      // Retomar, o lote repetido) não manda. Pedido sem `recipient_id` (forma
+      // antiga) não tem linha a reservar e manda como antes.
+      if (recipientId) {
+        const reserva = await reservarDestinatario(supabase, recipientId)
+        if (reserva === 'ocupada') {
+          results.push({ phone: recipient.phone, status: 'skipped', ...daLinha })
+          continue
+        }
+        if (reserva === 'erro') {
+          results.push({
+            phone: recipient.phone,
+            status: 'failed',
+            error: 'Could not reserve this recipient before sending; nothing was sent to them.',
+            ...daLinha,
+          })
+          failedCount++
+          continue
+        }
       }
 
       // Retry with phone variants on "not in allowed list" so numbers
       // that differ only in a trunk-prefix 0 still reach recipients.
       const variants = phoneVariants(sanitized)
       let sentMessageId: string | null = null
-      let lastError: string | null = null
+      let lastError: unknown = null
 
       for (const variant of variants) {
         try {
@@ -309,20 +327,18 @@ export async function POST(request: Request) {
           lastError = null
           break
         } catch (error) {
+          lastError = error
           const errorMessage =
             error instanceof Error ? error.message : 'Unknown error'
-          if (!isRecipientNotAllowedError(errorMessage)) {
-            lastError = errorMessage
-            break
-          }
-          lastError = errorMessage
+          if (!isRecipientNotAllowedError(errorMessage)) break
           // retry with next variant
         }
       }
 
       if (sentMessageId) {
-        const recipientId =
-          typeof recipient.recipient_id === 'string' ? recipient.recipient_id : undefined
+        // Gravado NA HORA em que a Meta aceita (revisão do PR #277): o recibo
+        // que chegasse antes do lote voltar ao navegador não achava o
+        // destinatário. Cercado pela reserva; `false` deixa para o navegador.
         results.push({
           phone: recipient.phone,
           status: 'sent',
@@ -330,26 +346,43 @@ export async function POST(request: Request) {
           ...(recipientId
             ? {
                 recipient_id: recipientId,
-                anotado: await anotarEnvio(supabase, recipientId, sentMessageId),
+                anotado: await gravarDesfechoDaReserva(supabase, recipientId, {
+                  status: 'sent',
+                  whatsappMessageId: sentMessageId,
+                }),
               }
             : {}),
         })
         sentCount++
-      } else {
-        console.error(
-          `Failed to send broadcast to ${recipient.phone}:`,
-          lastError
-        )
-        results.push({
-          phone: recipient.phone,
-          status: 'failed',
-          error: lastError || 'Unknown error',
-          ...(typeof recipient.recipient_id === 'string'
-            ? { recipient_id: recipient.recipient_id }
-            : {}),
-        })
-        failedCount++
+        continue
       }
+
+      // ⚠️⚠️ NOSSO (1151): só a recusa COMPROVADA (4xx) é `failed`; 5xx, tempo
+      // esgotado e erro de rede PODEM ter saído (CLAUDE.md, 8e) e a linha fica
+      // `uncertain` — fora do "Tentar de novo os que falharam". Sem variante
+      // tentada (lista vazia), nada saiu. A mensagem da Meta ECOA o token.
+      const desfecho = lastError === null ? 'failed' : desfechoDaFalha(lastError)
+      const erro = semTokenDaMeta(
+        lastError instanceof Error ? lastError.message : 'Unknown error',
+        accessToken,
+      )
+      console.error(`Failed to send broadcast to ${recipient.phone} (${desfecho}):`, erro)
+      results.push({
+        phone: recipient.phone,
+        status: desfecho,
+        error: erro,
+        ...(recipientId
+          ? {
+              recipient_id: recipientId,
+              anotado: await gravarDesfechoDaReserva(supabase, recipientId, {
+                status: desfecho,
+                erro,
+              }),
+            }
+          : {}),
+      })
+      if (desfecho === 'failed') failedCount++
+      else uncertainCount++
     }
 
     if (semPosse) {
@@ -364,6 +397,7 @@ export async function POST(request: Request) {
           total: recipients.length,
           sent: sentCount,
           failed: failedCount,
+          uncertain: uncertainCount,
           results,
         },
         { status: 409 },
@@ -375,6 +409,7 @@ export async function POST(request: Request) {
       total: recipients.length,
       sent: sentCount,
       failed: failedCount,
+      uncertain: uncertainCount,
       results,
     })
   } catch (error) {

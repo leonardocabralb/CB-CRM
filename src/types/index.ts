@@ -1211,8 +1211,13 @@ export interface Deal {
 
 export type BroadcastStatus =
   'draft' | 'scheduled' | 'sending' | 'sent' | 'failed';
+/**
+ * `uncertain` é NOSSO (1151): a linha foi reservada para a Meta e ninguém
+ * confirmou o desfecho — PODE ter saído. Nenhum reenvio a pega
+ * (`src/lib/whatsapp/broadcast-entrega.ts`). A lista é a do CHECK da 1151.
+ */
 export type RecipientStatus =
-  'pending' | 'sent' | 'delivered' | 'read' | 'replied' | 'failed';
+  'pending' | 'sent' | 'delivered' | 'read' | 'replied' | 'failed' | 'uncertain';
 
 export interface Broadcast {
   id: string;

@@ -2407,7 +2407,8 @@
       "pending": "Pending",
       "delivered": "Delivered",
       "read": "Read",
-      "replied": "Replied"
+      "replied": "Replied",
+      "uncertain": "Uncertain delivery"
     },
     "detail": {
       "backToBroadcasts": "Back to Broadcasts",
@@ -2454,13 +2455,16 @@
       "resumeTitle": "Some recipients need another attempt",
       "resumeStalledTitle": "This campaign stopped part-way",
       "resumeHint": "{count, plural, =1 {# recipient failed. Retrying sends it again from the server.} other {# recipients failed. Retrying sends them again from the server.}}",
-      "resumeStalledHint": "{count, plural, =1 {# recipient was never sent — the browser tab running this campaign was closed before it finished. Resuming completes it from the server.} other {# recipients were never sent — the browser tab running this campaign was closed before it finished. Resuming completes it from the server.}}",
+      "resumeStalledHint": "{count, plural, =1 {# recipient was never sent — sending stopped before the end (the browser tab was closed or the connection dropped). Resuming completes it from the server.} other {# recipients were never sent — sending stopped before the end (the browser tab was closed or the connection dropped). Resuming completes it from the server.}}",
       "inFlightTitle": "Sending in progress",
       "inFlightHint": "This broadcast is being sent right now, by the tab that launched it or by the server. Reload the page to follow its progress. If sending stops midway, Resume comes back when you reload the page: within {minutosAba} minutes if the tab was sending, and within {minutosServidor} minutes if the server was.",
       "inFlightUnknownTitle": "Couldn't check the sending",
       "inFlightUnknownHint": "We couldn't tell whether this broadcast is still being sent. Reload the page before resuming.",
       "resumePending": "Resume sending ({count})",
       "retryFailed": "Retry failed ({count})",
+      "uncertainTitle": "{count, plural, =1 {# recipient with uncertain delivery} other {# recipients with uncertain delivery}}",
+      "uncertainHint": "The CRM tried to send, but the confirmation never came back (the connection dropped or Meta did not answer in time). The message may have arrived, so these recipients are left out of Resume and Retry. If you need to send again, check with the customer and send it from their conversation.",
+      "uncertainCell": "May have arrived — check before resending",
       "toastResumeStarted": "Sending {count} recipients in the background.",
       "toastResumeStartedCapped": "Sending {count} recipients in the background. {remaining} more will need another run.",
       "toastResumeFailed": "Could not resume: {error}",
@@ -2474,6 +2478,7 @@
       "sendNotStarted": "Couldn't start sending this broadcast. Nothing was sent; try again.",
       "toastSendTakenOver": "Another delivery took over this broadcast, and this tab resent nothing. Follow its progress on the broadcast page.",
       "toastSendInterrupted": "Sending stopped because the connection to the server dropped, and the remaining recipients are still pending. In {minutes} minutes, reload the broadcast page and select \"Resume sending\" to reach them.",
+      "toastSendBatchUncertain": "The connection to the server dropped in the middle of a batch, and sending stopped. The recipients still pending were not sent: select \"Resume sending\" on the broadcast page. Whoever was being sent at that moment has an uncertain delivery — check before resending.",
       "title": "New Broadcast",
       "subtitle": "Create and send a broadcast message to your contacts.",
       "steps": {

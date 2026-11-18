@@ -2400,7 +2400,8 @@
       "pending": "Pendente",
       "delivered": "Entregue",
       "read": "Lido",
-      "replied": "Respondido"
+      "replied": "Respondido",
+      "uncertain": "Entrega incerta"
     },
     "detail": {
       "backToBroadcasts": "Voltar para Disparos",
@@ -2447,13 +2448,16 @@
       "resumeTitle": "Alguns destinatários precisam de nova tentativa",
       "resumeStalledTitle": "Esta campanha parou no meio",
       "resumeHint": "{count, plural, =1 {# destinatário falhou. Tentar de novo o reenvia a partir do servidor.} other {# destinatários falharam. Tentar de novo os reenvia a partir do servidor.}}",
-      "resumeStalledHint": "{count, plural, =1 {# destinatário nunca recebeu — a aba do navegador que rodava esta campanha foi fechada antes do fim. Retomar conclui o envio pelo servidor.} other {# destinatários nunca receberam — a aba do navegador que rodava esta campanha foi fechada antes do fim. Retomar conclui o envio pelo servidor.}}",
+      "resumeStalledHint": "{count, plural, =1 {# destinatário nunca recebeu — o envio desta campanha parou antes do fim (a aba do navegador foi fechada ou a conexão caiu). Retomar conclui o envio pelo servidor.} other {# destinatários nunca receberam — o envio desta campanha parou antes do fim (a aba do navegador foi fechada ou a conexão caiu). Retomar conclui o envio pelo servidor.}}",
       "inFlightTitle": "Envio em andamento",
       "inFlightHint": "Esta campanha está sendo enviada agora, pela aba de quem disparou ou pelo servidor. Recarregue a página para acompanhar. Se o envio parar no meio, o Retomar volta quando você recarregar a página: em até {minutosAba} minutos se quem enviava era a aba, e em até {minutosServidor} minutos se era o servidor.",
       "inFlightUnknownTitle": "Não foi possível conferir o envio",
       "inFlightUnknownHint": "Não deu para saber se esta campanha ainda está sendo enviada. Recarregue a página antes de retomar.",
       "resumePending": "Retomar envio ({count})",
       "retryFailed": "Tentar de novo os que falharam ({count})",
+      "uncertainTitle": "{count, plural, =1 {# destinatário com entrega incerta} other {# destinatários com entrega incerta}}",
+      "uncertainHint": "O CRM tentou enviar, mas a confirmação não voltou (a conexão caiu ou a Meta não respondeu a tempo). A mensagem pode ter chegado, então essas linhas ficam fora do Retomar e do Tentar de novo. Se precisar reenviar, confira com o cliente e mande pela conversa dele.",
+      "uncertainCell": "Pode ter chegado — confira antes de reenviar",
       "toastResumeStarted": "Enviando para {count} destinatários em segundo plano.",
       "toastResumeStartedCapped": "Enviando para {count} destinatários em segundo plano. Outros {remaining} vão precisar de mais uma rodada.",
       "toastResumeFailed": "Não foi possível retomar: {error}",
@@ -2467,6 +2471,7 @@
       "sendNotStarted": "Não foi possível começar o envio desta campanha. Nada foi enviado; tente de novo.",
       "toastSendTakenOver": "Outro envio assumiu esta campanha, e esta aba não repetiu ninguém. Acompanhe pela página da campanha.",
       "toastSendInterrupted": "O envio parou porque a conexão com o servidor caiu, e quem falta ficou pendente. Daqui a {minutes} minutos, recarregue a página da campanha e use \"Retomar envio\" para alcançar essas pessoas.",
+      "toastSendBatchUncertain": "A conexão com o servidor caiu no meio de um lote, e o envio parou. Quem ficou pendente não recebeu: use \"Retomar envio\" na página da campanha. Quem estava saindo naquele instante ficou com entrega incerta — confira antes de reenviar.",
       "title": "Novo Disparo",
       "subtitle": "Crie e envie uma mensagem de disparo para seus contatos.",
       "steps": {

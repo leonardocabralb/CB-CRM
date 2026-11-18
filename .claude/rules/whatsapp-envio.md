@@ -342,16 +342,23 @@ leia-a antes de mexer num caminho que ENVIA modelo. Dela, valem aqui:
   `src/app/api/v1/broadcasts/route.test.ts`.
 - Canal escolhido no passo 1; `channel_id` no corpo da API e na linha de
   `broadcasts`. `marcarDestinatario` confere o update pelo retorno.
-- ⚠️⚠️ **Disparo pela tela: quem grava o envio na linha é a ROTA do lote, na
-  hora** (`anotarEnvio` em `api/whatsapp/broadcast`, com o `recipient_id` que
-  o hook manda; revisão do PR #277). O wamid chegava só quando o lote de 10
-  voltava ao navegador, e o recibo da Meta que viesse antes se perdia. Por
-  isso o navegador (`gravarDesfechoDoLote`) NÃO regrava o que a rota anotou e
-  só mexe em linha `pending`: a linha já pode estar `delivered` pelo recibo,
-  e o `failed` de um lote que caiu no meio apagaria envios que aconteceram. O
-  que não gravou é conferido numa leitura só — continua `pending` = escrita
-  perdida (RLS), já andou = outro escritor. Pinos `route.anotar.test.ts` e
-  `use-broadcast-sending.lote.test.ts`.
+- ⚠️⚠️ **ENTREGA INCERTA (1151): quem envia RESERVA a linha antes da Meta**
+  (`broadcast-entrega.ts`; a rota do lote e o `deliverBroadcast`): monta o
+  modelo (o que não monta é `failed`), passa `pending` (ou o escopo da
+  retomada) a `uncertain` num UPDATE condicional (não reservou = não manda) e
+  grava o desfecho cercado por `uncertain`: `sent` com o wamid, na HORA (PR
+  #277: o recibo que chegasse antes do lote voltar se perdia); `failed` só na
+  recusa 4xx (`recusaComprovada`); 5xx, tempo esgotado e rede FICAM
+  `uncertain`. Logo `pending` = não saiu, e nenhum escopo de reenvio pega
+  `uncertain` (a tela a mostra à parte, com a frase; o CSV também). O lote cuja
+  chamada cai sem 4xx não grava nada pelo navegador: o assistente PARA e solta
+  a posse (`lote_incerto`). Antes ele marcava `failed`, e o "Tentar de novo os
+  que falharam" mandava o modelo pago em dobro.
+- O navegador (`gravarDesfechoDoLote`) só grava o que a rota não anotou:
+  `sent` também sobre a reserva (o wamid é a prova), `failed` só sobre
+  `pending`, nada em `uncertain`/`skipped`. O que não gravou é conferido numa
+  leitura só (ainda na origem = escrita perdida). Pinos `route.reserva.test.ts`,
+  `route.anotar.test.ts`, `use-broadcast-sending.lote.test.ts`.
 - ⚠️ **CSV do disparo (`upsertCsvContacts`)**: deduplica e casa por PESSOA
   (`chaveDePessoa`), busca as duas grafias do nono dígito em FATIAS e, na
   corrida, relê e insere um a um — casar por grafia, com o índice canônico

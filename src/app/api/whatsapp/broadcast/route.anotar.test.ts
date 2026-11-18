@@ -7,11 +7,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // Antes o wamid só chegava a `broadcast_recipients` quando o lote de 10
 // voltava ao navegador, e o recibo da Meta que chegasse antes disso ficava
 // sem destinatário: esperava os 7 s da rota do webhook e se perdia. O teste
-// cobra a ORDEM (anotar o 1º antes de mandar o 2º) e as cercas da escrita.
+// cobra a ORDEM (anotar o 1º antes de mandar o 2º) e as cercas da escrita —
+// desde a 1151, a cerca é a RESERVA da própria rota (`uncertain`).
 // ============================================================
 
+type Update = { patch: Record<string, unknown>; filtros: [string, unknown][] }
+
 const eventos: string[] = []
-const updates: { patch: Record<string, unknown>; filtros: [string, unknown][] }[] = []
+const updates: Update[] = []
+/** A resposta do UPDATE do desfecho (a reserva sempre casa aqui). */
 const resposta = { data: [{ id: 'x' }] as unknown[] | null, error: null as unknown }
 
 const db = {
@@ -25,9 +29,18 @@ const db = {
             filtros.push([col, val])
             return q
           },
+          in(col: string, vals: unknown[]) {
+            filtros.push([`${col} in`, vals])
+            return q
+          },
           async select() {
             updates.push({ patch, filtros })
-            eventos.push(`anotou ${String(filtros.find(([c]) => c === 'id')?.[1])}`)
+            const id = String(filtros.find(([c]) => c === 'id')?.[1])
+            if (patch.status === 'uncertain') {
+              eventos.push(`reservou ${id}`)
+              return { data: [{ id }], error: null }
+            }
+            eventos.push(`anotou ${id}`)
             return resposta
           },
         }
@@ -62,15 +75,17 @@ vi.mock('@/lib/whatsapp/encryption', () => ({ decrypt: (v: string) => v }))
 vi.mock('@/lib/whatsapp/template-body', () => ({
   resolveTemplateRow: vi.fn(async () => ({ malformed: false, row: null, language: 'pt_BR' })),
 }))
-const falharPara = new Set<string>()
-vi.mock('@/lib/whatsapp/meta-api', () => ({
+const falharPara = new Map<string, unknown>()
+vi.mock('@/lib/whatsapp/meta-api', async (original) => ({
+  ...(await original<typeof import('@/lib/whatsapp/meta-api')>()),
   sendTemplateMessage: vi.fn(async ({ to }: { to: string }) => {
     eventos.push(`enviou ${to}`)
-    if (falharPara.has(to)) throw new Error('(#131026) Message undeliverable')
+    if (falharPara.has(to)) throw falharPara.get(to)
     return { messageId: `wamid.${to}` }
   }),
 }))
 
+import { MetaApiError } from '@/lib/whatsapp/meta-api'
 import { POST } from './route'
 
 type Corpo = { results: Record<string, unknown>[] }
@@ -93,14 +108,16 @@ beforeEach(() => {
 })
 
 describe('POST /api/whatsapp/broadcast — anotar o envio na hora', () => {
-  it('anota cada destinatário logo depois do SEU envio, antes do próximo', async () => {
+  it('reserva e anota cada destinatário em volta do SEU envio, antes do próximo', async () => {
     const results = await enviar([
       { recipient_id: 'r1', phone: '5583988745316', params: [] },
       { recipient_id: 'r2', phone: '5583988745317', params: [] },
     ])
     expect(eventos).toEqual([
+      'reservou r1',
       'enviou 5583988745316',
       'anotou r1',
+      'reservou r2',
       'enviou 5583988745317',
       'anotou r2',
     ])
@@ -110,18 +127,25 @@ describe('POST /api/whatsapp/broadcast — anotar o envio na hora', () => {
     ])
   })
 
-  it('grava sent + wamid + hora, e SÓ em linha ainda pending', async () => {
+  it('grava sent + wamid + hora, e SÓ na linha que ESTA rota reservou (`uncertain`)', async () => {
     await enviar([{ recipient_id: 'r1', phone: '5583988745316', params: [] }])
-    expect(updates).toHaveLength(1)
-    expect(updates[0].patch).toMatchObject({
+    expect(updates).toHaveLength(2)
+    expect(updates[0]).toEqual({
+      patch: { status: 'uncertain', error_message: null },
+      filtros: [
+        ['id', 'r1'],
+        ['status in', ['pending']],
+      ],
+    })
+    expect(updates[1].patch).toMatchObject({
       status: 'sent',
       whatsapp_message_id: 'wamid.5583988745316',
       error_message: null,
     })
-    expect(typeof updates[0].patch.sent_at).toBe('string')
-    expect(updates[0].filtros).toEqual([
+    expect(typeof updates[1].patch.sent_at).toBe('string')
+    expect(updates[1].filtros).toEqual([
       ['id', 'r1'],
-      ['status', 'pending'],
+      ['status', 'uncertain'],
     ])
   })
 
@@ -136,12 +160,20 @@ describe('POST /api/whatsapp/broadcast — anotar o envio na hora', () => {
     expect(comErro).toMatchObject({ status: 'sent', anotado: false })
   })
 
-  it('envio recusado pela Meta não escreve nada, e devolve a linha para o navegador casar', async () => {
-    falharPara.add('5583988745316')
+  it('recusa COMPROVADA da Meta (4xx): a rota grava `failed` na linha que reservou', async () => {
+    falharPara.set(
+      '5583988745316',
+      new MetaApiError('(#131026) Message undeliverable', { httpStatus: 400, code: 131026 }),
+    )
     const [r] = await enviar([{ recipient_id: 'r1', phone: '5583988745316', params: [] }])
-    expect(updates).toEqual([])
-    expect(r).toMatchObject({ status: 'failed', recipient_id: 'r1' })
-    expect(r).not.toHaveProperty('anotado')
+    expect(r).toMatchObject({ status: 'failed', recipient_id: 'r1', anotado: true })
+    expect(updates[1]).toEqual({
+      patch: { status: 'failed', error_message: '(#131026) Message undeliverable' },
+      filtros: [
+        ['id', 'r1'],
+        ['status', 'uncertain'],
+      ],
+    })
   })
 
   it('pedido sem recipient_id (forma antiga) não escreve nada', async () => {

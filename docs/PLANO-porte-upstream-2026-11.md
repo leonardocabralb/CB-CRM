@@ -500,13 +500,17 @@ para os servidores de clientes.
 
 Nenhum é regressão deste porte; os marcados "antes" já existiam.
 
-- **Disparo (antes, regra 8e):** lote cuja chamada falha marca `failed` as
-  linhas `pending` antes de a rota anotar o envio (`use-broadcast-sending.ts`,
-  ~457–461), e o "Tentar de novo os que falharam" pode reenviar a quem
-  recebeu. O mais sério da lista.
+- ~~**Disparo (antes, regra 8e):** lote cuja chamada falha marca `failed` as
+  linhas `pending`, e o "Tentar de novo os que falharam" pode reenviar a quem
+  recebeu.~~ **Resolvido em 18/11/2026 (branch `fix/disparo-entrega-incerta`,
+  migration 1151):** quem envia RESERVA a linha antes da Meta (`uncertain`),
+  o 5xx/tempo esgotado fica "Entrega incerta" fora de todo reenvio, e o
+  assistente para no lote que cai. Notas em `whatsapp-envio.md` ("ENTREGA
+  INCERTA").
 - **Disparo:** o caminho `erro` da trava na API v1 entrega sem trava (reler a
-  campanha antes de seguir); uma chamada à Meta mais longa que a posse (~60 s)
-  abre uma janela; o roteiro não cobre o terceiro desfecho (posse incerta).
+  campanha antes de seguir); o roteiro não cobre o terceiro desfecho (posse
+  incerta). A janela da chamada à Meta mais longa que a posse fechou com a
+  reserva por linha da 1151 (o Retomar não pega a linha reservada).
 - **Equipe:** remover quem é dono de OUTRA conta falha em
   `idx_accounts_one_per_owner`; o nó "Transferir" do robô e a passagem da IA
   não releem o que gravaram; o "Reabrir" do fio aceita 0 linhas sem erro

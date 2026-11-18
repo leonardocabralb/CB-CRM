@@ -261,6 +261,11 @@ qualquer uma é pergunta ao operador.
 - Cartão de contato com Copiar e Conversar; `.html` recebido só baixa e só
   se ENVIA por QR code (02/10/2026). Documento e cartão em destaque na
   bolha; fundo do fio a 15% (01/10/2026).
+- Disparo (18/11/2026): o que PODE ter saído (a chamada do lote que caiu,
+  5xx, tempo esgotado) fica "Entrega incerta" e NENHUM reenvio o pega — nem o
+  Retomar, nem o "Tentar de novo os que falharam"; quem envia reserva a linha
+  antes da Meta; o assistente PARA no lote que cai e solta a campanha para o
+  Retomar; o CSV sai com a situação traduzida (`whatsapp-envio.md`, 1151).
 - Envio que não saiu fica no fio como bolha "não enviada", PARA TODOS: a do
   robô (06/10/2026) e a da equipe (31/10/2026), inclusive a incerta ("pode
   ter saído"). A da equipe — a incerta também — não pausa a IA nem para a

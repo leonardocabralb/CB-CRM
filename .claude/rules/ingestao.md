@@ -264,7 +264,7 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   rotas), `recibo-da-meta.test.ts`, `escada-de-status.test.ts`.
 - ⚠️ Recibo de DISPARO só é reconhecido quando o destinatário JÁ tem o wamid.
   No disparo pela tela, a rota do lote (`api/whatsapp/broadcast`) grava o
-  wamid NA HORA em que a Meta aceita cada envio (`anotarEnvio`); até a revisão
+  wamid NA HORA em que a Meta aceita cada envio (`gravarDesfechoDaReserva`); até a revisão
   do PR #277 ele só chegava quando o lote de 10 voltava ao navegador, e o
   recibo que chegasse antes se perdia. Para a fração de segundo entre o aceite
   e a gravação, o recibo que não achou destinatário RECONFERE a cada tentativa

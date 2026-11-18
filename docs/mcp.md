@@ -61,7 +61,9 @@ data or send messages, add `"WACRM_ENABLE_WRITES": "true"` (and
   left out: `rejected` (numbers outside the phone rule) and `duplicates`
   (the same contact listed twice, or two spellings of one number — messaged
   once). `get_broadcast` then reports the status and the sent / delivered /
-  read / replied / failed counts.
+  read / replied / failed counts. A recipient whose delivery is uncertain
+  (Meta never confirmed it, so it may have arrived) counts in neither sent
+  nor failed, and the CRM never resends it.
 
 ### Several WhatsApp numbers
 

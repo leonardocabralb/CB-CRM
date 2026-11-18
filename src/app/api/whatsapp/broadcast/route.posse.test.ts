@@ -20,6 +20,8 @@ const db = {
     const q = {
       update: () => q,
       eq: () => q,
+      // A reserva da 1151 (`.in('status', …)`) antes de cada envio.
+      in: () => q,
       async select() {
         return { data: [{ id: 'x' }], error: null }
       },
@@ -51,7 +53,8 @@ vi.mock('@/lib/whatsapp/encryption', () => ({ decrypt: (v: string) => v }))
 vi.mock('@/lib/whatsapp/template-body', () => ({
   resolveTemplateRow: vi.fn(async () => ({ malformed: false, row: null, language: 'pt_BR' })),
 }))
-vi.mock('@/lib/whatsapp/meta-api', () => ({
+vi.mock('@/lib/whatsapp/meta-api', async (original) => ({
+  ...(await original<typeof import('@/lib/whatsapp/meta-api')>()),
   sendTemplateMessage: vi.fn(async ({ to }: { to: string }) => {
     eventos.push(`enviou ${to}`)
     // Cada envio "leva" 40 s (a Meta lenta do cenário do achado).

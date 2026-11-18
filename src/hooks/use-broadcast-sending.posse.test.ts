@@ -8,6 +8,7 @@ import {
   encerrarSemEnviar,
   enviarLoteComPosse,
   fecharCampanhaComAPosse,
+  pararDepoisDoLoteIncerto,
   type InterrupcaoDoEnvio,
 } from './use-broadcast-sending';
 
@@ -95,26 +96,54 @@ describe('enviarLoteComPosse', () => {
     expect(lote).toEqual({ desfecho: { resultados: OK.results } });
   });
 
-  it('429 em todas as tentativas: o lote vira erro, sem passar do teto de tentativas', async () => {
+  it('429 em todas as tentativas: RECUSA do lote (o limite barra antes de mandar), sem passar do teto', async () => {
     const enviar = vi.fn(async () => resposta(429, { error: 'Too many requests' }));
     const lote = await enviarLoteComPosse(enviar, posseQueResponde(), semEspera);
     expect(enviar).toHaveBeenCalledTimes(BATCH_SEND_ATTEMPTS);
-    expect(lote).toEqual({ desfecho: { erro: 'Too many requests' } });
+    expect(lote).toEqual({ desfecho: { recusa: 'Too many requests' } });
   });
 
-  it('500 (pode ter saído): não repete, vira o erro do lote como antes', async () => {
+  it('⚠️⚠️ 500 (pode ter saído): não repete, e o lote é INCERTO (1151)', async () => {
     const enviar = vi.fn(async () => resposta(500, { error: 'boom' }));
     const lote = await enviarLoteComPosse(enviar, posseQueResponde(null), semEspera);
     expect(enviar).toHaveBeenCalledTimes(1);
-    expect(lote).toEqual({ desfecho: { erro: 'boom' } });
+    expect(lote).toEqual({ desfecho: { incerto: 'boom' } });
   });
 
-  it('a conexão caiu no meio do lote: erro do lote (a gravação decide pelo que a rota anotou)', async () => {
+  it('⚠️⚠️ a conexão caiu no meio do lote: INCERTO (a rota pode ter mandado)', async () => {
     const enviar = vi.fn(async () => {
       throw new TypeError('Failed to fetch');
     });
     const lote = await enviarLoteComPosse(enviar, posseQueResponde(null), semEspera);
-    expect(lote).toEqual({ desfecho: { erro: 'Failed to fetch' } });
+    expect(lote).toEqual({ desfecho: { incerto: 'Failed to fetch' } });
+  });
+
+  it('⚠️ 502/504 do proxy com corpo HTML: quem decide é o STATUS — incerto', async () => {
+    for (const status of [502, 504]) {
+      const enviar = vi.fn(async () => new Response('<html>Bad Gateway</html>', { status }));
+      const lote = await enviarLoteComPosse(enviar, posseQueResponde(null), semEspera);
+      expect(lote).toEqual({
+        desfecho: { incerto: `Broadcast API request failed (HTTP ${status})` },
+      });
+    }
+  });
+
+  it('⚠️ 200 com corpo ilegível: a rota RODOU — incerto, nunca "nada saiu"', async () => {
+    const enviar = vi.fn(async () => new Response('{"results": [', { status: 200 }));
+    const lote = await enviarLoteComPosse(enviar, posseQueResponde(null), semEspera);
+    expect(lote).toEqual({ desfecho: { incerto: 'Unreadable response from the batch route' } });
+  });
+
+  it('4xx da rota (sessão, papel, pedido, sem número oficial): RECUSA — nada saiu', async () => {
+    for (const status of [400, 401, 403]) {
+      const enviar = vi.fn(async () => resposta(status, { error: `recusado ${status}` }));
+      const lote = await enviarLoteComPosse(enviar, posseQueResponde(null), semEspera);
+      expect(lote).toEqual({ desfecho: { recusa: `recusado ${status}` } });
+    }
+    const html = vi.fn(async () => new Response('<html>Not Found</html>', { status: 404 }));
+    expect(await enviarLoteComPosse(html, posseQueResponde(null), semEspera)).toEqual({
+      desfecho: { recusa: 'Broadcast API request failed (HTTP 404)' },
+    });
   });
 
   it('⚠️⚠️ a ROTA perdeu a posse no meio do lote (409): para com o que ela processou, sem repetir', async () => {
@@ -135,10 +164,10 @@ describe('enviarLoteComPosse', () => {
     expect(lote).toEqual({ interrupcao: 'posse_incerta', resultados: [] });
   });
 
-  it('409 sem o código da posse continua sendo o erro do lote (como antes)', async () => {
+  it('409 sem o código da posse é recusa do lote (4xx)', async () => {
     const enviar = vi.fn(async () => resposta(409, { error: 'outro conflito' }));
     const lote = await enviarLoteComPosse(enviar, posseQueResponde(null), semEspera);
-    expect(lote).toEqual({ desfecho: { erro: 'outro conflito' } });
+    expect(lote).toEqual({ desfecho: { recusa: 'outro conflito' } });
   });
 });
 
@@ -241,6 +270,103 @@ describe('fecharCampanhaComAPosse', () => {
   });
 });
 
+// ------------------------------------------------------------
+// NOSSO (1151): o lote que caiu sem resposta PARA o assistente, e a campanha
+// fecha pelas LINHAS: com pendentes, só a posse sai (o Retomar na hora).
+// ------------------------------------------------------------
+
+/** Contagens de `broadcast_recipients` por situação (`null` = a leitura falha) e o que foi escrito em `broadcasts`. */
+function bancoDaParada(contagens: { pending: number | null; failed?: number | null; total?: number | null }) {
+  const escritas: { patch: unknown; filtros: [string, unknown][] }[] = [];
+  const db = {
+    from: (tabela: string) => {
+      if (tabela === 'broadcast_recipients') {
+        const filtros: [string, unknown][] = [];
+        const q: Record<string, unknown> = {
+          select: () => q,
+          eq: (coluna: string, valor: unknown) => {
+            filtros.push([coluna, valor]);
+            return q;
+          },
+          then: (resolver: (r: unknown) => unknown) => {
+            const status = filtros.find(([c]) => c === 'status')?.[1] as string | undefined;
+            // `null` é "a leitura falha": nada de `?? 0` aqui.
+            const n =
+              status === 'pending'
+                ? contagens.pending
+                : status === 'failed'
+                  ? (contagens.failed === undefined ? 0 : contagens.failed)
+                  : (contagens.total === undefined ? 0 : contagens.total);
+            return Promise.resolve(
+              resolver(n === null ? { count: null, error: { message: 'x' } } : { count: n, error: null }),
+            );
+          },
+        };
+        return q;
+      }
+      const escrita = { patch: undefined as unknown, filtros: [] as [string, unknown][] };
+      escritas.push(escrita);
+      const q: Record<string, unknown> = {
+        update: (patch: unknown) => {
+          escrita.patch = patch;
+          return q;
+        },
+        eq: (coluna: string, valor: unknown) => {
+          escrita.filtros.push([coluna, valor]);
+          return q;
+        },
+        select: () => q,
+        then: (resolver: (r: unknown) => unknown) =>
+          Promise.resolve(resolver({ data: [{ id: 'bc-1' }], error: null })),
+      };
+      return q;
+    },
+  } as unknown as ReturnType<typeof createClient>;
+  return { db, escritas };
+}
+
+describe('pararDepoisDoLoteIncerto', () => {
+  it('⚠️⚠️ sobrou pendente: a campanha segue `sending` e SÓ a posse sai (com o token)', async () => {
+    const { db, escritas } = bancoDaParada({ pending: 7 });
+    await pararDepoisDoLoteIncerto(db, 'bc-1', 'tok');
+    expect(escritas).toHaveLength(1);
+    expect(escritas[0].patch).toEqual({ delivery_lease_until: null, delivery_lease_token: null });
+    expect(escritas[0].filtros).toEqual([
+      ['id', 'bc-1'],
+      ['delivery_lease_token', 'tok'],
+    ]);
+  });
+
+  it('não sobrou pendente: fecha pelas linhas — `sent` (a incerta não é falha)', async () => {
+    const { db, escritas } = bancoDaParada({ pending: 0, failed: 2, total: 10 });
+    await pararDepoisDoLoteIncerto(db, 'bc-1', 'tok');
+    expect(escritas[0].patch).toEqual({
+      status: 'sent',
+      delivery_lease_until: null,
+      delivery_lease_token: null,
+    });
+  });
+
+  it('todas falharam: fecha `failed`', async () => {
+    const { db, escritas } = bancoDaParada({ pending: 0, failed: 3, total: 3 });
+    await pararDepoisDoLoteIncerto(db, 'bc-1', 'tok');
+    expect(escritas[0].patch).toMatchObject({ status: 'failed' });
+  });
+
+  it('contagem que falha é "não sei", nunca 0: só solta a posse', async () => {
+    for (const contagens of [
+      { pending: null },
+      { pending: 0, failed: null, total: 4 },
+      { pending: 0, failed: 0, total: null },
+    ]) {
+      const { db, escritas } = bancoDaParada(contagens);
+      await pararDepoisDoLoteIncerto(db, 'bc-1', 'tok');
+      expect(escritas).toHaveLength(1);
+      expect(escritas[0].patch).toEqual({ delivery_lease_until: null, delivery_lease_token: null });
+    }
+  });
+});
+
 describe('encerrarSemEnviar', () => {
   it('o aborto solta a posse junto, e só com o token', async () => {
     const { db, chamadas } = bancoDoFim({});
@@ -294,6 +420,18 @@ describe('createAndSendBroadcast — a ordem da posse', () => {
     expect(quebra).toBeGreaterThan(parada);
     expect(quebra).toBeLessThan(gravacaoNormal);
     expect(corpo.slice(parada, quebra)).toContain('processados.has(linha.id)');
+  });
+
+  it('⚠️⚠️ lote INCERTO (1151): para pela função cercada, ANTES da gravação normal, sem gravar o lote', () => {
+    const incerto = pos("if ('incerto' in lote.desfecho) {");
+    const parada = pos('pararDepoisDoLoteIncerto(supabase, broadcast.id, tokenDaPosse)');
+    const quebra = corpo.indexOf('break;', incerto);
+    const gravacaoNormal = corpo.indexOf('gravarDesfechoDoLote(supabase, batch, lote.desfecho)', incerto);
+    expect(parada).toBeGreaterThan(incerto);
+    expect(quebra).toBeGreaterThan(parada);
+    expect(quebra).toBeLessThan(gravacaoNormal);
+    expect(corpo.slice(incerto, quebra)).toContain("interrupcao = 'lote_incerto'");
+    expect(corpo.slice(incerto, quebra)).not.toContain('gravarDesfechoDoLote');
   });
 
   it('o fim e os abortos passam pelas funções cercadas pelo token', () => {
