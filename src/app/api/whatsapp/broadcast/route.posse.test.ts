@@ -69,9 +69,9 @@ import { POST } from './route'
 type Resposta = { body: { code?: string; results: { recipient_id?: string; status: string }[] }; status: number }
 
 const DESTINATARIOS = [
-  { recipient_id: 'r1', phone: '5583988745316', params: [] },
-  { recipient_id: 'r2', phone: '5583988745317', params: [] },
-  { recipient_id: 'r3', phone: '5583988745318', params: [] },
+  { recipient_id: 'r1', phone: '5583980000016', params: [] },
+  { recipient_id: 'r2', phone: '5583980000017', params: [] },
+  { recipient_id: 'r3', phone: '5583980000018', params: [] },
 ]
 
 const lote = (extra: Record<string, unknown>) =>
@@ -105,17 +105,17 @@ describe('POST /api/whatsapp/broadcast — a posse do assistente (1147)', () => 
     const res = await lote({ broadcast_id: 'bc-1', posse: 'tok-1' })
     expect(res.status).toBe(200)
     expect(eventos[0]).toBe('renovou bc-1/tok-1')
-    expect(eventos[1]).toBe('enviou 5583988745316')
+    expect(eventos[1]).toBe('enviou 5583980000016')
   })
 
   it('⚠️⚠️ e de novo quando o lote passa de 1 min (cada envio aqui leva 40 s)', async () => {
     await lote({ broadcast_id: 'bc-1', posse: 'tok-1' })
     expect(eventos).toEqual([
       'renovou bc-1/tok-1',
-      'enviou 5583988745316',
-      'enviou 5583988745317',
+      'enviou 5583980000016',
+      'enviou 5583980000017',
       'renovou bc-1/tok-1',
-      'enviou 5583988745318',
+      'enviou 5583980000018',
     ])
   })
 
@@ -136,8 +136,8 @@ describe('POST /api/whatsapp/broadcast — a posse do assistente (1147)', () => 
     expect(res.status).toBe(409)
     expect(res.body.code).toBe('posse_perdida')
     expect(eventos.filter((e) => e.startsWith('enviou'))).toEqual([
-      'enviou 5583988745316',
-      'enviou 5583988745317',
+      'enviou 5583980000016',
+      'enviou 5583980000017',
     ])
     expect(res.body.results.map((r) => [r.recipient_id, r.status])).toEqual([
       ['r1', 'sent'],

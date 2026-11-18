@@ -209,7 +209,7 @@ do #683 (`5262f138`; `cebea5f1`, `3de12605`); a detecção de ciclo vem do #674
   `silencioso`, `preservarSelecao`, `podarSelecao` e de não entrar em laço na
   página 0.
 - **A2 (#2) Contatos: buscar telefone formatado não acha a ficha.**
-  "(83) 98874-5316" não acha "+5583988745316". Solução NOSSA: usar
+  "(83) 98000-0016" não acha "+5583980000016". Solução NOSSA: usar
   `ramosDaBuscaDeContato` (`src/lib/contacts/busca-remota.ts`: dígitos e as
   duas grafias do nono dígito, `phone_normalized`) + o ramo de e-mail; NÃO
   trazer o `search-filter.ts` deles. A busca de 1 letra continua funcionando

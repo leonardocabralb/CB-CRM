@@ -1498,8 +1498,8 @@
       "phoneRequired": "Phone number is required"
     },
     "telefone": {
-      "curto": "The area code is missing. Write the number with it — e.g. (81) 98874-5316 — or, for another country, with + and the country code.",
-      "invalido": "Invalid phone number. Brazilian: with the area code, e.g. (81) 98874-5316. Any other country: with + and the country code, e.g. +1 404 555 1234.",
+      "curto": "The area code is missing. Write the number with it — e.g. (81) 98000-0016 — or, for another country, with + and the country code.",
+      "invalido": "Invalid phone number. Brazilian: with the area code, e.g. (81) 98000-0016. Any other country: with + and the country code, e.g. +1 404 555 1234.",
       "regra": "Phone with area code. A number without + and without a country code is read as Brazilian and gets 55; for any other country, write + and the country code."
     },
     "detailView": {
@@ -6599,7 +6599,7 @@
         },
         "mensagem": {
           "titulo": "Send a message",
-          "texto": "By phone number: with the area code — without + and without a country code it is read as Brazilian and gets 55, e.g. (81) 98874-5316; any other country, always with + and the country code. Without <code>channel_id</code>, it goes out on the number the conversation is already on (otherwise, the account default, and a conversation with no number keeps it, unpinned). With it, it goes out on that number and the conversation is PINNED to it — the client's reply comes back to the same number. A contact with no deal gets a card only if the connection the message went out on has a default pipeline and the contact has never sent an automated business message (a template with buttons or a menu of options). Scope <code>messages:send</code>."
+          "texto": "By phone number: with the area code — without + and without a country code it is read as Brazilian and gets 55, e.g. (81) 98000-0016; any other country, always with + and the country code. Without <code>channel_id</code>, it goes out on the number the conversation is already on (otherwise, the account default, and a conversation with no number keeps it, unpinned). With it, it goes out on that number and the conversation is PINNED to it — the client's reply comes back to the same number. A contact with no deal gets a card only if the connection the message went out on has a default pipeline and the contact has never sent an automated business message (a template with buttons or a menu of options). Scope <code>messages:send</code>."
         }
       },
       "erros": {

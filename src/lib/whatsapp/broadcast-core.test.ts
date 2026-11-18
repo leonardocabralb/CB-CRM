@@ -455,7 +455,7 @@ describe('o canal pedido chega ao resolvedor', () => {
 // ============================================================
 // Fase 3-III do merge do upstream: o destinatário do disparo pela API lê o
 // telefone pela NOSSA régua (`telefoneDigitado`), e não pelo `+` obrigatório
-// do original (#586). O escritório escreve "(81) 98874-5316"; o `+` continua
+// do original (#586). O escritório escreve "(81) 98000-0016"; o `+` continua
 // sendo o jeito de dizer "é de outro país".
 // ============================================================
 describe('createBroadcast: o telefone do destinatário passa pela régua', () => {
@@ -473,7 +473,7 @@ describe('createBroadcast: o telefone do destinatário passa pela régua', () =>
     comContatoPorTelefone();
     const { db, calls } = makeDb({
       data: [
-        { broadcast_id: 'b-1', recipient_id: 'r-1', contact_id: 'c:(81) 98874-5316' },
+        { broadcast_id: 'b-1', recipient_id: 'r-1', contact_id: 'c:(81) 98000-0016' },
         { broadcast_id: 'b-1', recipient_id: 'r-2', contact_id: 'c:+1 415 555 0123' },
       ],
       error: null,
@@ -481,11 +481,11 @@ describe('createBroadcast: o telefone do destinatário passa pela régua', () =>
 
     const plan = await createBroadcast(db, 'acc', 'user', {
       templateName: 'promo',
-      recipients: [{ to: '(81) 98874-5316' }, { to: '+1 415 555 0123' }],
+      recipients: [{ to: '(81) 98000-0016' }, { to: '+1 415 555 0123' }],
     });
 
     expect(plan.rejected).toBe(0);
-    expect(plan.planned.map((p) => p.phone)).toEqual(['5581988745316', '14155550123']);
+    expect(plan.planned.map((p) => p.phone)).toEqual(['5581980000016', '14155550123']);
     expect(calls.rpc).toHaveLength(1);
   });
 
@@ -511,22 +511,22 @@ describe('createBroadcast: o telefone do destinatário passa pela régua', () =>
   it('fora da régua é descartado e contado: sem DDD, JID colado, LID', async () => {
     comContatoPorTelefone();
     const { db } = makeDb({
-      data: [{ broadcast_id: 'b-1', recipient_id: 'r-1', contact_id: 'c:5581988745316' }],
+      data: [{ broadcast_id: 'b-1', recipient_id: 'r-1', contact_id: 'c:5581980000016' }],
       error: null,
     });
 
     const plan = await createBroadcast(db, 'acc', 'user', {
       templateName: 'promo',
       recipients: [
-        { to: '5581988745316' },
-        { to: '98874-5316' }, // sem DDD: sairia para +98
-        { to: '5581988745316@s.whatsapp.net' }, // JID: letra no meio
+        { to: '5581980000016' },
+        { to: '98000-0016' }, // sem DDD: sairia para +98
+        { to: '5581980000016@s.whatsapp.net' }, // JID: letra no meio
         { to: '123456789012345@lid' }, // o LID não é telefone
       ],
     });
 
     expect(plan.rejected).toBe(3);
-    expect(plan.planned.map((p) => p.phone)).toEqual(['5581988745316']);
+    expect(plan.planned.map((p) => p.phone)).toEqual(['5581980000016']);
     expect(findOrCreateContact).toHaveBeenCalledTimes(1);
   });
 
@@ -588,7 +588,7 @@ describe('createBroadcast: o telefone do destinatário passa pela régua', () =>
 
     const erro = await createBroadcast(db, 'acc', 'user', {
       templateName: 'promo',
-      recipients: [{ to: '98874-5316' }, { to: '120363040000000000@g.us' }],
+      recipients: [{ to: '98000-0016' }, { to: '120363040000000000@g.us' }],
     }).catch((e: unknown) => e);
 
     expect(erro).toBeInstanceOf(BroadcastError);

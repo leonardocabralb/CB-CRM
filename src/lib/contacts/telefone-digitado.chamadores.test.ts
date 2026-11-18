@@ -9,7 +9,7 @@ import path from 'node:path';
 // O original resolveu o mesmo defeito (o #586: número sem código do país indo
 // para outro país) EXIGINDO o `+` em todas estas telas, com a função
 // `parseInternationalPhone`. Aqui a decisão é a oposta — o escritório digita
-// "(81) 98874-5316" e o número ganha o 55 (`telefoneDigitado`) —, e um merge
+// "(81) 98000-0016" e o número ganha o 55 (`telefoneDigitado`) —, e um merge
 // do original traz a versão dele para as MESMAS linhas: o formulário passaria
 // a recusar o jeito como o escritório escreve, sem conflito nenhum no Git se
 // o trecho não tiver sido tocado dos dois lados.
@@ -37,7 +37,7 @@ const TELAS: Record<string, string[]> = {
 // Fase 3-III: as portas por onde um INTEGRADOR (API v1), o operador ("Nova
 // conversa") ou um formulário (webhook de entrada) mandam um telefone. Antes, as três da API e a da "Nova
 // conversa" apagavam o que não era dígito (`sanitizePhoneForMeta`) — e
-// "(81) 98874-5316" virava a ficha +81 —, e o disparo exigia o `+` do
+// "(81) 98000-0016" virava a ficha +81 —, e o disparo exigia o `+` do
 // original. Cada uma lê o texto pela régua, e nenhuma volta ao atalho.
 // A chamada e, nas portas que gravam, de onde saem os dígitos GRAVADOS — a
 // chamada sozinha não prova nada se os dígitos vierem de outro lugar.
@@ -144,7 +144,7 @@ describe('telefone digitado: a nossa régua, não o `+` obrigatório do original
   });
 
   it('o aviso de duplicata do formulário procura pelo número NORMALIZADO', () => {
-    // Voltar para `phone.trim()` faria "81988745316" digitado sem o 55 achar
+    // Voltar para `phone.trim()` faria "81980000016" digitado sem o 55 achar
     // a ficha só pela tolerância dos 8 finais — aviso amarelo, não bloqueio.
     expect(fonte('components/contacts/contact-form.tsx')).toMatch(
       /const telefone = telefoneDigitado\(phone\);[\s\S]{0,200}const value = telefone\.digitos;/,

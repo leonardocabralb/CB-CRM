@@ -95,7 +95,7 @@ beforeEach(() => {
 describe('POST /api/v1/messages — o canal pedido', () => {
   it('⚠️ conta do Instagram: 400 not_supported, SEM fixar a conversa nem criar contato', async () => {
     h.canal = { id: CANAL, kind: 'instagram' };
-    const r = await post({ to: '+5581988745316', text: 'oi', channel_id: CANAL });
+    const r = await post({ to: '+5581980000016', text: 'oi', channel_id: CANAL });
     expect(r.status).toBe(400);
     expect((await r.json()).error.code).toBe('not_supported');
     nadaFoiFeito();
@@ -103,7 +103,7 @@ describe('POST /api/v1/messages — o canal pedido', () => {
 
   it('canal de outra conta (ou apagado): 400 bad_request, sem contato criado', async () => {
     h.canal = null;
-    const r = await post({ to: '+5581988745316', text: 'oi', channel_id: CANAL });
+    const r = await post({ to: '+5581980000016', text: 'oi', channel_id: CANAL });
     expect(r.status).toBe(400);
     expect(await r.json()).toEqual({
       error: { code: 'bad_request', message: "'channel_id' is not a channel of this account" },
@@ -112,7 +112,7 @@ describe('POST /api/v1/messages — o canal pedido', () => {
   });
 
   it('id que não é UUID: o mesmo 400, sem ir ao banco (o Postgres recusaria o filtro)', async () => {
-    const r = await post({ to: '+5581988745316', text: 'oi', channel_id: 'comercial' });
+    const r = await post({ to: '+5581980000016', text: 'oi', channel_id: 'comercial' });
     expect(r.status).toBe(400);
     expect((await r.json()).error.code).toBe('bad_request');
     expect(h.leituras).toBe(0);
@@ -122,7 +122,7 @@ describe('POST /api/v1/messages — o canal pedido', () => {
   it('erro de banco na leitura do canal é 500, nunca "não é desta conta"', async () => {
     h.erroDoCanal = { message: 'timeout' };
     const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const r = await post({ to: '+5581988745316', text: 'oi', channel_id: CANAL });
+    const r = await post({ to: '+5581980000016', text: 'oi', channel_id: CANAL });
     expect(r.status).toBe(500);
     expect((await r.json()).error.code).toBe('internal');
     nadaFoiFeito();
@@ -131,7 +131,7 @@ describe('POST /api/v1/messages — o canal pedido', () => {
 
   it.each(['meta', 'evolution'])('número de WhatsApp (%s): fixa e envia', async (kind) => {
     h.canal = { id: CANAL, kind };
-    const r = await post({ to: '+5581988745316', text: 'oi', channel_id: CANAL });
+    const r = await post({ to: '+5581980000016', text: 'oi', channel_id: CANAL });
     expect(r.status).toBe(201);
     expect(h.pinConversationChannel).toHaveBeenCalledWith(
       expect.anything(),
@@ -144,7 +144,7 @@ describe('POST /api/v1/messages — o canal pedido', () => {
   });
 
   it('sem channel_id: não lê canal, não fixa, envia', async () => {
-    const r = await post({ to: '+5581988745316', text: 'oi' });
+    const r = await post({ to: '+5581980000016', text: 'oi' });
     expect(r.status).toBe(201);
     expect(h.leituras).toBe(0);
     expect(h.pinConversationChannel).not.toHaveBeenCalled();
@@ -161,12 +161,12 @@ describe('POST /api/v1/messages — o `name` (a régua das rotas de contato)', (
     ['', null],
     [undefined, null],
   ])('name %j chega ao achar-ou-criar como %j', async (name, esperado) => {
-    const r = await post({ to: '+5581988745316', text: 'oi', ...(name === undefined ? {} : { name }) });
+    const r = await post({ to: '+5581980000016', text: 'oi', ...(name === undefined ? {} : { name }) });
     expect(r.status).toBe(201);
     expect(h.resolveConversationByPhone).toHaveBeenCalledWith(
       expect.anything(),
       'conta-1',
-      '+5581988745316',
+      '+5581980000016',
       esperado
     );
   });

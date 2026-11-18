@@ -243,7 +243,7 @@ tentou ligar, para alguém ver e retornar?"
   `terminate`), 9 s e recusada (perdida, `reject`), atendida em 5 s, e vídeo
   de 13 s (perdida). As 4 vieram por LID, resolvidas pelo acervo.
   ⚠️ **O `callerPn` do celular de 12 dígitos (DDD 83) chegou CERTO**
-  (`558388745316@s.whatsapp.net`, sem o zero a mais): o defeito da issue
+  (`558380000016@s.whatsapp.net`, sem o zero a mais): o defeito da issue
   #2154 não atinge celular. A régua que recusa 13 dígitos terminados em 0 com
   DDD 31+ ficou (não custa nada a quem o WhatsApp manda certo).
   ⚠️ **Achado:** a recusada (fim 10:21:54) foi gravada DEPOIS da atendida

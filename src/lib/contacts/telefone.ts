@@ -53,22 +53,22 @@ export type TelefoneDigitado =
  * É a metade ADITIVA do #586 do original, com a NOSSA régua: lá o `+` virou
  * obrigatório; aqui o número brasileiro sem `+` continua ganhando o 55
  * (`digitosDoTelefone`), porque é assim que o escritório digita. O que muda
- * é que, até aqui, as telas gravavam o texto CRU: "(81) 98874-5316" virava a
- * ficha "81988745316", que sai para +81 (Japão) — e o CSV do disparo criava
+ * é que, até aqui, as telas gravavam o texto CRU: "(81) 98000-0016" virava a
+ * ficha "81980000016", que sai para +81 (Japão) — e o CSV do disparo criava
  * uma ficha nova assim em vez de achar a do cliente.
  *
  * Três recusas que `digitosDoTelefone` deixa passar, porque ele também serve
  * a quem lê número de sistema (Calendly, Asaas), não só a quem digita:
- * - ⚠️ **Sem `+`, menos de 10 dígitos é "curto"** (faltou o DDD): "98874-5316"
- *   passaria como "988745316" e sairia para +98 (Irã). Com `+`, o piso é o de
+ * - ⚠️ **Sem `+`, menos de 10 dígitos é "curto"** (faltou o DDD): "98000-0016"
+ *   passaria como "980000016" e sairia para +98 (Irã). Com `+`, o piso é o de
  *   `isValidE164` (8), porque ali o código do país foi escrito.
  * - **Letra no meio é "invalido"**: `digitosDoTelefone` apaga tudo que não é
- *   dígito, e "81 9887 ramal 45" viraria um número que ninguém escreveu.
- * - **Começar em 0 é "invalido"** (tronco: "081 98874-5316"): cortar o 0
+ *   dígito, e "81 9800 ramal 00" viraria um número que ninguém escreveu.
+ * - **Começar em 0 é "invalido"** (tronco: "081 98000-0016"): cortar o 0
  *   acertaria esse caso e erraria o "0800", então a pessoa reescreve. Vale
  *   também para o 0 logo depois do 55 escrito ("+55 011 3456-7890").
  * - **DDI 55 exige DDD + 8 ou 9 dígitos** (12 ou 13 no total): 55 é só o
- *   Brasil, e "+55 81 9887-453" (faltou um dígito) iria para um número que
+ *   Brasil, e "+55 81 9800-000" (faltou um dígito) iria para um número que
  *   não existe.
  */
 export function telefoneDigitado(texto: string | null | undefined): TelefoneDigitado {
@@ -81,7 +81,7 @@ export function telefoneDigitado(texto: string | null | undefined): TelefoneDigi
     .replace(/[\u2010-\u2015\u2212]/g, "-")
     .trim()
     // Planilha salva pelo pandas (e por quem converte a coluna para número)
-    // escreve "81988745316.0": sem cortar o ".0", o zero vira um dígito a mais
+    // escreve "81980000016.0": sem cortar o ".0", o zero vira um dígito a mais
     // e o número sai para +81. Só a forma inteira "dígitos.0" é cortada.
     .replace(/^(\+?\d+)\.0+$/, "$1");
   if (!aparado) return { ok: false, motivo: "vazio" };

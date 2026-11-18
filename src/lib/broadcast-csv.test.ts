@@ -108,32 +108,32 @@ describe('parseBroadcastCsv', () => {
 
   // A metade aditiva do #586 (P9), com a NOSSA régua: o número brasileiro
   // sem DDI ganha o 55 — e SAI normalizado, que é o que acha a ficha do
-  // cliente no disparo (antes "81988745316" criava uma ficha nova, e ela
+  // cliente no disparo (antes "81980000016" criava uma ficha nova, e ela
   // saía para +81). O que não serve é CONTADO, nunca chamado de duplicata.
   it('normalizes a Brazilian number typed without the country code', () => {
-    expect(parseBroadcastCsv(`phone,name\n(81) 98874-5316,Ana`)).toEqual({
+    expect(parseBroadcastCsv(`phone,name\n(81) 98000-0016,Ana`)).toEqual({
       ok: true,
       duplicates: 0,
       invalid: 0,
-      contacts: [{ phone: '5581988745316', name: 'Ana' }],
+      contacts: [{ phone: '5581980000016', name: 'Ana' }],
     });
   });
 
   it('the same client with and without the country code is ONE row', () => {
     const result = parseBroadcastCsv(
-      `phone,name\n81988745316,Ana\n+55 81 98874-5316,Ana de novo`
+      `phone,name\n81980000016,Ana\n+55 81 98000-0016,Ana de novo`
     );
     expect(result).toEqual({
       ok: true,
       duplicates: 1,
       invalid: 0,
-      contacts: [{ phone: '5581988745316', name: 'Ana' }],
+      contacts: [{ phone: '5581980000016', name: 'Ana' }],
     });
   });
 
   it('counts blank and unusable numbers as INVALID, not as duplicates', () => {
     const result = parseBroadcastCsv(
-      `phone,name\n+15551230000,Ada\n,Sem telefone\n98874-5316,Sem DDD\n81 ramal 22,Com letra`
+      `phone,name\n+15551230000,Ada\n,Sem telefone\n98000-0016,Sem DDD\n81 ramal 22,Com letra`
     );
     expect(result).toEqual({
       ok: true,

@@ -82,8 +82,8 @@ export async function POST(request: Request) {
 
   // ---- Telefone ----
   // A régua das telas de contato (`telefoneDigitado`, Fase 3-III do merge do
-  // upstream): "(81) 98874-5316" ganha o 55 — antes a ficha nascia
-  // "81988745316", que sai para +81.
+  // upstream): "(81) 98000-0016" ganha o 55 — antes a ficha nascia
+  // "81980000016", que sai para +81.
   // ⚠️ A recusa é load-bearing: o `findExistingContact` abaixo casa pelos
   // ÚLTIMOS 8 DÍGITOS, então um JID de grupo (~18 dígitos) colado aqui poderia
   // FUNDIR com o celular de um cliente real e escrever na conversa errada. A

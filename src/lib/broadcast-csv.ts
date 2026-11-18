@@ -44,8 +44,8 @@ export type ParseBroadcastCsvResult =
        * Rows dropped because the number is blank or unusable
        * (`telefoneDigitado`: no area code, letters, over 15 digits…). The
        * wizard warns about these so a CSV doesn't silently shrink. The
-       * surviving rows carry the NORMALIZED digits — "(81) 98874-5316"
-       * becomes "5581988745316", which is what finds the client's record.
+       * surviving rows carry the NORMALIZED digits — "(81) 98000-0016"
+       * becomes "5581980000016", which is what finds the client's record.
        */
       invalid: number;
     }

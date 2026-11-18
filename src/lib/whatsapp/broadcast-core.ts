@@ -223,7 +223,7 @@ export async function createBroadcast(
   if (deduped.length === 0) {
     throw new BroadcastError(
       'bad_request',
-      'No recipients had a valid phone number: a Brazilian number with its area code (e.g. 81 98874-5316), or any other country\'s with + and the country code (e.g. +14155550123)',
+      'No recipients had a valid phone number: a Brazilian number with its area code (e.g. 81 98000-0016), or any other country\'s with + and the country code (e.g. +14155550123)',
       400
     );
   }

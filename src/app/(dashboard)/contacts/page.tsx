@@ -192,7 +192,7 @@ export default function ContactsPage() {
         // A função faz `ILIKE '%' || p_search || '%'` sobre `phone` cru (025):
         // o termo vai com o escape do LIKE, senão `%` e `_` digitados viram
         // curingas. Termo com cara de telefone vai só com os DÍGITOS — os
-        // telefones são gravados sem pontuação, e "(83) 98874-5316" não
+        // telefones são gravados sem pontuação, e "(83) 98000-0016" não
         // casava. Limite escrito em `contatos.md`: aqui não há a irmã do nono
         // dígito nem o `@` (mudar a RPC é migration).
         p_search: term
@@ -221,11 +221,11 @@ export default function ContactsPage() {
         .range(from, to);
 
       // ⚠️ Literal (`ramoContem`, dentro de `ramosDaBuscaNaTabela`): cru, a
-      // vírgula e o parêntese de "silva, jr" ou "(83) 9887" quebravam o
+      // vírgula e o parêntese de "silva, jr" ou "(83) 9800" quebravam o
       // `.or()` (400, e a tela dizia "falha ao carregar"), e `%`, `_` e `*`
       // viravam curingas. O telefone casa pelos DÍGITOS (`phone_normalized`,
       // as duas grafias do nono dígito) só quando o termo tem cara de
-      // telefone: "(83) 98874-5316" acha "+5583988745316", e um e-mail com
+      // telefone: "(83) 98000-0016" acha "+5583980000016", e um e-mail com
       // dígito não traz todo telefone com aqueles dígitos (porte #679).
       const ramos = ramosDaBuscaNaTabela(term);
       if (ramos) query = query.or(ramos);

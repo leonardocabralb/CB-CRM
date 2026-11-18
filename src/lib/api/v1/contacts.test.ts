@@ -110,9 +110,9 @@ describe('findOrCreateContact: o telefone passa pela régua', () => {
   } as unknown as SupabaseClient;
 
   it.each([
-    ['sem DDD', '98874-5316', "'phone' is too short"],
-    ['0 de tronco', '081 98874-5316', "'phone' is not a valid phone number"],
-    ['JID colado', '5581988745316@s.whatsapp.net', "'phone' is not a valid phone number"],
+    ['sem DDD', '98000-0016', "'phone' is too short"],
+    ['0 de tronco', '081 98000-0016', "'phone' is not a valid phone number"],
+    ['JID colado', '5581980000016@s.whatsapp.net', "'phone' is not a valid phone number"],
     ['LID', '123456789012345@lid', "'phone' is not a valid phone number"],
     ['mais de 15 dígitos', '+1204360400000000000', "'phone' is not a valid phone number"],
   ])('%s → 400 antes de qualquer consulta', async (_caso, phone, frase) => {
@@ -125,10 +125,10 @@ describe('findOrCreateContact: o telefone passa pela régua', () => {
   });
 
   it.each([
-    ['(81) 98874-5316', '5581988745316'],
+    ['(81) 98000-0016', '5581980000016'],
     ['81 3456-7890', '558134567890'],
     ['+1 415 555 0123', '14155550123'],
-    ['5581988745316', '5581988745316'],
+    ['5581980000016', '5581980000016'],
   ])('%s é gravado como %s', async (phone, esperado) => {
     const inseridos: Record<string, unknown>[] = [];
     const cadeia: Record<string, unknown> = {
@@ -172,7 +172,7 @@ describe('findOrCreateContact: nome, e-mail e empresa aparados (26/09/2026)', ()
   it('apara o que o Make manda com espaço ("Cristiano ")', async () => {
     const { db, inseridos } = dbQueCaptura();
     await findOrCreateContact(db, 'acc', 'user', {
-      phone: '81 98874-5316',
+      phone: '81 98000-0016',
       name: 'Cristiano ',
       email: ' c@x.com ',
       company: ' ACME',
@@ -183,12 +183,12 @@ describe('findOrCreateContact: nome, e-mail e empresa aparados (26/09/2026)', ()
   it('nome vazio cai no telefone (a reserva), e-mail e empresa vazios viram null', async () => {
     const { db, inseridos } = dbQueCaptura();
     await findOrCreateContact(db, 'acc', 'user', {
-      phone: '81 98874-5316',
+      phone: '81 98000-0016',
       name: '   ',
       email: '',
       company: '',
     });
-    expect(inseridos[0]).toMatchObject({ name: '5581988745316', email: null, company: null });
+    expect(inseridos[0]).toMatchObject({ name: '5581980000016', email: null, company: null });
   });
 });
 
@@ -212,10 +212,10 @@ describe('findOrCreateContact: telefone de uma ficha UNIDA (1092, D9; só o tele
   it('o contato antigo devolve a ficha que ficou — sem criar', async () => {
     antigos.fichaPorContatoAntigo.mockResolvedValue('ficou-1');
     const { db, inseridos } = dbSemFicha();
-    const r = await findOrCreateContact(db, 'acc', 'user', { phone: '81 98874-5316', name: ' Maria ' });
+    const r = await findOrCreateContact(db, 'acc', 'user', { phone: '81 98000-0016', name: ' Maria ' });
     expect(r).toEqual({ id: 'ficou-1', created: false });
     expect(antigos.fichaPorContatoAntigo).toHaveBeenCalledWith(db, 'acc', {
-      telefone: '5581988745316',
+      telefone: '5581980000016',
       nome: 'Maria',
     });
     expect(inseridos).toHaveLength(0);
@@ -226,7 +226,7 @@ describe('findOrCreateContact: telefone de uma ficha UNIDA (1092, D9; só o tele
   it('⚠️ só o TELEFONE vai à busca: o e-mail do corpo NÃO é mandado', async () => {
     const { db } = dbSemFicha();
     await findOrCreateContact(db, 'acc', 'user', {
-      phone: '81 98874-5316',
+      phone: '81 98000-0016',
       name: 'Maria',
       email: 'maria@exemplo.invalid',
     });
@@ -238,7 +238,7 @@ describe('findOrCreateContact: telefone de uma ficha UNIDA (1092, D9; só o tele
   it('⚠️ a busca que falha é 500 — nunca cria a ficha de novo', async () => {
     antigos.fichaPorContatoAntigo.mockRejectedValue(new Error('caiu'));
     const { db, inseridos } = dbSemFicha();
-    await expect(findOrCreateContact(db, 'acc', 'user', { phone: '81 98874-5316', name: 'Maria' })).rejects.toBeInstanceOf(
+    await expect(findOrCreateContact(db, 'acc', 'user', { phone: '81 98000-0016', name: 'Maria' })).rejects.toBeInstanceOf(
       ContactError,
     );
     expect(inseridos).toHaveLength(0);

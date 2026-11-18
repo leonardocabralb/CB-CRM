@@ -236,7 +236,7 @@ import { POST } from './route'
 
 const BSUID = 'US.13491208655302741918'
 const OUTRO_BSUID = 'US.99999999999999999999'
-const TELEFONE = '5583988745316'
+const TELEFONE = '5583980000016'
 
 let wamid = 0
 function mensagem(extra: Record<string, unknown> = {}): Record<string, unknown> {

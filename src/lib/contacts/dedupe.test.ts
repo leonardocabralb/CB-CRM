@@ -65,7 +65,7 @@ describe("dedupeByPhone", () => {
     const { unique, duplicates, invalid } = dedupeByPhone([
       { phone: "   " },
       { phone: "" },
-      { phone: "98874-5316" }, // sem DDD: sairia para +98
+      { phone: "98000-0016" }, // sem DDD: sairia para +98
       { phone: "81 ramal 22" },
       { phone: "+1 404 555-3333" },
     ]);
@@ -75,17 +75,17 @@ describe("dedupeByPhone", () => {
   });
 
   it("a linha única SAI com os dígitos normalizados — o 55 no número sem DDI", () => {
-    // "(81) 98874-5316" gravado cru virava a ficha "81988745316", que sai
+    // "(81) 98000-0016" gravado cru virava a ficha "81980000016", que sai
     // para +81, e o CSV do disparo criava ficha nova em vez de achar a do
     // cliente. As outras colunas da linha ficam como vieram.
-    const { unique } = dedupeByPhone([{ phone: "(81) 98874-5316", name: "Ana" }]);
-    expect(unique).toEqual([{ phone: "5581988745316", name: "Ana" }]);
+    const { unique } = dedupeByPhone([{ phone: "(81) 98000-0016", name: "Ana" }]);
+    expect(unique).toEqual([{ phone: "5581980000016", name: "Ana" }]);
   });
 
   it("com e sem o DDI é a MESMA pessoa", () => {
     const { unique, duplicates } = dedupeByPhone([
-      { phone: "81988745316", name: "sem DDI" },
-      { phone: "+55 81 98874-5316", name: "com DDI" },
+      { phone: "81980000016", name: "sem DDI" },
+      { phone: "+55 81 98000-0016", name: "com DDI" },
     ]);
     expect(unique.map((r) => r.name)).toEqual(["sem DDI"]);
     expect(duplicates).toBe(1);

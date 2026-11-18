@@ -259,7 +259,7 @@ describe('gravarDesfechoDoLote', () => {
       { id: '1', status: 'pending' },
       { id: '2', status: 'pending' },
     ]);
-    const mesmo = '5583988745316';
+    const mesmo = '5583980000016';
     const r = await gravarDesfechoDoLote(db, [linha('1', mesmo), linha('2', mesmo)], {
       resultados: [
         { phone: mesmo, status: 'sent', whatsapp_message_id: 'wamid.1', recipient_id: '1' },
