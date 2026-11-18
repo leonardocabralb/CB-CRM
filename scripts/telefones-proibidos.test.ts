@@ -7,12 +7,16 @@
 // #533. Lembrar não segurou: este pino segura. Exemplo de telefone é o
 // fictício `5583980000016` / "(83) 98000-0016" (vizinhos …0017, …0018).
 //
-// Como: cada trecho com cara de telefone (dígitos com espaço, ponto, traço,
-// parênteses, `+` e os invisíveis que o celular cola; `\uXXXX` escrito no
-// fonte é lido como o caractere) vira só dígitos, e cada janela de 8
-// dígitos seguidos é comparada pelo SHA-256 com PROIBIDOS. Os 8 dígitos
+// Como: cada trecho com cara de telefone vira só dígitos, e cada janela de
+// 8 dígitos seguidos é comparada pelo SHA-256 com PROIBIDOS. Os 8 dígitos
 // finais de um celular brasileiro são o número sem DDI, DDD e nono dígito:
-// uma janela pega todas as grafias. Pedaço com menos de 8 dígitos passa.
+// uma janela pega todas as grafias. O separador é tudo o que
+// `telefoneDigitado` (`src/lib/contacts/telefone.ts`) aceita entre os
+// dígitos, mais o `+` e a quebra de linha (o número partido em duas linhas
+// de um texto quebrado). ⚠️ Separador novo lá entra aqui também. Escape no
+// fonte (`‑`, `\u{2011}`, `\x2d`) é lido como o caractere. Passam o
+// pedaço com menos de 8 dígitos, o número cortado por letra e a entidade
+// HTML (`&#8209;`).
 //
 // ⚠️ O número não se escreve aqui, e a falha não o imprime (o log do CI de
 // repositório público é público): só arquivo e linha.
@@ -48,37 +52,69 @@ const PROIBIDOS: ReadonlyArray<{ sha256: string; motivo: string }> = [
 /** Os 8 dígitos finais do fictício da convenção: provam que a varredura enxerga o repositório. */
 const FICTICIO = '80000016'
 
-// Um dígito, depois dígitos e separadores, terminando em dígito. Sem quebra
-// de linha: o trecho é de uma linha só. Letra separa (o "ramal" não junta).
-const TRECHO = /\d(?:[\d \t().+\- ‐-―​-‏‪- ⁠﻿]*\d)?/g
+// Um dígito, depois dígitos e separadores, terminando em dígito. Os
+// separadores de `telefoneDigitado`: `\s` (com a quebra de linha), `().-`,
+// os traços U+2010–U+2015, o sinal de menos U+2212 e todo invisível de
+// formatação (\p{Cf}: as marcas de direção que o celular cola, o hífen
+// invisível); mais o `+`. Letra separa (o "ramal" não junta).
+const TRECHO = /\d(?:[\d\s().+\-‐-―−\p{Cf}]*\d)?/gu
 
 const sha256 = (texto: string) => createHash('sha256').update(texto).digest('hex')
 
-/** `\uXXXX` escrito no fonte vira o caractere (os testes do telefone escrevem o traço assim). */
-const comEscapesLidos = (linha: string) =>
-  linha.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)))
+/** Escape no fonte vira o caractere, menos a quebra de linha (contaria uma linha a mais). */
+function comEscapesLidos(texto: string): string {
+  const caractere = (escrito: string, hex: string) => {
+    const codigo = parseInt(hex, 16)
+    return codigo === 0x0a || codigo === 0x0d || codigo > 0x10ffff ? escrito : String.fromCodePoint(codigo)
+  }
+  return texto
+    .replace(/\\u\{([0-9a-fA-F]{1,6})\}/g, caractere)
+    .replace(/\\u([0-9a-fA-F]{4})/g, caractere)
+    .replace(/\\x([0-9a-fA-F]{2})/g, caractere)
+}
 
 type Achado = { linha: number; sha256: string }
 
-/** As linhas (contadas de 1) com um trecho cuja janela de 8 dígitos tem o hash em `hashes`. */
+/** As linhas (contadas de 1) em que começa uma janela de 8 dígitos com o hash em `hashes`. */
 function achados(texto: string, hashes: ReadonlySet<string>): Achado[] {
+  const lido = comEscapesLidos(texto)
+  const inicios = [0]
+  for (let i = 0; i < lido.length; i++) if (lido[i] === '\n') inicios.push(i + 1)
+  const linhaDe = (posicao: number) => {
+    let baixo = 0
+    let alto = inicios.length - 1
+    while (baixo < alto) {
+      const meio = (baixo + alto + 1) >> 1
+      if (inicios[meio] <= posicao) baixo = meio
+      else alto = meio - 1
+    }
+    return baixo + 1
+  }
+
   const saida: Achado[] = []
   const vistos = new Set<string>()
-  texto.split('\n').forEach((original, i) => {
-    for (const m of comEscapesLidos(original).matchAll(TRECHO)) {
-      // Sem teto de tamanho: dois números separados por espaço são UM trecho
-      // (o espaço é separador de telefone), e o teto descartava os dois.
-      const digitos = m[0].replace(/\D/g, '')
-      for (let j = 0; j + 8 <= digitos.length; j++) {
-        const hash = sha256(digitos.slice(j, j + 8))
-        const chave = `${i + 1}:${hash}`
-        if (hashes.has(hash) && !vistos.has(chave)) {
-          vistos.add(chave)
-          saida.push({ linha: i + 1, sha256: hash })
-        }
+  for (const m of lido.matchAll(TRECHO)) {
+    // Sem teto de tamanho: dois números separados por espaço são UM trecho.
+    // Guarda onde está cada dígito, para dizer a linha da janela.
+    let digitos = ''
+    const posicoes: number[] = []
+    for (let k = 0; k < m[0].length; k++) {
+      const c = m[0][k]
+      if (c >= '0' && c <= '9') {
+        digitos += c
+        posicoes.push(m.index + k)
       }
     }
-  })
+    for (let j = 0; j + 8 <= digitos.length; j++) {
+      const hash = sha256(digitos.slice(j, j + 8))
+      if (!hashes.has(hash)) continue
+      const linha = linhaDe(posicoes[j])
+      const chave = `${linha}:${hash}`
+      if (vistos.has(chave)) continue
+      vistos.add(chave)
+      saida.push({ linha, sha256: hash })
+    }
+  }
   return saida
 }
 
@@ -157,14 +193,20 @@ describe('telefones proibidos', () => {
       ['com espaços e 00', '0055 83 98000 0016'],
       ['com pontos', '81.98000.0016'],
       ['com traço comprido', '81 98000–0016'],
+      ['com o sinal de menos', '81 98000−0016'],
+      ['com o hífen invisível', '81 98000­0016'],
       ['com os invisíveis que o celular cola', '‪+55 83 98000-0016‬'],
       ['com escape no fonte', String.raw`81 98000‑0016`],
+      ['com o sinal de menos escrito no fonte', String.raw`81 98000−0016`],
+      ['com escape de ponto de código', String.raw`81 98000\u{2011}0016`],
+      ['com escape hexadecimal', String.raw`81 98000\x2d0016`],
       ['da planilha que virou número', '81980000016.0'],
       ['num JID do WhatsApp', '5583980000016@s.whatsapp.net'],
       ['no meio de uma frase', 'enviou 5583980000016 às 10h'],
       ['ao lado de outro número', '+55 (83) 98000-0016 +55 (83) 98000-0017'],
       ['depois de outro número', '+55 (83) 98000-0017 +55 (83) 98000-0016'],
       ['depois de uma data', '2026-09-23 98000-0016'],
+      ['partido em duas linhas', '(81) 98000\n  0016'],
     ])('acha %s', (_, texto) => {
       expect(acha(texto)).toBe(true)
     })
@@ -179,6 +221,14 @@ describe('telefones proibidos', () => {
 
     it('diz a linha, uma vez por linha', () => {
       expect(achados('a\nb 98000-0016 e 5583980000016\nc', so)).toEqual([{ linha: 2, sha256: hashDoFicticio }])
+    })
+
+    it('o número partido é da linha em que começa', () => {
+      expect(achados('a\n(81) 98000\n0016', so)).toEqual([{ linha: 2, sha256: hashDoFicticio }])
+    })
+
+    it('a quebra de linha escrita como escape não muda a contagem', () => {
+      expect(achados(String.raw`x\u000ay` + '\n98000-0016', so)).toEqual([{ linha: 2, sha256: hashDoFicticio }])
     })
   })
 })
