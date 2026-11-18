@@ -394,6 +394,10 @@ Volta para `main` por PR no CB-CRM.
   `supabase/` e na raiz (exceção só em `EXCECOES`, com motivo);
   `scripts/env-documentado.test.ts` exige toda `process.env.X` no
   `.env.local.example`.
+- Telefone de exemplo (teste, doc, comentário) é o fictício `5583980000016`
+  / "(83) 98000-0016", nunca um de verdade, nem o do contato de teste: o
+  repositório é público. `scripts/telefones-proibidos.test.ts` reprova o que
+  já vazou, em qualquer grafia.
 
 ## 9. i18n
 
