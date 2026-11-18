@@ -178,17 +178,17 @@ describe('ramosDaBuscaDeContato', () => {
 
 describe('temCaraDeTelefone', () => {
   it('número digitado de qualquer jeito', () => {
-    for (const termo of ['(83) 98874-5316', '+55 83 98874-5316', '83988745316', '8', '(83)', ' 98874.5316 ']) {
+    for (const termo of ['(83) 98000-0016', '+55 83 98000-0016', '83980000016', '8', '(83)', ' 98000.0016 ']) {
       expect(temCaraDeTelefone(termo)).toBe(true);
     }
   });
 
   it('⚠️ o número COLADO do WhatsApp (marcas invisíveis, traço tipográfico) é telefone', () => {
-    expect(temCaraDeTelefone('‪+55 83 98874-5316‬')).toBe(true);
-    expect(temCaraDeTelefone('(83) 98874–5316')).toBe(true);
+    expect(temCaraDeTelefone('‪+55 83 98000-0016‬')).toBe(true);
+    expect(temCaraDeTelefone('(83) 98000–0016')).toBe(true);
     // E a busca da tabela ganha o ramo dos dígitos (o `\D` limpa o resto).
-    expect(ramosDaBuscaNaTabela('‪+55 83 98874-5316‬')).toContain(
-      'phone_normalized.imatch."5583988745316"',
+    expect(ramosDaBuscaNaTabela('‪+55 83 98000-0016‬')).toContain(
+      'phone_normalized.imatch."5583980000016"',
     );
   });
 
@@ -212,9 +212,9 @@ describe('ramosDaBuscaNaTabela (tela de Contatos, porte #679)', () => {
   });
 
   it('telefone formatado acha a ficha gravada só com dígitos, nas duas grafias do nono', () => {
-    const ramos = ramosDaBuscaNaTabela('(83) 98874-5316')!;
-    expect(ramos).toContain('phone_normalized.imatch."83988745316"');
-    expect(ramos).toContain('phone_normalized.imatch."8388745316"');
+    const ramos = ramosDaBuscaNaTabela('(83) 98000-0016')!;
+    expect(ramos).toContain('phone_normalized.imatch."83980000016"');
+    expect(ramos).toContain('phone_normalized.imatch."8380000016"');
     // Nunca contra `phone`, que guarda o que foi digitado.
     expect(ramos.split(',').some((r) => r.startsWith('phone.'))).toBe(false);
   });

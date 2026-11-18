@@ -162,7 +162,7 @@ export function ramosDaBuscaDeContato(termo: string): string | null {
  * O termo tem CARA de telefone: só dígitos, espaço e a pontuação de quem
  * digita um número (`+ ( ) - .`), com pelo menos um dígito.
  *
- * ⚠️ É o que separa "(83) 98874-5316" de "joao123@gmail.com" ou "Maria 2":
+ * ⚠️ É o que separa "(83) 98000-0016" de "joao123@gmail.com" ou "Maria 2":
  * metade dos e-mails da produção tem dígito (985 de 2.013 em 17/11/2026), e
  * sem esta régua buscar um deles traria também toda ficha cujo telefone
  * contém aqueles dígitos.
@@ -185,7 +185,7 @@ export function temCaraDeTelefone(termo: string): boolean {
  * etiqueta), ou `null` sem termo. Porte do #679 do original, com as nossas
  * peças: nome, e-mail, os dois `@` e — só quando o termo tem cara de
  * telefone — os dígitos em `phone_normalized` com a irmã do nono dígito.
- * "(83) 98874-5316" acha "+5583988745316".
+ * "(83) 98000-0016" acha "+5583980000016".
  *
  * ⚠️ Sem o piso dos seletores: a tabela pagina com contagem exata, e uma letra
  * sempre filtrou ali.

@@ -633,7 +633,7 @@ Cinco listas, paginadas por `GET /api/cb/asaas/clientes?lista=…`:
   telefone `digitosDoTelefone` recusa, ou cuja criação falhou; quem tem
   telefone ganha ficha no ciclo (D2) e aparece em Ligados. Cada linha: nome,
   CPF mascarado, e-mail, e as sugestões por nome aproximado (D5): "parece ser
-  Maria Silva (…5316) · 2 de 3 nomes iguais" com **Vincular** e **Ignorar**;
+  Maria Silva (…0016) · 2 de 3 nomes iguais" com **Vincular** e **Ignorar**;
   sem candidato, **Vincular a um contato…**. Rodapé: "Sem telefone no Asaas o
   CRM não tem como ligar nem criar a ficha sozinho: confira o candidato por
   nome, vincule à mão, ou cadastre o telefone no Asaas — no ciclo seguinte a
@@ -706,7 +706,7 @@ tokens coincidem — ou o nome mais curto (2+ tokens) está inteiro contido no
 mais longo. Pontuação = tokens em comum ÷ tokens do menor. Fichas de nome
 numérico (203 de 705) ficam fora, e nome de um token só nunca casa. Entra em
 `candidatos` com `motivo: 'nome_aproximado'` e a pontuação; a tela mostra
-"parece ser Maria Silva (…5316)" com Vincular e Ignorar. Roda só para quem
+"parece ser Maria Silva (…0016)" com Vincular e Ignorar. Roda só para quem
 NÃO tem telefone nenhum (os 85): quem tem telefone e não casou ganha ficha
 (D2), e sugerir nome ali criaria ficha e sugestão para o mesmo cliente. Custo:
 85 × 705 comparações em memória, nada no banco.

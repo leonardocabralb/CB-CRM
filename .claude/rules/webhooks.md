@@ -51,7 +51,7 @@ I/O), a porta, o admin em `/api/cb/webhooks*` e a seção de Configurações.
   nenhuma chave produzida comece com `_`.
 - ⚠️⚠️ **O telefone passa pela régua das TELAS (`telefoneDigitado`)**, não pela
   dos sistemas (decisão do operador, 23/09/2026: o formulário não é nosso para
-  mudar). Com `digitosDoTelefone`, "98874-5316" sem DDD virava a ficha +98. O
+  mudar). Com `digitosDoTelefone`, "98000-0016" sem DDD virava a ficha +98. O
   recusado vira `sem_telefone` com o motivo (`detalheDoTelefone`); "veio e não
   serve" conta no Meu dia, numa janela de 7 dias. A coluna `telefone` é
   gravada por `comAlgoVisivel` (em branco = nulo). Pino:

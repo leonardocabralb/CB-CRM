@@ -4257,7 +4257,7 @@ function comNegocio(passo: Record<string, unknown>) {
   h.state.owned = {
     id: 'c1',
     name: 'Ana "Aninha" Souza\nda Silva',
-    phone: '558388745316',
+    phone: '558380000016',
   } as unknown as { id: string };
   h.state.dealExistente = {
     id: 'd1',

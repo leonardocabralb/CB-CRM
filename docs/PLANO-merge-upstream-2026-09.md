@@ -857,7 +857,7 @@ banco que ele continua gravando mensagem/status depois de 14:00Z.
 - **A régua** (`src/lib/contacts/telefone.ts`, puros): `telefoneDigitado` usa
   `digitosDoTelefone` (brasileiro sem DDI ganha o 55, como sempre) e recusa,
   com o MOTIVO, o que ele deixaria passar: sem `+` e sem DDD (`curto` —
-  "98874-5316" sairia para +98), letra no meio, 0 de tronco, DDI 55 com
+  "98000-0016" sairia para +98), letra no meio, 0 de tronco, DDI 55 com
   tamanho errado e mais de 15 dígitos (`invalido`). Antes, limpa as marcas
   invisíveis que o WhatsApp põe num número copiado, o traço tipográfico e o
   `.0` de planilha salva como decimal. `escritaDoTelefone` é a decisão ÚNICA
@@ -866,7 +866,7 @@ banco que ele continua gravando mensagem/status depois de 14:00Z.
   (`null`).
 - **Telas:** o formulário e a ficha do contato gravam o número normalizado, e
   o aviso de duplicata do formulário procura pelo número normalizado (o
-  "81988745316" sem o 55 passa a BLOQUEAR como a ficha que já existe, em vez
+  "81980000016" sem o 55 passa a BLOQUEAR como a ficha que já existe, em vez
   do aviso amarelo). A ficha deixou de estourar no `.trim()` do telefone nulo
   da ficha só do Instagram.
 - **Planilhas (#529 adotado):** o dedupe conta o inválido À PARTE e a linha
@@ -913,7 +913,7 @@ linha) — não há como provocar a recusa sem mexer em policy; o ramo é o do
 | Achado | Destino |
 | --- | --- |
 | P2 (AS DUAS, medido) — número copiado do WhatsApp traz U+202A/U+202C, e traço tipográfico: a régua os recusava como "inválido" sem nada visível errado; antes, o texto cru era gravado e funcionava | ✅ limpos antes da régua (`\p{Cf}` e o intervalo de traços), com 6 casos no teste |
-| P2 (Lente 1, medido) — planilha salva pelo pandas escreve `81988745316.0`, e o zero virava dígito: +81 | ✅ o `.0` final da forma "dígitos.0" é cortado |
+| P2 (Lente 1, medido) — planilha salva pelo pandas escreve `81980000016.0`, e o zero virava dígito: +81 | ✅ o `.0` final da forma "dígitos.0" é cortado |
 | P2 (Lente 1) — estrangeiro guardado só em dígitos com 10, ou 11 com 9 na 3ª posição, editado ou importado sem `+`, é relido como brasileiro | aceito por escrito: MEDIDO zero fichas assim (as 17 estrangeiras têm 12+ dígitos) |
 | P2 (Lente 2, a medir) — ficha antiga gravada crua SEM o 55 deixaria de ser achada | MEDIDO: 1 ficha de 10/11 dígitos, e é dos EUA (`1` + DDD americano), não brasileira sem 55 — zero casos |
 | P3 — linha só de vírgulas (fim de exportação do Excel) contava como "telefone inválido" | ✅ o parser a pula |
@@ -990,7 +990,7 @@ disparos, 0 fichas criadas.
   (`POST /api/v1/messages`), `createBroadcast` (`POST /api/v1/broadcasts`), a
   rota `/api/cb/conversas/abrir` e o diálogo "Nova conversa". Antes, as quatro
   primeiras apagavam o que não era dígito (`sanitizePhoneForMeta` +
-  `isValidE164`) — "(81) 98874-5316" virava a ficha +81 e um JID de contato
+  `isValidE164`) — "(81) 98000-0016" virava a ficha +81 e um JID de contato
   colado (`…@lid`, `…@s.whatsapp.net`) virava os dígitos dele; o `@g.us` já
   caía no teto de 15 — e o disparo exigia o `+` do #586.
 - **O texto CRU vai ao find-or-create** (`ContactInput.phone`): a régua não é
@@ -1017,7 +1017,7 @@ disparos, 0 fichas criadas.
   (23/09/2026, depois da revisão: "não tenho como mexer no formulário do
   Typebot" — o tratamento tem de ser do nosso lado). `processarAcionamento`
   lê por `telefoneDigitado` (era `digitosDoTelefone`, a régua dos sistemas:
-  "98874-5316" virava a ficha +98), e o recusado vira `sem_telefone` com o
+  "98000-0016" virava a ficha +98), e o recusado vira `sem_telefone` com o
   motivo no log. MEDIDO antes: ZERO eventos recebidos até hoje (o Typebot
   ainda não foi ligado ao CRM); o fluxo exportado pergunta o telefone no
   bloco Phone com país padrão Brasil, que valida e entrega "+55…" — esse
@@ -1079,7 +1079,7 @@ cético que tenta refutar medindo):** nenhum P0/P1.
 | P3 (Lente 1) — entradas que antes entregavam no destino certo agora dão 400: `tel:`, `whatsapp:`, `,`/`;` no fim, `++`, `55+` | aceito e ESCRITO na doc pública; conferir o formato do cenário do Make é pendência do operador (não é observável daqui) |
 | P3 (Lente 2) — as notas diziam que o `@g.us` passava antes (o teto de 15 já o recusava) e que "as quatro primeiras" portas apagavam os não-dígitos (o disparo exigia o `+`) | ✅ CLAUDE.md, plano e comentário de `contacts.ts` |
 | P3 — comentários velhos: `// required, E.164` na rota de mensagens; "o mesmo `isValidE164` das outras portas" em `validate.ts` | ✅ |
-| P3 (as duas, fora do escopo declarado) — o webhook de ENTRADA (Typebot: o lead DIGITA o telefone num formulário público) e o passo `send_to_number` continuam em `digitosDoTelefone`: "98874-5316" vira ficha +98 e `…@lid` vira telefone | ✅ o webhook de entrada ENTROU na fase por decisão do operador (ver acima); `send_to_number` (número que o próprio operador digita no construtor) fica como pendência |
+| P3 (as duas, fora do escopo declarado) — o webhook de ENTRADA (Typebot: o lead DIGITA o telefone num formulário público) e o passo `send_to_number` continuam em `digitosDoTelefone`: "98000-0016" vira ficha +98 e `…@lid` vira telefone | ✅ o webhook de entrada ENTROU na fase por decisão do operador (ver acima); `send_to_number` (número que o próprio operador digita no construtor) fica como pendência |
 
 **Revisão em duas lentes do commit do webhook de entrada** (3 agentes): nenhum
 P0/P1. A Lente 1 MEDIU o que o bloco Phone do Typebot entrega, lendo o código

@@ -95,27 +95,27 @@ beforeEach(() => {
 describe('POST /api/whatsapp/broadcast — anotar o envio na hora', () => {
   it('anota cada destinatário logo depois do SEU envio, antes do próximo', async () => {
     const results = await enviar([
-      { recipient_id: 'r1', phone: '5583988745316', params: [] },
-      { recipient_id: 'r2', phone: '5583988745317', params: [] },
+      { recipient_id: 'r1', phone: '5583980000016', params: [] },
+      { recipient_id: 'r2', phone: '5583980000017', params: [] },
     ])
     expect(eventos).toEqual([
-      'enviou 5583988745316',
+      'enviou 5583980000016',
       'anotou r1',
-      'enviou 5583988745317',
+      'enviou 5583980000017',
       'anotou r2',
     ])
     expect(results).toEqual([
-      expect.objectContaining({ status: 'sent', recipient_id: 'r1', anotado: true, whatsapp_message_id: 'wamid.5583988745316' }),
+      expect.objectContaining({ status: 'sent', recipient_id: 'r1', anotado: true, whatsapp_message_id: 'wamid.5583980000016' }),
       expect.objectContaining({ status: 'sent', recipient_id: 'r2', anotado: true }),
     ])
   })
 
   it('grava sent + wamid + hora, e SÓ em linha ainda pending', async () => {
-    await enviar([{ recipient_id: 'r1', phone: '5583988745316', params: [] }])
+    await enviar([{ recipient_id: 'r1', phone: '5583980000016', params: [] }])
     expect(updates).toHaveLength(1)
     expect(updates[0].patch).toMatchObject({
       status: 'sent',
-      whatsapp_message_id: 'wamid.5583988745316',
+      whatsapp_message_id: 'wamid.5583980000016',
       error_message: null,
     })
     expect(typeof updates[0].patch.sent_at).toBe('string')
@@ -127,25 +127,25 @@ describe('POST /api/whatsapp/broadcast — anotar o envio na hora', () => {
 
   it('0 linhas ou erro do banco: anotado false, e o envio continua "sent"', async () => {
     resposta.data = []
-    const [semLinha] = await enviar([{ recipient_id: 'r1', phone: '5583988745316', params: [] }])
+    const [semLinha] = await enviar([{ recipient_id: 'r1', phone: '5583980000016', params: [] }])
     expect(semLinha).toMatchObject({ status: 'sent', anotado: false })
 
     resposta.data = null
     resposta.error = { message: 'boom' }
-    const [comErro] = await enviar([{ recipient_id: 'r2', phone: '5583988745317', params: [] }])
+    const [comErro] = await enviar([{ recipient_id: 'r2', phone: '5583980000017', params: [] }])
     expect(comErro).toMatchObject({ status: 'sent', anotado: false })
   })
 
   it('envio recusado pela Meta não escreve nada, e devolve a linha para o navegador casar', async () => {
-    falharPara.add('5583988745316')
-    const [r] = await enviar([{ recipient_id: 'r1', phone: '5583988745316', params: [] }])
+    falharPara.add('5583980000016')
+    const [r] = await enviar([{ recipient_id: 'r1', phone: '5583980000016', params: [] }])
     expect(updates).toEqual([])
     expect(r).toMatchObject({ status: 'failed', recipient_id: 'r1' })
     expect(r).not.toHaveProperty('anotado')
   })
 
   it('pedido sem recipient_id (forma antiga) não escreve nada', async () => {
-    const [r] = await enviar([{ phone: '5583988745316', params: [] }])
+    const [r] = await enviar([{ phone: '5583980000016', params: [] }])
     expect(updates).toEqual([])
     expect(r).toMatchObject({ status: 'sent' })
     expect(r).not.toHaveProperty('anotado')

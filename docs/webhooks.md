@@ -30,10 +30,10 @@ ficha se for número novo) → dispara as automações que têm o gatilho
   telefone do cliente. Sem ele o acionamento é registrado mas nenhuma
   automação roda, porque não há sobre quem agir. O telefone é lido como nas
   telas de contato e na API ([`public-api.md`](./public-api.md#phone-numbers)):
-  `+5581988745316`, `+55 81 98874-5316`, `5581988745316` e
-  `(81) 98874-5316` viram a mesma ficha (`5581988745316`) — sem `+`, 10
+  `+5581980000016`, `+55 81 98000-0016`, `5581980000016` e
+  `(81) 98000-0016` viram a mesma ficha (`5581980000016`) — sem `+`, 10
   dígitos, ou 11 com 9 na 3ª posição (DDD + número), ganham o 55; o resto é
-  lido como já tendo o código do país. Número sem DDD (`98874-5316`), com
+  lido como já tendo o código do país. Número sem DDD (`98000-0016`), com
   letra ou símbolo (um id do WhatsApp colado), com 0 na frente, com mais de
   15 dígitos ou um `55` sem DDD + 8 ou 9 dígitos é **recusado**: nenhuma
   ficha é criada, e o log diz o porquê. Número de outro país precisa do `+`.
@@ -137,7 +137,7 @@ Três comportamentos que valem para todo webhook recebido:
   não respondida simplesmente não vem. Pergunte o telefone com o bloco
   **Phone** do Typebot, com o país padrão Brasil: ele confere o número e o
   entrega já com o `+55`. Um bloco de texto comum também funciona, mas aí um
-  "98874-5316" sem DDD chega como está e é recusado (veja o log). Se preferir montar um JSON próprio, use
+  "98000-0016" sem DDD chega como está e é recusado (veja o log). Se preferir montar um JSON próprio, use
   os mesmos nomes nas chaves.
 - O Typebot **não repete** uma chamada que falhou (401, 404, 429 ou tempo
   esgotado): o ponto é perdido, e o erro só aparece em Typebot → *Results* →

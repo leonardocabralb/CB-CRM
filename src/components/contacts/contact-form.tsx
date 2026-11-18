@@ -96,8 +96,8 @@ export function ContactForm({
   // Runs on blur so we don't query on every keystroke.
   async function checkDuplicate() {
     if (isEdit || !accountId) return;
-    // Procura pelo número JÁ normalizado: "81988745316" digitado sem o 55
-    // acha a ficha "5581988745316" pela grafia exata, e não pela tolerância
+    // Procura pelo número JÁ normalizado: "81980000016" digitado sem o 55
+    // acha a ficha "5581980000016" pela grafia exata, e não pela tolerância
     // dos 8 finais. Número fora da régua não é procurado — o Salvar recusa.
     const telefone = telefoneDigitado(phone);
     if (!telefone.ok) {
@@ -166,8 +166,8 @@ export function ContactForm({
     e.preventDefault();
 
     // O telefone DIGITADO vira os dígitos de `contacts.phone` (a nossa régua:
-    // brasileiro sem DDI ganha o 55). Gravado cru, "(81) 98874-5316" era a
-    // ficha "81988745316" — que sai para +81. Na EDIÇÃO, telefone que não
+    // brasileiro sem DDI ganha o 55). Gravado cru, "(81) 98000-0016" era a
+    // ficha "81980000016" — que sai para +81. Na EDIÇÃO, telefone que não
     // mudou não é conferido nem regravado; a ficha com outra identidade
     // (Instagram, 989, ou o BSUID do WhatsApp, 1041) pode ficar sem. Na
     // CRIAÇÃO o telefone continua obrigatório.

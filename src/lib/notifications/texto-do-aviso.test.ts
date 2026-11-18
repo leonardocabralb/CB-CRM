@@ -49,8 +49,8 @@ describe("textoDoAviso", () => {
   });
 
   it("contato sem nome: o telefone; sem contato nenhum: o texto de queda", () => {
-    expect(textoDoAviso({ ...base, contact: { name: null, phone: "5583988745316" } }, "Ana", t).corpo).toBe(
-      "Ana atribuiu a você a conversa com 5583988745316",
+    expect(textoDoAviso({ ...base, contact: { name: null, phone: "5583980000016" } }, "Ana", t).corpo).toBe(
+      "Ana atribuiu a você a conversa com 5583980000016",
     );
     expect(textoDoAviso({ ...base, contact: null }, "Ana", t).corpo).toBe(
       "Ana atribuiu a você a conversa com um contato",
