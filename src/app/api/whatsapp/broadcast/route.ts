@@ -381,8 +381,17 @@ export async function POST(request: Request) {
             }
           : {}),
       })
-      if (desfecho === 'failed') failedCount++
-      else uncertainCount++
+      if (desfecho === 'failed') {
+        failedCount++
+        continue
+      }
+      uncertainCount++
+      // ⚠️⚠️ Disjuntor (1151): a Meta (ou a rede até ela) não respondeu. Seguir
+      // mandando faria de CADA destinatário uma incerta — a campanha inteira
+      // fora do reenvio numa pane da Meta. Para aqui: o resto do lote não foi
+      // reservado (`pending`, comprovadamente não saiu), e o assistente para ao
+      // ver a incerta no resultado; o Retomar manda o resto depois.
+      break
     }
 
     if (semPosse) {

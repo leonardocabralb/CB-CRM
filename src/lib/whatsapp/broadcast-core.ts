@@ -328,7 +328,8 @@ export async function createBroadcast(
  * reserva (`broadcast-entrega.ts`). Linha que não reservou (outra mão a tem,
  * já saiu, ou a reserva falhou) é PULADA. 5xx, tempo esgotado e erro de rede
  * deixam a linha `uncertain` — o "Tentar de novo os que falharam" mandava de
- * novo o que podia ter saído. O processo que morre no meio deixa incerta só a
+ * novo o que podia ter saído — e PARAM a passada (o disjuntor: o resto fica
+ * no escopo para o Retomar). O processo que morre no meio deixa incerta só a
  * linha que estava saindo.
  */
 export async function deliverBroadcast(
@@ -385,16 +386,23 @@ export async function deliverBroadcast(
         status: 'sent',
         whatsappMessageId: sentMessageId,
       });
-    } else {
-      // A mensagem da Meta ECOA o token (CLAUDE.md, 8e).
-      await gravarDesfechoDaReserva(db, recipient.recipientRowId, {
-        status: lastError === null ? 'failed' : desfechoDaFalha(lastError),
-        erro: semTokenDaMeta(
-          lastError instanceof Error ? lastError.message : 'Unknown error',
-          plan.accessToken,
-        ),
-      });
+      continue;
     }
+
+    const desfecho = lastError === null ? 'failed' : desfechoDaFalha(lastError);
+    // A mensagem da Meta ECOA o token (CLAUDE.md, 8e).
+    await gravarDesfechoDaReserva(db, recipient.recipientRowId, {
+      status: desfecho,
+      erro: semTokenDaMeta(
+        lastError instanceof Error ? lastError.message : 'Unknown error',
+        plan.accessToken,
+      ),
+    });
+    // ⚠️⚠️ Disjuntor (1151): na primeira incerta a passada PARA — seguir faria
+    // de cada destinatário uma incerta numa pane da Meta. O resto fica no
+    // escopo (não foi reservado), a campanha segue `sending` com pendentes e o
+    // Retomar o manda depois.
+    if (desfecho === 'uncertain') break;
   }
 
   await finalizeBroadcastStatus(db, plan.broadcastId);

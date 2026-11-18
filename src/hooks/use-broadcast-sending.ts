@@ -82,9 +82,10 @@ interface BroadcastPayload {
  * `posse_perdida` = outro envio (a retomada) assumiu a campanha e manda o
  * que falta; `posse_incerta` = não deu para confirmar a posse (a conexão com
  * o servidor caiu) — o resto fica pendente para o Retomar; `lote_incerto`
- * (1151) = a chamada de um lote caiu sem resposta da rota: o que ela
- * reservou ficou com entrega incerta, o resto pendente, e a posse foi solta
- * para o Retomar aparecer na hora.
+ * (1151) = um envio ficou sem confirmação (a chamada do lote caiu sem
+ * resposta da rota, ou a rota parou na primeira resposta que a Meta não deu):
+ * o que foi reservado ficou com entrega incerta, o resto pendente, e a posse
+ * foi solta para o Retomar aparecer.
  */
 export type InterrupcaoDoEnvio = 'posse_perdida' | 'posse_incerta' | 'lote_incerto';
 
@@ -359,11 +360,11 @@ function paradaDaRota(status: number, data: { code?: unknown }): InterrupcaoDoEn
  * se ELA a perde no meio, responde 409 com o que já processou, e isto vira a
  * mesma parada — só os `resultados` dela se gravam.
  *
- * ⚠️⚠️ NOSSO (1151): a falha do lote inteiro se separa em RECUSA (4xx: a rota
- * recusou antes do laço de envio — sessão, papel, limite, pedido inválido,
- * sem número oficial; nada saiu) e INCERTA (a chamada não voltou, 5xx, o
- * 502/504 do proxy, resposta ilegível: a rota pode ter mandado). Quem decide é
- * o STATUS, nunca o corpo (o do proxy é HTML).
+ * ⚠️⚠️ NOSSO (1151): a falha do lote inteiro se separa em RECUSA (a rota
+ * respondeu com o motivo, no JSON dela, ou 4xx — sessão, papel, limite, pedido
+ * inválido, sem número oficial, modelo malformado: recusado antes do laço de
+ * envio) e INCERTA (a chamada não voltou, o 502/504 do proxy sem o JSON da
+ * rota, resposta 200 ilegível: a rota pode ter mandado).
  *
  * `manterPosse` devolve `null` com a posse renovada, ou o motivo da parada.
  */
@@ -403,7 +404,13 @@ export async function enviarLoteComPosse(
           : null;
       if (retryIn === null) {
         const erro = data?.error || `Broadcast API request failed (HTTP ${res.status})`;
-        return res.status >= 400 && res.status < 500
+        // A ROTA respondeu com o motivo (o JSON dela): ela recusou o lote —
+        // também no 5xx dela (modelo malformado, conexão ilegível), que vem
+        // antes do laço de envio. E mesmo se viesse do meio do laço, o `failed`
+        // daqui só vai sobre `pending`, que a reserva prova que não saiu. Sem o
+        // JSON dela (o HTML do proxy) não há como saber: incerto.
+        const daRota = typeof data?.error === 'string';
+        return daRota || (res.status >= 400 && res.status < 500)
           ? { desfecho: { recusa: erro } }
           : { desfecho: { incerto: erro } };
       }
@@ -472,8 +479,9 @@ export async function fecharCampanhaComAPosse(
 }
 
 /**
- * NOSSO (1151): o fim do assistente depois do lote que caiu SEM resposta da
- * rota (`lote_incerto`). Fecha pelas LINHAS, como `finalizeBroadcastStatus`
+ * NOSSO (1151): o fim do assistente depois de um envio sem confirmação
+ * (`lote_incerto`: o lote que caiu sem resposta da rota, ou a incerta que a
+ * rota devolveu ao parar). Fecha pelas LINHAS, como `finalizeBroadcastStatus`
  * no servidor: sobrou `pending` → a campanha segue `sending` e só a posse sai
  * (a tela mostra "parou no meio" e o Retomar na hora, não daqui a 5 min); não
  * sobrou → fecha `sent`/`failed` com a posse. Contagem que falha é "não sei",
@@ -1495,6 +1503,19 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
         const gravado = await gravarDesfechoDoLote(supabase, batch, lote.desfecho);
         failedCount += gravado.falhas;
         escritasPerdidas += gravado.escritasPerdidas;
+
+        // ⚠️⚠️ Disjuntor (1151): a ROTA parou na primeira entrega incerta (a Meta,
+        // ou a rede até ela, não respondeu). O assistente para junto, em vez de
+        // tornar incerto cada destinatário seguinte numa pane da Meta: o resto
+        // não foi reservado (`pending`) e o Retomar o manda depois.
+        if (
+          'resultados' in lote.desfecho &&
+          lote.desfecho.resultados.some((r) => r.status === 'uncertain')
+        ) {
+          await pararDepoisDoLoteIncerto(supabase, broadcast.id, tokenDaPosse);
+          interrupcao = 'lote_incerto';
+          break;
+        }
 
         const progressPct =
           30 + Math.round(((i + batch.length) / totalRecipients) * 60);

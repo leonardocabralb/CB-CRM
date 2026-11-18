@@ -33,9 +33,21 @@ export const MINUTOS_DA_TRAVA_DA_RETOMADA = 30;
  * - `parado`: `sending` com pendentes e NINGUÉM enviando — a aba fechou no
  *   meio. Retomar.
  * - `retentar`: sobrou falha (ou pendente numa campanha já fechada).
+ * - `concluir` (NOSSO, 1151): `sending` sem pendente nem falha, e NINGUÉM
+ *   enviando — a passada morreu depois de reservar a última linha (que ficou
+ *   incerta), ou a rota terminou o lote depois de o assistente parar. Sem um
+ *   botão, a campanha ficava "Enviando" para sempre, sem como excluir; o
+ *   "Concluir" pede à retomada, que não acha nada a mandar e fecha pelas
+ *   linhas (`nothing_to_resume` → `finalizeBroadcastStatus`).
  * - `null`: nada pendente nem falho.
  */
-export type PainelDaRetomada = 'em_andamento' | 'desconhecido' | 'parado' | 'retentar' | null;
+export type PainelDaRetomada =
+  | 'em_andamento'
+  | 'desconhecido'
+  | 'parado'
+  | 'retentar'
+  | 'concluir'
+  | null;
 
 export function painelDaRetomada(args: {
   status: BroadcastStatus;
@@ -44,7 +56,9 @@ export function painelDaRetomada(args: {
   emAndamento: boolean | null;
 }): PainelDaRetomada {
   const { status, pendentes, falhos, emAndamento } = args;
-  if (pendentes === 0 && falhos === 0) return null;
+  if (pendentes === 0 && falhos === 0) {
+    return status === 'sending' && emAndamento === false ? 'concluir' : null;
+  }
   if (emAndamento === true) return 'em_andamento';
   if (emAndamento === null) return 'desconhecido';
   return status === 'sending' && pendentes > 0 ? 'parado' : 'retentar';

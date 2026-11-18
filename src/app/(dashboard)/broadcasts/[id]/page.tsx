@@ -297,6 +297,13 @@ export default function BroadcastDetailPage() {
         toast.error(t('toastResumeClaimFailed'));
         return;
       }
+      if (payload?.code === 'nothing_to_resume') {
+        // NOSSO (1151): nada a mandar — a retomada fechou a campanha pelas
+        // linhas (`finalizeBroadcastStatus`). É o "Concluir campanha".
+        toast.success(t('toastConcluded'));
+        await fetchData();
+        return;
+      }
 
       if (!res.ok) {
         toast.error(
@@ -560,6 +567,30 @@ export default function BroadcastDetailPage() {
               </Button>
             )}
           </div>
+        </div>
+      )}
+
+      {/* NOSSO (1151): `sending` sem ninguém pendente e sem ninguém enviando —
+          o envio parou antes de fechar a campanha. Concluir fecha pelas
+          linhas, sem mandar nada (`painelDaRetomada`). */}
+      {painel === 'concluir' && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
+          <div className="text-sm">
+            <p className="font-medium text-foreground">{t('concludeTitle')}</p>
+            <p className="mt-0.5 text-muted-foreground">{t('concludeHint')}</p>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => handleResume('pending')}
+            disabled={resumingScope !== null}
+          >
+            {resumingScope === 'pending' ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <CheckCheck className="h-3.5 w-3.5" />
+            )}
+            {t('conclude')}
+          </Button>
         </div>
       )}
 

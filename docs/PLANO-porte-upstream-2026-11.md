@@ -507,10 +507,16 @@ Nenhum é regressão deste porte; os marcados "antes" já existiam.
   o 5xx/tempo esgotado fica "Entrega incerta" fora de todo reenvio, e o
   assistente para no lote que cai. Notas em `whatsapp-envio.md` ("ENTREGA
   INCERTA").
-- **Disparo:** o caminho `erro` da trava na API v1 entrega sem trava (reler a
-  campanha antes de seguir); o roteiro não cobre o terceiro desfecho (posse
-  incerta). A janela da chamada à Meta mais longa que a posse fechou com a
-  reserva por linha da 1151 (o Retomar não pega a linha reservada).
+- **Disparo:** o caminho `erro` da trava na API v1 entrega sem trava — com a
+  reserva por linha da 1151 já não manda em dobro (duas passadas nunca
+  reservam a mesma linha), mas duas podem correr juntas; o roteiro não cobre o
+  terceiro desfecho (posse incerta). A janela da chamada à Meta mais longa que
+  a posse fechou com a reserva (o Retomar não pega a linha reservada). Ficam
+  da 1151, aceitos: a forma antiga do pedido (`phone_numbers`, sem
+  `recipient_id`) manda sem reserva (nenhum chamador a usa); o code 1 da Meta
+  vem com HTTP 400 e é recusa (a régua do projeto é o status); publicar com
+  um disparo em andamento deixa a aba nova falar uns segundos com o contêiner
+  velho (`start-first`), que ainda grava `failed`.
 - **Equipe:** remover quem é dono de OUTRA conta falha em
   `idx_accounts_one_per_owner`; o nó "Transferir" do robô e a passagem da IA
   não releem o que gravaram; o "Reabrir" do fio aceita 0 linhas sem erro

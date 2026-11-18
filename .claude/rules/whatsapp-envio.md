@@ -350,10 +350,14 @@ leia-a antes de mexer num caminho que ENVIA modelo. Dela, valem aqui:
   #277: o recibo que chegasse antes do lote voltar se perdia); `failed` só na
   recusa 4xx (`recusaComprovada`); 5xx, tempo esgotado e rede FICAM
   `uncertain`. Logo `pending` = não saiu, e nenhum escopo de reenvio pega
-  `uncertain` (a tela a mostra à parte, com a frase; o CSV também). O lote cuja
-  chamada cai sem 4xx não grava nada pelo navegador: o assistente PARA e solta
-  a posse (`lote_incerto`). Antes ele marcava `failed`, e o "Tentar de novo os
-  que falharam" mandava o modelo pago em dobro.
+  `uncertain` (a tela a mostra à parte, com a frase; o CSV também). DISJUNTOR:
+  a 1ª incerta PARA a rota, o assistente e o `deliverBroadcast` (o resto fica
+  `pending`; numa pane da Meta, cada destinatário viraria incerto). O lote cuja
+  chamada cai sem a resposta (JSON) da rota não grava nada pelo navegador: o
+  assistente PARA e solta a posse (`lote_incerto`). Antes ele marcava `failed`,
+  e o "Tentar de novo os que falharam" mandava o modelo pago em dobro.
+  `sending` sem pendente nem falha e parado ganha "Concluir campanha"
+  (`painelDaRetomada`: a retomada fecha pelas linhas).
 - O navegador (`gravarDesfechoDoLote`) só grava o que a rota não anotou:
   `sent` também sobre a reserva (o wamid é a prova), `failed` só sobre
   `pending`, nada em `uncertain`/`skipped`. O que não gravou é conferido numa

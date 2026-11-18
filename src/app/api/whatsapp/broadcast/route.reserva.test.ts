@@ -122,6 +122,32 @@ describe('POST /api/whatsapp/broadcast — a reserva e a entrega incerta (1151)'
     ])
   })
 
+  it('⚠️⚠️ disjuntor: a 1ª incerta PARA o lote — os seguintes nem são reservados nem vão à Meta', async () => {
+    enviarModelo
+      .mockResolvedValueOnce({ messageId: 'wamid.1' })
+      .mockRejectedValueOnce(new MetaApiError('Service temporarily unavailable', { httpStatus: 503 }))
+    const corpo = await lote([
+      r1,
+      { recipient_id: 'r2', phone: '5583988745317', params: [] },
+      { recipient_id: 'r3', phone: '5583988745318', params: [] },
+    ])
+    expect(enviarModelo).toHaveBeenCalledTimes(2)
+    expect(corpo.results.map((r) => [r.recipient_id, r.status])).toEqual([
+      ['r1', 'sent'],
+      ['r2', 'uncertain'],
+    ])
+    expect(corpo).toMatchObject({ sent: 1, failed: 0, uncertain: 1 })
+    // r3 não foi reservado: continua `pending` (não saiu), para o Retomar.
+    expect(updates.some((u) => u.filtros.some(([c, v]) => c === 'id' && v === 'r3'))).toBe(false)
+  })
+
+  it('a recusa (4xx) NÃO para o lote: o próximo segue', async () => {
+    enviarModelo.mockRejectedValueOnce(new MetaApiError('recusado', { httpStatus: 400, code: 131026 }))
+    const corpo = await lote([r1, { recipient_id: 'r2', phone: '5583988745317', params: [] }])
+    expect(enviarModelo).toHaveBeenCalledTimes(2)
+    expect(corpo.results.map((r) => r.status)).toEqual(['failed', 'sent'])
+  })
+
   it('⚠️⚠️ erro de rede ou resposta 200 ilegível (a Meta pode ter aceitado): incerta', async () => {
     for (const erro of [new TypeError('fetch failed'), new SyntaxError('Unexpected end of JSON input')]) {
       updates.length = 0

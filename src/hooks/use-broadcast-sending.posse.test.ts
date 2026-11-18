@@ -103,11 +103,19 @@ describe('enviarLoteComPosse', () => {
     expect(lote).toEqual({ desfecho: { recusa: 'Too many requests' } });
   });
 
-  it('⚠️⚠️ 500 (pode ter saído): não repete, e o lote é INCERTO (1151)', async () => {
-    const enviar = vi.fn(async () => resposta(500, { error: 'boom' }));
+  it('500 com o JSON da ROTA (antes do laço: modelo malformado…): não repete, e é RECUSA com o motivo', async () => {
+    // A reserva prova o resto: o `failed` daqui só vai sobre `pending`.
+    const enviar = vi.fn(async () => resposta(500, { error: 'Template row is malformed locally' }));
     const lote = await enviarLoteComPosse(enviar, posseQueResponde(null), semEspera);
     expect(enviar).toHaveBeenCalledTimes(1);
-    expect(lote).toEqual({ desfecho: { incerto: 'boom' } });
+    expect(lote).toEqual({ desfecho: { recusa: 'Template row is malformed locally' } });
+  });
+
+  it('⚠️⚠️ 500 SEM o JSON da rota (o processo caiu, o proxy respondeu): INCERTO (1151)', async () => {
+    const enviar = vi.fn(async () => new Response('Internal Server Error', { status: 500 }));
+    const lote = await enviarLoteComPosse(enviar, posseQueResponde(null), semEspera);
+    expect(enviar).toHaveBeenCalledTimes(1);
+    expect(lote).toEqual({ desfecho: { incerto: 'Broadcast API request failed (HTTP 500)' } });
   });
 
   it('⚠️⚠️ a conexão caiu no meio do lote: INCERTO (a rota pode ter mandado)', async () => {
@@ -432,6 +440,18 @@ describe('createAndSendBroadcast — a ordem da posse', () => {
     expect(quebra).toBeLessThan(gravacaoNormal);
     expect(corpo.slice(incerto, quebra)).toContain("interrupcao = 'lote_incerto'");
     expect(corpo.slice(incerto, quebra)).not.toContain('gravarDesfechoDoLote');
+  });
+
+  it('⚠️⚠️ disjuntor (1151): a incerta no RESULTADO da rota também para o assistente, depois de gravar o lote', () => {
+    const gravacaoNormal = pos('gravarDesfechoDoLote(supabase, batch, lote.desfecho)');
+    const disjuntor = corpo.indexOf("lote.desfecho.resultados.some((r) => r.status === 'uncertain')", gravacaoNormal);
+    expect(disjuntor).toBeGreaterThan(gravacaoNormal);
+    const quebra = corpo.indexOf('break;', disjuntor);
+    const trecho = corpo.slice(disjuntor, quebra);
+    expect(trecho).toContain('pararDepoisDoLoteIncerto(supabase, broadcast.id, tokenDaPosse)');
+    expect(trecho).toContain("interrupcao = 'lote_incerto'");
+    // Antes da espera e do próximo lote.
+    expect(quebra).toBeLessThan(corpo.indexOf('await sleep(SEND_BATCH_DELAY_MS)', disjuntor));
   });
 
   it('o fim e os abortos passam pelas funções cercadas pelo token', () => {

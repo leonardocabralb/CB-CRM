@@ -270,6 +270,27 @@ describe('finalizeBroadcastStatus', () => {
     expect(writes.update?.status).toBe('sent');
   });
 
+  // NOSSO (1151): a entrega INCERTA não é pendente nem falha — a campanha só
+  // com incertas (ou com incertas e falhas) fecha `sent`; a tela as mostra à
+  // parte. Ela não segura a campanha em `sending`.
+  it('só incertas (nenhuma pendente nem falha): fecha `sent`', async () => {
+    const writes: { update?: Record<string, unknown> } = {};
+    await finalizeBroadcastStatus(statusDb({ pending: 0, failed: 0, uncertain: 4 }, 4, writes), 'b-1');
+    expect(writes.update?.status).toBe('sent');
+  });
+
+  it('falhas e incertas: `sent` (a incerta não faz "todas falharam")', async () => {
+    const writes: { update?: Record<string, unknown> } = {};
+    await finalizeBroadcastStatus(statusDb({ pending: 0, failed: 3, uncertain: 1 }, 4, writes), 'b-1');
+    expect(writes.update?.status).toBe('sent');
+  });
+
+  it('com pendente e incerta: não fecha (o Retomar ainda tem o que mandar)', async () => {
+    const writes: { update?: Record<string, unknown> } = {};
+    await finalizeBroadcastStatus(statusDb({ pending: 6, uncertain: 1 }, 7, writes), 'b-1');
+    expect(writes.update).toBeUndefined();
+  });
+
   // NOSSO (porte de 17/11/2026): contagem que falha é "não sei", nunca 0.
   // "0 pendentes" de um soluço do banco fechava como "Enviado" a campanha
   // parada com pendentes, e o Retomar sumia da tela.

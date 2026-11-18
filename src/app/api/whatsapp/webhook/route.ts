@@ -580,6 +580,11 @@ function ladderLevel(s: string): number {
  *     once the recipient has reached any of the success states.
  */
 function isValidStatusTransition(current: string, incoming: string): boolean {
+  // NOSSO (1151): a linha `uncertain` está RESERVADA por um envio em curso (ou
+  // ficou sem confirmação): quem a resolve é a cerca da reserva, nunca um
+  // recibo — o de um wamid antigo (a retentativa de uma `failed`) a tiraria da
+  // reserva, e o desfecho do envio gravaria 0 linhas.
+  if (current === 'uncertain') return false
   if (incoming === 'failed') {
     return current === 'pending' || current === 'sent'
   }
@@ -604,7 +609,7 @@ function isValidStatusTransition(current: string, incoming: string): boolean {
  * `failed` por cima do `delivered` (reproduzido pela revisão do PR #277). Com
  * a condição no WHERE, quem decide é o banco. Derivada da própria
  * `isValidStatusTransition` sobre os valores do CHECK (001), para as duas não
- * divergirem.
+ * divergirem. A `uncertain` (1151) fica de fora de propósito (ver acima).
  */
 function origensDoDestinatario(incoming: string): string[] {
   return [...RECIPIENT_STATUS_LADDER, 'failed'].filter((current) =>

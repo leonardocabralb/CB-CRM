@@ -67,7 +67,7 @@ ALTER TABLE public.broadcast_recipients
   CHECK (status IN ('pending', 'sent', 'delivered', 'read', 'replied', 'failed', 'uncertain'));
 
 COMMENT ON COLUMN public.broadcast_recipients.status IS
-  'pending = não saiu (nada foi tentado); sent/delivered/read/replied = a escada do recibo; failed = não saiu (recusa comprovada, ou nada a enviar); uncertain = PODE ter saído (reservada antes da Meta e sem resposta que confirme) — nenhum reenvio a pega. 1151.';
+  'pending = não saiu (nada foi tentado); sent/delivered/read/replied = a escada do recibo; failed = não chegou (recusa comprovada, nada a enviar, ou o recibo de falha da Meta; antes da 1151 também o que podia ter saído — na produção, nenhuma linha assim em 18/11/2026); uncertain = PODE ter saído (reservada antes da Meta e sem resposta que confirme) — nenhum reenvio a pega. 1151.';
 
 -- A rota do lote reserva e anota como quem disparou (`authenticated`, sob a
 -- RLS da 964). Na produção isto já vale pelo padrão do Supabase; em banco
@@ -116,6 +116,8 @@ BEGIN
 
   -- 3. Com dado: a RESERVA como o admin da conta (o caminho da rota do lote),
   --    e um estado fora da lista recusado. Desfeito pelo SQLSTATE próprio.
+  --    Roda depois do ALTER, com a trava exclusiva: QUALQUER linha serve —
+  --    sem ORDER BY, a leitura para na primeira (sem varrer nem ordenar).
   SELECT r.id, p.user_id
     INTO v_destinatario, v_admin
     FROM public.broadcast_recipients r
@@ -124,7 +126,6 @@ BEGIN
       ON p.account_id = b.account_id
      AND p.account_role IN ('owner', 'admin')
      AND p.suspenso_em IS NULL
-   ORDER BY r.created_at DESC, r.id, p.user_id
    LIMIT 1;
   IF v_destinatario IS NULL THEN
     RAISE NOTICE '1151: sem destinatário de conta com admin — conferido só o catálogo.';

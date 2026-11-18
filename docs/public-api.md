@@ -1012,6 +1012,10 @@ outcome (a timeout, a Meta 5xx, a dropped connection), so the message may
 have arrived. The CRM never resends it automatically — retrying failed
 recipients only covers the ones Meta refused. Once `status` leaves
 `sending`, the recipients missing from both counts are the uncertain ones.
+If Meta stops answering mid-broadcast, delivery stops at the first uncertain
+recipient instead of making every remaining one uncertain: the broadcast
+stays `sending`, with the rest pending, until someone resumes it from the
+broadcast page.
 
 ### `GET /api/v1/channels`
 

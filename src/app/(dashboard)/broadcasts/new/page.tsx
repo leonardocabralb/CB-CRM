@@ -77,9 +77,14 @@ export default function NewBroadcastPage() {
           t('toastSendInterrupted', { minutes: Math.round(PRAZO_DA_POSSE_MS / 60_000) }),
         );
       }
-      // NOSSO (1151): o lote caiu sem resposta do servidor; o assistente parou
-      // e soltou a posse — o Retomar já aparece na página da campanha.
-      if (interrupcao === 'lote_incerto') toast.error(t('toastSendBatchUncertain'));
+      // NOSSO (1151): um envio ficou sem confirmação (o lote caiu, ou a Meta
+      // não respondeu); o assistente parou e tentou soltar a posse. Se a rede
+      // caiu, nem isso gravou: o Retomar volta quando a posse vencer.
+      if (interrupcao === 'lote_incerto') {
+        toast.error(
+          t('toastSendBatchUncertain', { minutes: Math.round(PRAZO_DA_POSSE_MS / 60_000) }),
+        );
+      }
       router.push(`/broadcasts/${broadcastId}`);
     } catch (err) {
       // Previously swallowed with console.error — the wizard would

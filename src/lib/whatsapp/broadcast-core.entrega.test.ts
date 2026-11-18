@@ -188,6 +188,42 @@ describe('deliverBroadcast — reserva e desfecho (1151)', () => {
     expect(falha.filtros).toContainEqual(['status in', ['pending', 'failed']]);
   });
 
+  it('⚠️⚠️ disjuntor: a passada PARA na primeira incerta — o resto nem é reservado nem vai à Meta', async () => {
+    const { db, chamadas } = bancoFalso();
+    enviarModelo.mockRejectedValueOnce(new MetaApiError('Service temporarily unavailable', { httpStatus: 503 }));
+    await deliverBroadcast(
+      db,
+      plano({
+        planned: [
+          { recipientRowId: 'r1', phone: '5583988745316', params: [] },
+          { recipientRowId: 'r2', phone: '5583988745317', params: [] },
+          { recipientRowId: 'r3', phone: '5583988745318', params: [] },
+        ],
+      }),
+    );
+    expect(enviarModelo).toHaveBeenCalledTimes(1);
+    expect(escritasNaLinha(chamadas, 'r2')).toEqual([]);
+    expect(escritasNaLinha(chamadas, 'r3')).toEqual([]);
+    // E a campanha ainda passa pelo fecho pelas linhas (que, com pendentes,
+    // a deixa `sending` para o Retomar).
+    expect(chamadas.some((c) => c.tabela === 'broadcast_recipients' && c.op === 'select')).toBe(true);
+  });
+
+  it('a recusa (4xx) NÃO para a passada: o próximo segue', async () => {
+    const { db } = bancoFalso();
+    enviarModelo.mockRejectedValueOnce(new MetaApiError('recusado', { httpStatus: 400, code: 131026 }));
+    await deliverBroadcast(
+      db,
+      plano({
+        planned: [
+          { recipientRowId: 'r1', phone: '5583988745316', params: [] },
+          { recipientRowId: 'r2', phone: '5583988745317', params: [] },
+        ],
+      }),
+    );
+    expect(enviarModelo).toHaveBeenCalledTimes(2);
+  });
+
   it('a campanha fecha pelas linhas no fim (finalizeBroadcastStatus)', async () => {
     const { db, chamadas } = bancoFalso();
     await deliverBroadcast(db, plano());

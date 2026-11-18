@@ -57,9 +57,11 @@ export const DELIVERY_LOCK_STALE_MS = 30 * 60 * 1000;
 /**
  * ⚠️⚠️ NOSSO (1151): nenhum escopo inclui `uncertain` — a linha que PODE ter
  * saído (5xx, tempo esgotado, lote que caiu no meio) nunca volta à Meta por
- * aqui, nem no "Tentar de novo os que falharam" (`failed` agora é só recusa
- * comprovada ou nada a enviar). As mesmas situações são as `origens` da
- * reserva de cada linha no envio (`deliverBroadcast`).
+ * aqui, nem no "Tentar de novo os que falharam" (`failed` agora é recusa
+ * comprovada, nada a enviar ou o recibo de falha da Meta; o `failed` de antes
+ * da 1151 podia ser o que saiu — na produção, nenhum em 18/11/2026). As
+ * mesmas situações são as `origens` da reserva de cada linha no envio
+ * (`deliverBroadcast`).
  */
 export function scopeStatuses(scope: ResumeScope): string[] {
   if (scope === 'pending') return ['pending'];

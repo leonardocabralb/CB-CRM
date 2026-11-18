@@ -74,6 +74,24 @@ describe('linhaDoCsv', () => {
 //    deixava tabela, filtro, contagens do Retomar e CSV pela metade.
 // ============================================================
 
+describe('painelDaRetomada — "concluir" (1151)', () => {
+  const vazia = { pendentes: 0, falhos: 0 };
+
+  it('⚠️ `sending` sem ninguém pendente nem falho, e ninguém enviando: "concluir" (senão fica "Enviando" para sempre)', () => {
+    expect(painelDaRetomada({ ...vazia, status: 'sending', emAndamento: false })).toBe('concluir');
+  });
+
+  it('com envio rodando ou sem saber, não oferece concluir', () => {
+    expect(painelDaRetomada({ ...vazia, status: 'sending', emAndamento: true })).toBeNull();
+    expect(painelDaRetomada({ ...vazia, status: 'sending', emAndamento: null })).toBeNull();
+  });
+
+  it('campanha já fechada sem nada pendente: nada a mostrar', () => {
+    expect(painelDaRetomada({ ...vazia, status: 'sent', emAndamento: false })).toBeNull();
+    expect(painelDaRetomada({ ...vazia, status: 'failed', emAndamento: false })).toBeNull();
+  });
+});
+
 describe('painelDaRetomada', () => {
   const base = { status: 'sending' as const, pendentes: 5, falhos: 0 };
 
@@ -102,8 +120,11 @@ describe('painelDaRetomada', () => {
     ).toBe('retentar');
   });
 
-  it('nada pendente nem falho: sem faixa, esteja ou não rodando', () => {
+  it('nada pendente nem falho: sem faixa (a campanha `sending` parada é o "concluir" da 1151, acima)', () => {
     for (const emAndamento of [true, false, null]) {
+      expect(painelDaRetomada({ status: 'sent', pendentes: 0, falhos: 0, emAndamento })).toBeNull();
+    }
+    for (const emAndamento of [true, null]) {
       expect(
         painelDaRetomada({ status: 'sending', pendentes: 0, falhos: 0, emAndamento }),
       ).toBeNull();
