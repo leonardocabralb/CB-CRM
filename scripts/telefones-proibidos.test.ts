@@ -66,8 +66,9 @@ function achados(texto: string, hashes: ReadonlySet<string>): Achado[] {
   const vistos = new Set<string>()
   texto.split('\n').forEach((original, i) => {
     for (const m of comEscapesLidos(original).matchAll(TRECHO)) {
+      // Sem teto de tamanho: dois números separados por espaço são UM trecho
+      // (o espaço é separador de telefone), e o teto descartava os dois.
       const digitos = m[0].replace(/\D/g, '')
-      if (digitos.length < 8 || digitos.length > 20) continue
       for (let j = 0; j + 8 <= digitos.length; j++) {
         const hash = sha256(digitos.slice(j, j + 8))
         const chave = `${i + 1}:${hash}`
@@ -161,6 +162,9 @@ describe('telefones proibidos', () => {
       ['da planilha que virou número', '81980000016.0'],
       ['num JID do WhatsApp', '5583980000016@s.whatsapp.net'],
       ['no meio de uma frase', 'enviou 5583980000016 às 10h'],
+      ['ao lado de outro número', '+55 (83) 98000-0016 +55 (83) 98000-0017'],
+      ['depois de outro número', '+55 (83) 98000-0017 +55 (83) 98000-0016'],
+      ['depois de uma data', '2026-09-23 98000-0016'],
     ])('acha %s', (_, texto) => {
       expect(acha(texto)).toBe(true)
     })
