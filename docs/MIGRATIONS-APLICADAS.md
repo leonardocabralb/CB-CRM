@@ -2273,3 +2273,22 @@ nome da época em que foram aplicadas.
   `authenticated`, as outras duas fechadas, nenhuma sobra da prova (ficha
   sintética), os 15 membros ativos de antes e nenhuma conversa com
   responsável fora da conta.
+- **1151_cb_entrega_incerta_do_disparo** — ENTREGA INCERTA no destinatário
+  do disparo: `uncertain` entra no CHECK de `broadcast_recipients.status`
+  (DROP pela forma, ADD com o nome `broadcast_recipients_status_check`, o
+  modelo da 989), fica fora dos contadores (`_bcast_cols_for_status` devolve
+  `{}`) e ganha o COMMENT da coluna. Quem envia reserva a linha (`pending` →
+  `uncertain`) antes da Meta, e nenhum reenvio pega a incerta. PR #534.
+
+  ADITIVA, aplicada ANTES do deploy com a autorização explícita do operador
+  ("Aplicar 1151 em produção", 18/11/2026), em 18/11/2026 às 13:08 BRT
+  (histórico `20261118160809`), pela Management API, com o arquivo idêntico
+  ao do commit `ec68d710` (sha256 `3afda705…`), cujo replay do CI passou e
+  cujo HEAD o Codex revisou sem achados. Antes: o replay local do zero, a
+  1151 reaplicada com dado fictício e 16 cenários como o admin; medido na
+  produção (só leitura): 3 destinatários, nenhum afetado, nenhum disparo em
+  andamento e um gatilho só na tabela (`broadcast_recipients_aggregate`).
+  Conferida na produção: um CHECK de status só, com os sete estados, o
+  COMMENT, a incerta fora dos contadores, `authenticated` com UPDATE, e os 3
+  destinatários e os contadores das 3 campanhas iguais aos de antes (a
+  reserva da conferência foi desfeita).
