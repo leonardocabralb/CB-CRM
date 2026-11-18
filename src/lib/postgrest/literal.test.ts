@@ -36,7 +36,7 @@ describe('ramoContem', () => {
   it.each([
     // [termo, texto que TEM de casar, texto que NÃO pode casar]
     ['silva, jr', 'Ana Silva, Jr.', 'Ana Silva Jr'],
-    ['(83) 9887', 'Fone (83) 98874-5316', 'Fone 83 98874'],
+    ['(83) 9800', 'Fone (83) 98000-0016', 'Fone 83 98000'],
     ['50%', 'Desconto de 50%', 'Desconto de 500'],
     ['a_b', 'x a_b y', 'x aXb y'],
     ['a*b', 'x a*b y', 'x aXXb y'],

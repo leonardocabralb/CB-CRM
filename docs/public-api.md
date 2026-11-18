@@ -189,9 +189,9 @@ recipient — reads it the way the CRM's own screens do:
   `+41 55 555 12 12`. A leading `00` works like `+`.
 - **Without `+`**, 10 digits, or 11 digits with `9` in the third position
   (area code + mobile), is read as **Brazilian** and gets `55`:
-  `(81) 98874-5316` → `5581988745316`. Anything else without `+` — 12
+  `(81) 98000-0016` → `5581980000016`. Anything else without `+` — 12
   digits or more, or 11 without a `9` in the third position — is taken as
-  already carrying its country code (`5581988745316`, `14155550123`).
+  already carrying its country code (`5581980000016`, `14155550123`).
 - Spaces, dots, dashes and parentheses are ignored.
 - **Rejected** with `400 bad_request`, and the message says why: too short
   (fewer than 10 digits without `+`, fewer than 8 with it), a trunk `0`
@@ -202,11 +202,11 @@ recipient — reads it the way the CRM's own screens do:
   in `rejected`.
 
 A contact's stored `phone` is digits only, with the country code
-(`5581988745316`). Send a number from any other country **with `+`**: the
+(`5581980000016`). Send a number from any other country **with `+`**: the
 US national `4155550123` without it is read as Brazilian (area code 41).
 
 > **Changed in September 2026.** Before, everything that was not a digit
-> was stripped: `(81) 98874-5316` became the contact `81988745316` —
+> was stripped: `(81) 98000-0016` became the contact `81980000016` —
 > delivered to +81 (Japan) —, and a pasted `…@s.whatsapp.net` was accepted
 > as its digits. `POST /api/v1/broadcasts` required the leading `+`. A
 > number sent **with `+`** and only digits and the separators above is
@@ -435,8 +435,8 @@ List contacts, newest first. Scope: `contacts:read`. Paginated (see
 case-insensitive substring of the name or the phone, matched literally —
 `%`, `_`, `*`, commas and parentheses are plain characters) and
 `?tag=<tagId>`. The phone is stored as digits only (see
-[Phone numbers](#phone-numbers)), so search it by digits: `8198874` finds
-`5581988745316`, while `+55 (81)` finds nothing. The `tag` filter takes only a tag **id**
+[Phone numbers](#phone-numbers)), so search it by digits: `8198000` finds
+`5581980000016`, while `+55 (81)` finds nothing. The `tag` filter takes only a tag **id**
 (from `GET /api/v1/tags`) — unlike the write endpoints below, a tag name
 there is a `400 bad_request`.
 
@@ -445,8 +445,8 @@ there is a `400 bad_request`.
 > phone of a contact that was merged into it (see
 > [Merged contacts](#post-apiv1contacts) below): the result is the contact
 > that stayed, with its **current** `phone`. A full number with `55` matches
-> with or without the mobile ninth digit (`5581988745316` or
-> `558188745316`). A shorter search, or one with anything besides digits,
+> with or without the mobile ninth digit (`5581980000016` or
+> `558180000016`). A shorter search, or one with anything besides digits,
 > matches only the current name and phone. If the CRM cannot read the old
 > phones, the answer is a `500` — never a list missing the contact.
 
@@ -835,7 +835,7 @@ tags. Group conversations are not listed.
   "last_message_text": "…", "last_message_at": "…",
   "unread_count": 0,
   "created_at": "…", "updated_at": "…",
-  "contact": { "id": "…", "phone": "5581988745316", "name": "…", "email": null, "company": null,
+  "contact": { "id": "…", "phone": "5581980000016", "name": "…", "email": null, "company": null,
                "whatsapp_user_id": null, "whatsapp_username": null, "tags": [] }
 }
 ```

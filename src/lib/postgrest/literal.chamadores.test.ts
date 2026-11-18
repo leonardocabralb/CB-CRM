@@ -24,7 +24,7 @@ const ler = (rel: string) =>
 describe('buscas de contato por texto livre', () => {
   it('a tela de Contatos: `.or()` pela busca da tabela e o termo da RPC com escaparLike', () => {
     // Porte #679 (17/11/2026): a tela deixou de montar `name/phone/email`
-    // à mão — o telefone cru não achava "(83) 98874-5316" — e passou a
+    // à mão — o telefone cru não achava "(83) 98000-0016" — e passou a
     // `ramosDaBuscaNaTabela` (todo ramo por `ramoContem`, pinado abaixo). A
     // RPC recebe os DÍGITOS quando o termo tem cara de telefone, sempre pelo
     // escape do LIKE.

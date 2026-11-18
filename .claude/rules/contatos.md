@@ -92,7 +92,7 @@ decide mais "mesma pessoa".
   mensagens e disparo, "Nova conversa", webhook de entrada) e reprova o nome
   `parseInternationalPhone` em `src/`.
 - Nunca `sanitizePhoneForMeta` + `isValidE164` sobre o que foi DIGITADO:
-  "(81) 98874-5316" virava a ficha +81, e um JID colado virava telefone.
+  "(81) 98000-0016" virava a ficha +81, e um JID colado virava telefone.
 - Custo escrito na doc pública: número estrangeiro com código do país, SEM `+`,
   de 10 dígitos (ou 11 com 9 na 3ª posição) é lido como brasileiro.
 - Na edição, telefone que não mudou não é conferido nem regravado.

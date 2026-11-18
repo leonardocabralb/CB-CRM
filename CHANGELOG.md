@@ -243,8 +243,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Telefone digitado sem o código do país não vai mais para outro país.**
   O formulário de contato, a ficha e as duas planilhas (importar contatos e
-  o CSV do disparo) gravavam o número como foi escrito: "(81) 98874-5316"
-  virava a ficha "81988745316", e a mensagem saía para +81 (Japão) — no
+  o CSV do disparo) gravavam o número como foi escrito: "(81) 98000-0016"
+  virava a ficha "81980000016", e a mensagem saía para +81 (Japão) — no
   disparo por CSV, ainda criava uma ficha nova em vez de achar a do
   cliente. Agora o número sem `+` é lido como brasileiro e ganha o 55;
   número de outro país continua sendo escrito com `+` e o código do país.
@@ -254,8 +254,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **A mesma leitura do telefone na "Nova conversa", na API e nos webhooks
   recebidos.** A "Nova conversa" da caixa de entrada e a API
   (`POST /api/v1/contacts`, `/api/v1/messages` e `/api/v1/broadcasts`)
-  passam a ler o telefone como as telas de contato: "(81) 98874-5316" vira `5581988745316` (antes, a
-  ficha `81988745316`, que sai para +81). ⚠️ **Para quem integra:** o
+  passam a ler o telefone como as telas de contato: "(81) 98000-0016" vira `5581980000016` (antes, a
+  ficha `81980000016`, que sai para +81). ⚠️ **Para quem integra:** o
   disparo pela API deixa de exigir o `+` no número brasileiro, e texto com
   letra — inclusive um id do WhatsApp colado, como `…@s.whatsapp.net` —
   passa a ser recusado com `400` e o motivo, em vez de virar os dígitos
@@ -265,7 +265,7 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   brasileiro — mande-o com `+`. A regra está em
   [`docs/public-api.md`](./docs/public-api.md#phone-numbers). Os webhooks
   de entrada (o Typebot) passam pela mesma régua: lá o número brasileiro sem
-  `+` já ganhava o 55, mas "98874-5316" (sem DDD) virava uma ficha de +98 e
+  `+` já ganhava o 55, mas "98000-0016" (sem DDD) virava uma ficha de +98 e
   um id do WhatsApp colado virava telefone. Agora o telefone que chega e não
   serve não cria ficha: o log diz o porquê, e o Meu dia conta o caso por 7
   dias, com um link para o log de *Webhooks → Recebidos*. O item do Meu dia

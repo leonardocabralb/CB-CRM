@@ -413,8 +413,8 @@ export function ContactDetailView({
   async function saveDetails() {
     if (!contactId) return;
     // O telefone só vai quando MUDOU, e aí sai normalizado pela nossa régua
-    // (brasileiro sem DDI ganha o 55): gravado cru, "(81) 98874-5316" virava
-    // "81988745316", que sai para +81. Telefone que ninguém tocou não é
+    // (brasileiro sem DDI ganha o 55): gravado cru, "(81) 98000-0016" virava
+    // "81980000016", que sai para +81. Telefone que ninguém tocou não é
     // conferido — há fichas antigas fora da régua, e corrigir o nome delas
     // não pode esbarrar nele. A ficha com outra identidade (Instagram, 989,
     // ou o BSUID do WhatsApp, 1041) pode ficar sem.
