@@ -1006,6 +1006,17 @@ Broadcast status + counts. Scope: `broadcasts:send`. `status` moves
 `delivered_count` / `read_count` keep climbing as Meta delivery webhooks
 arrive. `404` for another account's broadcast.
 
+A recipient whose delivery is **uncertain** counts in neither `sent_count`
+nor `failed_count`: the CRM called Meta for it, but no answer confirmed the
+outcome (a timeout, a Meta 5xx, a dropped connection), so the message may
+have arrived. The CRM never resends it automatically — retrying failed
+recipients only covers the ones Meta refused. Once `status` leaves
+`sending`, the recipients missing from both counts are the uncertain ones.
+If Meta stops answering mid-broadcast, delivery stops at the first uncertain
+recipient instead of making every remaining one uncertain: the broadcast
+stays `sending`, with the rest pending, until someone resumes it from the
+broadcast page.
+
 ### `GET /api/v1/channels`
 
 List the account's connections: its WhatsApp numbers and, if any, its

@@ -138,6 +138,10 @@ const EXCECOES_DECLARADAS = [
   // A conferência das linhas de UM lote de envio que não gravaram: `.in()`
   // sobre no máximo os `SEND_BATCH_SIZE` (10) ids daquele lote.
   faixaDoModulo('situacaoDasLinhas'),
+  // NOSSO (1151): as CONTAGENS do fim depois do lote incerto (pendentes,
+  // falhas, total). `head: true` não devolve linha nenhuma — só o
+  // `count: 'exact'` —, então o teto de mil do PostgREST não corta nada.
+  faixaDoModulo('pararDepoisDoLoteIncerto'),
 ];
 
 /** Tabelas cuja leitura cresce com a base — todas passam do teto de 1000. */

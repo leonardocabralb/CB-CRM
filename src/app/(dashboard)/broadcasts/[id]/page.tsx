@@ -41,6 +41,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
+  ENTREGA_INCERTA,
   getBroadcastStatus,
   getRecipientStatus,
 } from '@/lib/broadcast-status';
@@ -48,7 +49,9 @@ import { useTranslations } from 'next-intl';
 import { nomeDoContato } from '@/lib/contacts/identidade';
 import {
   lerDestinatariosDaCampanha,
+  linhaDoCsv,
   MINUTOS_DA_TRAVA_DA_RETOMADA,
+  mostrarFaixaDasIncertas,
   painelDaRetomada,
 } from '@/lib/broadcast-painel';
 import { disparoEmAndamento, PRAZO_DA_POSSE_MS } from '@/lib/whatsapp/broadcast-posse';
@@ -134,6 +137,8 @@ const RECIPIENT_STATUSES: readonly RecipientStatus[] = [
   'read',
   'replied',
   'failed',
+  // NOSSO (1151): pode ter saído — fora de todo reenvio.
+  ENTREGA_INCERTA,
 ];
 
 /**
@@ -250,15 +255,13 @@ export default function BroadcastDetailPage() {
       t('table.read'),
       t('table.error'),
     ];
-    const rows = recipients.map((r) => [
-      r.contact?.name ?? '',
-      r.contact?.phone ?? '',
-      r.status,
-      r.sent_at ?? '',
-      r.delivered_at ?? '',
-      r.read_at ?? '',
-      r.error_message ?? '',
-    ]);
+    // NOSSO (1151): a situação traduzida, e a frase da entrega incerta.
+    const rows = recipients.map((r) =>
+      linhaDoCsv(r, {
+        situacao: (s) => tStatus(getRecipientStatus(s).label),
+        incerta: t('uncertainCell'),
+      }),
+    );
     const csv = toCsv([header, ...rows]);
     const safeName = broadcast.name.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase();
     downloadBlob(`broadcast-${safeName}-${broadcastId.slice(0, 8)}.csv`, csv);
@@ -292,6 +295,13 @@ export default function BroadcastDetailPage() {
       }
       if (payload?.code === 'claim_failed') {
         toast.error(t('toastResumeClaimFailed'));
+        return;
+      }
+      if (payload?.code === 'nothing_to_resume') {
+        // NOSSO (1151): nada a mandar — a retomada fechou a campanha pelas
+        // linhas (`finalizeBroadcastStatus`). É o "Concluir campanha".
+        toast.success(t('toastConcluded'));
+        await fetchData();
         return;
       }
 
@@ -378,6 +388,8 @@ export default function BroadcastDetailPage() {
 
   const pendingCount = recipients.filter((r) => r.status === 'pending').length;
   const retryableCount = recipients.filter((r) => r.status === 'failed').length;
+  // NOSSO (1151): o que PODE ter saído — nenhum botão daqui o reenvia.
+  const uncertainCount = recipients.filter((r) => r.status === ENTREGA_INCERTA).length;
   // A campaign whose tab went away sits in 'sending' with recipients
   // still pending and nothing left to move them. Name that state rather
   // than leaving a permanently pulsing "sending" badge.
@@ -558,6 +570,41 @@ export default function BroadcastDetailPage() {
         </div>
       )}
 
+      {/* NOSSO (1151): `sending` sem ninguém pendente e sem ninguém enviando —
+          o envio parou antes de fechar a campanha. Concluir fecha pelas
+          linhas, sem mandar nada (`painelDaRetomada`). */}
+      {painel === 'concluir' && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
+          <div className="text-sm">
+            <p className="font-medium text-foreground">{t('concludeTitle')}</p>
+            <p className="mt-0.5 text-muted-foreground">{t('concludeHint')}</p>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => handleResume('pending')}
+            disabled={resumingScope !== null}
+          >
+            {resumingScope === 'pending' ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <CheckCheck className="h-3.5 w-3.5" />
+            )}
+            {t('conclude')}
+          </Button>
+        </div>
+      )}
+
+      {/* NOSSO (1151): a entrega incerta, à parte do Retomar e do "Tentar de
+          novo" — só com o envio parado (`mostrarFaixaDasIncertas`). */}
+      {mostrarFaixaDasIncertas(uncertainCount, emAndamento) && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm">
+          <p className="font-medium text-amber-700">
+            {t('uncertainTitle', { count: uncertainCount })}
+          </p>
+          <p className="mt-0.5 text-muted-foreground">{t('uncertainHint')}</p>
+        </div>
+      )}
+
       {/* Stats — 6 cards: Total / Sent / Delivered / Read / Replied / Failed */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <StatCard
@@ -724,9 +771,20 @@ export default function BroadcastDetailPage() {
                           ? new Date(recipient.read_at).toLocaleString()
                           : '-'}
                       </TableCell>
-                      <TableCell className="max-w-xs truncate text-xs text-red-400">
-                        {recipient.error_message ?? '-'}
-                      </TableCell>
+                      {recipient.status === ENTREGA_INCERTA ? (
+                        // NOSSO (1151): a frase no lugar do erro técnico, que
+                        // fica no `title`.
+                        <TableCell
+                          className="max-w-xs truncate text-xs text-amber-700"
+                          title={recipient.error_message ?? undefined}
+                        >
+                          {t('uncertainCell')}
+                        </TableCell>
+                      ) : (
+                        <TableCell className="max-w-xs truncate text-xs text-red-400">
+                          {recipient.error_message ?? '-'}
+                        </TableCell>
+                      )}
                     </TableRow>
                   );
                 })}

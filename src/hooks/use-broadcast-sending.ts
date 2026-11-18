@@ -23,6 +23,7 @@ import {
   renovarPosseDoDisparo,
   tomarPosseDoDisparo,
 } from '@/lib/whatsapp/broadcast-posse';
+import { ENTREGA_INCERTA } from '@/lib/broadcast-status';
 import { Contact, MessageTemplate } from '@/types';
 
 export type CustomFieldOperator = 'is' | 'is_not' | 'contains';
@@ -80,9 +81,13 @@ interface BroadcastPayload {
  * NOSSO (posse do envio, 1147): por que o assistente PAROU antes do fim.
  * `posse_perdida` = outro envio (a retomada) assumiu a campanha e manda o
  * que falta; `posse_incerta` = não deu para confirmar a posse (a conexão com
- * o servidor caiu) — o resto fica pendente para o Retomar.
+ * o servidor caiu) — o resto fica pendente para o Retomar; `lote_incerto`
+ * (1151) = um envio ficou sem confirmação (a chamada do lote caiu sem
+ * resposta da rota, ou a rota parou na primeira resposta que a Meta não deu):
+ * o que foi reservado ficou com entrega incerta, o resto pendente, e a posse
+ * foi solta para o Retomar aparecer.
  */
-export type InterrupcaoDoEnvio = 'posse_perdida' | 'posse_incerta';
+export type InterrupcaoDoEnvio = 'posse_perdida' | 'posse_incerta' | 'lote_incerto';
 
 export interface ResultadoDoDisparo {
   broadcastId: string;
@@ -194,16 +199,22 @@ function sleep(ms: number) {
 
 export interface BroadcastApiResult {
   phone: string;
-  status: 'sent' | 'failed';
+  /**
+   * NOSSO (1151): `uncertain` = foi à Meta e ninguém confirmou o desfecho (a
+   * linha fica com entrega incerta); `skipped` = a linha não estava mais
+   * pendente na reserva da rota, e nada foi enviado a ela. Nos dois, o
+   * navegador não grava nada.
+   */
+  status: 'sent' | 'failed' | 'uncertain' | 'skipped';
   whatsapp_message_id?: string;
   error?: string;
   /** A linha de `broadcast_recipients` do pedido, devolvida pela rota. */
   recipient_id?: string;
   /**
-   * `true` = a rota JÁ gravou o envio na linha, na hora em que a Meta o
-   * aceitou (`anotarEnvio`, em `api/whatsapp/broadcast`). O navegador não
-   * regrava: nesse meio-tempo o recibo da Meta pode ter levado a linha a
-   * "entregue".
+   * `true` = a rota JÁ gravou o desfecho na linha que reservou (o envio na
+   * hora em que a Meta o aceitou, a recusa ou o motivo da incerta;
+   * `gravarDesfechoDaReserva`, 1151). O navegador não regrava: nesse
+   * meio-tempo o recibo da Meta pode ter levado a linha a "entregue".
    */
   anotado?: boolean;
 }
@@ -273,6 +284,7 @@ async function marcarDestinatario(
   supabase: ReturnType<typeof createClient>,
   recipientId: string,
   patch: Record<string, unknown>,
+  origens: readonly string[] = ['pending'],
 ): Promise<boolean> {
   const { data, error } = await supabase
     .from('broadcast_recipients')
@@ -281,8 +293,10 @@ async function marcarDestinatario(
     // ⚠️ Só a linha que ainda não andou. Desde que a rota do lote anota o
     // envio na hora (`anotado`), a linha pode chegar aqui já `sent` e até
     // `delivered` pelo recibo — regravar `sent` a rebaixaria, e um `failed`
-    // do lote que estourou por cima apagaria um envio que aconteceu.
-    .eq('status', 'pending')
+    // do lote que estourou por cima apagaria um envio que aconteceu. O
+    // `sent` com wamid também vale sobre a RESERVA da rota (1151, `uncertain`):
+    // o wamid é a prova.
+    .in('status', [...origens])
     .select('id');
   return !error && (data?.length ?? 0) > 0;
 }
@@ -306,8 +320,16 @@ async function situacaoDasLinhas(
   return new Map(data.map((l) => [l.id as string, l.status as string]));
 }
 
-/** O que voltou de um lote enviado à rota `api/whatsapp/broadcast`. */
-export type DesfechoDoLote = { resultados: BroadcastApiResult[] } | { erro: string };
+/**
+ * O que voltou de um lote enviado à rota `api/whatsapp/broadcast`: o que ela
+ * respondeu por linha, a RECUSA do lote inteiro (4xx: a rota parou antes de
+ * mandar qualquer um) ou a falha INCERTA (a chamada caiu, 5xx, resposta
+ * ilegível — a rota pode ter mandado; 1151).
+ */
+export type DesfechoDoLote =
+  | { resultados: BroadcastApiResult[] }
+  | { recusa: string }
+  | { incerto: string };
 
 /**
  * Um lote: o desfecho para gravar, ou a parada por falta de posse — com o que
@@ -338,6 +360,12 @@ function paradaDaRota(status: number, data: { code?: unknown }): InterrupcaoDoEn
  * se ELA a perde no meio, responde 409 com o que já processou, e isto vira a
  * mesma parada — só os `resultados` dela se gravam.
  *
+ * ⚠️⚠️ NOSSO (1151): a falha do lote inteiro se separa em RECUSA (a rota
+ * respondeu com o motivo, no JSON dela, ou 4xx — sessão, papel, limite, pedido
+ * inválido, sem número oficial, modelo malformado: recusado antes do laço de
+ * envio) e INCERTA (a chamada não voltou, o 502/504 do proxy sem o JSON da
+ * rota, resposta 200 ilegível: a rota pode ter mandado).
+ *
  * `manterPosse` devolve `null` com a posse renovada, ou o motivo da parada.
  */
 export async function enviarLoteComPosse(
@@ -349,15 +377,23 @@ export async function enviarLoteComPosse(
   if (semPosse) return { interrupcao: semPosse, resultados: [] };
 
   try {
-    let data: { error?: string; code?: unknown; results?: BroadcastApiResult[] } = {};
     for (let attempt = 1; ; attempt++) {
       const res = await enviar();
-      data = await res.json();
-      if (res.ok) break;
+      const data = (await res.json().catch(() => null)) as {
+        error?: string;
+        code?: unknown;
+        results?: BroadcastApiResult[];
+      } | null;
+      if (res.ok) {
+        // A rota RODOU e a resposta não se lê: o que ela fez está nas linhas
+        // (a reserva de cada uma), não aqui.
+        if (!data) return { desfecho: { incerto: 'Unreadable response from the batch route' } };
+        return { desfecho: { resultados: data.results ?? [] } };
+      }
 
-      const paradaNaRota = paradaDaRota(res.status, data);
+      const paradaNaRota = paradaDaRota(res.status, data ?? {});
       if (paradaNaRota) {
-        return { interrupcao: paradaNaRota, resultados: data.results ?? [] };
+        return { interrupcao: paradaNaRota, resultados: data?.results ?? [] };
       }
 
       // Only 429 is replayed — see batchRetryDelayMs for why nothing else
@@ -367,7 +403,16 @@ export async function enviarLoteComPosse(
           ? batchRetryDelayMs(res.status, res.headers.get('Retry-After'))
           : null;
       if (retryIn === null) {
-        throw new Error(data.error || 'Broadcast API request failed');
+        const erro = data?.error || `Broadcast API request failed (HTTP ${res.status})`;
+        // A ROTA respondeu com o motivo (o JSON dela): ela recusou o lote —
+        // também no 5xx dela (modelo malformado, conexão ilegível), que vem
+        // antes do laço de envio. E mesmo se viesse do meio do laço, o `failed`
+        // daqui só vai sobre `pending`, que a reserva prova que não saiu. Sem o
+        // JSON dela (o HTML do proxy) não há como saber: incerto.
+        const daRota = typeof data?.error === 'string';
+        return daRota || (res.status >= 400 && res.status < 500)
+          ? { desfecho: { recusa: erro } }
+          : { desfecho: { incerto: erro } };
       }
       await esperar(retryIn);
       // A espera pode chegar a 2 min: a posse pode ter vencido e sido
@@ -375,9 +420,9 @@ export async function enviarLoteComPosse(
       const posseNaEspera = await manterPosse();
       if (posseNaEspera) return { interrupcao: posseNaEspera, resultados: [] };
     }
-    return { desfecho: { resultados: (data.results ?? []) as BroadcastApiResult[] } };
   } catch (err) {
-    return { desfecho: { erro: err instanceof Error ? err.message : 'Unknown error' } };
+    // A chamada não voltou (rede, aba, proxy): a rota pode ter mandado.
+    return { desfecho: { incerto: err instanceof Error ? err.message : 'Unknown error' } };
   }
 }
 
@@ -434,18 +479,75 @@ export async function fecharCampanhaComAPosse(
 }
 
 /**
- * Grava nas linhas de um lote o que a rota respondeu — ou o erro que
+ * NOSSO (1151): o fim do assistente depois de um envio sem confirmação
+ * (`lote_incerto`: o lote que caiu sem resposta da rota, ou a incerta que a
+ * rota devolveu ao parar). Fecha pelas LINHAS, como `finalizeBroadcastStatus`
+ * no servidor: sobrou `pending` → a campanha segue `sending` e só a posse sai
+ * (a tela mostra "parou no meio" e o Retomar na hora, não daqui a 5 min); não
+ * sobrou → fecha `sent`/`failed` com a posse. Contagem que falha é "não sei",
+ * nunca 0: só solta a posse (se nem isso gravar, ela vence em 5 min).
+ */
+export async function pararDepoisDoLoteIncerto(
+  supabase: ReturnType<typeof createClient>,
+  broadcastId: string,
+  token: string,
+): Promise<void> {
+  const contar = async (status?: string): Promise<number | null> => {
+    const base = supabase
+      .from('broadcast_recipients')
+      .select('id', { count: 'exact', head: true })
+      .eq('broadcast_id', broadcastId);
+    const { count, error } = await (status ? base.eq('status', status) : base);
+    return error || count === null ? null : count;
+  };
+
+  if ((await contar('pending')) === 0) {
+    const falhas = await contar('failed');
+    const total = await contar();
+    if (falhas !== null && total !== null) {
+      await fecharCampanhaComAPosse(
+        supabase,
+        broadcastId,
+        token,
+        falhas > 0 && falhas === total ? 'failed' : 'sent',
+      );
+      return;
+    }
+  }
+
+  const { error } = await supabase
+    .from('broadcasts')
+    .update({ delivery_lease_until: null, delivery_lease_token: null })
+    .eq('id', broadcastId)
+    .eq('delivery_lease_token', token);
+  if (error) console.error('[broadcast] não soltou a posse depois do lote incerto:', error.message);
+}
+
+/**
+ * Grava nas linhas de um lote o que a rota respondeu — ou a recusa que
  * derrubou o lote inteiro — e devolve quantas falharam e quantas escritas se
  * perderam.
  *
- * ⚠️ A linha que a rota já anotou (`anotado`) não é tocada, e nenhuma
- * escrita daqui mexe em linha fora de `pending` (`marcarDestinatario`). O
- * erro do lote pode ter chegado DEPOIS de a rota mandar e anotar parte dele
- * (a conexão caiu no meio): marcar tudo como `failed`, como antes, apagaria
- * envios que aconteceram. Quem não gravou é conferido numa leitura só
- * (`situacaoDasLinhas`): continua `pending` = escrita perdida, como sempre;
- * já saiu de `pending` = outro escritor gravou, e só conta como falha se
- * estiver `failed`.
+ * ⚠️⚠️ NOSSO (1151): a rota RESERVA cada linha antes da Meta (`pending` →
+ * `uncertain`) e grava ela mesma o desfecho (`anotado`). Daqui só sai o que ela
+ * não gravou, e nunca por cima do que pode ter saído:
+ *  - lote RECUSADO (4xx: a rota parou antes do laço) → `failed` nas pendentes;
+ *  - lote INCERTO (a chamada caiu, 5xx, resposta ilegível) → NADA. A linha que
+ *    a rota reservou está `uncertain` (ou com o desfecho que ela gravou), e a
+ *    que ela não reservou está `pending`: comprovadamente não saiu, e o
+ *    Retomar a manda. Marcar `failed` ali, como antes, levava o "Tentar de
+ *    novo os que falharam" a mandar o modelo PAGO em dobro;
+ *  - por linha: `sent` não anotado → grava, também sobre a reserva (o wamid é
+ *    a prova); `failed` não anotado → só sobre `pending`; `uncertain` e
+ *    `skipped` → nada (a reserva diz a verdade, ou a linha é de outro envio);
+ *    linha que a rota não citou → nada;
+ *  - linha SEM telefone (nem foi à rota) → `failed`.
+ *
+ * A linha que a rota já anotou não é tocada, e nenhuma escrita sai da
+ * situação esperada (`marcarDestinatario`). Quem não gravou é conferido numa
+ * leitura só (`situacaoDasLinhas`): ainda na situação de onde a escrita partia
+ * = escrita perdida, como sempre; já em outra = outro escritor gravou, e só
+ * conta como falha se estiver `failed`.
  */
 export async function gravarDesfechoDoLote(
   supabase: ReturnType<typeof createClient>,
@@ -454,16 +556,23 @@ export async function gravarDesfechoDoLote(
 ): Promise<{ falhas: number; escritasPerdidas: number }> {
   let falhas = 0;
   let escritasPerdidas = 0;
-  const naoGravados: { id: string; falha: boolean }[] = [];
-  const escrever = async (id: string, patch: Record<string, unknown>) => {
+  const naoGravados: { id: string; falha: boolean; origens: readonly string[] }[] = [];
+  const escrever = async (
+    id: string,
+    patch: Record<string, unknown>,
+    origens: readonly string[] = ['pending'],
+  ) => {
     const falha = patch.status === 'failed';
-    if (!(await marcarDestinatario(supabase, id, patch))) naoGravados.push({ id, falha });
-    else if (falha) falhas++;
+    if (!(await marcarDestinatario(supabase, id, patch, origens))) {
+      naoGravados.push({ id, falha, origens });
+    } else if (falha) falhas++;
   };
 
-  if ('erro' in desfecho) {
+  if ('incerto' in desfecho) return { falhas, escritasPerdidas };
+
+  if ('recusa' in desfecho) {
     for (const linha of lote) {
-      await escrever(linha.id, { status: 'failed', error_message: desfecho.erro });
+      await escrever(linha.id, { status: 'failed', error_message: desfecho.recusa });
     }
   } else {
     const porLinha = new Map<string, BroadcastApiResult>();
@@ -475,23 +584,34 @@ export async function gravarDesfechoDoLote(
 
     for (const linha of lote) {
       const phone = linha.contact?.phone;
-      const result = porLinha.get(linha.id) ?? (phone ? porTelefone.get(phone) : undefined);
-
-      if (!result) {
+      if (!phone) {
         await escrever(linha.id, {
           status: 'failed',
           error_message: 'No phone number on contact',
         });
-      } else if (result.status === 'sent') {
+        continue;
+      }
+      const result = porLinha.get(linha.id) ?? porTelefone.get(phone);
+      if (!result) continue;
+
+      if (result.status === 'sent') {
         // A rota já anotou: nada a gravar daqui (ver `anotado`).
         if (result.anotado) continue;
-        await escrever(linha.id, {
-          status: 'sent',
-          sent_at: new Date().toISOString(),
-          whatsapp_message_id: result.whatsapp_message_id ?? null,
-          error_message: null,
-        });
-      } else {
+        await escrever(
+          linha.id,
+          {
+            status: 'sent',
+            sent_at: new Date().toISOString(),
+            whatsapp_message_id: result.whatsapp_message_id ?? null,
+            error_message: null,
+          },
+          result.whatsapp_message_id ? ['pending', ENTREGA_INCERTA] : ['pending'],
+        );
+      } else if (result.status === 'failed') {
+        if (result.anotado) {
+          falhas++;
+          continue;
+        }
         await escrever(linha.id, {
           status: 'failed',
           error_message: result.error ?? 'Unknown error',
@@ -505,9 +625,9 @@ export async function gravarDesfechoDoLote(
       supabase,
       naoGravados.map((n) => n.id),
     );
-    for (const { id, falha } of naoGravados) {
+    for (const { id, falha, origens } of naoGravados) {
       const status = atual?.get(id);
-      if (status === undefined || status === 'pending') {
+      if (status === undefined || origens.includes(status)) {
         // Ninguém gravou: é a escrita perdida de sempre (RLS/erro).
         escritasPerdidas++;
         if (falha) falhas++;
@@ -1368,9 +1488,34 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
           break;
         }
 
+        if ('incerto' in lote.desfecho) {
+          // ⚠️⚠️ NOSSO (1151): a chamada do lote caiu sem resposta da rota. O que
+          // ela reservou está `uncertain` (ou com o desfecho que ela gravou); o
+          // resto não saiu. Disparar os próximos lotes contra um servidor que
+          // não responde só aumentaria a conta: PARA, sem gravar nada nas linhas,
+          // e solta a posse para o Retomar (pelo servidor) mandar os pendentes.
+          console.error('[broadcast] o lote caiu sem resposta da rota:', lote.desfecho.incerto);
+          await pararDepoisDoLoteIncerto(supabase, broadcast.id, tokenDaPosse);
+          interrupcao = 'lote_incerto';
+          break;
+        }
+
         const gravado = await gravarDesfechoDoLote(supabase, batch, lote.desfecho);
         failedCount += gravado.falhas;
         escritasPerdidas += gravado.escritasPerdidas;
+
+        // ⚠️⚠️ Disjuntor (1151): a ROTA parou na primeira entrega incerta (a Meta,
+        // ou a rede até ela, não respondeu). O assistente para junto, em vez de
+        // tornar incerto cada destinatário seguinte numa pane da Meta: o resto
+        // não foi reservado (`pending`) e o Retomar o manda depois.
+        if (
+          'resultados' in lote.desfecho &&
+          lote.desfecho.resultados.some((r) => r.status === 'uncertain')
+        ) {
+          await pararDepoisDoLoteIncerto(supabase, broadcast.id, tokenDaPosse);
+          interrupcao = 'lote_incerto';
+          break;
+        }
 
         const progressPct =
           30 + Math.round(((i + batch.length) / totalRecipients) * 60);
@@ -1388,7 +1533,9 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
       let statusFinalPerdido = false;
       if (!interrupcao) {
         // NOSSO (1147): só com a posse — se outro envio assumiu no fim, é ele
-        // quem fecha a campanha (ver `fecharCampanhaComAPosse`).
+        // quem fecha a campanha (ver `fecharCampanhaComAPosse`). A entrega
+        // incerta (1151) não conta como falha: com ela, a campanha fecha
+        // `sent`. O lote incerto já fechou por `pararDepoisDoLoteIncerto`.
         const fim = await fecharCampanhaComAPosse(
           supabase,
           broadcast.id,

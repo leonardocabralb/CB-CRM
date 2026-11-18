@@ -54,7 +54,16 @@ export const RESUME_MAX_SCAN_PAGES = 25;
  */
 export const DELIVERY_LOCK_STALE_MS = 30 * 60 * 1000;
 
-function scopeStatuses(scope: ResumeScope): string[] {
+/**
+ * ⚠️⚠️ NOSSO (1151): nenhum escopo inclui `uncertain` — a linha que PODE ter
+ * saído (5xx, tempo esgotado, lote que caiu no meio) nunca volta à Meta por
+ * aqui, nem no "Tentar de novo os que falharam" (`failed` agora é recusa
+ * comprovada, nada a enviar ou o recibo de falha da Meta; o `failed` de antes
+ * da 1151 podia ser o que saiu — na produção, nenhum em 18/11/2026). As
+ * mesmas situações são as `origens` da reserva de cada linha no envio
+ * (`deliverBroadcast`).
+ */
+export function scopeStatuses(scope: ResumeScope): string[] {
   if (scope === 'pending') return ['pending'];
   if (scope === 'failed') return ['failed'];
   return ['pending', 'failed'];
@@ -255,7 +264,9 @@ export async function planBroadcastResume(
         status: 'failed',
         error_message: 'No valid phone number on contact',
       })
-      .in('id', ids);
+      .in('id', ids)
+      // NOSSO (1151): só sobre a situação que o escopo leu.
+      .in('status', statuses);
   }
 
   const slice = sendable.slice(0, RESUME_MAX_PER_REQUEST);
@@ -324,6 +335,8 @@ export async function planBroadcastResume(
         : [],
     })),
     rejected: 0,
+    // A reserva de cada linha (1151) só pega o que este escopo planejou.
+    origens: statuses,
   };
 
   return { plan, remaining, unsendable: unsendable.length };

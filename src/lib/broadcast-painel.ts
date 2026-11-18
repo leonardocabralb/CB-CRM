@@ -6,6 +6,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { BroadcastRecipient, BroadcastStatus } from '@/types';
+import { ENTREGA_INCERTA } from '@/lib/broadcast-status';
 import {
   PAGINA,
   buscarPorChave,
@@ -32,9 +33,21 @@ export const MINUTOS_DA_TRAVA_DA_RETOMADA = 30;
  * - `parado`: `sending` com pendentes e NINGUÉM enviando — a aba fechou no
  *   meio. Retomar.
  * - `retentar`: sobrou falha (ou pendente numa campanha já fechada).
+ * - `concluir` (NOSSO, 1151): `sending` sem pendente nem falha, e NINGUÉM
+ *   enviando — a passada morreu depois de reservar a última linha (que ficou
+ *   incerta), ou a rota terminou o lote depois de o assistente parar. Sem um
+ *   botão, a campanha ficava "Enviando" para sempre, sem como excluir; o
+ *   "Concluir" pede à retomada, que não acha nada a mandar e fecha pelas
+ *   linhas (`nothing_to_resume` → `finalizeBroadcastStatus`).
  * - `null`: nada pendente nem falho.
  */
-export type PainelDaRetomada = 'em_andamento' | 'desconhecido' | 'parado' | 'retentar' | null;
+export type PainelDaRetomada =
+  | 'em_andamento'
+  | 'desconhecido'
+  | 'parado'
+  | 'retentar'
+  | 'concluir'
+  | null;
 
 export function painelDaRetomada(args: {
   status: BroadcastStatus;
@@ -43,10 +56,50 @@ export function painelDaRetomada(args: {
   emAndamento: boolean | null;
 }): PainelDaRetomada {
   const { status, pendentes, falhos, emAndamento } = args;
-  if (pendentes === 0 && falhos === 0) return null;
+  if (pendentes === 0 && falhos === 0) {
+    return status === 'sending' && emAndamento === false ? 'concluir' : null;
+  }
   if (emAndamento === true) return 'em_andamento';
   if (emAndamento === null) return 'desconhecido';
   return status === 'sending' && pendentes > 0 ? 'parado' : 'retentar';
+}
+
+/**
+ * NOSSO (1151): a faixa "entrega incerta" só aparece com o envio PARADO
+ * (`emAndamento === false`). Com envio rodando, a linha que está saindo fica
+ * `uncertain` por um instante (a reserva antes da Meta), e a faixa afirmaria
+ * uma incerta que logo vira "enviado"; sem saber (`null`), também não afirma.
+ * A etiqueta da linha e o filtro mostram a incerta sempre.
+ */
+export function mostrarFaixaDasIncertas(incertas: number, emAndamento: boolean | null): boolean {
+  return incertas > 0 && emAndamento === false;
+}
+
+/**
+ * Uma linha do CSV da campanha. A situação sai TRADUZIDA (`situacao`; antes
+ * saía o código em inglês) e, na entrega incerta, a coluna do erro leva a
+ * frase "pode ter chegado" antes do motivo técnico: no CSV ela não pode
+ * parecer uma falha que se reenvia.
+ */
+export function linhaDoCsv(
+  r: Pick<BroadcastRecipient, 'status' | 'sent_at' | 'delivered_at' | 'read_at' | 'error_message'> & {
+    contact?: { name?: string | null; phone?: string | null } | null;
+  },
+  textos: { situacao: (status: string) => string; incerta: string },
+): string[] {
+  const erro =
+    r.status === ENTREGA_INCERTA
+      ? [textos.incerta, r.error_message].filter(Boolean).join(' — ')
+      : (r.error_message ?? '');
+  return [
+    r.contact?.name ?? '',
+    r.contact?.phone ?? '',
+    textos.situacao(r.status),
+    r.sent_at ?? '',
+    r.delivered_at ?? '',
+    r.read_at ?? '',
+    erro,
+  ];
 }
 
 /** A ordem da tela: os mais novos primeiro (desempate pelo id). */

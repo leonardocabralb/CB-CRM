@@ -5,10 +5,66 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import {
   lerDestinatariosDaCampanha,
+  linhaDoCsv,
+  mostrarFaixaDasIncertas,
   ordenarComoATela,
   painelDaRetomada,
 } from './broadcast-painel';
 import { MAX_PAGINAS, PAGINA } from './supabase/paginar';
+
+// ------------------------------------------------------------
+// NOSSO (1151): a ENTREGA INCERTA na tela — a faixa só com o envio parado, e
+// no CSV a situação traduzida com a frase "pode ter chegado".
+// ------------------------------------------------------------
+
+describe('mostrarFaixaDasIncertas', () => {
+  it('só com incerta e com o envio PARADO', () => {
+    expect(mostrarFaixaDasIncertas(2, false)).toBe(true);
+    expect(mostrarFaixaDasIncertas(0, false)).toBe(false);
+  });
+
+  it('⚠️ com envio rodando, a linha que está saindo fica incerta por um instante: a faixa não afirma', () => {
+    expect(mostrarFaixaDasIncertas(1, true)).toBe(false);
+    // Sem saber, também não.
+    expect(mostrarFaixaDasIncertas(1, null)).toBe(false);
+  });
+});
+
+describe('linhaDoCsv', () => {
+  const textos = { situacao: (s: string) => `[${s}]`, incerta: 'Pode ter chegado — confira antes de reenviar' };
+  const base = {
+    contact: { name: 'Ana', phone: '5583980000016' },
+    sent_at: undefined,
+    delivered_at: undefined,
+    read_at: undefined,
+  };
+
+  it('a situação sai TRADUZIDA (não o código), e as colunas na ordem do cabeçalho', () => {
+    expect(linhaDoCsv({ ...base, status: 'failed', error_message: 'recusado' }, textos)).toEqual([
+      'Ana',
+      '5583980000016',
+      '[failed]',
+      '',
+      '',
+      '',
+      'recusado',
+    ]);
+  });
+
+  it('⚠️⚠️ na entrega incerta, a frase vem antes do motivo técnico — no CSV ela não parece falha', () => {
+    expect(
+      linhaDoCsv({ ...base, status: 'uncertain', error_message: 'Meta API error: 503' }, textos)[6],
+    ).toBe('Pode ter chegado — confira antes de reenviar — Meta API error: 503');
+    // Sem motivo (o processo morreu no meio): só a frase.
+    expect(linhaDoCsv({ ...base, status: 'uncertain' }, textos)[6]).toBe(
+      'Pode ter chegado — confira antes de reenviar',
+    );
+  });
+
+  it('contato apagado (nulo) não quebra a linha', () => {
+    expect(linhaDoCsv({ ...base, contact: null, status: 'sent' }, textos).slice(0, 3)).toEqual(['', '', '[sent]']);
+  });
+});
 
 // ============================================================
 // A tela da campanha (#683 e #679 do original, NOSSO na forma):
@@ -17,6 +73,24 @@ import { MAX_PAGINAS, PAGINA } from './supabase/paginar';
 //  - os destinatários vêm TODOS, por chave — o corte de 1.000 do PostgREST
 //    deixava tabela, filtro, contagens do Retomar e CSV pela metade.
 // ============================================================
+
+describe('painelDaRetomada — "concluir" (1151)', () => {
+  const vazia = { pendentes: 0, falhos: 0 };
+
+  it('⚠️ `sending` sem ninguém pendente nem falho, e ninguém enviando: "concluir" (senão fica "Enviando" para sempre)', () => {
+    expect(painelDaRetomada({ ...vazia, status: 'sending', emAndamento: false })).toBe('concluir');
+  });
+
+  it('com envio rodando ou sem saber, não oferece concluir', () => {
+    expect(painelDaRetomada({ ...vazia, status: 'sending', emAndamento: true })).toBeNull();
+    expect(painelDaRetomada({ ...vazia, status: 'sending', emAndamento: null })).toBeNull();
+  });
+
+  it('campanha já fechada sem nada pendente: nada a mostrar', () => {
+    expect(painelDaRetomada({ ...vazia, status: 'sent', emAndamento: false })).toBeNull();
+    expect(painelDaRetomada({ ...vazia, status: 'failed', emAndamento: false })).toBeNull();
+  });
+});
 
 describe('painelDaRetomada', () => {
   const base = { status: 'sending' as const, pendentes: 5, falhos: 0 };
@@ -46,8 +120,11 @@ describe('painelDaRetomada', () => {
     ).toBe('retentar');
   });
 
-  it('nada pendente nem falho: sem faixa, esteja ou não rodando', () => {
+  it('nada pendente nem falho: sem faixa (a campanha `sending` parada é o "concluir" da 1151, acima)', () => {
     for (const emAndamento of [true, false, null]) {
+      expect(painelDaRetomada({ status: 'sent', pendentes: 0, falhos: 0, emAndamento })).toBeNull();
+    }
+    for (const emAndamento of [true, null]) {
       expect(
         painelDaRetomada({ status: 'sending', pendentes: 0, falhos: 0, emAndamento }),
       ).toBeNull();
