@@ -33,7 +33,7 @@ describe('mostrarFaixaDasIncertas', () => {
 describe('linhaDoCsv', () => {
   const textos = { situacao: (s: string) => `[${s}]`, incerta: 'Pode ter chegado — confira antes de reenviar' };
   const base = {
-    contact: { name: 'Ana', phone: '5583988745316' },
+    contact: { name: 'Ana', phone: '5583980000016' },
     sent_at: undefined,
     delivered_at: undefined,
     read_at: undefined,
@@ -42,7 +42,7 @@ describe('linhaDoCsv', () => {
   it('a situação sai TRADUZIDA (não o código), e as colunas na ordem do cabeçalho', () => {
     expect(linhaDoCsv({ ...base, status: 'failed', error_message: 'recusado' }, textos)).toEqual([
       'Ana',
-      '5583988745316',
+      '5583980000016',
       '[failed]',
       '',
       '',

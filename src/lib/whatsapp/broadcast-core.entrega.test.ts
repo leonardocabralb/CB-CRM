@@ -86,7 +86,7 @@ function plano(extra: Partial<BroadcastPlan> = {}): BroadcastPlan {
     phoneNumberId: 'pn-1',
     accessToken: 'EAABsegredodotoken123',
     templateRow: null,
-    planned: [{ recipientRowId: 'r1', phone: '5583988745316', params: [] }],
+    planned: [{ recipientRowId: 'r1', phone: '5583980000016', params: [] }],
     rejected: 0,
     ...extra,
   };
@@ -113,7 +113,7 @@ describe('deliverBroadcast — reserva e desfecho (1151)', () => {
       ['status in', ['pending']],
     ]);
     expect(ordem).toEqual(['enviou depois de 1 escrita(s)']);
-    expect(desfecho.patch).toMatchObject({ status: 'sent', whatsapp_message_id: 'wamid.5583988745316' });
+    expect(desfecho.patch).toMatchObject({ status: 'sent', whatsapp_message_id: 'wamid.5583980000016' });
     expect(desfecho.filtros).toEqual([
       ['id', 'r1'],
       ['status', 'uncertain'],
@@ -195,9 +195,9 @@ describe('deliverBroadcast — reserva e desfecho (1151)', () => {
       db,
       plano({
         planned: [
-          { recipientRowId: 'r1', phone: '5583988745316', params: [] },
-          { recipientRowId: 'r2', phone: '5583988745317', params: [] },
-          { recipientRowId: 'r3', phone: '5583988745318', params: [] },
+          { recipientRowId: 'r1', phone: '5583980000016', params: [] },
+          { recipientRowId: 'r2', phone: '5583980000017', params: [] },
+          { recipientRowId: 'r3', phone: '5583980000018', params: [] },
         ],
       }),
     );
@@ -216,8 +216,8 @@ describe('deliverBroadcast — reserva e desfecho (1151)', () => {
       db,
       plano({
         planned: [
-          { recipientRowId: 'r1', phone: '5583988745316', params: [] },
-          { recipientRowId: 'r2', phone: '5583988745317', params: [] },
+          { recipientRowId: 'r1', phone: '5583980000016', params: [] },
+          { recipientRowId: 'r2', phone: '5583980000017', params: [] },
         ],
       }),
     );

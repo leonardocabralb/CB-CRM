@@ -94,7 +94,7 @@ const lote = async (recipients: Record<string, unknown>[]) => {
   )) as unknown as { body: Corpo }
   return res.body
 }
-const r1 = { recipient_id: 'r1', phone: '5583988745316', params: [] }
+const r1 = { recipient_id: 'r1', phone: '5583980000016', params: [] }
 
 beforeEach(() => {
   updates.length = 0
@@ -128,8 +128,8 @@ describe('POST /api/whatsapp/broadcast — a reserva e a entrega incerta (1151)'
       .mockRejectedValueOnce(new MetaApiError('Service temporarily unavailable', { httpStatus: 503 }))
     const corpo = await lote([
       r1,
-      { recipient_id: 'r2', phone: '5583988745317', params: [] },
-      { recipient_id: 'r3', phone: '5583988745318', params: [] },
+      { recipient_id: 'r2', phone: '5583980000017', params: [] },
+      { recipient_id: 'r3', phone: '5583980000018', params: [] },
     ])
     expect(enviarModelo).toHaveBeenCalledTimes(2)
     expect(corpo.results.map((r) => [r.recipient_id, r.status])).toEqual([
@@ -143,7 +143,7 @@ describe('POST /api/whatsapp/broadcast — a reserva e a entrega incerta (1151)'
 
   it('a recusa (4xx) NÃO para o lote: o próximo segue', async () => {
     enviarModelo.mockRejectedValueOnce(new MetaApiError('recusado', { httpStatus: 400, code: 131026 }))
-    const corpo = await lote([r1, { recipient_id: 'r2', phone: '5583988745317', params: [] }])
+    const corpo = await lote([r1, { recipient_id: 'r2', phone: '5583980000017', params: [] }])
     expect(enviarModelo).toHaveBeenCalledTimes(2)
     expect(corpo.results.map((r) => r.status)).toEqual(['failed', 'sent'])
   })
