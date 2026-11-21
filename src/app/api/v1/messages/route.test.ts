@@ -150,6 +150,11 @@ describe('POST /api/v1/messages — o canal pedido', () => {
     expect(h.pinConversationChannel).not.toHaveBeenCalled();
     expect(h.sendMessageToConversation).toHaveBeenCalledTimes(1);
   });
+
+  it('⚠️ sempre só por WhatsApp: a conversa achada pelo telefone que responde pelo Instagram não vira DM', async () => {
+    await post({ to: '+5581980000016', text: 'oi' });
+    expect(h.sendMessageToConversation.mock.calls[0][2]).toMatchObject({ soWhatsApp: true });
+  });
 });
 
 describe('POST /api/v1/messages — o `name` (a régua das rotas de contato)', () => {

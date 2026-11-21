@@ -278,6 +278,13 @@ para depois: host e token isolados em `graph.ts`). Regras:
       recusado antes de subir. O teste mostrou que o Direct NÃO formata: a
       assinatura passou a sair `Nome:` (sem asteriscos) e os botões de
       formatação somem no Instagram (decisões do operador no mesmo dia).
+- [x] Revisão antes do merge (Codex + revisor independente, 21/11/2026):
+      a desconexão do token cercada pelo carimbo (190 atrasado não derruba a
+      conta reconectada); `POST /v1/messages` com `soWhatsApp` (a conversa
+      por telefone que responde pelo Instagram é recusada, não vira DM); o
+      compositor conta a assinatura nos 1000 bytes; `.jfif`/`.jpe` aceitos
+      como JPEG; card da ficha sem nome com o `@`; testes provando os filtros
+      da janela. Limites que ficam: `.claude/rules/instagram.md`.
 - [ ] **Human Agent (D2) fica fora**: o interruptor segue na conexão, com o
       aviso "ainda sem efeito". Depende de o operador pedir a feature à Meta e
       de medir o formato da tag (a doc lida em 21/11 não o traz).

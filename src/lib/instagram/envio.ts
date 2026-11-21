@@ -36,7 +36,10 @@ const TIPO_NO_DIRECT: Record<ClasseDoCrm, TipoDeAnexoDoDirect> = {
 };
 
 const EXTENSOES: Record<ClasseDoCrm, readonly string[]> = {
-  image: ['png', 'jpg', 'jpeg'],
+  // `jfif` e `jpe` também são JPEG (o Windows salva assim): o compositor
+  // aceita pelo MIME `image/jpeg`, e o servidor não pode recusar o mesmo
+  // arquivo pela extensão (revisão do PR #539).
+  image: ['png', 'jpg', 'jpeg', 'jpe', 'jfif'],
   video: ['mp4', 'ogg', 'avi', 'mov', 'webm'],
   audio: ['aac', 'm4a', 'wav', 'mp4'],
   document: ['pdf'],

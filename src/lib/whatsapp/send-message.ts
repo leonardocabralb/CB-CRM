@@ -75,6 +75,7 @@ import {
 import { ehEvolution, ehInstagram, ehMeta } from '@/lib/cb-channels/transporte';
 import type { TentativaDoNucleo } from '@/lib/whatsapp/envio-que-falhou';
 import { isUniqueViolation } from '@/lib/contacts/dedupe';
+import { identidadeDoContato } from '@/lib/contacts/identidade';
 import {
   InstagramApiError,
   criarClienteInstagram,
@@ -182,6 +183,14 @@ export interface SendMessageParams {
    * "tem gente aqui agora", e às 3 da manhã não tem.
    */
   pauseFlows?: boolean;
+  /**
+   * Só por número de WhatsApp (`POST /api/v1/messages`, que endereça por
+   * TELEFONE). A conversa achada pelo telefone pode responder pelo Instagram
+   * (ficha que ganhou telefone à mão, ou unificada): sem isto, o lembrete do
+   * integrador sairia como DM — a doc pública promete WhatsApp. Recusa com
+   * `not_supported`, antes de qualquer provedor (revisão do PR #539).
+   */
+  soWhatsApp?: boolean;
 }
 
 export interface SendMessageResult {
@@ -310,6 +319,7 @@ export async function sendMessageToConversation(
     senderUserId,
     channelId: canalExigido,
     pauseFlows = true,
+    soWhatsApp = false,
   } = params;
 
   if (!conversationId) {
@@ -493,6 +503,13 @@ export async function sendMessageToConversation(
    */
   let anexoDoDirect: TipoDeAnexoDoDirect | null = null;
   if (ehInstagram(channel)) {
+    if (soWhatsApp) {
+      throw new SendMessageError(
+        'not_supported',
+        'This conversation replies through Instagram Direct, and this endpoint sends through WhatsApp numbers only. Pass the channel_id of a WhatsApp number.',
+        400
+      );
+    }
     if (ehGrupo) {
       throw new SendMessageError(
         'not_supported',
@@ -1278,7 +1295,12 @@ export async function sendMessageToConversation(
       accountId,
       channelId: channel.channelId,
       contactId: contact.id,
-      contactName: contact.name ?? null,
+      // A ficha só do Instagram sem nome cai no `@` (como em `persistir.ts`):
+      // sem telefone para servir de reserva, o card nasceria "Novo contato".
+      contactName:
+        contact.name ??
+        (ehInstagram(channel) ? identidadeDoContato(contact) : null) ??
+        null,
       conversationId,
     });
   }

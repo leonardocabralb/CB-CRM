@@ -174,3 +174,10 @@ describe('FRASES_DO_DIRECT', () => {
     for (const r of recusas) expect(FRASES_DO_DIRECT[r]).toMatch(/\S/);
   });
 });
+
+describe('JPEG com outra extensão (revisão do PR #539)', () => {
+  it('`.jfif` e `.jpe` são JPEG: o servidor aceita o que o compositor aceitou pelo MIME', () => {
+    expect(conferirParaODirect({ tipo: 'image', texto: null, filename: 'foto.jfif' }).ok).toBe(true);
+    expect(conferirParaODirect({ tipo: 'image', texto: null, filename: 'foto.JPE' }).ok).toBe(true);
+  });
+});

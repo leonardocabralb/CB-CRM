@@ -684,3 +684,39 @@ describe('ficha só-BSUID por conexão que não é da Meta (Fase 11.3)', () => {
     expect(gravado.error).toBe(FRASE_SO_NUMERO_OFICIAL);
   });
 });
+
+describe('Instagram Direct (Fase 4): a mesma régua de "pode ter saído"', () => {
+  it('`instagram_error` (tempo esgotado, 5xx, aceito sem `mid`) é INCERTO — nunca reenviar', async () => {
+    enviar.mockRejectedValue(
+      new SendMessageError('instagram_error', 'Instagram API error: timeout', 502),
+    );
+    const { db, desfechos } = makeDb({ vencidas: [LINHA] });
+
+    await dispararVencidas(db);
+
+    const gravado = desfechos()[0].payload!;
+    expect(gravado.status).toBe('failed');
+    expect(gravado.entrega_incerta).toBe(true);
+  });
+
+  it('`instagram_rejected` (4xx) e `window_closed` NÃO saíram: failed, sem incerteza, com o motivo', async () => {
+    for (const erro of [
+      new SendMessageError('instagram_rejected', 'Instagram API error: bad', 502),
+      new SendMessageError(
+        'window_closed',
+        'A janela de 24 horas do Instagram fechou. No Direct só a pessoa reabre a conversa, mandando uma nova mensagem.',
+        409,
+      ),
+    ]) {
+      enviar.mockRejectedValueOnce(erro);
+      const { db, desfechos } = makeDb({ vencidas: [LINHA] });
+
+      await dispararVencidas(db);
+
+      const gravado = desfechos()[0].payload!;
+      expect(gravado.status).toBe('failed');
+      expect(gravado.entrega_incerta).toBe(false);
+      expect(gravado.error).toBe(erro.message);
+    }
+  });
+});

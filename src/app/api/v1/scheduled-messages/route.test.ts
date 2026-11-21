@@ -109,3 +109,38 @@ describe('POST /api/v1/scheduled-messages — ficha só-BSUID (Fase 11.3)', () =
     expect(h.inseridas).toHaveLength(1);
   });
 });
+
+describe('POST /api/v1/scheduled-messages — conversa do Instagram Direct (Fase 4)', () => {
+  const agendarTexto = (body: string) =>
+    POST(
+      new Request('http://localhost/api/v1/scheduled-messages', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: 'Bearer x' },
+        body: JSON.stringify({ conversation_id: CONVERSA, body, scheduled_for: EM_UMA_HORA() }),
+      }),
+    );
+
+  beforeEach(() => {
+    h.conversa = {
+      id: CONVERSA,
+      channel_id: 'canal-ig',
+      group_id: null,
+      group: null,
+      contact: { phone: null, wa_user_id: null, instagram_id: 'igsid-1' },
+    };
+    h.canal = { channelId: 'canal-ig', provider: 'instagram' };
+  });
+
+  it('texto que cabe: agenda pelo Instagram (a doc pública promete)', async () => {
+    const res = await agendarTexto('Bom dia');
+    expect(res.status).toBe(201);
+    expect(h.inseridas[0].channel_id).toBe('canal-ig');
+  });
+
+  it('⚠️ acima de 1000 BYTES: 409 `text_too_long`, e nada é agendado', async () => {
+    const res = await agendarTexto('é'.repeat(600));
+    expect(res.status).toBe(409);
+    expect(JSON.stringify(await res.json())).toContain('text_too_long');
+    expect(h.inseridas).toEqual([]);
+  });
+});

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { InstagramApiError } from '@/lib/instagram/graph';
 import { MetaApiError } from '@/lib/whatsapp/meta-api';
 import { EvolutionApiError } from '@/lib/whatsapp/transport/evolution-client';
 import {
@@ -310,3 +311,27 @@ describe('registrarTentativaDaEquipe', () => {
   });
 });
 
+
+describe('Instagram Direct (Fase 4) — a bolha "não enviada"', () => {
+  it('só o 4xx é "recusado"; rede, 5xx e 2xx sem `mid` são "incerto"', () => {
+    expect(classificarFalha(new InstagramApiError('sem_permissao', 'no', 400, 10)).motivo).toBe('recusado');
+    expect(classificarFalha(new InstagramApiError('rede', 'timeout')).motivo).toBe('incerto');
+    expect(classificarFalha(new InstagramApiError('meta_error', 'boom', 500)).motivo).toBe('incerto');
+    expect(classificarFalha(new InstagramApiError('meta_error', 'sem mid', 200)).motivo).toBe('incerto');
+  });
+
+  it('o núcleo: `instagram_rejected` × `instagram_error`, pelo erro cru ou pelo código', () => {
+    const recusa = new SendMessageError('instagram_rejected', 'Instagram API error: bad', 502, {
+      cause: new InstagramApiError('meta_error', 'bad', 400),
+    });
+    expect(motivoDaFalhaDoNucleo(recusa).motivo).toBe('recusado');
+    expect(motivoDaFalhaDoNucleo(new SendMessageError('instagram_rejected', 'x', 502)).motivo).toBe('recusado');
+    expect(motivoDaFalhaDoNucleo(new SendMessageError('instagram_error', 'x', 502)).motivo).toBe('incerto');
+    // A janela que fechou parou no CRM (ou na Meta, sem bolha): a frase é a do núcleo.
+    const janela = new SendMessageError('window_closed', 'A janela de 24 horas do Instagram fechou.', 409);
+    expect(motivoDaFalhaDoNucleo(janela)).toEqual({
+      motivo: 'barrado',
+      detalhe: 'A janela de 24 horas do Instagram fechou.',
+    });
+  });
+});

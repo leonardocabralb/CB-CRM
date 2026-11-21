@@ -171,7 +171,16 @@ Pino `send-message-instagram.test.ts`.
   nada lê `ig_human_agent` até a Meta aprovar a feature.
 - A agendada no Direct (tela e `POST /v1/scheduled-messages`) recusa no
   AGENDAMENTO o que não cabe; a janela fica para a hora do envio.
-  `POST /v1/messages` continua só WhatsApp (endereça por telefone).
+- ⚠️ **`POST /v1/messages` continua só WhatsApp** (endereça por telefone):
+  passa `soWhatsApp: true` ao núcleo, que recusa com `not_supported` a
+  conversa achada pelo telefone que responde pelo Instagram (ficha que ganhou
+  telefone, ou unificada). Sem isso o lembrete do integrador virava DM.
+- **Limites conhecidos** (revisão do PR #539): se o eco ainda ganhar a corrida
+  depois dos 2 s, a linha é assumida mas os EFEITOS do eco ficam (reabertura
+  sem responsável, a bolha otimista ao lado da linha até recarregar, a cópia
+  do anexo do eco órfã no bucket); nos 4 envios reais a nossa linha ganhou. A
+  voz WAV a 96 kHz estoura os 16 MB antes dos 2 min 30 s. Cada eco que não é
+  nosso espera 2 s no lote do webhook.
 
 ### Token e Graph API
 

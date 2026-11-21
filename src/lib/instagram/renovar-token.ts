@@ -17,8 +17,9 @@
 //     200 com o mesmo prazo não é renovação (fica para o próximo ciclo);
 //   · só o token RECUSADO (190) marca a conexão como desconectada, com o
 //     motivo. Rede, limite e erro da Meta tentam de novo no ciclo seguinte;
-//   · a escrita é CERCADA pelo carimbo lido: reconectar a conta no meio grava
-//     um token novo, e a renovação atrasada não o sobrescreve.
+//   · as DUAS escritas (o token novo e a marca de desconectada) são CERCADAS
+//     pelo carimbo lido: reconectar a conta no meio grava um token novo, e a
+//     resposta atrasada sobre o velho não o sobrescreve nem o desconecta.
 //
 // O host e a forma do pedido moram em `graph.ts` (`renovarTokenLongo`).
 // ============================================================
@@ -147,7 +148,12 @@ export async function renovarTokensDoInstagram(
     } catch (err) {
       resultado.falhas++;
       if (err instanceof InstagramApiError && err.codigo === 'token_invalido') {
-        const { error: erroMarca } = await admin
+        // ⚠️ A MESMA cerca da renovação (Codex, PR #539): reconectar a conta
+        // enquanto este pedido estava no ar grava um token novo e avança o
+        // carimbo; o 190 que chega atrasado é do token VELHO, e sem a cerca
+        // marcaria desconectada a conexão que acabou de voltar — e ela sairia
+        // das renovações seguintes.
+        let marca = admin
           .from('cb_channels')
           .update({
             status: 'disconnected',
@@ -156,12 +162,16 @@ export async function renovarTokensDoInstagram(
           })
           .eq('id', canal.id)
           .eq('kind', 'instagram');
+        marca = canal.ig_token_refreshed_at
+          ? marca.eq('ig_token_refreshed_at', canal.ig_token_refreshed_at)
+          : marca.is('ig_token_refreshed_at', null);
+        const { data: marcadas, error: erroMarca } = await marca.select('id');
         if (erroMarca) {
           console.error(
             `[instagram/token] ${canal.id}: marcar desconectada falhou:`,
             erroMarca.message
           );
-        } else {
+        } else if ((marcadas ?? []).length > 0) {
           resultado.desconectadas++;
         }
       }

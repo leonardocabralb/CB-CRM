@@ -58,7 +58,7 @@ import { useRascunhoDaConversa } from "@/hooks/use-rascunho-da-conversa";
 import { useAnexosDaConversa } from "@/hooks/use-anexos-da-conversa";
 import { enterEnvia, MIDIA_DE_TOQUE } from "@/lib/celular/teclado";
 import { textoComAOpcao, type OpcaoPreparada } from "@/lib/whatsapp/opcoes-de-resposta";
-import { custoDaAssinatura, nomeDePessoa } from "@/lib/assinatura/assinatura";
+import { aplicarAssinatura, custoDaAssinatura, nomeDePessoa } from "@/lib/assinatura/assinatura";
 import type { ConversationNote, MediaLibraryItem } from "@/types";
 import { InternalNoteBox } from "./internal-note-box";
 import { cn } from "@/lib/utils";
@@ -451,6 +451,13 @@ export function MessageComposer({
   // das rotas); a frase sai de `mensagemDaInterativa`.
   const tValidacao = useTranslations("Interactive.validacao");
   const tUpload = useTranslations("Upload");
+  // NOSSO — quem assina, a MESMA régua da bolha otimista do fio
+  // (`message-thread.tsx`): o teto de 1000 bytes do Instagram conta a
+  // assinatura, e recusar aqui deixa o texto no campo (revisão do PR #539).
+  const { profile: perfilQueAssina, assinaturaAtiva } = useAuth();
+  const nomeQueAssina = assinaturaAtiva
+    ? nomeDePessoa(perfilQueAssina?.full_name, perfilQueAssina?.email)
+    : null;
   // Os tipos de anexo aceitos (`arquivo-solto.ts`), a MESMA lista para o
   // `accept=` dos seletores e para quem arrasta ou cola — duas listas
   // divergiriam. A página `.html` só nas conexões por QR code, e só com o
@@ -1093,10 +1100,14 @@ export function MessageComposer({
     const trimmed = text.trim();
     if (!trimmed || envioTravado) return;
 
-    // NOSSO — Instagram Direct (Fase 4): o teto é de 1000 BYTES. Recusar aqui
-    // deixa o texto no campo para dividir; o servidor confere de novo, com a
-    // assinatura somada.
-    if (ehInstagram(channelKind) && bytesDoTexto(trimmed) > TETO_DO_TEXTO_DO_DIRECT) {
+    // NOSSO — Instagram Direct (Fase 4): o teto é de 1000 BYTES, já com a
+    // assinatura (`Nome:`, sem negrito). Recusar aqui deixa o texto no campo
+    // para dividir; o servidor confere de novo.
+    if (
+      ehInstagram(channelKind) &&
+      bytesDoTexto(aplicarAssinatura(trimmed, nomeQueAssina, "simples") ?? trimmed) >
+        TETO_DO_TEXTO_DO_DIRECT
+    ) {
       toast.error(t("instagramTextoLongo"));
       return;
     }
@@ -1137,7 +1148,7 @@ export function MessageComposer({
 
     // A altura volta ao `auto` pelo efeito sobre `text`.
     setText("");
-  }, [text, envioTravado, replyTo?.id, liberarPendente, quandoAg, agendar, setText, conversationId, channelKind, t]);
+  }, [text, envioTravado, replyTo?.id, liberarPendente, quandoAg, agendar, setText, conversationId, channelKind, t, nomeQueAssina]);
 
   // O "Tentar de novo" do fio (`CompositorHandle`): o MESMO trilho do Enviar —
   // trava, janela de desfazer, fila de saída, despachante preso à origem —,

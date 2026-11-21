@@ -75,6 +75,7 @@ vi.mock('@/lib/flows/admin-client', () => ({
 }));
 
 import { resolveChannelForConversation } from '@/lib/cb-channels/resolve';
+import { routeContactToPipeline } from '@/lib/cb-channels/pipeline-routing';
 import { InstagramApiError } from '@/lib/instagram/graph';
 
 import {
@@ -112,8 +113,16 @@ interface Cenario {
 
 function fakeDb(c: Cenario) {
   const inserts: Record<string, unknown>[] = [];
+  // Os filtros da consulta da JANELA e toda escrita por UPDATE: sem eles, tirar
+  // um `.eq` da consulta ou "corrigir" o telefone passaria calado.
+  const janela: [string, unknown][] = [];
+  const updates: { tabela: string; valores: unknown }[] = [];
   const from = (tabela: string) => {
-    const estado = { op: 'select', cols: '' };
+    const estado = {
+      op: 'select',
+      cols: '',
+      filtros: [] as [string, unknown][],
+    };
     const resolver = async () => {
       if (tabela === 'conversations') {
         return {
@@ -138,6 +147,7 @@ function fakeDb(c: Cenario) {
           : { data: { ...inserts.at(-1), id: 'msg-1' }, error: null };
       }
       if (estado.cols === 'created_at') {
+        janela.push(...estado.filtros);
         if (c.erroDaJanela) return { data: null, error: { message: 'boom' } };
         const quando =
           c.ultimaDoCliente === undefined ? HA_UMA_HORA : c.ultimaDoCliente;
@@ -155,11 +165,15 @@ function fakeDb(c: Cenario) {
         inserts.push(v);
         return b;
       },
-      update: () => {
+      update: (valores: unknown) => {
         estado.op = 'update';
+        updates.push({ tabela, valores });
         return b;
       },
-      eq: () => b,
+      eq: (coluna: string, valor: unknown) => {
+        estado.filtros.push([coluna, valor]);
+        return b;
+      },
       order: () => b,
       limit: () => b,
       single: resolver,
@@ -169,11 +183,11 @@ function fakeDb(c: Cenario) {
     };
     return b;
   };
-  return { db: { from } as unknown as SupabaseClient, inserts };
+  return { db: { from } as unknown as SupabaseClient, inserts, janela, updates };
 }
 
 async function enviar(c: Cenario, params: Partial<SendMessageParams> = {}) {
-  const { db, inserts } = fakeDb(c);
+  const { db, inserts, janela, updates } = fakeDb(c);
   const r = await sendMessageToConversation(db, 'acct-1', {
     conversationId: 'cv-1',
     messageType: 'text',
@@ -181,7 +195,7 @@ async function enviar(c: Cenario, params: Partial<SendMessageParams> = {}) {
     senderUserId: 'user-1',
     ...params,
   });
-  return { r, inserts };
+  return { r, inserts, janela, updates };
 }
 
 async function erroDe(c: Cenario, params: Partial<SendMessageParams> = {}) {
@@ -234,10 +248,41 @@ describe('Instagram Direct — o envio', () => {
   });
 
   it('o telefone da ficha NUNCA é o destino, nem é "corrigido" depois', async () => {
-    await enviar({
+    const { updates } = await enviar({
       contato: { id: 'c1', phone: '5583980000016', instagram_id: 'igsid-1' },
     });
     expect(h.enviar.mock.calls[0][1]).toMatchObject({ para: 'igsid-1' });
+    expect(updates.filter((u) => u.tabela === 'contacts')).toEqual([]);
+  });
+
+  it('⚠️ a janela conta só a mensagem DA PESSOA, por ESTA conexão, nesta conversa', async () => {
+    const { janela } = await enviar({});
+    expect(janela).toEqual(
+      expect.arrayContaining([
+        ['conversation_id', 'cv-1'],
+        ['channel_id', 'ch-ig'],
+        ['sender_type', 'customer'],
+      ])
+    );
+  });
+
+  it('a ficha sem nome dá ao card o `@` da pessoa, nunca "Novo contato"', async () => {
+    await enviar({
+      contato: { id: 'c1', phone: null, instagram_id: 'igsid-1', instagram_username: 'cliente.teste', name: null },
+    });
+    expect(vi.mocked(routeContactToPipeline).mock.calls[0][0]).toMatchObject({
+      contactName: '@cliente.teste',
+    });
+  });
+
+  it('`soWhatsApp` (POST /v1/messages, por telefone): a conversa do Instagram é recusada, nada sai', async () => {
+    const e = await erroDe(
+      { contato: { id: 'c1', phone: '5583980000016', instagram_id: 'igsid-1' } },
+      { soWhatsApp: true }
+    );
+    expect(e.code).toBe('not_supported');
+    expect(e.status).toBe(400);
+    expect(h.enviar).not.toHaveBeenCalled();
   });
 
   it('PDF sai como `file`, WAV como `audio` — sem legenda', async () => {

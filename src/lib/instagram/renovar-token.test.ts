@@ -148,6 +148,22 @@ describe('renovarTokensDoInstagram', () => {
       status: 'disconnected',
       last_error: MOTIVO_TOKEN_RECUSADO,
     });
+    // Cercada pelo carimbo lido, como a renovação (Codex, PR #539).
+    expect(escritas[0].filtros).toContainEqual([
+      'eq',
+      'ig_token_refreshed_at',
+      CANAL.ig_token_refreshed_at,
+    ]);
+  });
+
+  it('⚠️ reconectaram enquanto o pedido estava no ar: o 190 atrasado NÃO desconecta a conta nova', async () => {
+    renovar.mockRejectedValue(
+      new InstagramApiError('token_invalido', 'bad', 400, 190)
+    );
+    // A cerca não casa: a reconexão avançou o carimbo.
+    const { admin } = fakeAdmin({ canais: [CANAL], linhasGravadas: 0 });
+    const r = await renovarTokensDoInstagram(admin, AGORA, renovar);
+    expect(r.desconectadas).toBe(0);
   });
 
   it('rede, limite e erro da Meta: nada muda, tenta no próximo ciclo', async () => {
