@@ -823,9 +823,20 @@ o plano, porque revisam a D3 para o produto):
     `instagram_manage_messages`, `instagram_manage_comments` e
     `instagram_content_publish`.
   
-  A URL de retorno é registrada à parte. Nada disso foi criado ainda: espera
-  a U5 (onde a central mora, que dá a URL de retorno e a do webhook) e a U8
-  (só mensagens).
+  A URL de retorno é registrada à parte.
+- **U8 decidida pelo operador (21/11): só mensagens.** A configuração "API
+  do Instagram (login unificado)" foi criada pelo modelo, com o selo
+  "Compatível com o Login do Instagram":
+  - a tela não deixa escolher as permissões antes de criar, então elas foram
+    editadas logo depois;
+  - ficaram só `instagram_basic` e `instagram_manage_messages`, as duas que a
+    Meta marca como obrigatórias e não deixa tirar;
+  - continua a conta de anúncios como ativo opcional (o cliente pula), porque
+    os ativos não se editam depois de criar;
+  - o painel avisa: "As permissões no acesso padrão só serão solicitadas a
+    pessoas com funções neste app".
+- **Ainda faltam:** a URL de retorno, que vem da central (U5), o webhook do
+  objeto Instagram e o testador.
 
 **Complemento da M7** [MEDIDO, 21/11, pela sessão do manual]: o caminho
 ANTIGO de criação de app também não tem a tela do login do Instagram:
@@ -841,9 +852,8 @@ ANTIGO de criação de app também não tem a tela do login do Instagram:
    → Status de verificação → Ver detalhes"). É do operador: CNPJ no campo de
    identificação fiscal, documentos e a confirmação por e-mail, telefone ou
    domínio. É a fila mais longa.
-2. **Decisões U5 e U8**, e então a configuração do unificado: só as duas
-   permissões de mensagens, a URL de retorno da central e o webhook do objeto
-   Instagram.
+2. **Decisão U5** (onde a central mora), e então a URL de retorno e o
+   webhook do objeto Instagram na configuração já criada.
 3. **A análise** só depois do código (U-1 a U-4) e do escritório de
    demonstração.
 
