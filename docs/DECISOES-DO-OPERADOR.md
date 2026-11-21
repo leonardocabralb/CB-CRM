@@ -212,6 +212,10 @@ qualquer uma é pergunta ao operador.
   cliente) entre a abertura e uma hora depois, nunca todos às 08:00; a
   janela das 8h às 21h fica (follow-up de madrugada não: bloqueio e denúncia
   pesam mais que a rajada) (`ia-retomada.md`, `automacoes-passos.md`).
+- Mensagem do cliente EDITADA (16/11/2026, saída A): a IA responde em vez de
+  descartar; sem a versão nova (a edição cifrada da Evolution), o contexto
+  leva a nota de que ela editou, e a IA pede a confirmação quando importa
+  (`ia.md`).
 - O "Desativar IA" da conversa pergunta antes (14/11/2026): o aviso diz que
   desativar para os follow-ups automáticos e recomenda o "Pausar", que é o
   botão principal (`ia-pausa.md`).

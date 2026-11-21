@@ -41,6 +41,14 @@
 // sem rótulo, como antes. O pedido explica o rótulo (`pedido.ts`), e o rótulo
 // que o modelo imitar sai da resposta (`semRotuloDaEquipe`, em `lerAcoes`).
 //
+// ⚠️⚠️ A mensagem do CLIENTE EDITADA sem a versão nova (a edição cifrada da
+// Evolution 2.4 só carimba `edited_at` e MANTÉM o texto antigo;
+// `whatsapp-evolution.md`) ganha logo depois a NOTA da edição
+// (`NOTA_DA_EDICAO`): o modelo sabe que aquele texto pode não valer mais e
+// pede a confirmação. A edição LEGÍVEL já trocou o texto (`text_before_edit`
+// guarda o antigo): vai como está. Decisão do operador (16/11/2026, saída A):
+// antes o turno descartava a mensagem editada e a cliente ficava sem resposta.
+//
 // `montarConversa` é PURA (testada); `lerConversaDaConexao` é o I/O.
 // ============================================================
 
@@ -81,6 +89,10 @@ export interface MensagemDoContexto {
   from_device?: boolean | null
   /** A fala de um agente de IA (nunca da equipe). */
   ia_agente_id?: string | null
+  /** Quando foi editada (a edição cifrada só carimba isto). */
+  edited_at?: string | null
+  /** O texto de ANTES da edição legível; nulo na cifrada (o texto é o antigo). */
+  text_before_edit?: string | null
 }
 
 /** O rótulo da fala da EQUIPE no contexto do modelo (1138), sem o nome da pessoa. */
@@ -223,17 +235,26 @@ export function montarConversa(
   dialogos?: ReadonlyMap<string, DialogoGravado>,
 ): ChatMessage[] {
   return linhas
-    .map((m) => {
+    .flatMap((m): ChatMessage[] => {
       const ligacao = ligacaoComDialogo(m, dialogos)
-      if (ligacao) return { role: 'user' as ChatMessage['role'], content: descreverLigacao(m, ligacao) }
+      if (ligacao) return [{ role: 'user', content: descreverLigacao(m, ligacao) }]
       const conteudo = descrever(m, semLeitor)
-      return {
-        role: (m.sender_type === 'customer' ? 'user' : 'assistant') as ChatMessage['role'],
+      const fala: ChatMessage = {
+        role: m.sender_type === 'customer' ? 'user' : 'assistant',
         // Vazio continua vazio (sai no filtro): o rótulo sozinho não é fala.
         content: conteudo && ehFalaDaEquipe(m) ? `${ROTULO_DA_EQUIPE} ${conteudo}` : conteudo,
       }
+      // A nota vai SEPARADA, no papel de usuário (os provedores fundem os
+      // turnos seguidos): quem procura o que o CLIENTE disse a tira pelo
+      // prefixo (`ehNotaDoSistema`), e o texto dela nunca vira fala dele.
+      return conteudo && editadaSemOTextoNovo(m) ? [fala, { role: 'user', content: NOTA_DA_EDICAO }] : [fala]
     })
     .filter((m) => m.content.length > 0)
+}
+
+/** A mensagem do CLIENTE editada sem a versão nova (a cifrada: só `edited_at`). */
+export function editadaSemOTextoNovo(m: Pick<MensagemDoContexto, 'sender_type' | 'edited_at' | 'text_before_edit'>): boolean {
+  return m.sender_type === 'customer' && !!m.edited_at && !m.text_before_edit
 }
 
 /**
@@ -266,6 +287,16 @@ export const NOTA_DA_RESPOSTA_CRUZADA =
   "[System note, not a message from the customer: the business's last message(s) above crossed with the customer's " +
   "latest message — the customer wrote before seeing them. Reply to what the customer still needs, without repeating what the business already said.]"
 
+/**
+ * A nota logo depois da mensagem do cliente EDITADA sem a versão nova
+ * (`editadaSemOTextoNovo`): o texto mostrado é o ANTIGO. O modelo pede a
+ * confirmação quando importa, sem falar de detalhe técnico (16/11/2026).
+ */
+export const NOTA_DA_EDICAO =
+  `${PREFIXO_DA_NOTA}: the customer EDITED the message above after sending it, and the edited version is not ` +
+  'visible to the business — only the original text is shown. If what they wrote matters for the next step, ask ' +
+  'them briefly to confirm it or write it again, without mentioning technical details.]'
+
 export function terminarNoCliente(mensagens: readonly ChatMessage[]): ChatMessage[] {
   const ultima = mensagens[mensagens.length - 1]
   if (!ultima || ultima.role === 'user' || !mensagens.some((m) => m.role === 'user')) return [...mensagens]
@@ -283,7 +314,7 @@ export async function lerConversaDaConexao(
   const { data, error } = await db
     .from('messages')
     .select(
-      'id, sender_type, content_type, content_text, media_type, media_filename, transcricao, transcricao_status, transcricao_erro, ligacao, sender_id, from_device, ia_agente_id',
+      'id, sender_type, content_type, content_text, media_type, media_filename, transcricao, transcricao_status, transcricao_erro, ligacao, sender_id, from_device, ia_agente_id, edited_at, text_before_edit',
     )
     .eq('conversation_id', args.conversationId)
     .eq('channel_id', args.canalId)

@@ -253,7 +253,7 @@ import { deslocamentoNaAbertura } from '@/lib/agenda/espalhar-na-abertura'
 import { lerLinhaDoAgente } from './agente'
 import { lerAgendaDoAgente } from './agenda'
 import { registrarFalhaDaIa, registrarIaVoltou } from './alarme-da-ia'
-import { NOTA_DA_RESPOSTA_CRUZADA } from './contexto'
+import { NOTA_DA_EDICAO, NOTA_DA_RESPOSTA_CRUZADA } from './contexto'
 import { aoChegarMensagemDoCliente } from './entrada'
 import { executarAcoes } from './executar-acoes'
 import { opcoesDoAgente } from './ferramentas'
@@ -830,6 +830,52 @@ describe('executarTurno — o card e o agente da etapa (D24/D27)', () => {
 })
 
 // ------------------------------------------------------------
+// A mensagem EDITADA (decisão do operador, 16/11/2026, saída A)
+// ------------------------------------------------------------
+
+// A edição cifrada da Evolution 2.4 carimba `edited_at` e MANTÉM o texto
+// antigo. Antes o turno descartava, e a cliente ficava sem resposta E sem
+// follow-up até escrever de novo (medido no Trabalhista: "Sim" editado 8 s
+// depois). Agora responde, e o contexto leva a nota da edição.
+describe('executarTurno — a mensagem EDITADA é respondida, com a nota', () => {
+  const ultimoPedido = () => vi.mocked(generateReply).mock.calls.at(-1)![0].messages
+
+  it('editada na espera da rajada (a cifrada: o texto é o antigo): responde, com a nota logo depois dela', async () => {
+    banco.tabelas.messages[0].edited_at = haMs(1_000)
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(engineSendText).toHaveBeenCalledTimes(1)
+    const enviadas = ultimoPedido()
+    const i = enviadas.findIndex((m) => m.content === NOTA_DA_EDICAO)
+    expect(i).toBeGreaterThan(0)
+    expect(enviadas[i - 1]).toEqual({ role: 'user', content: 'Oi, preciso de ajuda' })
+  })
+
+  it('a edição LEGÍVEL (o texto já é o novo, o antigo em `text_before_edit`) vai sem a nota', async () => {
+    Object.assign(banco.tabelas.messages[0], { edited_at: haMs(1_000), text_before_edit: 'Oi' })
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(ultimoPedido().some((m) => m.content === NOTA_DA_EDICAO)).toBe(false)
+  })
+
+  it('editada ENQUANTO o modelo pensa: reagenda sem enviar, e a rodada seguinte responde com a nota', async () => {
+    vi.mocked(generateReply).mockImplementationOnce(async () => {
+      banco.tabelas.messages[0].edited_at = new Date().toISOString()
+      return { text: 'Olá!', handoff: false, usage: null }
+    })
+    await executarTurno(TURNO)
+    expect(turno()).toMatchObject({ status: 'aguardando', erro: null })
+    expect(engineSendText).not.toHaveBeenCalled()
+    // O vencimento chegou: a próxima rodada já conhece a edição.
+    turno().executar_apos = haMs(1)
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(engineSendText).toHaveBeenCalledTimes(1)
+    expect(ultimoPedido().some((m) => m.content === NOTA_DA_EDICAO)).toBe(true)
+  })
+})
+
+// ------------------------------------------------------------
 // As conferências: descartar
 // ------------------------------------------------------------
 
@@ -859,25 +905,6 @@ describe('executarTurno — descarta', () => {
     banco.tabelas.messages[0].deleted_at = haMs(1_000)
     await executarTurno(TURNO)
     expect(turno()).toMatchObject({ status: 'descartado', erro: 'a mensagem sumiu ou foi apagada' })
-  })
-
-  // A edição cifrada da Evolution 2.4 carimba `edited_at` e MANTÉM o texto
-  // antigo: responder seria responder ao que o cliente já corrigiu.
-  it('a mensagem que abriu o turno foi EDITADA na espera da rajada: descarta, sem gerar', async () => {
-    banco.tabelas.messages[0].edited_at = haMs(1_000)
-    await executarTurno(TURNO)
-    expect(turno()).toMatchObject({ status: 'descartado', erro: 'o cliente editou a mensagem' })
-    expect(generateReply).not.toHaveBeenCalled()
-  })
-
-  it('o cliente EDITA a mensagem enquanto o modelo pensa: descarta, sem enviar', async () => {
-    vi.mocked(generateReply).mockImplementation(async () => {
-      banco.tabelas.messages[0].edited_at = new Date().toISOString()
-      return { text: 'Olá!', handoff: false, usage: null }
-    })
-    await executarTurno(TURNO)
-    expect(turno()).toMatchObject({ status: 'descartado', erro: 'o cliente editou a mensagem' })
-    expect(engineSendText).not.toHaveBeenCalled()
   })
 
   it('mensagem MAIS NOVA do cliente na mesma conexão (E10)', async () => {

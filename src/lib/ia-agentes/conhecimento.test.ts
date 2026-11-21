@@ -18,6 +18,7 @@ vi.mock('@/lib/ai/embeddings', () => ({
 }))
 
 import { consultaDaUltimaMensagem, retrieveKnowledgeDoAgente } from './conhecimento'
+import { NOTA_DA_EDICAO, NOTA_DA_RESPOSTA_CRUZADA } from './contexto'
 
 interface Estado {
   documentos: Array<{ documento_id: string }>
@@ -162,6 +163,24 @@ describe('retrieveKnowledgeDoAgente', () => {
 })
 
 describe('consultaDaUltimaMensagem', () => {
+  it('⚠️ as NOTAS do sistema não são o cliente: a consulta é a última FALA dele (Codex, #522)', () => {
+    // A nota da mensagem editada vem logo depois dela; a da resposta cruzada, no fim.
+    expect(
+      consultaDaUltimaMensagem([
+        { role: 'assistant', content: 'Quando você saiu?' },
+        { role: 'user', content: 'Quanto tempo demora o processo?' },
+        { role: 'user', content: NOTA_DA_EDICAO },
+      ]),
+    ).toBe('Quanto tempo demora o processo?')
+    expect(
+      consultaDaUltimaMensagem([
+        { role: 'user', content: 'qual o valor?' },
+        { role: 'assistant', content: 'resposta' },
+        { role: 'user', content: NOTA_DA_RESPOSTA_CRUZADA },
+      ]),
+    ).toBe('qual o valor?')
+  })
+
   it('a última mensagem do cliente, sem o rótulo da mídia', () => {
     expect(
       consultaDaUltimaMensagem([
