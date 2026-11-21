@@ -40,6 +40,8 @@ import { registrarEntrega } from '@/lib/cb-channels/atraso-de-entrega';
 import { isUniqueViolation } from '@/lib/contacts/dedupe';
 import { reopenClosedConversation } from '@/lib/conversations/reopen';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
+import { CHAT_MEDIA_BUCKET } from '@/lib/storage/buckets';
+import { caminhoNoChatMedia } from '@/lib/storage/caminho-no-chat-media';
 import { findOrCreateConversation } from '@/lib/whatsapp/inbound-store';
 
 import {
@@ -310,6 +312,52 @@ async function ecoDoNossoEnvio(
   return (await idDaMensagem(db, conversationId, mid)) !== null;
 }
 
+/**
+ * A cópia que esta entrega BAIXOU perdeu o INSERT para outra linha com o
+ * mesmo `mid` (Codex, PR #539): o eco esperou 2 s, não achou a nossa linha,
+ * baixou o anexo — e o núcleo de envio gravou a resposta no meio. Se a linha
+ * que ficou cita OUTRO objeto (o arquivo que a equipe anexou), a cópia não tem
+ * dono e sai do bucket; nem a exclusão definitiva do contato a acharia.
+ *
+ * ⚠️ O nome do objeto é fixo por `mid` (`ig-<hash>`, `midia.ts`): numa
+ * reentrega da Meta a linha que ficou cita ESTE mesmo arquivo, e ele fica.
+ * Leitura que falha = "não sei": o arquivo fica. Só arquivo desta conta, fora
+ * do acervo (`caminhoNoChatMedia`, a guarda da drenagem). Nunca lança.
+ */
+async function descartarCopiaSemDono(
+  db: SupabaseClient,
+  ctx: ContextoDoCanal,
+  conversationId: string,
+  mid: string,
+  url: string
+): Promise<void> {
+  const copia = caminhoNoChatMedia(url, ctx.accountId);
+  if (!copia) return;
+  const { data, error } = await db
+    .from('messages')
+    .select('media_url')
+    .eq('conversation_id', conversationId)
+    .eq('message_id', mid)
+    .maybeSingle();
+  if (error || !data) {
+    if (error) console.error(`${TAG} conferir a linha que ficou falhou:`, error.message);
+    return;
+  }
+  const citada = caminhoNoChatMedia(
+    (data as { media_url?: string | null }).media_url,
+    ctx.accountId
+  );
+  if (citada === copia) return;
+  try {
+    const { error: erroRemove } = await db.storage
+      .from(CHAT_MEDIA_BUCKET)
+      .remove([copia]);
+    if (erroRemove) console.error(`${TAG} apagar a cópia sem dono falhou:`, erroRemove.message);
+  } catch (e) {
+    console.error(`${TAG} apagar a cópia sem dono falhou:`, e instanceof Error ? e.message : e);
+  }
+}
+
 /** Texto da prévia na lista, no molde do `inbound-store`. */
 function previa(c: ConteudoDaMensagem): string {
   return c.content_text || `[${c.content_type}]`;
@@ -448,7 +496,12 @@ async function gravarMensagem(
     // da mensagem que o PRÓPRIO CRM acabou de enviar (Fase 4). Nos dois
     // casos a linha certa já está lá.
     await avisoDeConversaCriada;
-    if (error && isUniqueViolation(error)) return { resultado: 'duplicada' };
+    if (error && isUniqueViolation(error)) {
+      if (midia) {
+        await descartarCopiaSemDono(db, ctx, conversation.id, ev.mid, midia.url);
+      }
+      return { resultado: 'duplicada' };
+    }
     console.error(`${TAG} inserir mensagem falhou:`, error?.message);
     return { resultado: 'falhou' };
   }
