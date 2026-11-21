@@ -1,0 +1,175 @@
+// ============================================================
+// Fase 6 do Instagram Direct: o token da conexão não pode morrer sozinho.
+//
+// O token longo do login do Instagram vale 60 dias e só se renova enquanto
+// VALE (doc de 21/11/2026: "tokens que não foram renovados em 60 dias
+// vencem e não podem mais ser renovados"). Vencido, a conexão fica muda — a
+// resposta da equipe é recusada — até alguém reconectar a conta.
+//
+// Roda no ciclo das agendadas (`rodarManutencaoDoCiclo`, laço de 15 min), não
+// numa rota nova: rota nova só entra no agendador com `docker stack deploy`
+// manual na VPS (decisão do operador, 21/11/2026).
+//
+// A régua:
+//   · renova o token renovado há 7 dias ou mais (a Meta exige 24 h de idade);
+//     a conexão vencida fica de fora — não há o que renovar;
+//   · o vencimento novo vem do `expires_in` MEDIDO e tem de passar do antigo:
+//     200 com o mesmo prazo não é renovação (fica para o próximo ciclo);
+//   · só o token RECUSADO (190) marca a conexão como desconectada, com o
+//     motivo. Rede, limite e erro da Meta tentam de novo no ciclo seguinte;
+//   · a escrita é CERCADA pelo carimbo lido: reconectar a conta no meio grava
+//     um token novo, e a renovação atrasada não o sobrescreve.
+//
+// O host e a forma do pedido moram em `graph.ts` (`renovarTokenLongo`).
+// ============================================================
+
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+import { decrypt, encrypt } from '@/lib/whatsapp/encryption';
+
+import { InstagramApiError, renovarTokenLongo } from './graph';
+
+export const RENOVAR_A_CADA_DIAS = 7;
+const DIA_MS = 86_400_000;
+
+/** O token recusado: a conexão precisa ser reconectada por alguém. */
+export const MOTIVO_TOKEN_RECUSADO =
+  'O token do Instagram venceu ou foi revogado: reconecte a conta em Configurações → Conexões.';
+
+export interface ResultadoDaRenovacao {
+  renovados: number;
+  /** Tentativas que não renovaram (ficam para o próximo ciclo). */
+  falhas: number;
+  /** Conexões marcadas como desconectadas (token recusado). */
+  desconectadas: number;
+  erro: string | null;
+}
+
+interface LinhaDoCanal {
+  id: string;
+  access_token: string | null;
+  ig_token_expires_at: string | null;
+  ig_token_refreshed_at: string | null;
+}
+
+/** NUNCA lança. `agora` e `renovar` são injetáveis no teste. */
+export async function renovarTokensDoInstagram(
+  admin: SupabaseClient,
+  agora: Date = new Date(),
+  renovar: typeof renovarTokenLongo = renovarTokenLongo
+): Promise<ResultadoDaRenovacao> {
+  const resultado: ResultadoDaRenovacao = {
+    renovados: 0,
+    falhas: 0,
+    desconectadas: 0,
+    erro: null,
+  };
+  const limite = new Date(
+    agora.getTime() - RENOVAR_A_CADA_DIAS * DIA_MS
+  ).toISOString();
+  const agoraIso = agora.toISOString();
+
+  const { data, error } = await admin
+    .from('cb_channels')
+    .select('id, access_token, ig_token_expires_at, ig_token_refreshed_at')
+    .eq('kind', 'instagram')
+    .eq('status', 'connected')
+    .not('access_token', 'is', null)
+    .or(`ig_token_refreshed_at.is.null,ig_token_refreshed_at.lt.${limite}`)
+    .limit(100);
+  if (error) {
+    console.error(
+      '[instagram/token] leitura das conexões falhou:',
+      error.message
+    );
+    return { ...resultado, erro: error.message };
+  }
+
+  for (const canal of (data ?? []) as LinhaDoCanal[]) {
+    if (!canal.access_token) continue;
+    // Vencido não se renova (a Meta recusa): fica para quem reconectar.
+    if (
+      canal.ig_token_expires_at &&
+      new Date(canal.ig_token_expires_at).getTime() <= agora.getTime()
+    ) {
+      continue;
+    }
+    let tokenAtual: string;
+    try {
+      tokenAtual = decrypt(canal.access_token);
+    } catch {
+      console.error(`[instagram/token] ${canal.id}: token não decifra`);
+      resultado.falhas++;
+      continue;
+    }
+
+    try {
+      const novo = await renovar(tokenAtual);
+      const vence = new Date(agora.getTime() + novo.expiraEmSeg * 1000);
+      const antigo = canal.ig_token_expires_at
+        ? new Date(canal.ig_token_expires_at).getTime()
+        : 0;
+      if (vence.getTime() <= antigo) {
+        // A Meta respondeu 200 sem estender o prazo: não é renovação.
+        console.warn(
+          `[instagram/token] ${canal.id}: a Meta não estendeu o prazo`
+        );
+        resultado.falhas++;
+        continue;
+      }
+      let gravacao = admin
+        .from('cb_channels')
+        .update({
+          access_token: encrypt(novo.token),
+          ig_token_expires_at: vence.toISOString(),
+          ig_token_refreshed_at: agoraIso,
+          updated_at: agoraIso,
+        })
+        .eq('id', canal.id)
+        .eq('kind', 'instagram');
+      gravacao = canal.ig_token_refreshed_at
+        ? gravacao.eq('ig_token_refreshed_at', canal.ig_token_refreshed_at)
+        : gravacao.is('ig_token_refreshed_at', null);
+      const { data: gravadas, error: erroGravar } = await gravacao.select('id');
+      if (erroGravar) {
+        // ⚠️ A Meta pode já ter trocado o token: o antigo ainda vale até
+        // vencer (a doc não diz que a renovação o invalida), e o próximo ciclo
+        // renova de novo. Sem o log, o token novo se perderia em silêncio.
+        console.error(
+          `[instagram/token] ${canal.id}: gravar o token novo falhou:`,
+          erroGravar.message
+        );
+        resultado.falhas++;
+        continue;
+      }
+      // Zero linhas = alguém reconectou a conta no meio: o token dela vale.
+      if ((gravadas ?? []).length > 0) resultado.renovados++;
+    } catch (err) {
+      resultado.falhas++;
+      if (err instanceof InstagramApiError && err.codigo === 'token_invalido') {
+        const { error: erroMarca } = await admin
+          .from('cb_channels')
+          .update({
+            status: 'disconnected',
+            last_error: MOTIVO_TOKEN_RECUSADO,
+            updated_at: agoraIso,
+          })
+          .eq('id', canal.id)
+          .eq('kind', 'instagram');
+        if (erroMarca) {
+          console.error(
+            `[instagram/token] ${canal.id}: marcar desconectada falhou:`,
+            erroMarca.message
+          );
+        } else {
+          resultado.desconectadas++;
+        }
+      }
+      console.error(
+        `[instagram/token] ${canal.id}: renovação falhou:`,
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
+  return resultado;
+}

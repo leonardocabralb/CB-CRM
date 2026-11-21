@@ -13,6 +13,8 @@ import {
 import { lerAnexo, podeTerLegenda, tetoDaLegenda } from '@/lib/scheduled/midia';
 import { CHAT_MEDIA_BUCKET } from '@/lib/storage/buckets';
 import { alvoDeEnvio, FRASE_SO_NUMERO_OFICIAL } from '@/lib/whatsapp/alvo-de-envio';
+import { ehInstagram } from '@/lib/cb-channels/transporte';
+import { conferirParaODirect, FRASES_DO_DIRECT } from '@/lib/instagram/envio';
 
 /**
  * POST /api/cb/scheduled — agenda uma mensagem de texto (migration 925).
@@ -283,6 +285,27 @@ export async function POST(request: Request) {
         return NextResponse.json(
           { error: FRASE_SO_NUMERO_OFICIAL, code: 'not_supported' },
           { status: 409 },
+        );
+      }
+    }
+
+    // Instagram Direct (Fase 4): o que o Direct não aceita (legenda,
+    // documento que não é PDF, mais de 1000 bytes) recusa AGORA, com o
+    // operador na tela — não de madrugada, na coluna de erro. O teto do texto
+    // é conferido sem a assinatura (ela pode mudar até lá); o núcleo confere
+    // de novo com ela. A janela de 24 h fica para a hora do envio: até lá a
+    // pessoa pode escrever de novo.
+    if (ehInstagram(canal)) {
+      const cabe = conferirParaODirect({
+        tipo: anexo?.kind ?? 'text',
+        texto,
+        mediaUrl: anexo?.path ?? null,
+        filename: anexo?.filename ?? null,
+      });
+      if (!cabe.ok) {
+        return NextResponse.json(
+          { error: FRASES_DO_DIRECT[cabe.recusa], code: 'not_supported' },
+          { status: 409 }
         );
       }
     }

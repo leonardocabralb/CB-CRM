@@ -40,6 +40,7 @@ describe('completarPerfilDoContato', () => {
       cliente: {
         me: vi.fn(),
         assinarWebhooks: async () => {},
+        enviarMensagem: async () => ({ messageId: 'x' }),
         perfil: async () => ({ nome: 'Ana', username: 'ana', fotoUrl: null }),
       },
     });
@@ -62,6 +63,7 @@ describe('completarPerfilDoContato', () => {
       cliente: {
         me: vi.fn(),
         assinarWebhooks: async () => {},
+        enviarMensagem: async () => ({ messageId: 'x' }),
         perfil: async () => ({
           nome: 'Ana',
           username: 'ana',
@@ -87,6 +89,7 @@ describe('completarPerfilDoContato', () => {
       cliente: {
         me: vi.fn(),
         assinarWebhooks: async () => {},
+        enviarMensagem: async () => ({ messageId: 'x' }),
         perfil: async () => ({
           nome: null,
           username: 'ana',
@@ -107,6 +110,7 @@ describe('completarPerfilDoContato', () => {
       cliente: {
         me: vi.fn(),
         assinarWebhooks: async () => {},
+        enviarMensagem: async () => ({ messageId: 'x' }),
         perfil: async () => {
           throw new Error('rede');
         },

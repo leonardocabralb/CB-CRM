@@ -33,6 +33,7 @@ import { semTokenDaMeta } from '@/lib/cb-channels/falha-da-meta'
 import { gravarComCanal, preencherCanalDaConversa } from '@/lib/cb-channels/stamp'
 import type { MotivoDoEnvio } from '@/lib/inbox/falha-do-envio'
 import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive'
+import { InstagramApiError, envioRecusado } from '@/lib/instagram/graph'
 import { MetaApiError } from '@/lib/whatsapp/meta-api'
 import { EvolutionApiError } from '@/lib/whatsapp/transport/evolution-client'
 
@@ -100,6 +101,11 @@ export function classificarFalha(err: unknown): {
     }
     return { motivo: 'incerto', codigo: err.code, detalhe }
   }
+  // Instagram Direct (Fase 4): a mesma régua — só o 4xx afirma "não saiu"
+  // (`envioRecusado`). A mensagem já vem sem o token (`semSegredo`, graph.ts).
+  if (err instanceof InstagramApiError) {
+    return { motivo: envioRecusado(err) ? 'recusado' : 'incerto', codigo: err.codigoDaMeta, detalhe }
+  }
   return { motivo: 'incerto', codigo: null, detalhe }
 }
 
@@ -125,12 +131,15 @@ export function motivoDaFalhaDoNucleo(err: {
   switch (err.code) {
     case 'evolution_rejected':
     case 'evolution_error':
+    case 'instagram_rejected':
+    case 'instagram_error':
     case 'meta_error': {
       if (err.cause !== undefined) {
         const { motivo, detalhe } = classificarFalha(err.cause)
         return { motivo, detalhe: detalhe || null }
       }
-      return { motivo: err.code === 'evolution_rejected' ? 'recusado' : 'incerto', detalhe: null }
+      const recusa = err.code === 'evolution_rejected' || err.code === 'instagram_rejected'
+      return { motivo: recusa ? 'recusado' : 'incerto', detalhe: null }
     }
     case 'db_error':
       return { motivo: 'incerto', detalhe: null }

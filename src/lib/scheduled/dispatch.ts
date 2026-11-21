@@ -139,8 +139,16 @@ const ANEXO_SUMIU =
  * conseguiu baixar). Nada saiu — e chamar isso de "pode ter chegado" esconde o
  * botão de tentar de novo sobre uma mensagem que comprovadamente não foi.
  * Com texto puro isso quase não acontecia; com anexo é o modo de falha comum.
+ *
+ * O Instagram Direct (Fase 4) repete a régua: `instagram_error` (tempo
+ * esgotado, 5xx, aceito sem `mid`) é incerto; `instagram_rejected` (4xx) e
+ * `window_closed` não saíram.
  */
-const CODIGOS_POS_ENTREGA = new Set(['db_error', 'evolution_error']);
+const CODIGOS_POS_ENTREGA = new Set([
+  'db_error',
+  'evolution_error',
+  'instagram_error',
+]);
 
 /**
  * Um ciclo do agendador: recusa o que envelheceu, dispara o que venceu.

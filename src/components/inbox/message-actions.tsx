@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/popover";
 import type { Message } from "@/types";
 import { useTranslations } from "next-intl";
-import { ehEvolution } from "@/lib/cb-channels/transporte";
+import { ehEvolution, ehInstagram } from "@/lib/cb-channels/transporte";
 import type { CbChannelKind } from "@/lib/cb-channels/repo";
 import { TOQUE_LONGO_MS } from "./player-de-audio";
 import { DadosDaMensagemDoGrupo } from "./dados-da-mensagem-do-grupo";
@@ -382,7 +382,9 @@ export function MessageActions({
           isAgent ? "right-3" : "left-3",
         )}
       >
-        {!naoSaiu && (
+        {/* Reagir fica FORA no Instagram Direct (D5, revisto em 21/11/2026:
+            citar passou a caber, reagir não) — a rota também recusa. */}
+        {!naoSaiu && !ehInstagram(channelKind) && (
           <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
             <PopoverTrigger
               className={cn(BOTAO, "hover:bg-muted hover:text-foreground")}

@@ -74,6 +74,19 @@ import {
 } from '@/lib/whatsapp/template-send-builder';
 import { ehEvolution, ehInstagram, ehMeta } from '@/lib/cb-channels/transporte';
 import type { TentativaDoNucleo } from '@/lib/whatsapp/envio-que-falhou';
+import { isUniqueViolation } from '@/lib/contacts/dedupe';
+import {
+  InstagramApiError,
+  criarClienteInstagram,
+  envioRecusado,
+  type TipoDeAnexoDoDirect,
+} from '@/lib/instagram/graph';
+import {
+  FRASES_DO_DIRECT,
+  FRASE_JANELA_DO_DIRECT_FECHADA,
+  conferirParaODirect,
+  janelaDoDirectAberta,
+} from '@/lib/instagram/envio';
 
 export const MEDIA_KINDS = ['image', 'video', 'document', 'audio'] as const;
 export const VALID_MESSAGE_TYPES = [
@@ -339,8 +352,15 @@ export async function sendMessageToConversation(
   const contact = conversation.contact;
   // Telefone OU BSUID (Fase 11.3): a ficha de quem a Meta identifica só pelo
   // nome de usuário não tem telefone. Se o BSUID serve depende do CANAL, e
-  // isso é decidido lá embaixo, depois de resolvê-lo (`alvoDeEnvio`).
-  if (!ehGrupo && !contact?.phone && !contact?.wa_user_id) {
+  // isso é decidido lá embaixo, depois de resolvê-lo (`alvoDeEnvio`). A ficha
+  // só do Instagram (Fase 4) tem só o IGSID, que só a conexão do Instagram
+  // alcança — também decidido depois do canal.
+  if (
+    !ehGrupo &&
+    !contact?.phone &&
+    !contact?.wa_user_id &&
+    !contact?.instagram_id
+  ) {
     throw new SendMessageError(
       'bad_request',
       'Contact phone number not found',
@@ -458,15 +478,83 @@ export async function sendMessageToConversation(
     );
   }
 
-  // Instagram: o ramo de saída chega na Fase 4 do plano
-  // (docs/PLANO-instagram-direct.md). Até lá falha FECHADO aqui — nunca o
-  // ramo Meta com o token do Instagram e um IGSID no lugar do telefone.
+  /**
+   * INSTAGRAM DIRECT (Fase 4, docs/PLANO-instagram-direct.md). Tudo o que o
+   * Direct recusa é recusado AQUI, antes do provedor, com a frase: modelo e
+   * interativa não existem lá, o texto tem teto de 1000 BYTES (já com a
+   * assinatura), anexo não leva legenda e só aceita os formatos da doc (D5).
+   * Depois, a JANELA: só a pessoa a abre, e ela fecha 24 h depois da última
+   * mensagem dela por ESTA conexão (D2; o Human Agent fica fora).
+   *
+   * ⚠️ Grupo não existe no Direct, e o destino é o IGSID — nunca o telefone
+   * da ficha: o ramo da Meta com o token do Instagram mandaria ao número.
+   */
+  let anexoDoDirect: TipoDeAnexoDoDirect | null = null;
   if (ehInstagram(channel)) {
-    throw new SendMessageError(
-      'not_supported',
-      'Enviar pelo Instagram ainda não está disponível nesta versão.',
-      400
-    );
+    if (ehGrupo) {
+      throw new SendMessageError(
+        'not_supported',
+        'Grupos não existem no Instagram Direct.',
+        400
+      );
+    }
+    if (!contact?.instagram_id) {
+      throw new SendMessageError(
+        'not_supported',
+        'Este contato não tem conta do Instagram ligada: responda por uma conexão de WhatsApp.',
+        400
+      );
+    }
+    if (!channel.access_token) {
+      throw new SendMessageError(
+        'whatsapp_not_configured',
+        'A conexão do Instagram está sem token: reconecte-a em Configurações → Conexões.',
+        400
+      );
+    }
+    const cabe = conferirParaODirect({
+      tipo: messageType,
+      texto: messageType === 'text' ? textoFinal : contentText,
+      mediaUrl,
+      filename,
+    });
+    if (!cabe.ok) {
+      throw new SendMessageError(
+        cabe.recusa === 'texto_longo' ? 'text_too_long' : 'not_supported',
+        FRASES_DO_DIRECT[cabe.recusa],
+        400
+      );
+    }
+    anexoDoDirect = cabe.anexo;
+
+    // A janela, pela última mensagem DA PESSOA nesta conexão. Leitura que
+    // falha não é "fechada" nem "aberta": nada sai, e o código não é o
+    // `db_error` (que diria "saiu e não gravou").
+    const { data: ultima, error: erroDaJanela } = await db
+      .from('messages')
+      .select('created_at')
+      .eq('conversation_id', conversationId)
+      .eq('channel_id', channel.channelId)
+      .eq('sender_type', 'customer')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (erroDaJanela) {
+      throw new SendMessageError(
+        'window_unknown',
+        'Não deu para conferir a janela de 24 horas do Instagram. Tente de novo.',
+        503
+      );
+    }
+    const ultimaEm =
+      (ultima as { created_at?: string } | null)?.created_at ?? null;
+    if (!janelaDoDirectAberta(ultimaEm, new Date())) {
+      throw new SendMessageError(
+        'window_closed',
+        FRASE_JANELA_DO_DIRECT_FECHADA,
+        409
+      );
+    }
   }
 
   // ⚠️ Grupo NÃO existe na API oficial da Meta — não é limitação nossa nem
@@ -513,12 +601,27 @@ export async function sendMessageToConversation(
   let ehTelefone = true;
   if (ehGrupo) {
     destinatario = grupo!.jid;
+  } else if (ehInstagram(channel)) {
+    // O IGSID, conferido no bloco do Instagram acima. Nunca vai para
+    // `contacts.phone` (o `ehTelefone` falso desliga a autocorreção).
+    destinatario = contact!.instagram_id!;
+    ehTelefone = false;
   } else {
     const alvo = alvoDeEnvio(contact, channel);
     if (!alvo.ok) {
-      throw alvo.motivo === 'so_numero_oficial'
-        ? new SendMessageError('not_supported', FRASE_SO_NUMERO_OFICIAL, 400)
-        : new SendMessageError('bad_request', 'Invalid phone number format', 400);
+      if (alvo.motivo === 'so_numero_oficial') {
+        throw new SendMessageError('not_supported', FRASE_SO_NUMERO_OFICIAL, 400);
+      }
+      // A ficha só do Instagram numa conversa presa a um número de WhatsApp:
+      // não há telefone para onde mandar, e o "formato inválido" enganaria.
+      if (!contact?.phone && contact?.instagram_id) {
+        throw new SendMessageError(
+          'not_supported',
+          'Este contato só existe no Instagram: responda pela conexão do Instagram.',
+          400
+        );
+      }
+      throw new SendMessageError('bad_request', 'Invalid phone number format', 400);
     }
     destinatario = alvo.alvo;
     ehTelefone = alvo.ehTelefone;
@@ -556,7 +659,9 @@ export async function sendMessageToConversation(
   if (replyToMessageId) {
     const { data: parent, error: parentError } = await db
       .from('messages')
-      .select('message_id, conversation_id, remote_jid, from_me, content_type')
+      .select(
+        'message_id, conversation_id, remote_jid, from_me, content_type, deleted_at, channel_id'
+      )
       .eq('id', replyToMessageId)
       .eq('conversation_id', conversationId)
       .maybeSingle();
@@ -577,6 +682,26 @@ export async function sendMessageToConversation(
         'reply_to_message_id points to a WhatsApp call, which cannot be quoted',
         400
       );
+    }
+    // Instagram (Fase 4): a citação é o `mid` DESTA conexão — o de uma
+    // mensagem do WhatsApp na mesma conversa (unificada, Fase 5) não existe
+    // no Direct. E citar o que foi apagado é recusado, como no agendamento:
+    // o apagar daqui é mole (`deleted_at`) e o núcleo não o conferia.
+    if (ehInstagram(channel)) {
+      if (parent.deleted_at) {
+        throw new SendMessageError(
+          'bad_request',
+          'A mensagem citada foi apagada.',
+          400
+        );
+      }
+      if (parent.channel_id && parent.channel_id !== channel.channelId) {
+        throw new SendMessageError(
+          'bad_request',
+          'A mensagem citada não passou por esta conexão do Instagram.',
+          400
+        );
+      }
     }
     if (!parent.message_id) {
       console.warn(
@@ -682,7 +807,58 @@ export async function sendMessageToConversation(
   // a mensagem se apaga e se edita (`enderecoDoEnvio`). NULL no resto.
   let outboundRemoteJidLid: string | null = null;
 
-  if (ehEvolution(channel)) {
+  if (ehInstagram(channel)) {
+    // A conversa sem número ganha o da tentativa (regra de todo remetente;
+    // a do Instagram já nasce com o canal, então é no-op quase sempre).
+    await preencherCanalDaConversa(
+      supabaseAdmin(),
+      accountId,
+      conversationId,
+      channel.channelId
+    );
+    const cliente = criarClienteInstagram(decrypt(channel.access_token!));
+    // A linha irmã de um anexo extra do cliente tem o `mid` sufixado
+    // (`persistir.ts`): no Direct, a citação é a DM inteira.
+    const citando = contextMessageId ? contextMessageId.split('#')[0] : null;
+    try {
+      const enviada = await cliente.enviarMensagem(
+        anexoDoDirect
+          ? {
+              para: destinatario,
+              citando,
+              anexo: { tipo: anexoDoDirect, url: mediaUrl! },
+            }
+          : { para: destinatario, citando, texto: textoFinal! }
+      );
+      waMessageId = enviada.messageId;
+    } catch (err) {
+      console.error(
+        '[send-message] Instagram send failed:',
+        err instanceof Error ? err.message : err
+      );
+      // ⚠️ Recusa COMPROVADA (4xx: nada saiu) × "não sei" (tempo esgotado,
+      // 5xx, 2xx sem `mid`): só o segundo vira `entrega_incerta` na agendada
+      // e esconde o "Tentar de novo" — a mesma régua da Evolution (932).
+      // A janela que fechou entre a conferência acima e a Meta: a mesma recusa
+      // da conferência (sem `tentativa`: como ela, não vira bolha gravada).
+      if (err instanceof InstagramApiError && err.codigo === 'janela_fechada') {
+        throw new SendMessageError(
+          'window_closed',
+          FRASE_JANELA_DO_DIRECT_FECHADA,
+          409,
+          {
+            cause: err,
+          }
+        );
+      }
+      throw new SendMessageError(
+        envioRecusado(err) ? 'instagram_rejected' : 'instagram_error',
+        `Instagram API error: ${err instanceof Error ? err.message : String(err)}`,
+        502,
+        { cause: err, tentativa }
+      );
+    }
+  } else if (ehEvolution(channel)) {
     // Evolution/Baileys has no HSM templates and unreliable native
     // buttons/lists — both are rejected up front until they degrade to
     // plain text in a later pass. Text + media are the reply MVP.
@@ -936,7 +1112,7 @@ export async function sendMessageToConversation(
   // Persist the sent message. Field names MUST match the messages
   // schema (see 001_initial_schema.sql). O texto (`persistedText`) e a
   // prévia (`lastMessageText`) são montados antes do envio — ver a tentativa.
-  const { data: messageRecord, error: msgError } = await db
+  const inserida = await db
     .from('messages')
     .insert({
       conversation_id: conversationId,
@@ -971,12 +1147,45 @@ export async function sendMessageToConversation(
     })
     .select()
     .single();
+  let messageRecord = inserida.data;
+  let msgError = inserida.error;
 
-  if (msgError) {
+  /**
+   * ⚠️ O ECO do Instagram pode chegar ANTES desta linha (Fase 4): o webhook
+   * entrega o `is_echo` do que acabamos de mandar, e `persistir.ts` só espera
+   * 2 s pela nossa linha antes de gravar o eco como mensagem do app do
+   * Instagram. Aí o UNIQUE `(conversation_id, message_id)` recusa a nossa — e
+   * o `db_error` diria "saiu e não gravou", com a mensagem no fio. A linha é a
+   * mesma mensagem: ela passa a ser a NOSSA (autor, arquivo do Storage,
+   * citação, sem a marca de celular). Pelo admin, como o carimbo de canal: a
+   * conversa já foi conferida na conta lá em cima.
+   */
+  if (msgError && ehInstagram(channel) && isUniqueViolation(msgError)) {
+    const adotada = await supabaseAdmin()
+      .from('messages')
+      .update({
+        sender_type: 'agent',
+        sender_id: senderUserId ?? null,
+        from_device: false,
+        content_type: messageType,
+        content_text: persistedText,
+        media_url: mediaUrl || null,
+        media_filename: filename || null,
+        reply_to_message_id: replyToMessageId || null,
+      })
+      .eq('conversation_id', conversationId)
+      .eq('message_id', waMessageId)
+      .select()
+      .single();
+    messageRecord = adotada.data;
+    msgError = adotada.error;
+  }
+
+  if (msgError || !messageRecord) {
     console.error('[send-message] error inserting sent message:', msgError);
     throw new SendMessageError(
       'db_error',
-      `Message sent to Meta but failed to save to DB: ${msgError.message}`,
+      `Message sent to Meta but failed to save to DB: ${msgError?.message ?? 'no row returned'}`,
       500
     );
   }

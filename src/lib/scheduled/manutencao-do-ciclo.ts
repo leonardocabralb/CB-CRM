@@ -1,7 +1,8 @@
 // ============================================================
 // O que o ciclo das agendadas (`/api/cb/scheduled/cron`, laço de 15 min)
 // faz DEPOIS da resposta, em `after()`: os alarmes de conexão no sino (1122),
-// as tarefas recorrentes (1074), o vencimento da Lixeira de contatos (1097),
+// a renovação do token das conexões do Instagram (Fase 6 do Instagram
+// Direct), as tarefas recorrentes (1074), o vencimento da Lixeira de contatos (1097),
 // o da lixeira de anotações (1132), a poda do conteúdo dos turnos dos agentes
 // de IA (1110), a poda das gravações de ligação aos 180 dias (1136), a
 // drenagem da fila de arquivos a apagar (1097) e a retomada das transcrições
@@ -10,11 +11,13 @@
 // ⚠️ Por que nesta rota, e não numa nova: rota nova no agendador só roda
 // depois de mudar o `command` do `docker-stack.yml` E de um `docker stack
 // deploy` manual na VPS (`.claude/rules/deploy.md`). Tirar esta chamada da
-// rota (ou a rota do laço) para as oito coisas, sem erro nenhum — pinos
+// rota (ou a rota do laço) para as nove coisas, sem erro nenhum — pinos
 // `tarefas-recorrentes-1074.test.ts` e `manutencao-do-ciclo.test.ts`.
 //
 // ⚠️ A ORDEM: os alarmes vêm primeiro: são rápidos (duas leituras por
-// conexão) e são o aviso que precisa chegar a alguém em minutos. O vencimento
+// conexão) e são o aviso que precisa chegar a alguém em minutos. A renovação
+// do token do Instagram vem logo depois: é uma chamada por conexão uma vez por
+// semana, e é o que impede a conexão de vencer muda. O vencimento
 // põe arquivos na fila, e a drenagem do MESMO ciclo já os leva. As tarefas vêm
 // antes do vencimento porque são o que alguém vê hoje. O vencimento das
 // anotações também enche a fila (o gatilho da 1102 leva os anexos da
@@ -26,7 +29,7 @@
 // por ÚLTIMO: cada uma chama o provedor de IA (até minutos), e ela só começa
 // com o prazo de uma inteira sobrando — o atraso dela não segura os outros.
 //
-// ⚠️ Cada passo é ISOLADO: os oito já nunca lançam, e mesmo assim cada um
+// ⚠️ Cada passo é ISOLADO: os nove já nunca lançam, e mesmo assim cada um
 // roda dentro do próprio try — a falha (ou um defeito futuro que lance) de um
 // não impede o seguinte.
 // ============================================================
@@ -35,6 +38,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { avisarAlarmesDeConexao } from '@/lib/cb-channels/avisar-alarmes';
 import { podarConteudoDosTurnos } from '@/lib/ia-agentes/conteudo-dos-turnos';
+import { renovarTokensDoInstagram } from '@/lib/instagram/renovar-token';
 import {
   drenarArquivosAApagar,
   vencerLixeira,
@@ -57,7 +61,7 @@ import { retomarTranscricoes } from '@/lib/whatsapp/ligacoes/transcricao';
  */
 export const PRAZO_DA_MANUTENCAO_MS = 5 * 60_000;
 
-/** Um passo que lançou (não devia: os oito engolem) não derruba os outros. */
+/** Um passo que lançou (não devia: os nove engolem) não derruba os outros. */
 async function isolado(
   nome: string,
   passo: () => Promise<unknown>
@@ -79,6 +83,9 @@ export async function rodarManutencaoDoCiclo(
 ): Promise<void> {
   const prazo = agora + PRAZO_DA_MANUTENCAO_MS;
   await isolado('alarmes de conexão', () => avisarAlarmesDeConexao(admin, agora));
+  await isolado('token do Instagram', () =>
+    renovarTokensDoInstagram(admin, new Date(agora))
+  );
   await isolado('tarefas recorrentes', () => gerarTarefasRecorrentes(admin));
   await isolado('vencimento da Lixeira', () => vencerLixeira(admin, prazo));
   await isolado('vencimento da lixeira de anotações', () =>

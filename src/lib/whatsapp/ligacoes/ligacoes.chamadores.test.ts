@@ -186,7 +186,11 @@ describe('quem lê content_type trata a ligação', () => {
 
   it('o núcleo de envio recusa citar uma ligação (o `call:<id>` não existe no WhatsApp)', () => {
     const envio = fonte('lib/whatsapp/send-message.ts');
-    expect(envio).toMatch(/\.select\('message_id, conversation_id, remote_jid, from_me, content_type'\)/);
+    // A citada traz `content_type` (e, desde a Fase 4 do Instagram, as colunas
+    // que o Direct confere: `deleted_at`, `channel_id`).
+    expect(envio).toMatch(
+      /\.select\(\s*'message_id, conversation_id, remote_jid, from_me, content_type(?:, [a-z_]+)*'\s*\)/,
+    );
     expect(envio).toMatch(/parent\.content_type === 'call'\)\s*\{\s*throw new SendMessageError\(/);
   });
 

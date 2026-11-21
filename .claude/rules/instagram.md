@@ -10,9 +10,9 @@ paths:
 
 Vale ao editar ou revisar o terceiro transporte (Instagram Direct), os
 predicados de transporte e a identidade do contato sem telefone. Estado e
-fases pendentes (renovação do token pelo cron, `ig_human_agent`, unificação
-de fichas): `docs/PLANO-instagram-direct.md`. O que a ingestão do Instagram
-dispara (e não dispara) está também em `.claude/rules/ingestao.md`.
+fases pendentes (`ig_human_agent`, unificação de fichas):
+`docs/PLANO-instagram-direct.md`. O que a ingestão do Instagram dispara (e
+não dispara) está também em `.claude/rules/ingestao.md`.
 
 ### O transporte é PREDICADO, nunca literal
 
@@ -30,12 +30,13 @@ dispara (e não dispara) está também em `.claude/rules/ingestao.md`.
   `IconeDoTransporte` e `transport/index.ts`). O `tsconfig` não tem
   `noImplicitReturns`: sem ela, um 4º transporte compila e o `switch` devolve
   `undefined` em silêncio.
-- ⚠️ **Os ramos de Instagram falham FECHADO**: núcleo de envio
-  (`not_supported`), senders do robô (`exigirWhatsApp` — robô não responde no
-  Direct, D1), reação (400), apagar/editar (frase própria), canal padrão
-  (recusa: o padrão é o WhatsApp que responde conversa sem canal), nova
-  conversa (não oferece), compositor (sem modelo nem interativa, inclusive
-  pelo atalho de resposta rápida).
+- ⚠️ **Os ramos de Instagram falham FECHADO**: senders do robô
+  (`exigirWhatsApp` — robô não responde no Direct, D1), reação (400, e o botão
+  some da bolha), apagar/editar (frase própria), canal padrão (recusa: o
+  padrão é o WhatsApp que responde conversa sem canal), nova conversa (não
+  oferece), compositor (sem modelo nem interativa, inclusive pelo atalho de
+  resposta rápida). O núcleo de ENVIO responde desde a Fase 4 (abaixo), com
+  as recusas dele.
 - ⚠️ **Ramo de DUAS pernas (`ehEvolution ? … : <Meta>`) só atrás de uma guarda
   de Instagram anterior no mesmo caminho.** É a guarda que o sustenta, e o
   teste estrutural só pega o literal. Ramo novo de duas pernas sem guarda é
@@ -110,12 +111,74 @@ dispara (e não dispara) está também em `.claude/rules/ingestao.md`.
 - **Eco (`is_echo`) com `mid` já gravado é o nosso próprio envio** e o UNIQUE
   descarta; sem linha, veio do app do Instagram e entra como `from_device`.
 
+### Responder pela caixa (Fase 4, 21/11/2026)
+
+`sendMessageToConversation` com o canal do Instagram; a régua do que cabe é
+`src/lib/instagram/envio.ts` (puro: núcleo, rotas de agendar e compositor).
+Pino `send-message-instagram.test.ts`.
+
+- ⚠️⚠️ **O host e o token moram SÓ em `graph.ts`** (`enviarMensagem`,
+  `renovarTokenLongo`): o login unificado vai trocar host e token por lá.
+  Rota, núcleo e cron nunca montam URL da Meta.
+- ⚠️⚠️ **O destino é o IGSID (`contacts.instagram_id`), nunca o telefone da
+  ficha**, e `ehTelefone` falso desliga a autocorreção. Conversa do Instagram
+  com ficha sem IGSID recusa; ficha só do Instagram presa a um número de
+  WhatsApp ouve "só existe no Instagram".
+- ⚠️ **Recusado ANTES da Meta, com a frase** (`conferirParaODirect`): modelo e
+  interativa; texto acima de 1000 BYTES UTF-8 (`text_too_long`), contados
+  JÁ com a assinatura; anexo com legenda (o Direct não tem legenda: o campo
+  some na tela, decisão de 21/11/2026); formato fora da doc (imagem png/jpeg,
+  vídeo mp4/ogg/avi/mov/webm, áudio aac/m4a/wav/mp4, documento SÓ PDF), pela
+  extensão do nome ou do caminho. O compositor recusa antes de subir
+  (`arquivoCabeNoDirect`, pelo MIME; imagem até 8 MB), o acervo também.
+- ⚠️⚠️ **A janela é conferida no SERVIDOR**: a última mensagem da PESSOA por
+  ESTA conexão (`messages.channel_id`), 24 h. Sem mensagem dela, fechada (só
+  ela abre). `window_closed` (409) e o subcódigo 2534022 da Meta dão a mesma
+  frase, sem bolha gravada. Leitura que falha é `window_unknown` (503) — nunca
+  `db_error`, que diria "saiu e não gravou". O fio conta a mesma janela
+  (`janela-24h.ts`, pelo carimbo do canal) e a dica diz que só a pessoa
+  reabre (sem "use um modelo").
+- ⚠️⚠️ **4xx × "não sei"** (`envioRecusado`): só a resposta 4xx é recusa
+  comprovada (`instagram_rejected`); rede, 5xx e 2xx sem `message_id` são
+  `instagram_error`, que a agendada conta como `entrega_incerta`
+  (`CODIGOS_POS_ENTREGA`) e a bolha como `incerto`. Os dois levam a
+  `tentativa` (bolha "não enviada", `classificarFalha` conhece
+  `InstagramApiError`).
+- ⚠️⚠️ **O eco do nosso envio pode chegar ANTES da nossa linha**: o webhook
+  entrega `is_echo` com o mesmo `mid`. `persistir.ts` procura a linha e, sem
+  ela, espera 2 s (`ESPERA_PELO_NOSSO_ENVIO_MS`, o `jaGravada` da Evolution)
+  antes de gravar o eco como "digitado no app"; se mesmo assim chegar
+  primeiro, o núcleo pega o 23505 e ASSUME a linha do eco (autor, arquivo do
+  Storage, citação, `from_device` falso) pelo admin. Sem as duas pontas, a
+  resposta aparecia como do celular, ou o envio virava `db_error` incerto.
+- **Citar cabe** (`reply_to: { mid }`; D5 revisto em 21/11/2026 pela doc
+  nova): a citada é a DM inteira (o `#n` da linha irmã de anexo extra é
+  cortado), e citada apagada ou de outra conexão é recusada. Reagir segue
+  fora (o botão some).
+- **Nota de voz em WAV** (D5): o compositor grava pelo `waveWorker` do
+  opus-recorder (`/public/opus/`) quando o canal ativo é Instagram, com teto
+  de 2 min 30 s (WAV 48 kHz ≈ 5,8 MB/min contra os 16 MB de envio).
+- **Human Agent (D2) segue sem efeito**: o interruptor existe e diz isso;
+  nada lê `ig_human_agent` até a Meta aprovar a feature.
+- A agendada no Direct (tela e `POST /v1/scheduled-messages`) recusa no
+  AGENDAMENTO o que não cabe; a janela fica para a hora do envio.
+  `POST /v1/messages` continua só WhatsApp (endereça por telefone).
+
 ### Token e Graph API
 
 - ⚠️ **Token só no cabeçalho `Authorization: Bearer`, nunca em
   `?access_token=`; a mensagem de erro da Meta ECOA o token e passa por
   `semSegredo`; o host é preso a `graph.instagram.com`** (`graph.ts`). O token
   do painel dura 60 dias; a validade fica em `ig_token_expires_at`.
+- ⚠️ **A renovação (Fase 6) roda na manutenção do ciclo das agendadas**
+  (`renovar-token.ts` em `rodarManutencaoDoCiclo`, laço de 15 min), não em
+  rota nova — rota nova pede `docker stack deploy` na VPS. Renova o token com
+  `ig_token_refreshed_at` de 7 dias ou mais e ainda válido; o vencimento novo
+  é o `expires_in` MEDIDO e tem de passar do antigo (200 sem estender não é
+  renovação); a escrita é cercada pelo carimbo lido (reconectar no meio
+  ganha). Só o 190 marca `disconnected` com `last_error`; o resto tenta no
+  ciclo seguinte. É a segunda exceção do `Bearer`: a doc só mostra o token na
+  query do `refresh_access_token`.
 
 ### Conexão pelo login do Instagram (OAuth)
 
@@ -173,6 +236,7 @@ devolve só o App ID). O canal criado pelo login continua gravando o segredo em
 - D2: janela de 24h; `ig_human_agent` opcional, só depois da aprovação da Meta.
 - D3: login do Instagram com Standard Access; token colado como alternativa.
 - D4: ficha própria do Instagram; unificação com a ficha de WhatsApp é MANUAL.
-- D5: o que a API não cobre — apagar-para-todos, responder citando, documento
-  que não seja PDF, editar — fica INACESSÍVEL na conversa Instagram; nota de
-  voz cabe via WAV.
+- D5: o que a API não cobre — apagar-para-todos, documento que não seja PDF,
+  editar, reagir, legenda — fica INACESSÍVEL na conversa Instagram; nota de
+  voz cabe via WAV. Revisto em 21/11/2026: responder citando cabe (a doc nova
+  aceita `reply_to`), reagir continua fora.

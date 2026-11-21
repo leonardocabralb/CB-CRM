@@ -277,6 +277,39 @@ async function idDaMensagem(
   return (data?.id as string | undefined) ?? null;
 }
 
+/**
+ * Quanto o eco espera pela linha do NOSSO envio (Fase 4). É o `jaGravada` da
+ * Evolution (2 s): o núcleo grava DEPOIS de a Meta responder, e o eco pode
+ * chegar no meio.
+ */
+export const ESPERA_PELO_NOSSO_ENVIO_MS = 2_000;
+
+export interface OpcoesDaPersistencia {
+  /** Injetável no teste; o padrão é o `setTimeout`. */
+  esperar?: (ms: number) => Promise<void>;
+}
+
+const esperarDeVerdade = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * O eco é de uma mensagem que o CRM enviou? A linha do núcleo tem o mesmo
+ * `mid`. Sem ela, espera um pouco e confere de novo: gravar o eco antes faria
+ * a nossa resposta aparecer como "digitada no app do Instagram" (o núcleo a
+ * retoma pelo UNIQUE, mas só se ele chegar depois). Leitura que falha conta
+ * como "não está": o eco entra, e o núcleo assume a linha.
+ */
+async function ecoDoNossoEnvio(
+  db: SupabaseClient,
+  conversationId: string,
+  mid: string,
+  esperar: (ms: number) => Promise<void>
+): Promise<boolean> {
+  if (await idDaMensagem(db, conversationId, mid)) return true;
+  await esperar(ESPERA_PELO_NOSSO_ENVIO_MS);
+  return (await idDaMensagem(db, conversationId, mid)) !== null;
+}
+
 /** Texto da prévia na lista, no molde do `inbound-store`. */
 function previa(c: ConteudoDaMensagem): string {
   return c.content_text || `[${c.content_type}]`;
@@ -318,7 +351,8 @@ async function gravarMensagem(
   ctx: ContextoDoCanal,
   ev: EventoMensagem,
   salvarMidia: SalvarMidia,
-  enriquecer?: Enriquecer
+  enriquecer?: Enriquecer,
+  opcoes: OpcoesDaPersistencia = {}
 ): Promise<ResultadoDaPersistencia> {
   const igsid = clienteDe(ev);
   const contato = await findOrCreateContatoDoInstagram(db, ctx, igsid);
@@ -353,6 +387,21 @@ async function gravarMensagem(
         channel_id: ctx.channelId,
       })
     : Promise.resolve();
+
+  // O eco do que o CRM ACABOU de enviar (Fase 4): a linha é do núcleo. Antes
+  // de baixar o anexo — a cópia seria jogada fora pelo UNIQUE.
+  if (
+    ev.ehEco &&
+    (await ecoDoNossoEnvio(
+      db,
+      conversation.id,
+      ev.mid,
+      opcoes.esperar ?? esperarDeVerdade
+    ))
+  ) {
+    await avisoDeConversaCriada;
+    return { resultado: 'duplicada' };
+  }
 
   // Um `mid` = uma linha. O Instagram aceita VÁRIOS arquivos numa DM; o
   // primeiro fica na mensagem e os demais viram linhas irmãs com o mid
@@ -583,13 +632,14 @@ export async function persistirEventoDoInstagram(
   ctx: ContextoDoCanal,
   ev: EventoDoInstagram,
   salvarMidia: SalvarMidia,
-  enriquecer?: Enriquecer
+  enriquecer?: Enriquecer,
+  opcoes: OpcoesDaPersistencia = {}
 ): Promise<ResultadoDaPersistencia> {
   switch (ev.tipo) {
     case 'mensagem':
       return ev.apagada
         ? marcarApagada(db, ctx, ev)
-        : gravarMensagem(db, ctx, ev, salvarMidia, enriquecer);
+        : gravarMensagem(db, ctx, ev, salvarMidia, enriquecer, opcoes);
     case 'postback':
       return gravarPostback(db, ctx, ev, salvarMidia, enriquecer);
     case 'edicao':

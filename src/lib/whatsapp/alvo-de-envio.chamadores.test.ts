@@ -80,11 +80,15 @@ describe('alvo de envio — nenhum ramo Evolution recebe BSUID (Fase 11.3)', () 
     })
   }
 
-  it('send-message.ts: o destinatário é o JID do grupo ou o alvo decidido — nada mais', () => {
+  it('send-message.ts: o destinatário é o JID do grupo, o IGSID no ramo do Instagram ou o alvo decidido — nada mais', () => {
     const texto = semComentarios(
       fs.readFileSync(path.join(SRC, 'lib/whatsapp/send-message.ts'), 'utf8'),
     )
     const atribuicoes = [...texto.matchAll(/\bdestinatario = ([^;]+);/g)].map((m) => m[1].trim())
-    expect(atribuicoes.sort()).toEqual(['alvo.alvo', 'grupo!.jid'])
+    expect(atribuicoes.sort()).toEqual(['alvo.alvo', 'contact!.instagram_id!', 'grupo!.jid'])
+    // O IGSID (Fase 4) só no ramo do Instagram: nunca chega à Evolution nem à Meta.
+    expect(texto).toMatch(
+      /\} else if \(ehInstagram\(channel\)\) \{[^}]*destinatario = contact!\.instagram_id!;/,
+    )
   })
 })

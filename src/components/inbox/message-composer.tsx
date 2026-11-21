@@ -116,6 +116,12 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ehEvolution, ehInstagram } from "@/lib/cb-channels/transporte";
+import {
+  arquivoCabeNoDirect,
+  bytesDoTexto,
+  TETO_DO_TEXTO_DO_DIRECT,
+  type RecusaDoDirect,
+} from "@/lib/instagram/envio";
 import type { CbChannelKind } from "@/lib/cb-channels/repo";
 
 /** Media content types an agent can send from the composer. */
@@ -406,6 +412,16 @@ function formatDuration(seconds: number): string {
  *  (vendored from opus-recorder into /public). Recording client-side in a
  *  Meta-accepted format means no server ffmpeg / transcode step. */
 const OPUS_ENCODER_PATH = "/opus/encoderWorker.min.js";
+
+/**
+ * NOSSO — Instagram Direct (Fase 4): o Direct não aceita Ogg/Opus, só
+ * aac/m4a/wav/mp4 (D5). O mesmo opus-recorder grava WAV pelo worker de onda
+ * (vendido junto, em `/public/opus/`). WAV 16 bits mono na taxa do navegador
+ * (48 kHz) pesa ~5,8 MB por minuto: o teto da gravação cai para 2 min 30 s,
+ * senão o arquivo passa dos 16 MB de envio.
+ */
+const WAV_ENCODER_PATH = "/opus/waveWorker.min.js";
+const MAX_RECORDING_SECONDS_INSTAGRAM = 150;
 
 export function MessageComposer({
   ref,
@@ -1077,6 +1093,14 @@ export function MessageComposer({
     const trimmed = text.trim();
     if (!trimmed || envioTravado) return;
 
+    // NOSSO — Instagram Direct (Fase 4): o teto é de 1000 BYTES. Recusar aqui
+    // deixa o texto no campo para dividir; o servidor confere de novo, com a
+    // assinatura somada.
+    if (ehInstagram(channelKind) && bytesDoTexto(trimmed) > TETO_DO_TEXTO_DO_DIRECT) {
+      toast.error(t("instagramTextoLongo"));
+      return;
+    }
+
     // ⚠️ DESVIO ANTES DE QUALQUER COISA. Com hora no campo, esta mensagem
     // não passa pela janela de desfazer nem pelo despachante — vai para a
     // fila e pronto. Ver a nota em `agendar`.
@@ -1113,7 +1137,7 @@ export function MessageComposer({
 
     // A altura volta ao `auto` pelo efeito sobre `text`.
     setText("");
-  }, [text, envioTravado, replyTo?.id, liberarPendente, quandoAg, agendar, setText, conversationId]);
+  }, [text, envioTravado, replyTo?.id, liberarPendente, quandoAg, agendar, setText, conversationId, channelKind, t]);
 
   // O "Tentar de novo" do fio (`CompositorHandle`): o MESMO trilho do Enviar —
   // trava, janela de desfazer, fila de saída, despachante preso à origem —,
@@ -1499,6 +1523,35 @@ export function MessageComposer({
   );
   useImperativeHandle(ref, () => ({ prepararResposta, reenviarTexto }), [prepararResposta, reenviarTexto]);
 
+  // NOSSO — Instagram Direct (Fase 4): por que o arquivo não cabe no Direct,
+  // com chave LITERAL por motivo (chave montada escaparia do portão do CI).
+  const fraseDoDirect = useCallback(
+    (recusa: RecusaDoDirect): string => {
+      switch (recusa) {
+        case "formato_imagem":
+          return t("instagramFormatoImagem");
+        case "formato_video":
+          return t("instagramFormatoVideo");
+        case "formato_audio":
+          return t("instagramFormatoAudio");
+        case "formato_documento":
+          return t("instagramFormatoDocumento");
+        case "imagem_grande":
+          return t("instagramImagemGrande");
+        case "texto_longo":
+          return t("instagramTextoLongo");
+        case "legenda":
+        case "tipo":
+          return t("instagramNaoCabe");
+        default: {
+          const nunca: never = recusa;
+          throw new Error(`recusa do Direct desconhecida: ${String(nunca)}`);
+        }
+      }
+    },
+    [t],
+  );
+
   // Upload a captured file to chat-media and stage it as a draft.
   const stageUpload = useCallback(
     async (kind: ComposerMediaKind, file: File) => {
@@ -1515,6 +1568,16 @@ export function MessageComposer({
           }),
         );
         return;
+      }
+      // NOSSO — Instagram Direct (Fase 4, D5): só imagem png/jpeg até 8 MB,
+      // vídeo, áudio aac/m4a/wav/mp4 e PDF. Recusado ANTES de subir: no bucket
+      // ele viraria órfão, e o envio morreria no servidor.
+      if (ehInstagram(channelKind)) {
+        const recusa = arquivoCabeNoDirect(kind, file.type, file.size);
+        if (recusa) {
+          toast.error(fraseDoDirect(recusa));
+          return;
+        }
       }
       const origem = conversationId;
       setBusy(true);
@@ -1544,7 +1607,7 @@ export function MessageComposer({
         setBusy(false);
       }
     },
-    [setDrafts, conversationId, t, tUpload],
+    [setDrafts, conversationId, t, tUpload, channelKind, fraseDoDirect],
   );
 
   /**
@@ -1681,6 +1744,15 @@ export function MessageComposer({
   const escolherDoAcervo = useCallback(
     async (item: MediaLibraryItem) => {
       setAcervoOpen(false);
+      // NOSSO — Instagram Direct (Fase 4): o item do acervo passa pela mesma
+      // régua do arquivo anexado (o áudio do acervo costuma ser Ogg).
+      if (ehInstagram(channelKind)) {
+        const recusa = arquivoCabeNoDirect(item.tipo, item.mime_type, item.size_bytes);
+        if (recusa) {
+          toast.error(fraseDoDirect(recusa));
+          return;
+        }
+      }
       const origem = conversationId;
       setBusy(true);
       try {
@@ -1708,20 +1780,24 @@ export function MessageComposer({
         setBusy(false);
       }
     },
-    [setDrafts, t, conversationId],
+    [setDrafts, t, conversationId, channelKind, fraseDoDirect],
   );
 
   // ---- Voice recording (client-side Ogg/Opus, no server transcode) ---
 
   // The encoded Ogg/Opus file from opus-recorder → upload as an audio
   // draft. WhatsApp renders Ogg/Opus as a playable voice note.
+  // NOSSO: `wav` = gravada para o Instagram Direct (decidido no INÍCIO da
+  // gravação, pelo worker que a gravou).
   const finalizeRecording = useCallback(
-    async (bytes: Uint8Array) => {
+    async (bytes: Uint8Array, wav: boolean) => {
       // Uint8Array is a valid BlobPart at runtime; the cast sidesteps the
       // lib.dom ArrayBufferLike-vs-ArrayBuffer generic mismatch.
-      const file = new File([bytes as unknown as BlobPart], `voice-${Date.now()}.ogg`, {
-        type: "audio/ogg",
-      });
+      const file = new File(
+        [bytes as unknown as BlobPart],
+        `voice-${Date.now()}.${wav ? "wav" : "ogg"}`,
+        { type: wav ? "audio/wav" : "audio/ogg" },
+      );
       if (file.size === 0) return; // cancelled / empty take
       if (file.size > MEDIA_MAX_BYTES_BY_KIND.audio) {
         toast.error(t("recordingTooLong"));
@@ -1763,17 +1839,23 @@ export function MessageComposer({
       // Lazy-load the encoder (≈400 KB worker) only when the user records,
       // keeping it out of the main bundle.
       const { default: Recorder } = await import("opus-recorder");
-      const recorder = new Recorder({
-        encoderPath: OPUS_ENCODER_PATH,
-        numberOfChannels: 1,
-        encoderApplication: 2048, // VOIP — tuned for speech
-        encoderSampleRate: 48000,
-        streamPages: false, // one callback with the complete file on stop
-      });
+      // NOSSO — no Instagram Direct a nota de voz sai em WAV (D5).
+      const wav = ehInstagram(channelKind);
+      const recorder = new Recorder(
+        wav
+          ? { encoderPath: WAV_ENCODER_PATH, numberOfChannels: 1, wavBitDepth: 16 }
+          : {
+              encoderPath: OPUS_ENCODER_PATH,
+              numberOfChannels: 1,
+              encoderApplication: 2048, // VOIP — tuned for speech
+              encoderSampleRate: 48000,
+              streamPages: false, // one callback with the complete file on stop
+            },
+      );
       cancelledRef.current = false;
       recorder.ondataavailable = (bytes) => {
         if (cancelledRef.current) return;
-        void finalizeRecording(bytes);
+        void finalizeRecording(bytes, wav);
       };
       recorderRef.current = recorder;
       await recorder.start();
@@ -1785,7 +1867,7 @@ export function MessageComposer({
       recorderRef.current = null;
       toast.error(t("microphoneDenied"));
     }
-  }, [inputsDisabled, busy, recording, finalizeRecording, t]);
+  }, [inputsDisabled, busy, recording, finalizeRecording, t, channelKind]);
 
   const stopRecording = useCallback(() => {
     clearTimer();
@@ -1801,12 +1883,15 @@ export function MessageComposer({
   }, [clearTimer]);
 
   // Auto-stop at the cap so a forgotten recording can't blow the
-  // upload size limit.
+  // upload size limit. NOSSO: no Instagram o WAV pesa mais, e o teto é menor.
+  const maxGravacao = ehInstagram(channelKind)
+    ? MAX_RECORDING_SECONDS_INSTAGRAM
+    : MAX_RECORDING_SECONDS;
   useEffect(() => {
-    if (recording && recordSeconds >= MAX_RECORDING_SECONDS) {
+    if (recording && recordSeconds >= maxGravacao) {
       stopRecording();
     }
-  }, [recording, recordSeconds, stopRecording]);
+  }, [recording, recordSeconds, stopRecording, maxGravacao]);
 
   // ---- Draft send / discard -----------------------------------------
 
@@ -2061,7 +2146,14 @@ export function MessageComposer({
       {/* Com a conexão fora do ar, o modelo também não sairia: a dica da
           janela (que oferece o modelo como saída) cala, e fala a faixa
           vermelha do fio. */}
-      {sessionExpired && !conexaoForaDoAr && (
+      {/* NOSSO — no Instagram Direct não há modelo: só a pessoa reabre a
+          janela, e a dica diz isso, sem o botão de modelos. */}
+      {sessionExpired && !conexaoForaDoAr && ehInstagram(channelKind) && (
+        <div className="mb-2 rounded-lg bg-amber-500/10 px-3 py-2">
+          <p className="text-xs text-amber-400">{t("sessionExpiredHintInstagram")}</p>
+        </div>
+      )}
+      {sessionExpired && !conexaoForaDoAr && !ehInstagram(channelKind) && (
         <div className="mb-2 flex items-center justify-between rounded-lg bg-amber-500/10 px-3 py-2">
           <p className="text-xs text-amber-400">
             {t("sessionExpiredHint")}
@@ -2139,6 +2231,7 @@ export function MessageComposer({
           busy={busy || enviandoFila}
           readOnly={readOnly}
           onCaptionChange={setCaption}
+          semLegenda={ehInstagram(channelKind)}
           onDiscard={discardDraft}
           onDiscardAll={discardAll}
           onSend={() => void sendDraft()}
@@ -2158,7 +2251,7 @@ export function MessageComposer({
         <div className="flex items-center gap-3 rounded-xl border border-border bg-muted px-4 py-2.5">
           <span className="flex h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-red-500" />
           <span className="flex-1 text-sm text-foreground">
-            {t("recording", { current: formatDuration(recordSeconds), max: formatDuration(MAX_RECORDING_SECONDS) })}
+            {t("recording", { current: formatDuration(recordSeconds), max: formatDuration(maxGravacao) })}
           </span>
           <button
             type="button"
@@ -2347,7 +2440,9 @@ export function MessageComposer({
                 : conexaoForaDoAr
                   ? t("conexaoForaDoArPlaceholder")
                   : sessionExpired
-                    ? t("sessionExpiredPlaceholder")
+                    ? ehInstagram(channelKind)
+                      ? t("sessionExpiredPlaceholderInstagram")
+                      : t("sessionExpiredPlaceholder")
                     : toque
                       ? t("typeMessagePlaceholderTouch")
                       : t("typeMessagePlaceholder")
@@ -2561,6 +2656,7 @@ function MediaDraftPreview({
   busy,
   readOnly,
   onCaptionChange,
+  semLegenda,
   onDiscard,
   onDiscardAll,
   onSend,
@@ -2579,6 +2675,12 @@ function MediaDraftPreview({
   busy: boolean;
   readOnly: boolean;
   onCaptionChange: (id: string, caption: string) => void;
+  /**
+   * NOSSO — Instagram Direct (Fase 4, decisão do operador de 21/11/2026): o
+   * anexo do Direct não leva legenda, e o campo some. O texto vai numa
+   * mensagem separada, pelo compositor.
+   */
+  semLegenda: boolean;
   onDiscard: (id: string) => void;
   onDiscardAll: () => void;
   onSend: () => void;
@@ -2692,7 +2794,7 @@ function MediaDraftPreview({
       </div>
 
       <div className="mt-2 flex items-end gap-2">
-        {podeTerLegenda(draft.kind) && (
+        {podeTerLegenda(draft.kind) && !semLegenda && (
           <input
             ref={refDaLegenda}
             value={draft.caption}
