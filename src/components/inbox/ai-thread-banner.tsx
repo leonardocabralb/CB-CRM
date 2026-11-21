@@ -57,6 +57,13 @@ import { useTranslations } from "next-intl";
 //                 etapa quando o agente foi religado ficava em silêncio sem
 //                 rastro (medido, validação de 25/10/2026). Também vai como
 //                 segunda linha da pausada: retomar não faria ele atender.
+//   - sem agente → "A IA não atende esta conversa: o card está em “<etapa>”,
+//                 uma etapa sem agente de IA", discreta, sem botão: a conversa
+//                 que a IA JÁ atendeu (`ia_agente_id`) e cujo card foi para
+//                 uma etapa sem agente (o Trabalhista move quem ainda trabalha
+//                 para "Ag. Demissão"). Sem ela, a faixa sumia depois do
+//                 "Retomar IA" e a equipe tentava pausar e desativar uma IA que
+//                 não atendia mais (16/11/2026). Também vai embaixo da pausada.
 //   - encerrada → SÓ com o follow-up da IA na fila (1146: ele sai sem reabrir
 //                 a conversa; pedido do operador, 14/11/2026): "Conversa
 //                 encerrada: IA · <nome> ainda manda o follow-up…", a linha
@@ -105,6 +112,11 @@ export interface EstadoDaIa {
    * rota só o devolve (e o `proximo`) onde ele atravessa a pausa.
    */
   agenteDoFollowUp: { id: string; nome: string } | null;
+  /**
+   * O NOME da etapa sem agente onde está o card de uma conversa que a IA já
+   * atendeu (`etapaSemAgente` da rota); nulo/ausente = nenhuma linha.
+   */
+  etapaSemAgente?: string | null;
 }
 
 /** O próximo passo como a faixa o lê: o da rota, ou `"nada"` na fila. */
@@ -169,7 +181,14 @@ export function lerEstadoDaIa(corpo: unknown): EstadoDaIa | null {
     naoAtende: lerNaoAtende(c.naoAtende),
     encerrada: c.encerrada === true,
     agenteDoFollowUp: lerAgente(c.agenteDoFollowUp),
+    etapaSemAgente: lerEtapaSemAgente(c.etapaSemAgente),
   };
+}
+
+/** `etapaSemAgente` da rota: o nome, aparado; forma estranha ou vazio = nulo (sem linha). */
+function lerEtapaSemAgente(v: unknown): string | null {
+  const etapa = v && typeof v === "object" ? (v as Record<string, unknown>).etapa : null;
+  return typeof etapa === "string" && etapa.trim() ? etapa.trim() : null;
 }
 
 /** A linha "não atende": o nome do agente e o motivo. */
@@ -194,8 +213,12 @@ export type Faixa =
       naoAtende: LinhaNaoAtende | null;
       volta: VoltaDaPausa | null;
       followUp?: FollowUpNaPausa | null;
+      /** A etapa sem agente onde está o card: retomar não faz a IA atender ali. */
+      semAgente?: string | null;
     }
   | ({ tipo: "naoAtende" } & LinhaNaoAtende)
+  /** A conversa que a IA já atendeu, com o card numa etapa SEM agente (16/11/2026). */
+  | { tipo: "semAgente"; etapa: string }
   /**
    * A conversa ENCERRADA com o follow-up da IA na fila (1146): ele sai sem
    * reabrir. `minutos`, como na "atendendo"; `proximo`, o follow-up (ou a
@@ -240,7 +263,14 @@ export function faixaDaIa(estado: EstadoDaIa | null, iaAgenteIdDaConversa: strin
     // O follow-up só na pausa que VOLTA (a rota já o recorta à pausa `gente`).
     const followUp =
       volta && estado.proximo && estado.proximo !== "nada" && estado.proximo.tipo === "retomada" ? estado.proximo : null;
-    return { tipo: "pausada", motivo, naoAtende, volta, ...(followUp ? { followUp } : {}) };
+    return {
+      tipo: "pausada",
+      motivo,
+      naoAtende,
+      volta,
+      ...(followUp ? { followUp } : {}),
+      ...(estado.etapaSemAgente ? { semAgente: estado.etapaSemAgente } : {}),
+    };
   }
   // Daqui para baixo, agente da etapa só sem pausa (pausada com ele já saiu acima).
   if (estado.agente) {
@@ -251,7 +281,8 @@ export function faixaDaIa(estado: EstadoDaIa | null, iaAgenteIdDaConversa: strin
       ...(estado.proximo ? { proximo: estado.proximo } : {}),
     };
   }
-  return naoAtende ? { tipo: "naoAtende", ...naoAtende } : null;
+  if (naoAtende) return { tipo: "naoAtende", ...naoAtende };
+  return estado.etapaSemAgente ? { tipo: "semAgente", etapa: estado.etapaSemAgente } : null;
 }
 
 /** O que cada botão manda à rota. */
@@ -645,6 +676,7 @@ export function FaixaDaIa({
           ) : null}
           {faixa.followUp ? <LinhaDoFollowUpNaPausa followUp={faixa.followUp} agora={agora} lidoEm={lidoEm} /> : null}
           {faixa.naoAtende ? <LinhaNaoAtendeDaFaixa linha={faixa.naoAtende} /> : null}
+          {faixa.semAgente ? <LinhaSemAgenteDaFaixa etapa={faixa.semAgente} /> : null}
         </div>
         <BannerButton
           onClick={aoRetomar}
@@ -673,6 +705,14 @@ export function FaixaDaIa({
     return (
       <Banner tone="muted">
         <LinhaNaoAtendeDaFaixa linha={faixa} />
+      </Banner>
+    );
+  }
+
+  if (faixa.tipo === "semAgente") {
+    return (
+      <Banner tone="muted">
+        <LinhaSemAgenteDaFaixa etapa={faixa.etapa} />
       </Banner>
     );
   }
@@ -869,6 +909,23 @@ function LinhaNaoAtendeDaFaixa({ linha }: { linha: LinhaNaoAtende }) {
         </span>
       </p>
       {linha.motivo === "card_antigo" ? <p className="mt-0.5 pl-5">{t("naoAtendeDica")}</p> : null}
+    </div>
+  );
+}
+
+/**
+ * "A IA não atende esta conversa: o card está em “<etapa>”, uma etapa sem
+ * agente de IA", discreta e sem botão — sozinha ou embaixo da pausada. Quebra
+ * linha (nunca `truncate`): no celular o nome da etapa sumiria cortado.
+ */
+function LinhaSemAgenteDaFaixa({ etapa }: { etapa: string }) {
+  const t = useTranslations("Inbox.aiBanner");
+  return (
+    <div className="min-w-0 flex-1 text-muted-foreground">
+      <p className="flex min-w-0 items-start gap-1.5">
+        <Sparkles className="mt-px h-3.5 w-3.5 flex-shrink-0" />
+        <span className="min-w-0">{t("semAgente", { etapa })}</span>
+      </p>
     </div>
   );
 }

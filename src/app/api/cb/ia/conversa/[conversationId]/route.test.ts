@@ -94,6 +94,7 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
       proximo: null,
       motivo: null,
       naoAtende: null,
+      etapaSemAgente: null,
     })
   })
 
@@ -216,6 +217,61 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
     expect(consultas.some((c) => c.tabela === 'deals')).toBe(false)
   })
 
+  describe('etapaSemAgente — o card numa etapa SEM agente, numa conversa que a IA já atendeu (16/11/2026)', () => {
+    // O agente do Trabalhista move quem ainda trabalha para "Ag. Demissão"
+    // (sem agente): a faixa ficava vazia depois do "Retomar IA", e a equipe
+    // tentava pausar e desativar uma IA que não atendia mais.
+    beforeEach(() => {
+      banco.cb_ia_agente_etapas = null
+      banco.pipeline_stages = { name: ' Ag. Demissão ' }
+    })
+
+    it('⚠️ a IA já atendeu (`ia_agente_id`): o NOME da etapa, lido pelos funis DA CONTA', async () => {
+      banco.conversations = { ...(banco.conversations as object), ia_agente_id: 'ag-1' }
+      const corpo = await (await chamar()).json()
+      expect(corpo).toMatchObject({ agente: null, motivo: 'etapa_sem_agente', naoAtende: null, etapaSemAgente: { etapa: 'Ag. Demissão' } })
+      const etapa = consultas.find((c) => c.tabela === 'pipeline_stages')!
+      expect(etapa.filtros).toContainEqual(['eq', 'pipelines.account_id', 'conta-1'])
+      expect(etapa.filtros).toContainEqual(['eq', 'id', 'e1'])
+    })
+
+    it('a pausada ganha o mesmo nome (a pausa não entra na decisão da etapa)', async () => {
+      banco.conversations = {
+        ...(banco.conversations as object),
+        ia_agente_id: 'ag-1',
+        ai_autoreply_disabled: true,
+        ia_pausada_por: 'gente',
+      }
+      expect(await (await chamar()).json()).toMatchObject({ pausada: true, etapaSemAgente: { etapa: 'Ag. Demissão' } })
+    })
+
+    it('a conversa que NENHUM agente atendeu: nulo, sem nem ler a etapa (a maioria das conversas fora da IA)', async () => {
+      expect(await (await chamar()).json()).toMatchObject({ motivo: 'etapa_sem_agente', etapaSemAgente: null })
+      expect(consultas.some((c) => c.tabela === 'pipeline_stages')).toBe(false)
+    })
+
+    it('agente atendendo, sem card ou encerrada: nulo, sem ler a etapa', async () => {
+      banco.conversations = { ...(banco.conversations as object), ia_agente_id: 'ag-1' }
+      banco.cb_ia_agente_etapas = { stage_id: 'e1', ia_agente_id: 'ag-1', desde: '2026-09-21T12:00:00Z' }
+      expect(await (await chamar()).json()).toMatchObject({ agente: { id: 'ag-1', nome: 'Triagem' }, etapaSemAgente: null })
+      banco.cb_ia_agente_etapas = null
+      banco.deals = null
+      expect(await (await chamar()).json()).toMatchObject({ motivo: 'sem_card', etapaSemAgente: null })
+      banco.deals = { id: 'd1', stage_id: 'e1', pipeline_id: 'f1', etapa_desde: '2026-09-25T12:00:00Z' }
+      banco.conversations = { ...(banco.conversations as object), status: 'closed' }
+      expect(await (await chamar()).json()).toMatchObject({ etapaSemAgente: null })
+      expect(consultas.some((c) => c.tabela === 'pipeline_stages')).toBe(false)
+    })
+
+    it('etapa sem nome (lida vazia): nulo; leitura que FALHA: 500, como as outras', async () => {
+      banco.conversations = { ...(banco.conversations as object), ia_agente_id: 'ag-1' }
+      banco.pipeline_stages = { name: '   ' }
+      expect(await (await chamar()).json()).toMatchObject({ etapaSemAgente: null })
+      banco['pipeline_stages:erro'] = { message: 'falhou' }
+      expect((await chamar()).status).toBe(500)
+    })
+  })
+
   describe('naoAtende — a etapa TEM agente, mas ele não atende esta conversa (validação de 25/10/2026)', () => {
     it('⚠️ card antigo depois de desligar e religar o agente (D27): o nome e o motivo, nunca silêncio', async () => {
       // Religado agora: o card que já estava na etapa ficou "antigo".
@@ -234,6 +290,7 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
         // faria a faixa reler a cada 2 min).
         motivo: 'card_antigo',
         naoAtende: { agente: { id: 'ag-1', nome: 'Triagem' }, motivo: 'card_antigo' },
+        etapaSemAgente: null,
       })
     })
 
@@ -286,6 +343,8 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
         'agente',
         'agenteDoFollowUp',
         'encerrada',
+        // O nome da etapa (16/11/2026): todo membro já o vê no funil.
+        'etapaSemAgente',
         'motivo',
         'naoAtende',
         'pausaTemporaria',
@@ -501,6 +560,7 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
         proximo: { tipo: 'retomada', em: '2026-11-14T18:00:00Z', tentativa: 2, tentativas: 5 },
         motivo: 'encerrada',
         naoAtende: null,
+        etapaSemAgente: null,
       })
       const leitura = turnosVivos().at(-1)!
       expect(leitura.filtros).toContainEqual(['eq', 'account_id', 'conta-1'])

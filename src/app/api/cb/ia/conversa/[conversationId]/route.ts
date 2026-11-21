@@ -68,6 +68,13 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  *     casos. Sem isso, o card que já estava na etapa quando o agente foi
  *     religado (D27) ficava em silêncio sem rastro nenhum na conversa
  *     (medido, validação de 25/10/2026).
+ *   - `etapaSemAgente` — `{ etapa }` (o NOME da etapa) quando o card está numa
+ *     etapa SEM agente numa conversa que a IA já atendeu
+ *     (`conversations.ia_agente_id`); nulo nos outros casos. O agente do
+ *     Trabalhista move quem ainda trabalha para "Ag. Demissão": a faixa ficava
+ *     VAZIA (ou só com a pausa e o "Retomar", que não faz a IA atender ali), e a
+ *     equipe tentava pausar e desativar uma IA que não atendia mais (16/11/2026).
+ *     A conversa que nenhum agente atendeu segue sem linha.
  *
  * Do agente sai SÓ id e nome, nos dois campos: a rota é de qualquer membro,
  * e a configuração (conexões, datas, instruções) é do administrador (D14).
@@ -96,7 +103,7 @@ export async function GET(_request: Request, { params }: Contexto) {
 
     const { data: conv, error: erroConv } = await db
       .from('conversations')
-      .select('id, status, contact_id, group_id, channel_id, ai_autoreply_disabled, ia_pausada_por')
+      .select('id, status, contact_id, group_id, channel_id, ai_autoreply_disabled, ia_pausada_por, ia_agente_id')
       .eq('id', conversationId)
       .eq('account_id', ctx.accountId)
       .maybeSingle()
@@ -176,6 +183,22 @@ export async function GET(_request: Request, { params }: Contexto) {
       agente && motivo && (MOTIVOS_DO_AGENTE_QUE_NAO_ATENDE as readonly string[]).includes(motivo)
         ? { agente: { id: agente.id, nome: agente.nome }, motivo: motivo as MotivoDoAgenteQueNaoAtende }
         : null
+    // A etapa SEM agente numa conversa que a IA já atendeu: o nome dela, para
+    // a faixa dizer por que a IA não responde mais (16/11/2026). A pausa não
+    // entra aqui (os fatos vão sem ela): a pausada ganha a mesma linha embaixo.
+    // Na encerrada, nada — como a faixa dela, que só existe com o follow-up.
+    let etapaSemAgente: { etapa: string } | null = null
+    if (!encerrada && motivo === 'etapa_sem_agente' && card && typeof conv.ia_agente_id === 'string') {
+      const { data: etapa, error: erroEtapa } = await db
+        .from('pipeline_stages')
+        .select('name, pipelines!inner(account_id)')
+        .eq('pipelines.account_id', ctx.accountId)
+        .eq('id', card.stageId)
+        .maybeSingle()
+      if (erroEtapa) return falhou('etapa', erroEtapa.message)
+      const nome = (etapa as { name?: unknown } | null)?.name
+      if (typeof nome === 'string' && nome.trim()) etapaSemAgente = { etapa: nome.trim() }
+    }
 
     // A pausa temporária (1138): o N da conta, e quando a IA volta — o
     // pendente que espera a equipe. Só onde há agente ou pausa (a faixa só
@@ -260,6 +283,7 @@ export async function GET(_request: Request, { params }: Contexto) {
       ...(leAFila ? { proximo } : {}),
       motivo,
       naoAtende,
+      etapaSemAgente,
     })
   } catch (err) {
     return toErrorResponse(err)
