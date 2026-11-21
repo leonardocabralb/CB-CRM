@@ -142,6 +142,11 @@ devolve só o App ID). O canal criado pelo login continua gravando o segredo em
 - ⚠️ **`POST /me/subscribed_apps` antes de gravar o canal**: canal que não
   recebe não pode nascer calado. A permissão de mensagens é conferida na
   resposta da troca (`permissions`): dá para desmarcá-la no consentimento.
+- ⚠️ **A troca do código respondeu PLANO na primeira conexão real
+  (21/11/2026)**, não `{ data: [ … ] }` como a doc mostra:
+  `trocarCodigoPorToken` aceita as duas formas. O `user_id` dessa resposta não
+  é gravado (o canal guarda o do `/me`): como número JSON, perde dígitos acima
+  de 2^53. Formato de resposta da Meta se MEDE, não se tira da doc.
 - **A única exceção à regra do `Bearer`**: o token CURTO e o `client_secret`
   viajam na query da troca pelo token longo (forma documentada do endpoint; o
   token vive 1 h e nunca é gravado; nenhum log imprime a URL). `semSegredo`
