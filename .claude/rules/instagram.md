@@ -48,6 +48,10 @@ não dispara) está também em `.claude/rules/ingestao.md`.
   falhava. As rotas internas que fixam dependem da tela oferecer só o que
   serve; quem expuser outro seletor repete a guarda.
 
+- **Na caixa de entrada, a conversa do Direct tem selo na foto, pastilha no
+  cabeçalho e glifo na bolha** (decisão do operador, 21/11/2026):
+  `.claude/rules/canal-na-conversa.md`.
+
 ### Contato sem telefone
 
 - ⚠️ **`Contact.phone` é `string | null`**: a ficha só do Instagram não tem

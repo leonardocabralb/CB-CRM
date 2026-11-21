@@ -102,6 +102,27 @@ bolinha antes do nome na lista.
   transporte** (que segue no menu): numa conta só de Evolution o ícone é igual
   em todas as linhas; a cor amarra o cabeçalho aos rótulos das bolhas.
 
+### O Instagram Direct na tela: selo na foto, pastilha e glifo (21/11/2026)
+
+`SeloDoInstagram`/`PastilhaDoInstagram` (`components/channels/selo-do-instagram.tsx`;
+pino `marca-do-instagram.test.tsx`). Decisão do operador entre três desenhos
+(glifo junto do nome; selo na foto; nossas bolhas no degradê do Instagram): a
+ficha só do Instagram tem nome e foto como as outras, e a linha saía igual à
+do WhatsApp da mesma pessoa. A bolinha não resolve: com 7 conexões, a paleta
+de 6 repete o violeta.
+
+- **Lista e cabeçalho: o selo em degradê no canto da FOTO**; no cabeçalho,
+  mais a pastilha "Instagram Direct" (some abaixo de `sm`, como a etiqueta da
+  janela). É selo no canto, não o anel em volta do avatar que o operador
+  retirou. As bolhas NÃO mudam de cor (a opção recusada).
+- **Bolha: o glifo ao lado da hora, pelo canal DA MENSAGEM**
+  (`msg.channel_id`), nunca o da conversa: a ficha unificada (Fase 5 do
+  Instagram) junta as duas origens no mesmo fio.
+- ⚠️ **Só pelo predicado e só com os canais carregados.** Lista: `ehInstagram`
+  sobre `canalDaConversa(conv)`, falso com `canaisCarregando`/`canaisFalharam`;
+  cabeçalho: `ehInstagram(activeChannel)` (nulo enquanto carrega; o padrão da
+  conta nunca é Instagram). Lista vazia não vira "é Instagram".
+
 ### O número da conversa está FORA DO AR: faixa vermelha e compositor TRAVADO
 
 `aviso-da-conexao.ts` (puro, pino `aviso-da-conexao.test.ts`), a
