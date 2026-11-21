@@ -30,6 +30,7 @@ import {
   temArquivo,
   textoParaGravar,
   extractOpcoesDeResposta,
+  anuncioDaMensagem,
 } from './evolution-inbound';
 import { linhaDoBotao, textoSemAsOpcoes } from '@/lib/whatsapp/opcoes-de-resposta';
 
@@ -1144,5 +1145,127 @@ describe('mensagem de empresa sem nada legível (1111)', () => {
       expect(n?.contentType).toBe('template');
       expect(n?.text).toBe(`[Unsupported message type: ${tipo}]`);
     }
+  });
+});
+
+// ============================================================
+// Anúncio de origem (Click-to-WhatsApp) nas conexões por QR code. O clique
+// chega no `contextInfo.externalAdReply` da 1ª mensagem — no de CIMA para
+// texto (o patch da citação o sobe), dentro do corpo para mídia. A regra do
+// que é anúncio mora em `lerAnuncioDaEvolution` (contacts/anuncio-de-origem);
+// aqui se prova onde ele é procurado e quem o carrega. Valores fictícios.
+// ============================================================
+
+describe('anúncio de origem (Click-to-WhatsApp)', () => {
+  const CLIQUE = {
+    title: 'Fale com o advogado',
+    body: 'Texto do anúncio',
+    sourceType: 'ad',
+    sourceId: '120200000000000001',
+    sourceUrl: 'https://fb.me/exemplo',
+    ctwaClid: 'clid-ficticio',
+  };
+  const LIDO = {
+    tipo: 'ad',
+    idDaOrigem: '120200000000000001',
+    link: 'https://fb.me/exemplo',
+    ctwaClid: 'clid-ficticio',
+  };
+
+  it('texto na 2.4 com o patch: o clique no contextInfo de CIMA vai para a mensagem', () => {
+    const doClique = item(
+      { conversation: 'Olá! Tenho interesse e queria mais informações, por favor.' },
+      { contextInfo: { conversionSource: 'FB_Ads', externalAdReply: CLIQUE } },
+    );
+    expect(anuncioDaMensagem(doClique)).toEqual(LIDO);
+    expect(normalizeUpsert(doClique, 'acc', 'owner', 'canal-1')?.anuncio).toEqual(LIDO);
+  });
+
+  it('mídia (não achatada) e texto sem o patch: o clique dentro do corpo também vale', () => {
+    expect(
+      anuncioDaMensagem(
+        item({ imageMessage: { mimetype: 'image/jpeg', contextInfo: { externalAdReply: CLIQUE } } }),
+      ),
+    ).toEqual(LIDO);
+    expect(
+      anuncioDaMensagem(
+        item({ extendedTextMessage: { text: 'Olá', contextInfo: { externalAdReply: CLIQUE } } }),
+      ),
+    ).toEqual(LIDO);
+  });
+
+  it('figurinha ANIMADA: o clique mora dentro do invólucro (lottieStickerMessage.message), medido em 16/11', () => {
+    expect(
+      anuncioDaMensagem(
+        item({
+          lottieStickerMessage: {
+            message: { stickerMessage: { mimetype: 'application/was', contextInfo: { externalAdReply: CLIQUE } } },
+          },
+        }),
+      ),
+    ).toEqual(LIDO);
+  });
+
+  it('⚠️ a PRÉVIA DE LINK que a Evolution monta não é anúncio: a mensagem segue sem a chave', () => {
+    const previa = item(
+      { conversation: 'Veja https://exemplo.com.br/artigo' },
+      {
+        contextInfo: {
+          externalAdReply: {
+            title: 'Título da página',
+            body: 'Descrição',
+            thumbnailUrl: 'https://exemplo.com.br/imagem.png',
+            sourceUrl: 'https://exemplo.com.br/artigo',
+            mediaUrl: 'https://exemplo.com.br/artigo',
+            renderLargerThumbnail: true,
+          },
+        },
+      },
+    );
+    expect(anuncioDaMensagem(previa)).toBeNull();
+    const n = normalizeUpsert(previa, 'acc', 'owner', null);
+    expect(n).not.toBeNull();
+    expect(n && 'anuncio' in n).toBe(false);
+  });
+
+  it('mensagem comum (citação, nada) não ganha a chave — o INSERT de sempre', () => {
+    const citacao = item({ conversation: 'Sim' }, { contextInfo: { stanzaId: 'ABC' } });
+    for (const n of [
+      normalizeUpsert(citacao, 'acc', 'owner', null),
+      normalizeUpsert(item({ conversation: 'oi' }), 'acc', 'owner', null),
+    ]) {
+      expect(n).not.toBeNull();
+      expect(n && 'anuncio' in n).toBe(false);
+    }
+  });
+
+  it('mensagem da EQUIPE (fromMe) não carrega origem: o caminho do celular nem a lê', () => {
+    const daEquipe = item(
+      { conversation: 'Olá' },
+      {
+        key: { remoteJid: '5511999998888@s.whatsapp.net', fromMe: true, id: 'MSG2' },
+        contextInfo: { externalAdReply: CLIQUE },
+      },
+    );
+    const n = normalizeUpsert(daEquipe, 'acc', 'owner', null);
+    expect(n?.fromMe).toBe(true);
+    expect(n && 'anuncio' in n).toBe(false);
+  });
+
+  it('GRUPO nunca passa por aqui: o normalizador do 1:1 o devolve nulo, clique ou não', () => {
+    expect(
+      normalizeUpsert(
+        item(
+          { conversation: 'Olá' },
+          {
+            key: { remoteJid: '120363000000000001@g.us', fromMe: false, id: 'MSG3', participant: '5511999998888@s.whatsapp.net' },
+            contextInfo: { externalAdReply: CLIQUE },
+          },
+        ),
+        'acc',
+        'owner',
+        null,
+      ),
+    ).toBeNull();
   });
 });

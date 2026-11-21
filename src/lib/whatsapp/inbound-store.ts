@@ -12,7 +12,9 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import type { AnuncioDeOrigem } from '@/lib/contacts/anuncio-de-origem';
 import { fichaQueVenceu, findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
+import { gravarAnuncioLido } from '@/lib/contacts/gravar-anuncio-de-origem';
 import { routeContactToPipeline } from '@/lib/cb-channels/pipeline-routing';
 import { reopenClosedConversation } from '@/lib/conversations/reopen';
 import { marcarOrigem } from '@/lib/conversations/origem-da-escrita';
@@ -94,6 +96,13 @@ export interface NormalizedInbound {
    * em botão da Meta, não abre turno do agente de IA. Só existe quando `true`.
    */
   escolhaDeOpcao?: boolean;
+  /**
+   * O anúncio de origem (Click-to-WhatsApp) da mensagem DO CLIENTE que veio
+   * de um clique num anúncio (`anuncioDaMensagem`, na Evolution). Só existe
+   * nesse caso; `persistInboundMessage` o grava nos campos de traqueamento da
+   * ficha, como o webhook da Meta faz com o `referral`.
+   */
+  anuncio?: AnuncioDeOrigem;
   mediaUrl?: string | null;
   /**
    * A imagem é FIGURINHA (`stickerMessage`). Ela é gravada como `image`, e o
@@ -564,6 +573,23 @@ export async function persistInboundMessage(
     conversation.id,
     contagemAnterior,
   );
+
+  // O anúncio de origem (Click-to-WhatsApp) vai para os campos de traqueamento
+  // da ficha — gêmeo do `referral` no webhook da Meta. ANTES das esperas, do
+  // robô, das automações e do funil: a automação que lê
+  // `{{contact.campo.id_do_anuncio}}` e o `deal.created` do card que o funil
+  // abre (o webhook de saída leva os campos) já enxergam a origem. A reentrega
+  // já saiu (o `jaGravada` da rota e o UNIQUE do insert acima), então roda uma
+  // vez por mensagem. Nunca lança — a mensagem já está gravada.
+  if (m.anuncio) {
+    await gravarAnuncioLido({
+      db,
+      via: 'evolution',
+      accountId: m.accountId,
+      contactId: contact.id,
+      anuncio: m.anuncio,
+    });
+  }
 
   // ---- downstream engines (parity with the Meta webhook) ----
   // O texto que a ingestão MONTOU (cartão de contato, mensagem de empresa)

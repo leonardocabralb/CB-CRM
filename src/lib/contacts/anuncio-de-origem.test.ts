@@ -4,6 +4,7 @@ import {
   CHAVES_DA_PRIMEIRA_ORIGEM,
   CHAVES_DO_ULTIMO_CLIQUE,
   formaDoReferral,
+  lerAnuncioDaEvolution,
   lerReferralDaMeta,
   planejarGravacaoDoAnuncio,
   tipoConhecido,
@@ -106,6 +107,143 @@ describe('lerReferralDaMeta', () => {
     expect(lerReferralDaMeta(status)).toMatchObject({
       idDaOrigem: '120226305854810726',
       ctwaClid: null,
+    });
+  });
+});
+
+// O `contextInfo` de uma mensagem da Evolution que veio de um clique em
+// anúncio, com os nomes do proto da Baileys (`ContextInfo` e
+// `ExternalAdReplyInfo`). Valores fictícios.
+const CONTEXTO_DE_ANUNCIO = {
+  conversionSource: 'FB_Ads',
+  entryPointConversionSource: 'ctwa_ad',
+  entryPointConversionApp: 'facebook',
+  externalAdReply: {
+    title: 'Fale com o advogado',
+    body: 'Texto do anúncio',
+    mediaType: 1,
+    thumbnailUrl: 'https://scontent.xx.fbcdn.net/v/exemplo',
+    sourceType: 'ad',
+    sourceId: '120200000000000001',
+    sourceUrl: 'https://fb.me/exemplo',
+    showAdAttribution: true,
+    ctwaClid: 'clid-ficticio',
+    sourceApp: 'facebook',
+  },
+};
+
+// A PRÉVIA DE LINK que a Evolution 2.4 monta (`generateLinkPreview`, no commit
+// da nossa imagem): é a forma com que chega a mensagem de outro sistema sobre
+// a Evolution que escreva ao escritório. NÃO é anúncio.
+const CONTEXTO_DE_PREVIA_DE_LINK = {
+  externalAdReply: {
+    title: 'Título da página',
+    body: 'Descrição da página',
+    thumbnailUrl: 'https://exemplo.com.br/imagem.png',
+    sourceUrl: 'https://exemplo.com.br/artigo',
+    mediaUrl: 'https://exemplo.com.br/artigo',
+    renderLargerThumbnail: true,
+  },
+};
+
+describe('lerAnuncioDaEvolution', () => {
+  it('lê o externalAdReply do clique — os mesmos quatro do referral da Meta', () => {
+    expect(lerAnuncioDaEvolution(CONTEXTO_DE_ANUNCIO)).toEqual({
+      tipo: 'ad',
+      idDaOrigem: '120200000000000001',
+      link: 'https://fb.me/exemplo',
+      ctwaClid: 'clid-ficticio',
+    });
+  });
+
+  it('⚠️ a PRÉVIA DE LINK da Evolution não é anúncio: tem link, não tem sourceId nem ctwaClid', () => {
+    expect(lerAnuncioDaEvolution(CONTEXTO_DE_PREVIA_DE_LINK)).toBeNull();
+    // Nem com um tipo: sem o id e sem o clique não há o que guardar.
+    expect(
+      lerAnuncioDaEvolution({
+        externalAdReply: { ...CONTEXTO_DE_PREVIA_DE_LINK.externalAdReply, sourceType: 'ad' },
+      })
+    ).toBeNull();
+  });
+
+  it('a origem da conversão sozinha não basta: sem sourceId nem ctwaClid, null', () => {
+    expect(
+      lerAnuncioDaEvolution({
+        conversionSource: 'FB_Ads',
+        entryPointConversionSource: 'ctwa_ad',
+        externalAdReply: { title: 'x' },
+      })
+    ).toBeNull();
+  });
+
+  it('só o sourceId, ou só o ctwaClid, já vale — a regra do tipo decide o resto', () => {
+    expect(
+      lerAnuncioDaEvolution({ externalAdReply: { sourceId: '120200000000000001' } })
+    ).toEqual({ tipo: null, idDaOrigem: '120200000000000001', link: null, ctwaClid: null });
+    expect(
+      lerAnuncioDaEvolution({ externalAdReply: { ctwaClid: 'clid-ficticio' } })
+    ).toEqual({ tipo: null, idDaOrigem: null, link: null, ctwaClid: 'clid-ficticio' });
+  });
+
+  it('sem contextInfo, sem externalAdReply ou com forma errada: null', () => {
+    expect(lerAnuncioDaEvolution(undefined)).toBeNull();
+    expect(lerAnuncioDaEvolution(null)).toBeNull();
+    expect(lerAnuncioDaEvolution('ad')).toBeNull();
+    expect(lerAnuncioDaEvolution([CONTEXTO_DE_ANUNCIO])).toBeNull();
+    expect(lerAnuncioDaEvolution({ stanzaId: 'ABC', participant: 'x' })).toBeNull();
+    expect(lerAnuncioDaEvolution({ externalAdReply: 'ad' })).toBeNull();
+    expect(
+      lerAnuncioDaEvolution({ externalAdReply: [CONTEXTO_DE_ANUNCIO.externalAdReply] })
+    ).toBeNull();
+  });
+
+  it('é parse, não cast: tipo errado vira ausente, espaço é aparado', () => {
+    expect(
+      lerAnuncioDaEvolution({
+        externalAdReply: {
+          sourceId: 120200000000000001,
+          sourceUrl: { href: 'https://fb.me/x' },
+          sourceType: '  ad ',
+          ctwaClid: '  clid  ',
+        },
+      })
+    ).toEqual({ tipo: 'ad', idDaOrigem: null, link: null, ctwaClid: 'clid' });
+    expect(
+      lerAnuncioDaEvolution({ externalAdReply: { sourceId: '   ', ctwaClid: '' } })
+    ).toBeNull();
+  });
+
+  it('anúncio no Instagram: o link vem do instagram.com (medido em 16/11) e o utm_source sai instagram', () => {
+    const doInstagram = lerAnuncioDaEvolution({
+      externalAdReply: {
+        ...CONTEXTO_DE_ANUNCIO.externalAdReply,
+        sourceApp: 'instagram',
+        sourceUrl: 'https://www.instagram.com/p/exemplo/',
+      },
+    });
+    expect(valoresDoAnuncio(doInstagram!).primeiraOrigem).toEqual({
+      utm_source: 'instagram',
+      utm_medium: 'paid',
+      id_do_anuncio: '120200000000000001',
+    });
+  });
+
+  it('o clique lido da Evolution grava o MESMO que o da Meta', () => {
+    const daMeta = lerReferralDaMeta({
+      source_type: 'ad',
+      source_id: '120200000000000001',
+      source_url: 'https://fb.me/exemplo',
+      ctwa_clid: 'clid-ficticio',
+    });
+    const daEvolution = lerAnuncioDaEvolution(CONTEXTO_DE_ANUNCIO);
+    expect(daEvolution).toEqual(daMeta);
+    expect(valoresDoAnuncio(daEvolution!)).toEqual({
+      primeiraOrigem: {
+        utm_source: 'facebook',
+        utm_medium: 'paid',
+        id_do_anuncio: '120200000000000001',
+      },
+      ultimoClique: { ctwa_clid: 'clid-ficticio' },
     });
   });
 });

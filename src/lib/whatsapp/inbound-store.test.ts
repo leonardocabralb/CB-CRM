@@ -55,6 +55,9 @@ vi.mock('@/lib/automations/engine', () => ({
 vi.mock('@/lib/automations/parar-se-responder', () => ({
   cancelarEsperasPorResposta: vi.fn(async () => {}),
 }));
+vi.mock('@/lib/contacts/gravar-anuncio-de-origem', () => ({
+  gravarAnuncioLido: vi.fn(async () => ({ anuncio: true, plano: null, erros: [] })),
+}));
 vi.mock('@/lib/flows/engine', () => ({
   dispatchInboundToFlows: vi.fn(async () => {
     h.ordem.push('robô');
@@ -85,6 +88,8 @@ import { dispararAutomacoes, etapaTemQuemFale, type ResultadoDoDisparo } from '@
 import { routeContactToPipeline } from '@/lib/cb-channels/pipeline-routing';
 import { dispatchInboundToFlows } from '@/lib/flows/engine';
 import { aoChegarMensagemDoCliente } from '@/lib/ia-agentes/entrada';
+import { cancelarEsperasPorResposta } from '@/lib/automations/parar-se-responder';
+import { gravarAnuncioLido } from '@/lib/contacts/gravar-anuncio-de-origem';
 
 import { persistInboundMessage, type NormalizedInbound } from './inbound-store';
 
@@ -565,5 +570,61 @@ describe('persistInboundMessage: os fatos da mensagem vão para o agente de IA',
 
       expect(agente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: true }));
     });
+  });
+});
+
+// O anúncio de origem (Click-to-WhatsApp) da Evolution vai para os campos de
+// traqueamento da ficha — gêmeo do `referral` no webhook da Meta.
+describe('persistInboundMessage: o anúncio de origem', () => {
+  const ANUNCIO = {
+    tipo: 'ad',
+    idDaOrigem: '120200000000000001',
+    link: 'https://fb.me/exemplo',
+    ctwaClid: 'clid-ficticio',
+  };
+  const gravar = vi.mocked(gravarAnuncioLido);
+  const esperas = vi.mocked(cancelarEsperasPorResposta);
+  const robo = vi.mocked(dispatchInboundToFlows);
+  const funil = vi.mocked(routeContactToPipeline);
+
+  it('grava na ficha da conversa, pela via da Evolution', async () => {
+    await persistInboundMessage(fakeDb(), { ...MENSAGEM, anuncio: ANUNCIO });
+
+    expect(gravar).toHaveBeenCalledTimes(1);
+    expect(gravar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        via: 'evolution',
+        accountId: 'conta-1',
+        contactId: 'contato-1',
+        anuncio: ANUNCIO,
+      }),
+    );
+  });
+
+  it('DEPOIS de gravar a mensagem e ANTES das esperas, do robô, das automações e do funil', async () => {
+    await persistInboundMessage(fakeDb(), { ...MENSAGEM, anuncio: ANUNCIO });
+
+    const quando = (f: { mock: { invocationCallOrder: number[] } }) => f.mock.invocationCallOrder[0];
+    expect(h.linhas).toHaveLength(1);
+    expect(quando(gravar)).toBeLessThan(quando(esperas));
+    expect(quando(gravar)).toBeLessThan(quando(robo));
+    expect(quando(gravar)).toBeLessThan(quando(vi.mocked(dispararAutomacoes)));
+    expect(quando(gravar)).toBeLessThan(quando(funil));
+  });
+
+  it('mensagem sem anúncio (quase todas) não chama nada', async () => {
+    await persistInboundMessage(fakeDb(), MENSAGEM);
+
+    expect(gravar).not.toHaveBeenCalled();
+  });
+
+  it('a gravação da mensagem falhou (ou perdeu o UNIQUE da reentrega): nada vai para a ficha', async () => {
+    h.insertErro = { code: '23505', message: 'duplicate key' };
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await persistInboundMessage(fakeDb(), { ...MENSAGEM, anuncio: ANUNCIO });
+
+    expect(gravar).not.toHaveBeenCalled();
+    erro.mockRestore();
   });
 });

@@ -21,6 +21,9 @@ export interface ResultadoDoAnuncio {
   erros: string[];
 }
 
+/** Por onde o anúncio chegou — só para o log. */
+export type ViaDoAnuncio = 'meta' | 'evolution';
+
 /**
  * Grava o anúncio de origem (o `referral` do Click-to-WhatsApp) nos campos de
  * traqueamento da ficha. A regra — o que vai para qual campo, primeira origem
@@ -28,7 +31,8 @@ export interface ResultadoDoAnuncio {
  *
  * Chamado pelo webhook da Meta (`src/app/api/whatsapp/webhook/route.ts`) na
  * mensagem de CLIENTE recém-gravada — a reentrega já saiu antes —, e antes do
- * robô, das automações e do roteador de funil.
+ * robô, das automações e do roteador de funil. A Evolution chega já lida
+ * (`anuncioDaMensagem`) e grava por `gravarAnuncioLido`, logo abaixo.
  *
  * ⚠️⚠️ NUNCA lança, e é isso que torna seguro o `await` na ingestão: a
  * mensagem do cliente já está gravada e o provedor já recebeu 200. Erro de
@@ -65,7 +69,24 @@ export async function gravarAnuncioDeOrigem(args: {
     });
     return { anuncio: false, plano: null, erros: [] };
   }
+  return gravarAnuncioLido({ ...args, via: 'meta', anuncio });
+}
 
+/**
+ * O miolo de `gravarAnuncioDeOrigem`, para quem já LEU o anúncio: a ingestão
+ * da Evolution (`persistInboundMessage`), que o recebe de
+ * `anuncioDaMensagem` — só na mensagem DO CLIENTE em conversa 1:1 (grupo não
+ * passa por `normalizeUpsert`). As mesmas garantias: nunca lança, campo que
+ * falta na conta fica de fora, uma linha de log por anúncio.
+ */
+export async function gravarAnuncioLido(args: {
+  db: SupabaseClient;
+  via: ViaDoAnuncio;
+  accountId: string;
+  contactId: string;
+  anuncio: AnuncioDeOrigem;
+}): Promise<ResultadoDoAnuncio> {
+  const { anuncio } = args;
   const erros: string[] = [];
   try {
     const { data: campos, error: camposErr } = await args.db
@@ -150,12 +171,13 @@ export async function gravarAnuncioDeOrigem(args: {
  * esta linha que se regrava à mão.
  */
 function registrar(
-  args: { accountId: string; contactId: string },
+  args: { via: ViaDoAnuncio; accountId: string; contactId: string },
   anuncio: AnuncioDeOrigem,
   resultado: ResultadoDoAnuncio
 ): ResultadoDoAnuncio {
   const { plano, erros } = resultado;
   const resumo = {
+    via: args.via,
     conta: args.accountId,
     contato: args.contactId,
     tipo: anuncio.tipo?.slice(0, 40) ?? null,

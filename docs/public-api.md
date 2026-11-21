@@ -712,9 +712,16 @@ id yet):
 }
 ```
 
-> **Click-to-WhatsApp ads fill some tracking fields by themselves.** On an
-> official (Meta Cloud API) number, the first message after a customer taps
-> an ad carries the ad's `referral`, and the CRM writes it to the contact:
+> **Click-to-WhatsApp ads fill some tracking fields by themselves.** The
+> first message after a customer taps an ad carries the ad's origin, and the
+> CRM writes it to the contact. On an official (Meta Cloud API) number it is
+> the `referral` (`source_type`, `source_id`, `source_url`, `ctwa_clid`); on a
+> QR code (Evolution) number it is the message's `externalAdReply`
+> (`sourceType`, `sourceId`, `sourceUrl`, `ctwaClid`) — the same four values,
+> read the same way. On a QR code number a message counts as an ad tap only
+> when it brings the ad id or the click id: a link preview, which also
+> arrives as an `externalAdReply`, writes nothing. Group messages never
+> write. The rules:
 > - `ctwa_clid` is **always overwritten** with the latest click (it is the
 >   click id the Conversions API needs). It belongs to the **contact**, not
 >   to a deal: it is the latest click on **any** ad of the account, so a
@@ -722,11 +729,13 @@ id yet):
 >   they tapped last. Before sending a conversion for a deal, check that
 >   the ad belongs to that deal's pipeline.
 > - `utm_source` (`instagram` for an Instagram link, otherwise `facebook`,
->   meaning "Meta Ads": the ad link is usually the `fb.me` shortener even
->   for Instagram placements), `utm_medium` (`paid`) and `id_do_anuncio` are
+>   meaning "Meta Ads": on an official number the ad link is usually the
+>   `fb.me` shortener even for Instagram placements; on a QR code number an
+>   Instagram placement brings an `instagram.com` link), `utm_medium`
+>   (`paid`) and `id_do_anuncio` are
 >   written **only when the contact has no tracking field filled yet**. A
 >   tap on a boosted **post** (`source_type: post`) writes only
->   `utm_source`. A `referral` with an unknown `source_type` writes only
+>   `utm_source`. An ad tap with a missing or unknown type writes only
 >   `ctwa_clid`.
 > - An origin your integration already stored is never replaced **by the
 >   CRM**; a later write of yours replaces the one the CRM stored, as with
@@ -735,7 +744,11 @@ id yet):
 >   `utm_source`, `utm_medium`, `id_do_anuncio`), in any category. The
 >   tracking seed in *Settings → Fields and tags* creates all four; a key
 >   that doesn't exist in the account is skipped (the CRM never creates
->   fields). The ad's title, text and link are not stored.
+>   fields). The ad's title, text and link are not stored, and neither are
+>   the campaign, ad set and ad **names** (`nome_da_campanha`,
+>   `nome_do_conjunto`, `nome_do_anuncio`): the click doesn't carry them.
+>   Resolve them from `id_do_anuncio` with the Meta Marketing API
+>   (`GET /<ad id>?fields=name,adset{name},campaign{name}`).
 
 > **The `email` field mirrors the contact's e-mail.** Every account has
 > one custom field (usually keyed `email`) that is kept identical to the

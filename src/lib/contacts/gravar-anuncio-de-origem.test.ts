@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { gravarAnuncioDeOrigem } from './gravar-anuncio-de-origem';
+import { gravarAnuncioDeOrigem, gravarAnuncioLido } from './gravar-anuncio-de-origem';
 
 // Banco falso: responde às DUAS leituras (catálogo e valores) e registra os
 // upserts — é a forma que `salvarValoresDoContato` usa.
@@ -314,5 +314,84 @@ describe('gravarAnuncioDeOrigem', () => {
       'utm_medium',
       'utm_source',
     ]);
+  });
+});
+
+describe('gravarAnuncioLido (a Evolution chega com o anúncio já lido)', () => {
+  // O que `lerAnuncioDaEvolution` devolve para um clique (valores fictícios).
+  const LIDO = {
+    tipo: 'ad',
+    idDaOrigem: '120200000000000001',
+    link: 'https://fb.me/exemplo',
+    ctwaClid: 'clid-ficticio',
+  };
+
+  it('grava o MESMO que a Meta: primeira origem sem sobrescrever, último clique por cima', async () => {
+    const r = await gravarAnuncioLido({
+      db: banco(),
+      via: 'evolution',
+      ...ARGS,
+      anuncio: LIDO,
+    });
+    expect(r.erros).toEqual([]);
+    expect(r.anuncio).toBe(true);
+    expect(e.upserts.map((u) => u.opcoes)).toEqual([
+      { onConflict: 'contact_id,custom_field_id', ignoreDuplicates: true },
+      { onConflict: 'contact_id,custom_field_id' },
+    ]);
+    expect(e.upserts.map((u) => u.linhas.map((l) => [l.custom_field_id, l.value]))).toEqual([
+      [
+        ['id-utm_source', 'facebook'],
+        ['id-utm_medium', 'paid'],
+        ['id-id_do_anuncio', '120200000000000001'],
+      ],
+      [['id-ctwa_clid', 'clid-ficticio']],
+    ]);
+  });
+
+  it('ficha que já tem origem (formulário): só o último clique', async () => {
+    e.valores = [{ custom_field_id: 'id-nome_do_anuncio', value: 'AD 1' }];
+    const r = await gravarAnuncioLido({ db: banco(), via: 'evolution', ...ARGS, anuncio: LIDO });
+    expect(r.plano?.origemJaExistia).toBe(true);
+    expect(e.upserts).toHaveLength(1);
+    expect(e.upserts[0].linhas[0].custom_field_id).toBe('id-ctwa_clid');
+  });
+
+  it('o log diz por onde o anúncio chegou — é por ele que se mede a Evolution em produção', async () => {
+    await gravarAnuncioLido({ db: banco(), via: 'evolution', ...ARGS, anuncio: LIDO });
+    expect(console.info).toHaveBeenCalledWith(
+      '[anuncio-de-origem] recebido:',
+      expect.objectContaining({ via: 'evolution', tipo: 'ad', temId: true, temCtwaClid: true })
+    );
+  });
+
+  it('o webhook da Meta segue com a via dele', async () => {
+    await gravarAnuncioDeOrigem({ db: banco(), ...ARGS, referral: REFERRAL });
+    expect(console.info).toHaveBeenCalledWith(
+      '[anuncio-de-origem] recebido:',
+      expect.objectContaining({ via: 'meta' })
+    );
+  });
+
+  it('só o sourceId, sem tipo: nada da origem, e o log avisa o tipo', async () => {
+    const r = await gravarAnuncioLido({
+      db: banco(),
+      via: 'evolution',
+      ...ARGS,
+      anuncio: { ...LIDO, tipo: null, ctwaClid: null },
+    });
+    expect(e.upserts).toHaveLength(0);
+    expect(r.plano?.primeiraOrigem).toEqual({});
+    expect(console.warn).toHaveBeenCalledWith(
+      '[anuncio-de-origem] tipo desconhecido:',
+      expect.objectContaining({ via: 'evolution', tipo: null, temId: true, temCtwaClid: false })
+    );
+  });
+
+  it('exceção lançada (rede) é engolida', async () => {
+    e.lancaEm = 'campos';
+    await expect(
+      gravarAnuncioLido({ db: banco(), via: 'evolution', ...ARGS, anuncio: LIDO })
+    ).resolves.toEqual({ anuncio: true, plano: null, erros: ['rede fora'] });
   });
 });
