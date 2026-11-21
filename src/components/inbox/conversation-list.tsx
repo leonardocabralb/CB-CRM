@@ -87,6 +87,7 @@ import { canSendMessages, isAccountRole } from "@/lib/auth/roles";
 import { useFavoritas } from "@/hooks/use-favoritas";
 import { useConversasDaIa } from "@/hooks/use-conversas-da-ia";
 import { ehInstagram } from "@/lib/cb-channels/transporte";
+import { SeloDoInstagram } from "@/components/channels/selo-do-instagram";
 import { ehPreviaDeLigacao } from "@/lib/whatsapp/ligacoes/previa";
 import { tipoNaoSuportado } from "@/lib/inbox/tipo-nao-suportado";
 import { useTextoDoRascunho } from "@/hooks/use-rascunho-da-conversa";
@@ -1311,6 +1312,16 @@ export function ConversationList({
                     ? null
                     : (canaisPorId.get(conv.channel_id ?? "") ?? canalPadrao)
                 }
+                // O selo do Instagram Direct no avatar (pedido do operador,
+                // 21/11/2026): a ficha só do Instagram tem nome e foto como
+                // qualquer outra, e a linha saía idêntica à do WhatsApp da
+                // mesma pessoa. Pelo PREDICADO sobre o canal da conversa, e
+                // só com os canais carregados: lista vazia não afirma nada.
+                doInstagram={
+                  !canaisCarregando &&
+                  !canaisFalharam &&
+                  ehInstagram(canaisPorId.get(canalDaConversa(conv) ?? "") ?? null)
+                }
                 t={t}
               />
             ))}
@@ -1377,6 +1388,11 @@ interface ConversationItemProps {
    * canal): sem selo.
    */
   canalDeSaidaDaLinha: CanalDeSaida | null;
+  /**
+   * A conversa corre pelo Instagram Direct. `false` = não, ou os canais ainda
+   * não chegaram (ou a consulta falhou): o selo cala nos dois casos.
+   */
+  doInstagram: boolean;
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -1410,6 +1426,7 @@ function ConversationItem({
   divida,
   clienteIdeal,
   canalDeSaidaDaLinha,
+  doInstagram,
   t,
 }: ConversationItemProps) {
   // As chaves da situação escrita moram no namespace do fio (`statusPending`,
@@ -1498,7 +1515,7 @@ function ConversationItem({
         )}
       >
         {/* Avatar */}
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
+        <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
           {avatarUrl ? (
             <img
               src={avatarUrl}
@@ -1509,6 +1526,16 @@ function ConversationItem({
             <Users className="h-5 w-5 text-muted-foreground" />
           ) : (
             initials
+          )}
+          {/* O Instagram Direct, no canto da foto (decisão do operador,
+              21/11/2026, entre três desenhos): é um SELO no canto, não o
+              anel em volta do avatar que o operador retirou. Na foto, e não
+              junto do nome, porque é a foto que o olho procura na lista. */}
+          {doInstagram && (
+            <SeloDoInstagram
+              rotulo={t("doInstagram")}
+              className="absolute -bottom-0.5 -right-0.5 h-4 w-4"
+            />
           )}
         </div>
 

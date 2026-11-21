@@ -56,6 +56,7 @@ import {
 import { lerOpcoesGravadas, textoSemAsOpcoes } from "@/lib/whatsapp/opcoes-de-resposta";
 import { useTranslations } from "next-intl";
 import type { CorDeCanal } from "@/lib/cb-channels/cores";
+import { InstagramGlyph } from "@/components/channels/instagram-glyph";
 
 interface MessageBubbleProps {
   message: Message;
@@ -115,6 +116,12 @@ interface MessageBubbleProps {
    * callback (quem não envia), as opções aparecem sem clique.
    */
   onResponderComOpcao?: (opcao: string) => void;
+  /**
+   * A mensagem passou pelo Instagram Direct (o canal DELA, resolvido pelo
+   * fio): o glifo ao lado da hora, para nenhuma bolha do Direct ser lida
+   * como de WhatsApp. `false` = não, ou ainda não se sabe — cala.
+   */
+  doInstagram?: boolean;
 }
 
 /**
@@ -966,6 +973,7 @@ export function MessageBubble({
   naoConfirmada = false,
   onTentarDeNovo,
   onResponderComOpcao,
+  doInstagram = false,
 }: MessageBubbleProps) {
   const t = useTranslations("Inbox.bubble");
 
@@ -1266,6 +1274,21 @@ export function MessageBubble({
                 )}
               />
               <span className="max-w-[9rem] truncate">{canal.label}</span>
+            </span>
+          )}
+          {/* Pelo Instagram Direct (pedido do operador, 21/11/2026): o glifo
+              junto da hora, nos dois lados. Rosa sobre o cinza do cliente; na
+              nossa, a cor do texto da bolha (o rosa sumiria no violeta). Na
+              bolha de falha, o `!text-foreground` do contêiner vence. */}
+          {doInstagram && (
+            <span title={t("viaInstagram")} className="inline-flex shrink-0">
+              <InstagramGlyph
+                className={cn(
+                  "h-3 w-3",
+                  isAgent ? "text-primary-foreground/80" : "text-pink-600",
+                )}
+              />
+              <span className="sr-only">{t("viaInstagram")}</span>
             </span>
           )}
           <span

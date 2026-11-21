@@ -94,6 +94,10 @@ qualquer uma é pergunta ao operador.
   favoritas" vale sobre ele). Filtro "IA" (12/11/2026): "Atendimento IA"
   inclui a pausa temporária (a IA volta sozinha); "Pendências de IA" sai ao
   encerrar, ao "Retomar IA" ou ao tirar o card de onde a IA o deixou.
+- Caixa de entrada, Instagram Direct (21/11/2026): a conversa se marca pelo
+  selo no canto da foto (lista e cabeçalho), a pastilha "Instagram Direct"
+  no cabeçalho e o glifo na bolha; as bolhas não mudam de cor
+  (`canal-na-conversa.md`).
 - Ficha: um bloco de campos por vez, em menu horizontal, na ordem de cada
   pessoa (12/10/2026).
 - Anotação: caixa ANTES da fixada, que nasce recolhida (29/09/2026);
