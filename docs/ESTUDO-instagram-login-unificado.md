@@ -5,15 +5,17 @@
 > para a "API setup with Unified login" (login unificado), e pensar no Atlas
 > CRM vendido como SaaS.
 >
-> **Estado:** ESTUDO. Nada foi implementado e nada foi mexido no painel da
-> Meta nem no banco. O plano vivo (`docs/PLANO-*.md`) e as fases só começam
-> depois do "pode" do operador.
+> **Estado:** ESTUDO. Nada foi implementado no código nem no banco. O plano
+> vivo (`docs/PLANO-*.md`) e as fases de código só começam depois do "pode"
+> do operador. Em 21/11 o operador decidiu ir pelo app único da Atlas, e o
+> trabalho no painel da Meta começou (§13).
 >
 > **Rótulos de cada afirmação:**
 > - **[DOC]**: documentação oficial da Meta, consultada em 19/11/2026 (links
 >   no fim; as páginas não trazem data de atualização);
-> - **[PAINEL]**: o que a sessão de origem viu no painel da Meta em 19/11;
-> - **[MEDIDO]**: medido por nós (a Fase 0 de 09/09, no login do Instagram);
+> - **[PAINEL]**: o que vimos no painel da Meta em 19/11 e 21/11;
+> - **[MEDIDO]**: medido por nós (a Fase 0 de 09/09, no login do Instagram, e
+>   a M7 de 21/11);
 > - **[CÓDIGO]**: lido no código deste repositório;
 > - **[PENDENTE]**: só um teste resolve;
 > - **[ESTIMATIVA]**: conta minha, não medida.
@@ -27,10 +29,9 @@
 
 - **O login do Instagram que usamos hoje continua funcionando, sem data de
   fim** [DOC]. Mas a Meta o marcou como obsoleto [PAINEL], recursos novos só
-  saem no unificado [DOC] e, pelo guia de migração, **um app criado hoje já
-  não consegue montar o login do Instagram** [DOC, PENDENTE de teste]. Para o
-  Atlas, que vai conectar escritórios novos, o unificado é o caminho que
-  sobra.
+  saem no unificado [DOC] e **um app criado hoje já não consegue montar o
+  login do Instagram** [DOC; MEDIDO em 21/11, M7]. Para o Atlas, que vai
+  conectar escritórios novos, o unificado é o caminho que sobra.
 - **O que muda no CB CRM é a conexão, não a caixa de entrada.**
   - Mudam o login, a troca do código, o tipo de token, o host da API, a
     assinatura da entrega e quem assina o webhook.
@@ -62,10 +63,10 @@
   unificado** (§4). O unificado até facilita: um login traz várias contas de
   uma vez. A diferença para o WhatsApp é que a mesma pessoa vira uma ficha por
   conta do Instagram do escritório.
-- **Aviso ao manual em PDF que a outra sessão está fazendo:** os passos de
-  "crie o seu app com o login do Instagram" talvez não valham para um app
-  novo (§7.4).
-- **As decisões estão no §11** (U1 a U14).
+- **O manual em PDF "crie o seu app com o login do Instagram" não vale para
+  app novo** (§7.4, medido em 21/11). Ele ficou parado.
+- **As decisões estão no §11** (U1 a U14). O andamento no painel da Meta está
+  no §13.
 
 ---
 
@@ -503,7 +504,7 @@ de que o passo é irreversível [TERCEIRO, fórum da Meta].
 | Quem assina a entrega | A doc: o App Secret do app [DOC] | Em 09/09, a doc dizia o mesmo e a medição mostrou o Instagram App Secret [MEDIDO] |
 | `message_edit` | Fora da tabela de campos do unificado [DOC] | O changelog: vale para o Facebook Login for Business [DOC] |
 | Um app com os dois logins | A página do caso de uso: "só uma configuração por app" [DOC] | O guia de migração: "use o app que você já tem" [DOC]. A sessão de origem viu as duas abas lado a lado [PAINEL] |
-| App novo | O guia de migração: app novo não monta o login do Instagram [DOC] | O nosso manual em PDF ensina exatamente isso (§7.4) |
+| App novo | O guia de migração: app novo não monta o login do Instagram [DOC] | O nosso manual em PDF ensinava exatamente isso (§7.4). **Resolvida em 21/11 (M7): a doc está certa** |
 
 ### 7.2 As medições (antes de qualquer código)
 
@@ -519,7 +520,7 @@ caso de uso e escolhas do painel podem não ter volta. Cada uma espera o
 | M4 | O token do usuário do sistema sai quando a conta está no MESMO portfólio do app? | Conectar uma conta do mesmo portfólio pelo login do app descartável | O "traga o seu app"; as opções B e C |
 | M5 | O IGSID do cliente é o mesmo nos dois logins? | A mesma pessoa escreve antes e depois de conectar pelo unificado | Se as fichas de hoje continuam casando |
 | M6 | O `subscribed_apps` do unificado aceita `message_edit`? | A chamada, com e sem o campo | Se a edição de DM continua chegando |
-| M7 | App criado hoje mostra a aba do login do Instagram? | Criar o app descartável (é o primeiro passo das outras) | O manual em PDF; o "traga o seu app" |
+| M7 | App criado hoje mostra a aba do login do Instagram? | Criar o app descartável (é o primeiro passo das outras) | O manual em PDF; o "traga o seu app". **Medida em 21/11: NÃO mostra** (abaixo) |
 | M8 | O que a troca do código devolve (validade, permissões)? | Olhar a resposta, sem gravar o token em lugar nenhum | O callback |
 | M9 | A leitura do perfil do cliente (nome, `@`, foto) funciona com o token novo e acesso padrão? | `GET /{igsid}?fields=name,username,profile_pic` | Se a análise precisa pedir o recurso de perfil |
 | M10 | O bloco `messaging` chega igual ao de hoje? | Comparar o corpo cru com o de 09/09 | Se `interpretarWebhook` muda |
@@ -527,6 +528,18 @@ caso de uso e escolhas do painel podem não ter volta. Cada uma espera o
 
 [ESTIMATIVA] Meio dia com o operador no painel, como a Fase 0 de 09/09. Cada
 medição dá também os passos certos do manual.
+
+**M7, medida em 21/11/2026** [MEDIDO] pela sessão do manual, num app
+descartável criado com o ok do operador (caso de uso "Gerenciar mensagens e
+conteúdo no Instagram", sem portfólio empresarial):
+- Em "Casos de uso → Personalizar" aparecem só "Permissões e recursos", "API
+  setup with Unified login" e "Configuração da API com login do Facebook".
+- A aba do unificado avisa: "A seleção de portfólio empresarial é obrigatória
+  para usar a configuração da API do Instagram com login unificado" (o que a
+  doc diz [DOC]).
+- "Adicionar mais ao caso de uso" só oferece Webhooks. O endereço direto da
+  tela antiga também não a mostra.
+- O app do CB, de 09/09, continua com as três abas.
 
 ### 7.3 O que fica para o primeiro uso real
 
@@ -540,9 +553,11 @@ medição dá também os passos certos do manual.
 O manual da outra sessão ensina o cliente a criar o próprio app com o login
 do Instagram.
 
-- **Se a M7 confirmar a doc,** um escritório que criar o app hoje não vê essa
-  aba, e o manual não vale para ele.
-- **O app do CB mostra as duas abas** porque foi criado em 09/09.
+- **A M7 confirmou a doc (21/11):** um escritório que criar o app hoje não vê
+  essa aba, e o manual não vale para ele. O manual ficou parado; o PR #537
+  corrige os textos da tela para o app antigo e avisa que app novo não tem a
+  tela.
+- **O app do CB mostra as três abas** porque foi criado em 09/09.
 - **O manual do login unificado** só faz sentido depois que o CRM aceitar o
   unificado. E, com a central, o cliente do hospedado nem cria app.
 
@@ -600,10 +615,10 @@ Nenhum agora: todos esperam o "pode" e as decisões.
 
 ## 9. Migração das conexões que já existem
 
-- **Hoje,** no CB, há no máximo a conexão de teste do operador (Fase 3 ainda
-  esperando a primeira DM real). Não consultei o banco: o pedido foi não
-  tocar em `cb_channels`. No Atlas, o Instagram ainda não tem cliente real (a
-  conferir antes de migrar).
+- **Hoje,** no CB, há uma conexão real: feita em 21/11 pelo login do
+  Instagram, e a primeira DM real chegou (relato da sessão do manual). Não
+  consultei o banco: o pedido foi não tocar em `cb_channels`. No Atlas, o
+  Instagram ainda não tem cliente real (a conferir antes de migrar).
 - **O caminho de cada conexão** segue a doc [DOC] e as nossas regras:
   1. manter a conexão e a assinatura antigas;
   2. conectar pelo login novo;
@@ -726,6 +741,59 @@ Uma branch e um PR por fase, a partir do `main` (seção 14 do `CLAUDE.md`).
    do código do login do Instagram.
 8. **Porte ao Atlas** de U-1, U-2 e U-4, registrado em
    `interno/PORTAR-do-CB-CRM.md` (a numeração das migrations lá é outra).
+
+---
+
+## 13. Andamento no painel da Meta
+
+### 21/11/2026
+
+**Decisões do operador** (entram em `docs/DECISOES-DO-OPERADOR.md` junto com
+o plano, porque revisam a D3 para o produto):
+- O Atlas terá um app único da Meta, para os escritórios do SaaS se
+  conectarem com um clique (U2 = opção A; U3 = sim).
+- O portfólio empresarial próprio da Atlas se chama "Atlas Tecnologia
+  Jurídica", com o e-mail comercial que o operador escolheu e ele como
+  administrador.
+- O app se chama "Atlas CRM": tipo Negócios, caso de uso "Gerenciar mensagens
+  e conteúdo no Instagram", criado em modo de desenvolvimento.
+- O selo de Provedor de Tecnologia é marcado já, no app da Atlas (nunca no do
+  CB).
+- **A página de privacidade** é feita no site da Atlas, numa sessão própria,
+  sem publicar até o "pode publicar" do operador.
+
+**O que o levantamento mostrou** [PAINEL, só leitura]:
+- Não havia app nem portfólio da Atlas.
+- O portfólio do escritório é o único verificado.
+
+**O que travou:**
+- A Meta recusou criar o portfólio: "Você atingiu o limite do número de
+  negócios que pode criar no momento". O limite é de quantos portfólios a
+  conta pessoal do Facebook JÁ CRIOU; entrar num portfólio criado por outra
+  pessoa não conta [TERCEIRO, artigo de suporte de outra empresa; a Meta não
+  publica o número].
+- O app não foi criado: o fluxo parou no passo "Empresa", antes de qualquer
+  confirmação.
+- O operador escolheu excluir um portfólio antigo, sem uso, criado pela conta
+  dele. A exclusão espera:
+  - a verificação da conta por SMS, que a Meta pediu antes de prosseguir;
+  - a confirmação final do operador.
+- Pelo aviso da Meta, a exclusão acontece 24 h depois de confirmada e pode
+  ser cancelada nesse prazo. Ela apaga as páginas, as contas de anúncio e as
+  ferramentas do portfólio. A vaga deve liberar só depois disso.
+
+**Próximos passos, nesta ordem:**
+1. Criar o portfólio da Atlas e o app "Atlas CRM", e marcar o Provedor de
+   Tecnologia.
+2. **Verificação da empresa** da Atlas, no portfólio novo. É do operador:
+   razão social, CNPJ, endereço, documentos e a confirmação por e-mail,
+   telefone ou domínio. É a fila mais longa.
+3. **Configuração do unificado:** precisa da URL de retorno da central, que
+   ainda não existe (U5).
+4. **Ajustes básicos do app:** política de privacidade (da sessão do site),
+   ícone 1024×1024, categoria e e-mail.
+5. **A análise** só depois do código (U-1 a U-4) e do escritório de
+   demonstração.
 
 ---
 
