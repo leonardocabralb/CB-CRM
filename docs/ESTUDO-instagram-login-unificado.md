@@ -540,6 +540,8 @@ conteúdo no Instagram", sem portfólio empresarial):
 - "Adicionar mais ao caso de uso" só oferece Webhooks. O endereço direto da
   tela antiga também não a mostra.
 - O app do CB, de 09/09, continua com as três abas.
+- O caminho antigo de criação de app também não tem a tela (complemento no
+  §13).
 
 ### 7.3 O que fica para o primeiro uso real
 
@@ -774,24 +776,52 @@ o plano, porque revisam a D3 para o produto):
   publica o número].
 - O app não foi criado: o fluxo parou no passo "Empresa", antes de qualquer
   confirmação.
-- O operador escolheu excluir um portfólio antigo, sem uso, criado pela conta
-  dele. A exclusão espera:
-  - a verificação da conta por SMS, que a Meta pediu antes de prosseguir;
-  - a confirmação final do operador.
-- Pelo aviso da Meta, a exclusão acontece 24 h depois de confirmada e pode
-  ser cancelada nesse prazo. Ela apaga as páginas, as contas de anúncio e as
-  ferramentas do portfólio. A vaga deve liberar só depois disso.
+- **Excluir um portfólio antigo para liberar a vaga não deu.** A Meta lista o
+  que impede a exclusão. O primeiro item não tem conserto: "Não é possível
+  excluir um portfólio empresarial que tenha pixels anexados. Não é possível
+  remover Pixels do portfólio." Os três portfólios criados pela conta do
+  operador têm pixel.
+
+**Como o portfólio da Atlas nasceu:**
+- O operador escolheu reaproveitar um portfólio antigo, sem uso, criado pela
+  conta dele.
+- **Saiu do portfólio:** a página antiga (ficou com o operador, com controle
+  total). Antes foi preciso desligar o Instagram dela, porque página ligada a
+  Instagram não sai.
+- **Também saíram:** o perfil do Instagram, o app antigo (continua
+  existindo, fora do portfólio) e a outra pessoa que era administradora.
+- **A conta de anúncios** não muda de dono: foi desativada (encerramento em
+  até 3 dias úteis; a Meta remove o cartão sozinha).
+- **O pixel** fica, parado: a Meta não deixa tirá-lo.
+- **Renomeado** para "Atlas Tecnologia Jurídica", com o logo e os dados da
+  Atlas (razão social, endereço, telefone, site). A identificação fiscal
+  ficou em branco para o operador, na verificação.
+- **O e-mail de contato da Atlas** espera o código de confirmação, que é do
+  operador.
+- **A política de privacidade** da Atlas foi publicada no site, com a seção
+  de exclusão de dados: `https://atlasjus.com/privacidade/` e
+  `#exclusao-de-dados`.
+- **O app "Atlas CRM"** está no último passo da criação, nesse portfólio; a
+  Meta pediu a senha do operador.
+
+**Complemento da M7** [MEDIDO, 21/11, pela sessão do manual]: o caminho
+ANTIGO de criação de app também não tem a tela do login do Instagram:
+- o caminho foi casos de uso → "Outros" → "Outro" ("experiência antiga",
+  "será desativada em breve") → tipo "Empresa";
+- em "Produtos → Instagram → Configurar" aparecem só o unificado e o login do
+  Facebook;
+- **hoje não há caminho para um escritório novo montar o login do Instagram:**
+  só o unificado ou o login do Facebook.
 
 **Próximos passos, nesta ordem:**
-1. Criar o portfólio da Atlas e o app "Atlas CRM", e marcar o Provedor de
-   Tecnologia.
-2. **Verificação da empresa** da Atlas, no portfólio novo. É do operador:
-   razão social, CNPJ, endereço, documentos e a confirmação por e-mail,
-   telefone ou domínio. É a fila mais longa.
-3. **Configuração do unificado:** precisa da URL de retorno da central, que
+1. Terminar o app "Atlas CRM" e marcar o Provedor de Tecnologia.
+2. **Ajustes básicos do app:** política de privacidade e exclusão de dados
+   (os endereços acima), ícone 1024×1024, categoria e e-mail.
+3. **Verificação da empresa** da Atlas, no portfólio. É do operador: CNPJ,
+   documentos e a confirmação por e-mail, telefone ou domínio. É a fila mais
+   longa.
+4. **Configuração do unificado:** precisa da URL de retorno da central, que
    ainda não existe (U5).
-4. **Ajustes básicos do app:** política de privacidade (da sessão do site),
-   ícone 1024×1024, categoria e e-mail.
 5. **A análise** só depois do código (U-1 a U-4) e do escritório de
    demonstração.
 
