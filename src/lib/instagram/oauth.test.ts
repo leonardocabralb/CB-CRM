@@ -224,13 +224,42 @@ describe('trocarCodigoPorToken', () => {
     });
   });
 
-  it('só a forma documentada (`data[0]`) é aceita', async () => {
+  it('aceita a resposta PLANA, sem `data` (a do endpoint real, 21/11/2026)', async () => {
+    const r = await trocarCodigoPorToken(
+      args,
+      respondendo(200, {
+        access_token: TOKEN_CURTO,
+        user_id: '17841400000000001',
+        permissions: [
+          'instagram_business_basic',
+          'instagram_business_manage_messages',
+        ],
+      })
+    );
+    expect(r).toEqual({
+      token: TOKEN_CURTO,
+      igUserId: '17841400000000001',
+      permissoes: [
+        'instagram_business_basic',
+        'instagram_business_manage_messages',
+      ],
+    });
+  });
+
+  it('`data` vazio é erro', async () => {
     await expect(
-      trocarCodigoPorToken(
-        args,
-        respondendo(200, { access_token: TOKEN_CURTO, user_id: '1', permissions: 'a' })
-      )
+      trocarCodigoPorToken(args, respondendo(200, { data: [] }))
     ).rejects.toBeInstanceOf(InstagramApiError);
+  });
+
+  it('sem token, o erro lista os NOMES dos campos que vieram, nunca os valores', async () => {
+    const erro = await trocarCodigoPorToken(
+      args,
+      respondendo(200, { user_id: '1', error_reason: 'valor-que-nao-aparece' })
+    ).catch((e: unknown) => e);
+    expect(erro).toBeInstanceOf(InstagramApiError);
+    expect((erro as Error).message).toContain('campos: user_id, error_reason');
+    expect((erro as Error).message).not.toContain('valor-que-nao-aparece');
   });
 
   it('a mensagem de erro do api.instagram.com sai sem o segredo e sem o código', async () => {

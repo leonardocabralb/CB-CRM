@@ -7,7 +7,8 @@
 //      e autoriza; o Instagram devolve `?code=…&state=…` (ou `?error=…`).
 //   2. `POST https://api.instagram.com/oauth/access_token` (form) troca o
 //      código (1 h, uso único) por um token CURTO (1 h) + `user_id` +
-//      `permissions` — as que a pessoa de fato concedeu.
+//      `permissions` — as que a pessoa de fato concedeu. A doc embrulha em
+//      `data[0]`; o endpoint real respondeu plano (21/11/2026): as duas valem.
 //   3. `GET https://graph.instagram.com/access_token?grant_type=
 //      ig_exchange_token` troca o curto pelo LONGO (60 dias): o mesmo token
 //      que o botão do painel gera, renovável pelo `refresh_access_token`.
@@ -351,20 +352,31 @@ export async function trocarCodigoPorToken(
     [args.appSecret, args.code],
     fetchFn
   );
-  // A doc mostra `{ data: [ { … } ] }` — só essa forma.
-  const item = Array.isArray(r.data) && ehObjeto(r.data[0]) ? r.data[0] : null;
+  // A doc mostra `{ data: [ { … } ] }`, mas na primeira conexão real
+  // (21/11/2026) o endpoint respondeu 200 SEM `data[0]`: aceitar também a
+  // forma plana (`{ access_token, user_id, permissions }`). O `user_id` daqui
+  // não é gravado — o canal guarda o do `/me` —, e como número JSON perderia
+  // dígitos (o id do Instagram passa de 2^53).
+  const item: Record<string, unknown> | null = Array.isArray(r.data)
+    ? ehObjeto(r.data[0])
+      ? r.data[0]
+      : null
+    : r;
   if (!item) {
     throw new InstagramApiError(
       'meta_error',
-      'A troca do código veio sem `data[0]`'
+      'A troca do código veio com `data` vazio'
     );
   }
   const token = item.access_token;
   const userId = item.user_id;
   if (typeof token !== 'string' || !token) {
+    // Só os NOMES dos campos (nunca os valores): diz qual forma veio sem
+    // ecoar nada que a Meta tenha mandado.
+    const campos = Object.keys(item).join(', ') || 'nenhum';
     throw new InstagramApiError(
       'meta_error',
-      'A troca do código veio sem access_token'
+      `A troca do código veio sem access_token (campos: ${campos})`
     );
   }
   if (typeof userId !== 'string' && typeof userId !== 'number') {
