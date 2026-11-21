@@ -118,7 +118,11 @@ describe('o fio: botão só no texto, e a mesma bolha no reenvio', () => {
     // cliente receberia as duas assinaturas.
     // Só a assinatura DE QUEM TENTOU: `removerAssinatura` comeria um
     // `*Atenção:*` da primeira linha com a assinatura desligada.
-    expect(tentar).toMatch(/r\?\.texto \?\? removerAssinaturaDe\(gravada\?\.content_text, nomeQueAssina\)/);
+    // No estilo da conversa: no Instagram Direct a assinatura não tem o
+    // negrito do WhatsApp (21/11/2026), e o reenvio tira a que a linha tem.
+    expect(tentar).toMatch(
+      /r\?\.texto \?\?\s*removerAssinaturaDe\(\s*gravada\?\.content_text,\s*nomeQueAssina,\s*ehInstagram\(canalDaJanelaRef\.current\) \? "simples" : "whatsapp",?\s*\)/,
+    );
     expect(tentar).toMatch(/compositorRef\.current\?\.reenviarTexto\(texto, replyToId, id\)/);
   });
 

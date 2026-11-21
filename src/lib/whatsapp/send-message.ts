@@ -419,7 +419,9 @@ export async function sendMessageToConversation(
   const nomeQueAssina = podeAssinar
     ? await nomeParaAssinar(db, accountId, senderUserId)
     : null;
-  const textoFinal = aplicarAssinatura(contentText, nomeQueAssina);
+  // `let`: no Instagram Direct a assinatura é refeita sem o negrito do
+  // WhatsApp (bloco do Instagram, abaixo) — lá o `*` chega cru ao cliente.
+  let textoFinal = aplicarAssinatura(contentText, nomeQueAssina);
 
   /**
    * ⚠️ O teto de 1024 é revalidado AQUI, com a assinatura já contada.
@@ -512,6 +514,10 @@ export async function sendMessageToConversation(
         400
       );
     }
+    // O Direct não formata: a assinatura sai `Nome:`, sem os asteriscos do
+    // negrito do WhatsApp (decisão do operador, 21/11/2026). É o que se grava
+    // também — o CRM mostra o que o cliente recebeu (P1.2).
+    textoFinal = aplicarAssinatura(contentText, nomeQueAssina, 'simples');
     const cabe = conferirParaODirect({
       tipo: messageType,
       texto: messageType === 'text' ? textoFinal : contentText,

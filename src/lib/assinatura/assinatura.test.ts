@@ -202,3 +202,22 @@ describe('custoDaAssinatura', () => {
     expect(assinado.length).toBe(corpo.length + custoDaAssinatura('Ana'));
   });
 });
+
+describe('estilo `simples` (Instagram Direct, 21/11/2026)', () => {
+  it('sem o negrito do WhatsApp: o Direct não formata e o `*` chegaria cru', () => {
+    expect(prefixoDeAssinatura('Ana Paula', 'simples')).toBe('Ana Paula:\n');
+    expect(aplicarAssinatura('Bom dia', 'Ana Paula', 'simples')).toBe('Ana Paula:\nBom dia');
+  });
+
+  it('o padrão continua o do WhatsApp', () => {
+    expect(aplicarAssinatura('Bom dia', 'Ana Paula')).toBe('*Ana Paula:*\nBom dia');
+  });
+
+  it('é idempotente e se remove no mesmo estilo (o "Tentar de novo")', () => {
+    const assinado = aplicarAssinatura('Bom dia', 'Ana', 'simples');
+    expect(aplicarAssinatura(assinado, 'Ana', 'simples')).toBe(assinado);
+    expect(removerAssinaturaDe(assinado, 'Ana', 'simples')).toBe('Bom dia');
+    // Sem nome, nada a assinar em estilo nenhum.
+    expect(prefixoDeAssinatura('', 'simples')).toBe('');
+  });
+});

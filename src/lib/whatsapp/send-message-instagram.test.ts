@@ -224,6 +224,15 @@ describe('Instagram Direct — o envio', () => {
     });
   });
 
+  it('⚠️ a assinatura sai SEM o negrito do WhatsApp — e é o que se grava', async () => {
+    h.assinatura = 'Maria Souza';
+    const { inserts } = await enviar({});
+    expect(h.enviar.mock.calls[0][1]).toMatchObject({
+      texto: 'Maria Souza:\nOlá, aqui é o escritório',
+    });
+    expect(inserts[0]).toMatchObject({ content_text: 'Maria Souza:\nOlá, aqui é o escritório' });
+  });
+
   it('o telefone da ficha NUNCA é o destino, nem é "corrigido" depois', async () => {
     await enviar({
       contato: { id: 'c1', phone: '5583980000016', instagram_id: 'igsid-1' },

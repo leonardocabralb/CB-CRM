@@ -1291,8 +1291,10 @@ export function MessageComposer({
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       // Atalhos iguais aos do WhatsApp Web, para não haver o que reaprender.
+      // NOSSO: no Instagram Direct não há formatação (o marcador chegaria
+      // cru), e os atalhos saem junto com os botões.
       const mod = e.metaKey || e.ctrlKey;
-      if (mod && !e.altKey) {
+      if (mod && !e.altKey && !ehInstagram(channelKind)) {
         const k = e.key.toLowerCase();
         if (k === "b") {
           e.preventDefault();
@@ -1318,7 +1320,7 @@ export function MessageComposer({
         handleSend();
       }
     },
-    [handleSend, formatar]
+    [handleSend, formatar, channelKind]
   );
 
   const handleChange = useCallback(
@@ -2069,7 +2071,10 @@ export function MessageComposer({
   // NÃO entra na conta — no celular ela tem linha própria
   // (`etiquetaEmLinhaPropria`). No computador nada muda.
   const formatacaoNaLinha = !mostraModelos;
-  const botoesDeFormato = (
+  // NOSSO — Instagram Direct (decisão do operador, 21/11/2026): o Direct não
+  // formata, e o `*`, `_`, `~` e as crases chegariam crus ao cliente. Os
+  // botões somem (os atalhos também, em `handleKeyDown`).
+  const botoesDeFormato = ehInstagram(channelKind) ? null : (
     <>
       <BotaoFormato onClick={() => formatar("negrito")} title={t("bold")}>
         <span className="font-bold">N</span>

@@ -158,6 +158,11 @@ Pino `send-message-instagram.test.ts`.
 - **Nota de voz em WAV** (D5): o compositor grava pelo `waveWorker` do
   opus-recorder (`/public/opus/`) quando o canal ativo é Instagram, com teto
   de 2 min 30 s (WAV 48 kHz ≈ 5,8 MB/min contra os 16 MB de envio).
+- ⚠️ **O Direct não formata** (medido no 1º envio real, 21/11/2026: o
+  `*Nome:*` chegou com os asteriscos). A assinatura sai `Nome:` (estilo
+  `simples` de `assinatura.ts`), no núcleo, na bolha otimista e no "Tentar de
+  novo" — os três pelo canal; os botões N/I/S/</> e os atalhos de formatação
+  somem na conversa do Instagram.
 - **Human Agent (D2) segue sem efeito**: o interruptor existe e diz isso;
   nada lê `ig_human_agent` até a Meta aprovar a feature.
 - A agendada no Direct (tela e `POST /v1/scheduled-messages`) recusa no

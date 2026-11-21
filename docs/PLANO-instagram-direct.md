@@ -271,6 +271,13 @@ para depois: host e token isolados em `graph.ts`). Regras:
       o que não cabe; fora da janela na hora do envio vira `failed` com a
       frase; `instagram_error` entra em `CODIGOS_POS_ENTREGA`. Doc pública
       atualizada.
+- [x] **Teste real em 21/11/2026**, pelo preview, para o Instagram pessoal do
+      operador (autorizado por ele): texto, resposta citando, PDF e nota de
+      voz WAV gravada pelo compositor — a Meta aceitou as quatro e as quatro
+      chegaram; uma linha por envio, sem duplicata do eco; o .docx foi
+      recusado antes de subir. O teste mostrou que o Direct NÃO formata: a
+      assinatura passou a sair `Nome:` (sem asteriscos) e os botões de
+      formatação somem no Instagram (decisões do operador no mesmo dia).
 - [ ] **Human Agent (D2) fica fora**: o interruptor segue na conexão, com o
       aviso "ainda sem efeito". Depende de o operador pedir a feature à Meta e
       de medir o formato da tag (a doc lida em 21/11 não o traz).
