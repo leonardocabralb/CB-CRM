@@ -1737,6 +1737,10 @@ export function CbChannelsPanel() {
                               <li>{t('instagramHelpToken_1')}</li>
                               <li>{t('instagramHelpSecret_1')}</li>
                               <li>{t('instagramHelpSecret_2')}</li>
+                              {/* App criado hoje na Meta não tem a tela do login do
+                                  Instagram (medido em 21/11/2026): sem isto, o
+                                  escritório procura uma aba que não existe. */}
+                              <li>{t('instagramHelpSecret_3')}</li>
                             </ol>
                           </AccordionContent>
                         </AccordionItem>

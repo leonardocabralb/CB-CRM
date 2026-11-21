@@ -60,7 +60,7 @@ export async function PUT(request: Request) {
     const appSecret = typeof body?.app_secret === 'string' ? body.app_secret.trim() : '';
     if (!APP_ID_VALIDO.test(appId)) {
       return NextResponse.json(
-        { error: 'O Instagram App ID é o número mostrado na aba do produto Instagram.' },
+        { error: 'O Instagram App ID é o número em "ID do app do Instagram", no alto da tela de configuração do Instagram.' },
         { status: 400 },
       );
     }
