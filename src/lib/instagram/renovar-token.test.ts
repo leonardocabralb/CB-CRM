@@ -210,3 +210,28 @@ describe('renovarTokensDoInstagram', () => {
     }
   });
 });
+
+describe('o prazo comum da manutenção (Codex, PR #539)', () => {
+  it('não COMEÇA pedido que não cabe no prazo: o resto renova no próximo ciclo', async () => {
+    renovar.mockResolvedValue({ token: 'IGAAnovo', expiraEmSeg: 60 * 86_400 });
+    const outro = { ...CANAL, id: 'ch-ig-2' };
+    const { admin } = fakeAdmin({ canais: [CANAL, outro] });
+    // O relógio anda 9 s por pedido; o prazo deixa caber só o primeiro.
+    let agora = 0;
+    const relogio = () => agora;
+    renovar.mockImplementation(async () => {
+      agora += 9_000;
+      return { token: 'IGAAnovo', expiraEmSeg: 60 * 86_400 };
+    });
+    const r = await renovarTokensDoInstagram(admin, AGORA, renovar, 15_000, relogio);
+    expect(renovar).toHaveBeenCalledTimes(1);
+    expect(r.renovados).toBe(1);
+  });
+
+  it('prazo já vencido: nenhum pedido', async () => {
+    const { admin } = fakeAdmin({ canais: [CANAL] });
+    const r = await renovarTokensDoInstagram(admin, AGORA, renovar, 5_000, () => 0);
+    expect(renovar).not.toHaveBeenCalled();
+    expect(r.renovados).toBe(0);
+  });
+});

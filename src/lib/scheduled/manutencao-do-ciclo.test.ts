@@ -104,8 +104,14 @@ describe('a manutenção do ciclo das agendadas', () => {
     await rodarManutencaoDoCiclo(admin, 1_000);
     expect(ordem).toEqual(ORDEM);
     expect(alarmes).toHaveBeenCalledWith(admin, 1_000);
-    // A renovação do token mede a idade a partir do INÍCIO.
-    expect(token).toHaveBeenCalledWith(admin, new Date(1_000));
+    // A renovação do token mede a idade a partir do INÍCIO e corre sob o
+    // MESMO prazo dos outros passos (Codex, PR #539).
+    expect(token).toHaveBeenCalledWith(
+      admin,
+      new Date(1_000),
+      undefined,
+      1_000 + PRAZO_DA_MANUTENCAO_MS
+    );
     expect(gerar).toHaveBeenCalledWith(admin);
     // O vencimento das anotações mede os 90 dias a partir do INÍCIO.
     expect(vencerNotas).toHaveBeenCalledWith(admin, 1_000);

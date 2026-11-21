@@ -175,12 +175,15 @@ Pino `send-message-instagram.test.ts`.
   passa `soWhatsApp: true` ao núcleo, que recusa com `not_supported` a
   conversa achada pelo telefone que responde pelo Instagram (ficha que ganhou
   telefone, ou unificada). Sem isso o lembrete do integrador virava DM.
+- Na adoção, a cópia do anexo que o eco baixou sai do bucket DEPOIS de a
+  linha deixar de citá-la, pela guarda `caminhoNoChatMedia` (só desta conta,
+  fora do acervo); o `media_type` do eco é zerado (Codex, PR #539).
 - **Limites conhecidos** (revisão do PR #539): se o eco ainda ganhar a corrida
-  depois dos 2 s, a linha é assumida mas os EFEITOS do eco ficam (reabertura
-  sem responsável, a bolha otimista ao lado da linha até recarregar, a cópia
-  do anexo do eco órfã no bucket); nos 4 envios reais a nossa linha ganhou. A
-  voz WAV a 96 kHz estoura os 16 MB antes dos 2 min 30 s. Cada eco que não é
-  nosso espera 2 s no lote do webhook.
+  depois dos 2 s, a linha é assumida mas os outros EFEITOS do eco ficam
+  (reabertura sem responsável, a bolha otimista ao lado da linha até
+  recarregar); nos 4 envios reais a nossa linha ganhou. A voz WAV a 96 kHz
+  estoura os 16 MB antes dos 2 min 30 s. Cada eco que não é nosso espera 2 s
+  no lote do webhook.
 
 ### Token e Graph API
 
@@ -193,9 +196,10 @@ Pino `send-message-instagram.test.ts`.
   rota nova — rota nova pede `docker stack deploy` na VPS. Renova o token com
   `ig_token_refreshed_at` de 7 dias ou mais e ainda válido; o vencimento novo
   é o `expires_in` MEDIDO e tem de passar do antigo (200 sem estender não é
-  renovação); a escrita é cercada pelo carimbo lido (reconectar no meio
-  ganha). Só o 190 marca `disconnected` com `last_error`; o resto tenta no
-  ciclo seguinte. É a segunda exceção do `Bearer`: a doc só mostra o token na
+  renovação); as duas escritas (token novo e `disconnected`) são cercadas pelo
+  carimbo lido (reconectar no meio ganha). Só o 190 marca `disconnected` com
+  `last_error`; o resto tenta no ciclo seguinte. Corre sob o PRAZO COMUM da
+  manutenção: não começa pedido (10 s) que não caiba nele. É a segunda exceção do `Bearer`: a doc só mostra o token na
   query do `refresh_access_token`.
 
 ### Conexão pelo login do Instagram (OAuth)

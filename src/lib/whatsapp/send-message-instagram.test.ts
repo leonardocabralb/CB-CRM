@@ -14,6 +14,9 @@ const h = vi.hoisted(() => ({
   assinatura: null as string | null,
   adminUpdates: [] as Record<string, unknown>[],
   adminFiltros: [] as [string, unknown][],
+  /** A `media_url` da linha do eco (a cópia que ele baixou). */
+  urlDoEco: null as string | null,
+  removidos: [] as string[],
 }));
 
 vi.mock('@/lib/cb-channels/resolve', () => ({
@@ -64,12 +67,24 @@ vi.mock('@/lib/flows/admin-client', () => ({
           return b;
         },
         select: () => b,
+        maybeSingle: async () => ({
+          data: { media_url: h.urlDoEco },
+          error: null,
+        }),
         single: async () => ({
           data: { id: 'msg-do-eco', content_text: 'oi' },
           error: null,
         }),
       };
       return b;
+    },
+    storage: {
+      from: () => ({
+        remove: async (caminhos: string[]) => {
+          h.removidos.push(...caminhos);
+          return { error: null };
+        },
+      }),
     },
   }),
 }));
@@ -212,6 +227,8 @@ beforeEach(() => {
   h.assinatura = null;
   h.adminUpdates = [];
   h.adminFiltros = [];
+  h.urlDoEco = null;
+  h.removidos = [];
   h.enviar.mockResolvedValue({ messageId: 'mid-novo' });
   resolver.mockResolvedValue(CANAL_IG as never);
 });
@@ -491,10 +508,45 @@ describe('Instagram Direct — o eco que gravou a linha primeiro', () => {
       from_device: false,
       content_text: 'Olá, aqui é o escritório',
     });
+    // A leitura da linha do eco e a escrita: as duas pela CONVERSA + `mid`.
     expect(h.adminFiltros).toEqual([
       ['conversation_id', 'cv-1'],
       ['message_id', 'mid-novo'],
+      ['conversation_id', 'cv-1'],
+      ['message_id', 'mid-novo'],
     ]);
+    expect(h.adminUpdates[0]).toMatchObject({ media_type: null });
+  });
+
+  it('⚠️ a cópia do anexo que o eco baixou sai do bucket — só ela, só desta conta (Codex, PR #539)', async () => {
+    const CONTA = '0f0f0f0f-1111-4222-8333-444444444444';
+    const base = 'https://x.supabase.co/storage/v1/object/public/chat-media';
+    h.urlDoEco = `${base}/account-${CONTA}/instagram/copia-do-eco.pdf`;
+    const { db } = fakeDb({ insertErro: { code: '23505', message: 'duplicate key' } });
+    await sendMessageToConversation(db, CONTA, {
+      conversationId: 'cv-1',
+      messageType: 'document',
+      contentText: null,
+      mediaUrl: `${base}/account-${CONTA}/1700000000000-contrato.pdf`,
+      filename: 'contrato.pdf',
+      senderUserId: 'user-1',
+    });
+    expect(h.removidos).toEqual([`account-${CONTA}/instagram/copia-do-eco.pdf`]);
+  });
+
+  it('a linha do eco sem anexo, ou com um arquivo de fora, não apaga nada', async () => {
+    const CONTA = '0f0f0f0f-1111-4222-8333-444444444444';
+    for (const url of [null, 'https://cdn.instagram.com/x.jpg', 'https://x/object/public/chat-media/account-outra/x.pdf']) {
+      h.urlDoEco = url;
+      const { db } = fakeDb({ insertErro: { code: '23505', message: 'duplicate key' } });
+      await sendMessageToConversation(db, CONTA, {
+        conversationId: 'cv-1',
+        messageType: 'text',
+        contentText: 'oi',
+        senderUserId: 'user-1',
+      });
+    }
+    expect(h.removidos).toEqual([]);
   });
 
   it('outro erro de gravação continua `db_error` (saiu e não gravou)', async () => {

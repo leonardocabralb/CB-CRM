@@ -76,6 +76,8 @@ import { ehEvolution, ehInstagram, ehMeta } from '@/lib/cb-channels/transporte';
 import type { TentativaDoNucleo } from '@/lib/whatsapp/envio-que-falhou';
 import { isUniqueViolation } from '@/lib/contacts/dedupe';
 import { identidadeDoContato } from '@/lib/contacts/identidade';
+import { CHAT_MEDIA_BUCKET } from '@/lib/storage/buckets';
+import { caminhoNoChatMedia } from '@/lib/storage/caminho-no-chat-media';
 import {
   InstagramApiError,
   criarClienteInstagram,
@@ -1184,7 +1186,17 @@ export async function sendMessageToConversation(
    * conversa já foi conferida na conta lá em cima.
    */
   if (msgError && ehInstagram(channel) && isUniqueViolation(msgError)) {
-    const adotada = await supabaseAdmin()
+    const admin = supabaseAdmin();
+    // A cópia do anexo que o eco BAIXOU (`persistir.ts`): a linha assumida
+    // passa a citar o NOSSO arquivo, e a cópia ficaria órfã no bucket — nem a
+    // exclusão definitiva do contato a alcançaria (Codex, PR #539).
+    const { data: doEco } = await admin
+      .from('messages')
+      .select('media_url')
+      .eq('conversation_id', conversationId)
+      .eq('message_id', waMessageId)
+      .maybeSingle();
+    const adotada = await admin
       .from('messages')
       .update({
         sender_type: 'agent',
@@ -1193,6 +1205,8 @@ export async function sendMessageToConversation(
         content_type: messageType,
         content_text: persistedText,
         media_url: mediaUrl || null,
+        // O nosso INSERT não grava `media_type`; o do eco gravou o do CDN.
+        media_type: null,
         media_filename: filename || null,
         reply_to_message_id: replyToMessageId || null,
       })
@@ -1202,6 +1216,28 @@ export async function sendMessageToConversation(
       .single();
     messageRecord = adotada.data;
     msgError = adotada.error;
+    // Só DEPOIS de a linha deixar de citá-la, e só arquivo desta conta fora
+    // do acervo (`caminhoNoChatMedia`, a guarda da drenagem). Falhar aqui não
+    // desfaz o envio: fica o log.
+    const copiaDoEco = caminhoNoChatMedia(
+      (doEco as { media_url?: string | null } | null)?.media_url,
+      accountId
+    );
+    if (!msgError && copiaDoEco && copiaDoEco !== caminhoNoChatMedia(mediaUrl, accountId)) {
+      try {
+        const { error: erroRemove } = await admin.storage
+          .from(CHAT_MEDIA_BUCKET)
+          .remove([copiaDoEco]);
+        if (erroRemove) {
+          console.error('[send-message] apagar a cópia do eco falhou:', erroRemove.message);
+        }
+      } catch (e) {
+        console.error(
+          '[send-message] apagar a cópia do eco falhou:',
+          e instanceof Error ? e.message : e
+        );
+      }
+    }
   }
 
   if (msgError || !messageRecord) {

@@ -83,8 +83,10 @@ export async function rodarManutencaoDoCiclo(
 ): Promise<void> {
   const prazo = agora + PRAZO_DA_MANUTENCAO_MS;
   await isolado('alarmes de conexão', () => avisarAlarmesDeConexao(admin, agora));
+  // Sob o MESMO prazo dos outros passos (Codex, PR #539): com a Meta lenta,
+  // a renovação não come o orçamento da Lixeira, das podas e da transcrição.
   await isolado('token do Instagram', () =>
-    renovarTokensDoInstagram(admin, new Date(agora))
+    renovarTokensDoInstagram(admin, new Date(agora), undefined, prazo)
   );
   await isolado('tarefas recorrentes', () => gerarTarefasRecorrentes(admin));
   await isolado('vencimento da Lixeira', () => vencerLixeira(admin, prazo));
