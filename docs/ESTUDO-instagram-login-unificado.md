@@ -796,13 +796,36 @@ o plano, porque revisam a D3 para o produto):
 - **Renomeado** para "Atlas Tecnologia Jurídica", com o logo e os dados da
   Atlas (razão social, endereço, telefone, site). A identificação fiscal
   ficou em branco para o operador, na verificação.
-- **O e-mail de contato da Atlas** espera o código de confirmação, que é do
-  operador.
+- **O e-mail de contato da Atlas** foi confirmado pelo operador.
 - **A política de privacidade** da Atlas foi publicada no site, com a seção
   de exclusão de dados: `https://atlasjus.com/privacidade/` e
   `#exclusao-de-dados`.
-- **O app "Atlas CRM"** está no último passo da criação, nesse portfólio; a
-  Meta pediu a senha do operador.
+
+**O app "Atlas CRM"** [PAINEL, 21/11]:
+- Criado no portfólio da Atlas, tipo Negócios, caso de uso "Gerenciar
+  mensagens e conteúdo no Instagram", em modo de desenvolvimento.
+- **Provedor de Tecnologia marcado.** A Meta avisou na hora: "Após se
+  identificar como Provedor de Tecnologia, essa decisão não poderá ser
+  revertida."
+- **Configurações básicas:** política de privacidade, URL de instruções de
+  exclusão de dados, ícone 1024×1024 (a Meta recusou o de fundo branco e
+  pediu transparente), categoria "Negócio e Páginas", e-mail de contato.
+- **O painel lista as exigências:** personalizar o caso de uso do Instagram,
+  o Login do Facebook para Empresas, os requisitos de teste, a verificação da
+  empresa e a análise do app.
+- **A aba do caso de uso confirma a M7 no próprio app:** "A configuração da
+  API com login do Instagram não está disponível para apps mais recentes".
+- **A configuração padrão do unificado** [PAINEL]:
+  - variação "Geral";
+  - token do usuário do sistema que **nunca vence**;
+  - conta do Instagram obrigatória e conta de anúncios opcional;
+  - seis permissões: `ads_management`, `ads_read`, `instagram_basic`,
+    `instagram_manage_messages`, `instagram_manage_comments` e
+    `instagram_content_publish`.
+  
+  A URL de retorno é registrada à parte. Nada disso foi criado ainda: espera
+  a U5 (onde a central mora, que dá a URL de retorno e a do webhook) e a U8
+  (só mensagens).
 
 **Complemento da M7** [MEDIDO, 21/11, pela sessão do manual]: o caminho
 ANTIGO de criação de app também não tem a tela do login do Instagram:
@@ -814,15 +837,14 @@ ANTIGO de criação de app também não tem a tela do login do Instagram:
   só o unificado ou o login do Facebook.
 
 **Próximos passos, nesta ordem:**
-1. Terminar o app "Atlas CRM" e marcar o Provedor de Tecnologia.
-2. **Ajustes básicos do app:** política de privacidade e exclusão de dados
-   (os endereços acima), ícone 1024×1024, categoria e e-mail.
-3. **Verificação da empresa** da Atlas, no portfólio. É do operador: CNPJ,
-   documentos e a confirmação por e-mail, telefone ou domínio. É a fila mais
-   longa.
-4. **Configuração do unificado:** precisa da URL de retorno da central, que
-   ainda não existe (U5).
-5. **A análise** só depois do código (U-1 a U-4) e do escritório de
+1. **Verificação da empresa** da Atlas, no portfólio ("Informações da empresa
+   → Status de verificação → Ver detalhes"). É do operador: CNPJ no campo de
+   identificação fiscal, documentos e a confirmação por e-mail, telefone ou
+   domínio. É a fila mais longa.
+2. **Decisões U5 e U8**, e então a configuração do unificado: só as duas
+   permissões de mensagens, a URL de retorno da central e o webhook do objeto
+   Instagram.
+3. **A análise** só depois do código (U-1 a U-4) e do escritório de
    demonstração.
 
 ---
