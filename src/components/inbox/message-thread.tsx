@@ -162,6 +162,10 @@ import {
 import { ehEvolution, ehInstagram } from "@/lib/cb-channels/transporte";
 import { vivaParaEnviar } from "@/lib/cb-channels/viva-para-enviar";
 import { IconeDoTransporte } from "@/components/channels/transporte-icone";
+import {
+  PastilhaDoInstagram,
+  SeloDoInstagram,
+} from "@/components/channels/selo-do-instagram";
 import { identidadeDoContato, nomeDoContato } from "@/lib/contacts/identidade";
 import { alvoDeEnvio } from "@/lib/whatsapp/alvo-de-envio";
 // O MESMO texto que o servidor grava (`templateContentText`): a cópia local
@@ -2848,6 +2852,12 @@ export function MessageThread({
         .filter(Boolean)
         .join(" · ")
     : (identidadeDoContato(contact ?? {}) ?? "");
+  // A conversa corre pelo Instagram Direct (o selo e a pastilha do
+  // cabeçalho, pedido do operador de 21/11/2026): o número por onde a
+  // resposta SAI, o mesmo do envio. `activeChannel` nulo enquanto os canais
+  // carregam — o selo cala, nunca adivinha. E o padrão da conta, para onde a
+  // conversa sem canal cai, nunca é do Instagram (`set-default.ts` recusa).
+  const conversaDoInstagram = ehInstagram(activeChannel);
   const messageGroups = groupTimelineByDate(
     intercalar(messages, leadEvents, notas, execucoesDoFio)
   );
@@ -2906,8 +2916,14 @@ export function MessageThread({
             title={t("showContact")}
             className="-m-1 flex min-w-0 items-center gap-2 rounded-md p-1 text-left transition-colors hover:bg-muted/60 sm:gap-3"
           >
-            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
+            <span className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
               {displayName.charAt(0).toUpperCase()}
+              {/* O mesmo selo da linha da lista. Sem rótulo próprio: a
+                  pastilha escrita, logo adiante, já diz "Instagram Direct" (e
+                  o nome acessível deste botão é o conteúdo dele). */}
+              {conversaDoInstagram && (
+                <SeloDoInstagram className="absolute -bottom-0.5 -right-0.5 h-4 w-4" />
+              )}
             </span>
             <span className="block min-w-0">
               <span className="flex min-w-0 items-center gap-1.5 truncate text-sm font-semibold text-foreground">
@@ -2932,6 +2948,15 @@ export function MessageThread({
             <CopiarLinkDaConversa
               conversationId={conversation.id}
               className="ml-0.5 hidden sm:inline-flex"
+            />
+          )}
+          {/* Por escrito, ao lado do nome. Some no celular, como a etiqueta
+              da janela logo abaixo: a 375 px o nome e a seta de voltar
+              precisam do espaço, e o selo da foto continua. */}
+          {conversaDoInstagram && (
+            <PastilhaDoInstagram
+              texto={t("instagramDireto")}
+              className="ml-1 hidden sm:ml-2 sm:inline-flex"
             />
           )}
           {/* Session timer badge — hidden on the narrowest phones so
@@ -3645,6 +3670,11 @@ export function MessageThread({
                               ? { label: canalDaMsg.label, cor: corDaMsg }
                               : null
                           }
+                          // Pelo canal DA MENSAGEM, não o da conversa: a
+                          // ficha unificada (Fase 5 do Instagram) junta as
+                          // duas origens no mesmo fio. Sem carimbo, ou com os
+                          // canais carregando, a bolha cala.
+                          doInstagram={ehInstagram(channelsById.get(msg.channel_id ?? "") ?? null)}
                           emGrupo={ehGrupo}
                           baixandoAnexo={anexoEmCurso === msg.id}
                           onBaixarAnexo={() => baixarAnexoDoGrupo(msg.id)}
