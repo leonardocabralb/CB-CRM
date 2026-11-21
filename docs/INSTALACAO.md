@@ -866,17 +866,25 @@ conhecimento (RAG) só com **OpenAI**. O Radar fica desligado por padrão e
 planos gratuitos podem usar o conteúdo enviado.
 
 **Instagram Direct** (em *Configurações → Conexões*, não em Integrações):
-crie um app próprio no painel da Meta e cadastre no CRM o *Instagram App
-ID* e o *Instagram App Secret* da aba do produto Instagram (um app serve a
-todas as contas). No painel da Meta:
-1. registre a **OAuth Redirect URI** que o CRM mostra (uma vez por app);
-2. em *Configuração da API com login do Instagram → Configurar webhooks*,
-   cole a Callback URL e o Verify Token que o CRM mostra e assine o campo
-   `messages`;
-3. adicione cada conta profissional ao app e aceite o convite no app do
-   Instagram;
-4. publique o app (modo **Ativo**) — em desenvolvimento, só quem tem papel
-   no app recebe mensagens. O modo Ativo pede uma URL de política de
+use um app próprio no painel da Meta e cadastre no CRM o *Instagram App
+ID* e o *Instagram App Secret* (um app serve a todas as contas). Os dois
+ficam em *Meus apps → seu app → Casos de uso → Gerenciar mensagens e
+conteúdo no Instagram → Personalizar → Configuração da API com login do
+Instagram*, no alto da tela ("ID do app do Instagram" e "Chave secreta do
+app do Instagram"). ⚠️ **Um app criado hoje na Meta não mostra mais essa
+tela** (conferido em novembro de 2026), e o CRM ainda não aceita o login
+unificado que a substitui: por enquanto, só serve um app que já a tenha.
+Nessa tela:
+1. em *4. Configurar o login da empresa no Instagram → Configurar*, registre
+   a **OAuth Redirect URI** que o CRM mostra (uma vez por app);
+2. em *2. Gerar tokens de acesso → Adicionar conta*, adicione cada conta
+   profissional ao app;
+3. conecte a conta pelo botão **Conectar com Instagram** do CRM; na primeira
+   conexão, o CRM mostra a Callback URL e o Verify Token. Cole-os em
+   *3. Configurar webhooks* (*URL de callback* e *Verificar token*), clique
+   em *Verificar e salvar* e confira que o campo `messages` está assinado;
+4. publique o app (no menu da esquerda, *Publicar*) — sem isso, só quem tem
+   papel no app recebe mensagens. Publicar pede uma URL de política de
    privacidade: o CRM serve uma em `/privacidade`, que você deve revisar
    antes de usar.
 O token vale **60 dias**; o CRM avisa quando estiver para vencer, e a

@@ -156,6 +156,10 @@ devolve só o App ID). O canal criado pelo login continua gravando o segredo em
   `ig_user_id`): token, segredo e validade novos; rótulo e Human Agent ficam
   (`canal.ts` só os grava quando o chamador manda). Não nasce segunda conexão;
   o diálogo do webhook só abre na primeira conexão da conta (`?primeira=1`).
+- ⚠️ **App criado HOJE na Meta não tem a tela "Configuração da API com login do
+  Instagram"** (medido em 21/11/2026, nem por URL direta): só o login unificado
+  e o do Facebook. Todo este fluxo serve só a app antigo; texto de tela ou
+  manual que mande "criar o app" leva o escritório a uma aba que não existe.
 - **Preview e produção geram URIs de retorno diferentes**, e as duas precisam
   estar registradas no painel da Meta — senão o teste local morre antes do
   callback.
