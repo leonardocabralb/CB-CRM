@@ -88,10 +88,20 @@ Branch `feat/instagram-unificado-direto`. Módulo novo `src/lib/instagram/unific
   - o segredo vem do app da conta;
   - cada conexão só aceita a entrega assinada pelo segredo do seu modo, para
     a DM não chegar em dobro durante a migração.
-- [ ] **Envio:** o ramo do unificado no envio da Fase 4 (host, token, ID da
-      conta no caminho).
-- [ ] **Saúde diária:** token inválido marca a conexão desconectada, com a
-      frase "conecte de novo".
+- [ ] **Envio** (sobre o PR #539, a Fase 4). Host e token moram só em
+      `src/lib/instagram/graph.ts`.
+  - O host do unificado (`graph.facebook.com`) entra ao lado do
+    `INSTAGRAM_GRAPH`, com a mesma guarda de host de `doGraphDoInstagram`.
+  - O caminho `me/messages` vira `{ig_user_id}/messages`, que vale nos dois
+    logins.
+  - O `ig_user_id` e o modo entram em `CHANNEL_COLS`/`ResolvedChannel`
+    (`src/lib/cb-channels/resolve.ts`). O núcleo (`send-message.ts`) não
+    monta URL: só repassa.
+- [ ] **Renovação e saúde:**
+  - `renovar-token.ts` (a renovação de 60 dias, Fase 6) pula a conexão do
+    modo unificado, porque o token não vence;
+  - a checagem diária marca a conexão desconectada quando o token fica
+    inválido, com a frase "conecte de novo".
 - [ ] **Rotas de desautorização e de exclusão de dados** (`signed_request`
       assinado pelo segredo do app).
 - [ ] **Tela:** o bloco do app pede App ID, App Secret principais e o ID da
