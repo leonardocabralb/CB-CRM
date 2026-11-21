@@ -18,7 +18,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  FileDown,
   ImageOff,
+  Loader2,
   RotateCcw,
   RotateCw,
   X,
@@ -26,7 +28,9 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { toast } from "sonner";
 
+import { baixarImagemEmPdf } from "@/lib/media/baixar-em-pdf";
 import { cn } from "@/lib/utils";
 
 /** Presente = modo galeria: ‹ › na tela, ←/→ no teclado e o contador. */
@@ -111,6 +115,9 @@ export function MediaViewer({
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [arrastando, setArrastando] = useState(false);
   const inicio = useRef<{ x: number; y: number } | null>(null);
+  // O PDF leva um instante (buscar, desenhar, montar): o botão gira e não
+  // aceita o segundo clique, que baixaria dois arquivos iguais.
+  const [gerandoPdf, setGerandoPdf] = useState(false);
 
   const girar = useCallback((graus: number) => {
     setGiro((atual) => (atual + graus + 360) % 360);
@@ -189,6 +196,21 @@ export function MediaViewer({
 
   const nome = fileName || `${alt || "anexo"}.jpg`;
 
+  // Sai com o GIRO da tela: a foto do documento que chegou deitada e foi
+  // posta em pé aqui sai em pé no PDF. Zoom e arraste são só de leitura.
+  const baixarEmPdf = async () => {
+    if (!src || gerandoPdf) return;
+    setGerandoPdf(true);
+    try {
+      await baixarImagemEmPdf(src, nome, giro);
+    } catch (erro) {
+      console.error("[media-viewer] PDF da imagem falhou", erro);
+      toast.error(t("downloadPdfFailed"));
+    } finally {
+      setGerandoPdf(false);
+    }
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col bg-black/90 backdrop-blur-sm"
@@ -226,6 +248,19 @@ export function MediaViewer({
         {src && (
           <BotaoBarra onClick={() => void baixar(src, nome)} title={t("download")}>
             <Download className="h-4 w-4" />
+          </BotaoBarra>
+        )}
+        {src && !video && (
+          <BotaoBarra
+            onClick={() => void baixarEmPdf()}
+            title={t("downloadPdf")}
+            desabilitado={gerandoPdf}
+          >
+            {gerandoPdf ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FileDown className="h-4 w-4" />
+            )}
           </BotaoBarra>
         )}
         <BotaoBarra onClick={onClose} title={t("close")}>
@@ -347,10 +382,12 @@ function BotaoLateral({
 function BotaoBarra({
   onClick,
   title,
+  desabilitado = false,
   children,
 }: {
   onClick: () => void;
   title: string;
+  desabilitado?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -359,10 +396,13 @@ function BotaoBarra({
       onClick={onClick}
       title={title}
       aria-label={title}
+      disabled={desabilitado}
+      aria-busy={desabilitado || undefined}
       className={cn(
         "rounded-lg p-2 text-white/80 transition-colors",
         "hover:bg-white/15 hover:text-white",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
+        "disabled:cursor-wait disabled:opacity-60",
       )}
     >
       {children}

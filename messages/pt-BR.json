@@ -1169,6 +1169,8 @@
       "open": "Ampliar imagem",
       "close": "Fechar",
       "download": "Baixar",
+      "downloadPdf": "Baixar em PDF",
+      "downloadPdfFailed": "Não foi possível gerar o PDF desta imagem.",
       "rotateLeft": "Girar à esquerda",
       "rotateRight": "Girar à direita",
       "zoomIn": "Aproximar",
