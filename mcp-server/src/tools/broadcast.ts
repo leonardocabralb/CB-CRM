@@ -28,16 +28,18 @@ export function registerBroadcastTools(server: McpServer, client: WacrmClient): 
         recipients: z
           .array(
             z.object({
-              to: z.string().describe('Recipient phone number. With + and the country code (e.g. +14155550123); a Brazilian number may be written without + but with its area code (e.g. (81) 98874-5316, stored as 5581988745316). Numbers outside this rule are dropped and counted as rejected.'),
+              to: z.string().describe('Recipient phone number. With + and the country code (e.g. +14155550123); a Brazilian number may be written without + but with its area code (e.g. (81) 98000-0016, stored as 5581980000016). Numbers outside this rule are dropped and counted as rejected.'),
               params: z
                 .array(z.string())
                 .optional()
-                .describe('Positional template body variables for this recipient.'),
+                .describe('Template body variables for this recipient, in order ({{1}}, {{2}}…); for a template with named variables ({{customer_name}}), values go in the alphabetical order of the names (JavaScript sort()).'),
             }),
           )
           .min(1)
           .max(1000)
-          .describe('Recipients (1–1000). Invalid numbers are dropped and counted as rejected.'),
+          .describe(
+            'Recipients (1–1000). Invalid numbers are dropped and counted as rejected. A number listed twice (or two spellings of the same number) is messaged once, and the extra entries are counted as duplicates.',
+          ),
         channel_id: z
           .string()
           .optional()

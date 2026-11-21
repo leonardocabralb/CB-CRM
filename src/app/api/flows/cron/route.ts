@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { resolveFallbackPolicy } from '@/lib/flows/fallback'
 import { encerrarRunDeRoboDesativado } from '@/lib/flows/parar-run'
+import { buscarPorChave, PAGINA } from '@/lib/supabase/paginar'
 
 /**
  * Sweep abandoned active flow runs.
@@ -56,22 +57,6 @@ export async function GET(request: Request) {
   const admin = supabaseAdmin()
   const now = new Date()
 
-  // Pull all currently-active runs along with their parent flow's
-  // fallback_policy. Joined in one query — the small set of active
-  // runs per tenant keeps this cheap.
-  const { data: runs, error } = await admin
-    .from('flow_runs')
-    .select(
-      'id, flow_id, user_id, contact_id, last_advanced_at, flows ( fallback_policy, status )',
-    )
-    .eq('status', 'active')
-
-  if (error) {
-    console.error('[flows-cron] active-run scan failed:', error.message)
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-  if (!runs?.length) return NextResponse.json({ swept: 0, paradas: 0 })
-
   type Robo = { fallback_policy: unknown; status?: string | null }
   type Row = {
     id: string
@@ -82,9 +67,38 @@ export async function GET(request: Request) {
     flows: Robo | Robo[] | null
   }
 
+  // Pull all currently-active runs along with their parent flow's
+  // fallback_policy. Joined in one query per page.
+  // ⚠️ POR CHAVE (`buscarPorChave`, porte #683): sem paginar, o PostgREST
+  // cortava em 1.000 execuções sem avisar, e a run da 1.001ª em diante nunca
+  // vencia nem era encerrada com o robô desativado — o contato ficava preso
+  // no índice de uma run ativa por contato. Lidas INTEIRAS antes de varrer:
+  // a varredura muda `status`, e por chave isso não desloca nenhuma página.
+  // `null` (erro, ou mais de 25 mil ativas) = não varre nada, como o erro de
+  // antes.
+  const { linhas: runs, erro, motivo } = await buscarPorChave<Row>((depoisDe) => {
+    let q = admin
+      .from('flow_runs')
+      .select(
+        'id, flow_id, user_id, contact_id, last_advanced_at, flows ( fallback_policy, status )',
+      )
+      .eq('status', 'active')
+      .order('id', { ascending: true })
+      .limit(PAGINA)
+    if (depoisDe) q = q.gt('id', depoisDe)
+    return q as unknown as PromiseLike<{ data: Row[] | null; error: { message: string } | null }>
+  })
+
+  if (!runs) {
+    const detalhe = erro?.message ?? motivo ?? 'desconhecido'
+    console.error('[flows-cron] active-run scan failed:', detalhe)
+    return NextResponse.json({ error: detalhe }, { status: 500 })
+  }
+  if (!runs.length) return NextResponse.json({ swept: 0, paradas: 0 })
+
   let swept = 0
   let paradas = 0
-  for (const r of runs as Row[]) {
+  for (const r of runs) {
     const flowsField = Array.isArray(r.flows) ? r.flows[0] : r.flows
     // Robô que não está ativo encerra a run, antes do timeout. Status ausente
     // (o embutido não veio) é "não sei": a run segue para a régua do tempo,

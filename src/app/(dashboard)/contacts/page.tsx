@@ -53,7 +53,9 @@ import { MoverParaLixeiraDialog } from '@/components/contacts/mover-para-lixeira
 import { useCan } from '@/hooks/use-can';
 import { useAoVoltarParaOApp } from '@/hooks/use-ao-voltar-para-o-app';
 import { selecaoRestante } from '@/lib/contacts/exclusao';
-import { escaparLike, ramoContem } from '@/lib/postgrest/literal';
+import { ramosDaBuscaNaTabela, temCaraDeTelefone } from '@/lib/contacts/busca-remota';
+import { paginaQueExiste } from '@/lib/contacts/pagina-que-existe';
+import { escaparLike } from '@/lib/postgrest/literal';
 import { GatedButton } from '@/components/ui/gated-button';
 import { useTranslations } from 'next-intl';
 import { identidadeDoContato, nomeDoContato } from '@/lib/contacts/identidade';
@@ -122,6 +124,9 @@ export default function ContactsPage() {
   // results. Without this, rapidly toggling tag filters could let a slower
   // earlier request resolve last and render stale rows.
   const fetchSeq = useRef(0);
+  // O passo para a última página que existe (ver `fetchContacts`) vindo de
+  // uma recarga SILENCIOSA: o efeito da lista o lê e refaz em silêncio.
+  const passoSilenciosoRef = useRef(false);
 
   const fetchTags = useCallback(async () => {
     const { data } = await supabase.from('tags').select('*');
@@ -173,6 +178,9 @@ export default function ContactsPage() {
 
     let contactRows: Contact[];
     let count: number;
+    // O total quando ele é CONHECIDO; `null` quando a resposta não o trouxe
+    // (ver `paginaQueExiste`).
+    let totalConhecido: number | null;
 
     if (selectedTagIds.length > 0) {
       // Tag filter active — resolve it server-side (join + distinct +
@@ -181,9 +189,15 @@ export default function ContactsPage() {
       // clause. See migration 025_filter_contacts_by_tags.
       const { data, error } = await supabase.rpc('filter_contacts_by_tags', {
         p_tag_ids: selectedTagIds,
-        // A função faz `ILIKE '%' || p_search || '%'` (025): o termo vai com
-        // o escape do LIKE, senão `%` e `_` digitados viram curingas.
-        p_search: term ? escaparLike(term) : null,
+        // A função faz `ILIKE '%' || p_search || '%'` sobre `phone` cru (025):
+        // o termo vai com o escape do LIKE, senão `%` e `_` digitados viram
+        // curingas. Termo com cara de telefone vai só com os DÍGITOS — os
+        // telefones são gravados sem pontuação, e "(83) 98000-0016" não
+        // casava. Limite escrito em `contatos.md`: aqui não há a irmã do nono
+        // dígito nem o `@` (mudar a RPC é migration).
+        p_search: term
+          ? escaparLike(temCaraDeTelefone(term) ? term.replace(/\D/g, '') : term)
+          : null,
         p_limit: PAGE_SIZE,
         p_offset: from,
       });
@@ -196,6 +210,9 @@ export default function ContactsPage() {
       const rows = (data ?? []) as { contact: Contact; total_count: number }[];
       contactRows = rows.map((r) => r.contact);
       count = rows.length > 0 ? Number(rows[0].total_count) : 0;
+      // A RPC só traz o total junto com as linhas: página vazia não diz
+      // quantas há.
+      totalConhecido = rows.length > 0 ? count : null;
     } else {
       let query = supabase
         .from('contacts')
@@ -203,24 +220,50 @@ export default function ContactsPage() {
         .order('created_at', { ascending: false })
         .range(from, to);
 
-      if (term) {
-        // ⚠️ Literal (`ramoContem`): cru, a vírgula e o parêntese de
-        // "silva, jr" ou "(83) 9887" quebravam o `.or()` (400, e a tela dizia
-        // "falha ao carregar"), e `%`, `_` e `*` viravam curingas.
-        query = query.or(
-          ['name', 'phone', 'email'].map((coluna) => ramoContem(coluna, term)).join(','),
-        );
-      }
+      // ⚠️ Literal (`ramoContem`, dentro de `ramosDaBuscaNaTabela`): cru, a
+      // vírgula e o parêntese de "silva, jr" ou "(83) 9800" quebravam o
+      // `.or()` (400, e a tela dizia "falha ao carregar"), e `%`, `_` e `*`
+      // viravam curingas. O telefone casa pelos DÍGITOS (`phone_normalized`,
+      // as duas grafias do nono dígito) só quando o termo tem cara de
+      // telefone: "(83) 98000-0016" acha "+5583980000016", e um e-mail com
+      // dígito não traz todo telefone com aqueles dígitos (porte #679).
+      const ramos = ramosDaBuscaNaTabela(term);
+      if (ramos) query = query.or(ramos);
 
       const { data, count: exactCount, error } = await query;
       if (seq !== fetchSeq.current) return; // superseded by a newer fetch
-      if (error) {
+      // 416 `PGRST103`: a página pedida passou do FIM — as fichas dela saíram
+      // depois que a tela a pediu (outro membro, outra aba). Não é falha: é
+      // página vazia sem contagem, e o passo para trás abaixo resolve. Antes
+      // a tela dizia "Falha ao carregar" com as fichas que já tinham saído.
+      const alemDoFim = error?.code === 'PGRST103';
+      if (error && !alemDoFim) {
         toast.error(t('toastFailedLoad'));
         setLoading(false);
         return;
       }
-      contactRows = data ?? [];
+      contactRows = alemDoFim ? [] : (data ?? []);
       count = exactCount ?? 0;
+      totalConhecido = alemDoFim ? null : exactCount;
+    }
+
+    // A página pedida voltou VAZIA e não é a primeira: a Lixeira (ou outro
+    // membro) levou as fichas dela. Vai para a última página que existe, em
+    // vez de "Nenhum contato ainda" com "Página 3 de 2" (porte #679). O total
+    // e as linhas ficam como estão até a página nova chegar — sem piscar
+    // "zero contatos". A página 0 nunca volta, e destino igual à página
+    // atual fica no vazio: sem laço.
+    if (contactRows.length === 0 && page > 0) {
+      const destino = paginaQueExiste(page, totalConhecido, PAGE_SIZE);
+      if (destino !== page) {
+        // ⚠️ O passo herda o modo de quem o descobriu: a recarga silenciosa
+        // (volta ao app, "Desfazer") continua silenciosa e PODA a seleção às
+        // linhas da página nova; as outras zeram a seleção, como toda troca
+        // de página. O efeito da lista é quem pede de novo.
+        passoSilenciosoRef.current = !!opcoes?.silencioso;
+        setPage(destino);
+        return;
+      }
     }
 
     setTotalCount(count);
@@ -294,8 +337,12 @@ export default function ContactsPage() {
     const chave = JSON.stringify([page, search, selectedTagIds]);
     const soOCatalogo = chaveDaListaRef.current === chave;
     chaveDaListaRef.current = chave;
+    // O passo para a última página que existe, vindo de uma recarga
+    // silenciosa, continua silencioso (ver `fetchContacts`).
+    const passoSilencioso = passoSilenciosoRef.current;
+    passoSilenciosoRef.current = false;
     fetchContacts(
-      soOCatalogo ? { silencioso: true, preservarSelecao: true } : undefined,
+      soOCatalogo || passoSilencioso ? { silencioso: true, preservarSelecao: true } : undefined,
     );
   }, [fetchContacts, page, search, selectedTagIds]);
 

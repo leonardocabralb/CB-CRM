@@ -191,7 +191,7 @@ describe("comAlgoVisivel", () => {
   });
 
   it("com algo visível, devolve o texto COMO VEIO (o log mostra o que chegou)", () => {
-    expect(comAlgoVisivel(" 98874-5316 ")).toBe(" 98874-5316 ");
-    expect(comAlgoVisivel("‪+55 81 98874-5316‬")).toBe("‪+55 81 98874-5316‬");
+    expect(comAlgoVisivel(" 98000-0016 ")).toBe(" 98000-0016 ");
+    expect(comAlgoVisivel("‪+55 81 98000-0016‬")).toBe("‪+55 81 98000-0016‬");
   });
 });

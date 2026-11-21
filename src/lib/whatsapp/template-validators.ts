@@ -72,6 +72,61 @@ export function extractVariableIndices(text: string): number[] {
 }
 
 /**
+ * As chaves das variáveis de um texto de modelo, na ordem em que os valores
+ * de envio são casados com elas. A Meta tem dois formatos, e um modelo usa
+ * um OU outro:
+ *
+ *   - POSICIONAL `{{1}}`, `{{2}}` → `["1", "2"]`, em ordem numérica;
+ *   - NOMEADO `{{nome_do_cliente}}` (o padrão do editor da Meta) → as chaves
+ *     na ordem de CÓDIGO do caractere — a do `sort()` do JavaScript (dígitos
+ *     < `_` < letras). A Meta casa o nomeado pelo `parameter_name`; a ordem
+ *     é só a convenção do CRM para a LISTA de valores (seletor da caixa,
+ *     disparo, API v1), e quem monta a lista (o navegador) e quem a casa (o
+ *     servidor) rodam em lugares diferentes: `localeCompare` dependeria do
+ *     idioma de cada um. A doc pública (`docs/public-api.md`) promete esta
+ *     ordem.
+ *
+ * Texto com os dois formatos fica com o nomeado (a Meta não aprova modelo
+ * misto). Porte do original #700 (`f4970d33`), com a ordem trocada.
+ */
+export function extractTemplateVariables(text: string): string[] {
+  const chaves = new Set<string>();
+  for (const m of text.matchAll(/\{\{([A-Za-z0-9_]+)\}\}/g)) chaves.add(m[1]);
+  const nomes = [...chaves].filter(isNamedVariable);
+  if (nomes.length === 0) return extractVariableIndices(text).map(String);
+  return nomes.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
+/** Chave de variável NOMEADA (`nome_do_cliente`), não posição (`1`). */
+export function isNamedVariable(key: string): boolean {
+  return !/^\d+$/.test(key);
+}
+
+/**
+ * O texto usa variável NOMEADA? A tela de criar/editar modelo (e as rotas
+ * que ela chama) só fala o formato posicional: o nomeado se cria no painel
+ * da Meta e chega pela sincronização.
+ */
+function temVariavelNomeada(text: string | undefined): boolean {
+  return !!text && extractTemplateVariables(text).some(isNamedVariable);
+}
+
+/**
+ * A recusa do `{{nome}}` na criação/edição. As rotas a devolvem com `code`
+ * (`variavel_nomeada`), e a tela troca pela frase do dicionário
+ * (`Settings.templates.namedVariablesNotSupported`); este texto em inglês
+ * fica para quem chama a rota direto, como as outras recusas daqui.
+ */
+export class VariavelNomeadaRecusada extends Error {
+  readonly code = 'variavel_nomeada';
+  constructor() {
+    super(
+      'Named variables ({{customer_name}}) are not supported here yet — use {{1}}, {{2}}…, or create the template in Meta WhatsApp Manager and use "Sync from Meta".',
+    );
+  }
+}
+
+/**
  * Meta requires contiguous, 1-indexed variables. `{{1}} {{3}}` is
  * invalid — it must be `{{1}} {{2}}`.
  */
@@ -94,6 +149,8 @@ export function validateBody(bodyText: string): number[] {
       `Body text exceeds ${TEMPLATE_LIMITS.bodyMaxLength} chars (got ${bodyText.length}).`,
     );
   }
+  // Antes ia à Meta sem exemplo, e ela recusava: recusado aqui, com o caminho.
+  if (temVariavelNomeada(bodyText)) throw new VariavelNomeadaRecusada();
   const indices = extractVariableIndices(bodyText);
   assertContiguous(indices, 'Body');
   return indices;
@@ -106,7 +163,7 @@ export function validateFooter(footerText: string | undefined): void {
       `Footer text exceeds ${TEMPLATE_LIMITS.footerMaxLength} chars (got ${footerText.length}).`,
     );
   }
-  if (extractVariableIndices(footerText).length > 0) {
+  if (extractVariableIndices(footerText).length > 0 || temVariavelNomeada(footerText)) {
     throw new Error('Footer text cannot contain {{N}} variables (Meta rule).');
   }
 }
@@ -134,6 +191,7 @@ export function validateHeader(
         `Header text exceeds ${TEMPLATE_LIMITS.headerTextMaxLength} chars (got ${header_content.length}).`,
       );
     }
+    if (temVariavelNomeada(header_content)) throw new VariavelNomeadaRecusada();
     const indices = extractVariableIndices(header_content);
     if (indices.length > 1) {
       throw new Error(

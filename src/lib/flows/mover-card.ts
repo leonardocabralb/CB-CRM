@@ -278,7 +278,9 @@ export async function moverCardDoNo(
 
   // A RPC deriva o funil da ETAPA e ignora o funil do nó. Etapa que não é do
   // funil configurado só acontece com a config inconsistente gravada depois
-  // da ativação (`PUT /api/flows/[id]` não revalida robô ativo) — e aí o
+  // da ativação (o `PUT /api/flows/[id]` de robô ativo revalida só o GRAFO —
+  // ciclo e cadeia, porte #674/#683 —, não as referências de
+  // `referencias-do-robo.ts`, que só a ativação confere) — e aí o
   // card iria para o funil da etapa enquanto a criação (`createDeal`)
   // recusaria. Conferir aqui mantém os dois caminhos com a mesma resposta.
   const { data: etapa, error: etapaErr } = await db

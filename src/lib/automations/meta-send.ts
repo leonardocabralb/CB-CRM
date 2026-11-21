@@ -21,6 +21,10 @@ import {
   resolveTemplateRow,
   templateContentText,
 } from '@/lib/whatsapp/template-body'
+import {
+  extractTemplateVariables,
+  isNamedVariable,
+} from '@/lib/whatsapp/template-validators'
 import { supabaseAdmin } from './admin-client'
 import { faltaNoModelo, recortarAoModelo, type ParametrosDoModelo } from './parametros-do-modelo'
 import { aplicarAssinatura } from '@/lib/assinatura/assinatura'
@@ -297,10 +301,20 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   //              bolha do template nascia vazia no inbox
   // Calculado ANTES do envio: é também o que a bolha "não enviada" mostra.
   const content_type = input.kind === 'template' ? 'template' : 'text'
+  // Modelo NOMEADO (D3, 17/11/2026): os valores do texto gravado são os que
+  // `recortarAoModelo` monta pelo nome — `input.params` (as posições) vem
+  // vazio, e a bolha mostraria `{{nome}}` cru. O posicional fica como era.
   const content_text =
     input.kind === 'text'
       ? textoFinal
-      : templateContentText(templateRow, input.params ?? [])
+      : templateContentText(
+          templateRow,
+          input.messageParams &&
+            templateRow &&
+            extractTemplateVariables(templateRow.body_text ?? '').some(isNamedVariable)
+            ? recortarAoModelo(templateRow, input.messageParams).body
+            : (input.params ?? [])
+        )
   const template_name = input.kind === 'template' ? input.templateName : null
   // NOSSO: o agente de IA em nome de quem o TEXTO sai (ver `SendTextArgs.iaAgenteId`).
   const iaAgenteId = input.kind === 'text' ? (input.iaAgenteId ?? null) : null

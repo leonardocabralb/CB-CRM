@@ -1211,8 +1211,13 @@ export interface Deal {
 
 export type BroadcastStatus =
   'draft' | 'scheduled' | 'sending' | 'sent' | 'failed';
+/**
+ * `uncertain` é NOSSO (1151): a linha foi reservada para a Meta e ninguém
+ * confirmou o desfecho — PODE ter saído. Nenhum reenvio a pega
+ * (`src/lib/whatsapp/broadcast-entrega.ts`). A lista é a do CHECK da 1151.
+ */
 export type RecipientStatus =
-  'pending' | 'sent' | 'delivered' | 'read' | 'replied' | 'failed';
+  'pending' | 'sent' | 'delivered' | 'read' | 'replied' | 'failed' | 'uncertain';
 
 export interface Broadcast {
   id: string;
@@ -1243,6 +1248,13 @@ export interface Broadcast {
    * send. Added in migration 041.
    */
   delivery_locked_at?: string | null;
+  /**
+   * NOSSO (1147): posse do envio pelo ASSISTENTE (navegador), com prazo pelo
+   * relógio do banco e o token de quem a tem. A retomada só assume com ela
+   * vencida e a apaga ao assumir. Ver `src/lib/whatsapp/broadcast-posse.ts`.
+   */
+  delivery_lease_until?: string | null;
+  delivery_lease_token?: string | null;
   created_at: string;
 }
 
@@ -1727,9 +1739,12 @@ export type SendListStepConfig = InteractiveMessagePayload;
 export interface SendTemplateStepConfig extends ChannelScopedStepConfig {
   template_name: string;
   language?: string;
-  /** O `{{N}}` do CORPO, pela posição ("1", "2", …). Aceita `{{contact.*}}`. */
+  /**
+   * O `{{N}}` do CORPO, pela posição ("1", "2", …) — ou pelo NOME no modelo
+   * de variáveis nomeadas (`{{nome}}` → "nome"). Aceita `{{contact.*}}`.
+   */
   variables?: Record<string, string>;
-  /** Texto de reserva por posição, para o valor que sair vazio. */
+  /** Texto de reserva por posição (ou nome), para o valor que sair vazio. */
   variaveis_reserva?: Record<string, string>;
   /** O `{{1}}` de um cabeçalho de TEXTO, e a reserva dele. */
   header_text?: string;

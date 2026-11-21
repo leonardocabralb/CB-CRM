@@ -292,3 +292,80 @@ describe('linhaDoModeloNaTela — espelho de resolveTemplateRow', () => {
     expect(linhaDoModeloNaTela([doA, doB], 'boas_vindas', 'pt_BR', 'canal-a').emVariosNumeros).toBe(false)
   })
 })
+
+// ── Variáveis NOMEADAS (`{{nome}}`, D3 do plano de 17/11/2026) ──────────────
+
+describe('modelo com variáveis NOMEADAS', () => {
+  const nomeado = modelo({ body_text: 'Olá {{nome}}, sua reunião é {{data}}.' })
+
+  it('montar guarda os valores pelo NOME (interpolação e reserva), fora do corpo posicional', async () => {
+    const p = await montarParametrosDoModelo(
+      cfg({
+        variables: { nome: '{{contact.name}}', data: 'segunda' },
+        variaveis_reserva: { nome: 'cliente' },
+      }),
+      interpolador('')
+    )
+    expect(p.body).toEqual([])
+    expect(p.nomeados).toEqual({ data: 'segunda', nome: 'cliente' })
+  })
+
+  it('posicional não ganha `nomeados` (o objeto fica o de antes)', async () => {
+    const p = await montarParametrosDoModelo(cfg({ variables: { '1': 'a' } }), interpolador(''))
+    expect(p).toEqual({ body: ['a'] })
+  })
+
+  it('recortar monta o corpo na ordem do MODELO, mesmo com nome faltando no passo', () => {
+    const p = recortarAoModelo(nomeado, { body: [], nomeados: { nome: 'Ana', sobra: 'x' } })
+    expect(p.body).toEqual(['', 'Ana'])
+    expect(p).not.toHaveProperty('nomeados')
+    expect(buildSendComponents(nomeado, { body: ['segunda', 'Ana'] })[0]).toEqual({
+      type: 'body',
+      parameters: [
+        { type: 'text', parameter_name: 'data', text: 'segunda' },
+        { type: 'text', parameter_name: 'nome', text: 'Ana' },
+      ],
+    })
+  })
+
+  it('falta: diz o NOME que ficou vazio', () => {
+    expect(faltaNoModelo(nomeado, { body: [], nomeados: { nome: 'Ana' } })).toBe(
+      'a variável {{data}} do modelo ficou vazia e o passo não tem texto de reserva para ela'
+    )
+    expect(faltaNoModelo(nomeado, { body: [], nomeados: { nome: 'Ana', data: 'seg' } })).toBeNull()
+  })
+
+  it('sem a linha do modelo, valor nomeado falha antes da Meta (iria sem os nomes)', () => {
+    expect(faltaNoModelo(null, { body: [], nomeados: { nome: 'Ana' } })).toMatch(
+      /não está sincronizado/
+    )
+    expect(faltaNoModelo(null, { body: ['a'] })).toBeNull()
+  })
+
+  it('cabeçalho de texto nomeado também exige valor', () => {
+    const comCabecalho = modelo({
+      body_text: 'Corpo fixo',
+      header_type: 'text',
+      header_content: 'Oi {{primeiro_nome}}',
+    })
+    expect(faltaNoModelo(comCabecalho, { body: [] })).toMatch(/cabeçalho/)
+    expect(faltaNoModelo(comCabecalho, { body: [], headerText: 'Ana' })).toBeNull()
+  })
+
+  it('o que passa em faltaNoModelo passa em buildSendComponents', async () => {
+    const p = await montarParametrosDoModelo(
+      cfg({ variables: { nome: 'Ana', data: 'segunda' } }),
+      interpolador('')
+    )
+    expect(faltaNoModelo(nomeado, p)).toBeNull()
+    expect(() => buildSendComponents(nomeado, recortarAoModelo(nomeado, p))).not.toThrow()
+  })
+
+  it('mais de 50 nomes: o motor lê só os 50 primeiros', async () => {
+    const variables = Object.fromEntries(
+      Array.from({ length: MAX_POSICOES_DO_MODELO + 5 }, (_, i) => [`v${String(i).padStart(2, '0')}`, 'a'])
+    )
+    const p = await montarParametrosDoModelo(cfg({ variables }), interpolador(''))
+    expect(Object.keys(p.nomeados ?? {})).toHaveLength(MAX_POSICOES_DO_MODELO)
+  })
+})

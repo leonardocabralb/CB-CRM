@@ -72,7 +72,21 @@ export const recipientStatusConfig: Record<RecipientStatus, StatusDisplay> = {
     label: "failed",
     classes: "bg-red-500/10 text-red-400 border-red-500/20",
   },
+  // NOSSO (1151): pode ter saído — nem enviado, nem falhou. `amber-700` lê
+  // nos dois temas (o `dark:` está inerte; `.claude/rules/ui.md`).
+  uncertain: {
+    label: "uncertain",
+    classes: "bg-amber-500/10 text-amber-700 border-amber-500/20",
+  },
 };
+
+/**
+ * NOSSO (1151): a ENTREGA INCERTA do destinatário — a linha que foi reservada
+ * para a Meta e cujo desfecho ninguém confirmou (5xx, tempo esgotado, rede,
+ * processo que morreu no meio). Nenhum reenvio a pega; a tela a mostra à parte
+ * (`src/lib/whatsapp/broadcast-entrega.ts`).
+ */
+export const ENTREGA_INCERTA = "uncertain" as const satisfies RecipientStatus;
 
 /**
  * Tolerant lookup — callers often have a generic string status

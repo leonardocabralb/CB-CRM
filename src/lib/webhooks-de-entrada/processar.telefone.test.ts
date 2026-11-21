@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // O telefone que chega por webhook de entrada passa pela régua das telas e da
 // API (`telefoneDigitado`, Fase 3-III). Quem manda aqui é, na maioria, um
 // formulário em que o LEAD digita — o Typebot, que não dá para mudar do lado
-// de cá. Antes a leitura era `digitosDoTelefone`: "98874-5316" virava a ficha
+// de cá. Antes a leitura era `digitosDoTelefone`: "98000-0016" virava a ficha
 // +98 e um `…@lid` colado virava telefone.
 // ============================================================
 
@@ -49,11 +49,11 @@ beforeEach(() => {
 
 describe("processarAcionamento — o telefone do lead", () => {
   it.each([
-    ["o bloco de telefone do Typebot (+55, validado)", "+5581988745316", "5581988745316"],
-    ["internacional com espaços", "+55 81 98874-5316", "5581988745316"],
-    ["digitado sem DDI", "(81) 98874-5316", "5581988745316"],
-    ["só dígitos, com 55", "5581988745316", "5581988745316"],
-    ["planilha que virou número decimal", "81988745316.0", "5581988745316"],
+    ["o bloco de telefone do Typebot (+55, validado)", "+5581980000016", "5581980000016"],
+    ["internacional com espaços", "+55 81 98000-0016", "5581980000016"],
+    ["digitado sem DDI", "(81) 98000-0016", "5581980000016"],
+    ["só dígitos, com 55", "5581980000016", "5581980000016"],
+    ["planilha que virou número decimal", "81980000016.0", "5581980000016"],
     ["de outro país, com +", "+1 404 555 1234", "14045551234"],
   ])("%s → a ficha nasce com %s", async (_caso, phone, esperado) => {
     const r = await processarAcionamento(admin, "conta-1", WEBHOOK, {
@@ -71,10 +71,10 @@ describe("processarAcionamento — o telefone do lead", () => {
   });
 
   it.each([
-    ["sem DDD (a régua antiga criava a ficha +98)", "98874-5316", "curto demais — faltou o DDD?"],
-    ["JID colado (a régua antiga fazia do LID um telefone)", "5581988745316@lid", "não é um telefone válido"],
-    ["0 de tronco", "081 98874-5316", "não é um telefone válido"],
-    ["55 com tamanho errado", "+55 81 9887-453", "não é um telefone válido"],
+    ["sem DDD (a régua antiga criava a ficha +98)", "98000-0016", "curto demais — faltou o DDD?"],
+    ["JID colado (a régua antiga fazia do LID um telefone)", "5581980000016@lid", "não é um telefone válido"],
+    ["0 de tronco", "081 98000-0016", "não é um telefone válido"],
+    ["55 com tamanho errado", "+55 81 9800-000", "não é um telefone válido"],
   ])("%s → sem_telefone com o motivo, sem ficha nem automação", async (_caso, phone, frase) => {
     const r = await processarAcionamento(admin, "conta-1", WEBHOOK, {
       variaveis: { phone, name: "Maria" },
@@ -110,7 +110,7 @@ describe("detalheDoTelefone", () => {
     const invalido = detalheDoTelefone("phone", "invalido");
     expect(curto).not.toBe(invalido);
     for (const frase of [curto, invalido]) {
-      expect(frase).toContain("(81) 98874-5316");
+      expect(frase).toContain("(81) 98000-0016");
       expect(frase).toContain("com + e o código do país");
     }
   });

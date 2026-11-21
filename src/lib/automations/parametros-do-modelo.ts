@@ -23,8 +23,15 @@
 //
 // ⚠️ O CORPO é POSICIONAL: `body[N-1]` é o `{{N}}`. A versão anterior
 // ordenava as chaves e as compactava, e `{"1": "a", "3": "c"}` mandava o "c"
-// como `{{2}}`. Chave que não é posição (1, 2, …) é ignorada — a tela nunca
-// grava outra coisa, e `validate.ts` a recusa na ativação.
+// como `{{2}}`.
+//
+// ⚠️ Modelo com variáveis NOMEADAS (`{{nome_do_cliente}}`, o padrão do editor
+// da Meta; D3 do plano de 17/11/2026): a chave é o NOME (`variables.nome`), e
+// os valores vão em `nomeados`. Quem os põe na ordem do envio é
+// `recortarAoModelo`, que conhece a linha do modelo — aqui não se sabe quais
+// nomes ele tem, e uma lista montada pelas chaves do passo deslocaria os
+// valores quando falta uma. Chave que não é posição nem nome é ignorada (a tela
+// nunca grava outra coisa, e `validate.ts` a recusa na ativação).
 //
 // ⚠️ Quem confere se FALTOU valor é `faltaNoModelo`, no remetente
 // (`meta-send.ts`), porque só lá a linha do modelo é conhecida (ela depende do
@@ -34,7 +41,11 @@
 
 import type { MessageTemplate, SendTemplateStepConfig } from '@/types'
 import type { SendTimeParams } from '@/lib/whatsapp/template-send-builder'
-import { extractVariableIndices } from '@/lib/whatsapp/template-validators'
+import {
+  extractTemplateVariables,
+  extractVariableIndices,
+  isNamedVariable,
+} from '@/lib/whatsapp/template-validators'
 
 /**
  * A interpolação do motor; `cru` = o modo de DADO (sem "R$", data em ISO);
@@ -54,8 +65,15 @@ export type Interpolar = (
  */
 export const MAX_POSICOES_DO_MODELO = 50
 
-/** Os valores prontos para `sendTemplateMessage`, com o corpo sempre presente. */
-export type ParametrosDoModelo = SendTimeParams & { body: string[] }
+/**
+ * Os valores prontos para `sendTemplateMessage`, com o corpo sempre presente.
+ * `nomeados`: os valores das variáveis NOMEADAS, por nome — só existe quando o
+ * passo tem alguma; `recortarAoModelo` os põe no `body`, na ordem do modelo.
+ */
+export type ParametrosDoModelo = SendTimeParams & {
+  body: string[]
+  nomeados?: Record<string, string>
+}
 
 /**
  * A Meta recusa parâmetro de modelo com quebra de linha, tabulação ou mais de
@@ -77,6 +95,30 @@ function posicoes(mapa: Record<string, unknown> | undefined): number[] {
     .filter((k) => /^[1-9]\d*$/.test(k))
     .map(Number)
     .filter((n) => n <= MAX_POSICOES_DO_MODELO)
+}
+
+/**
+ * Chave de variável NOMEADA, na forma que `extractTemplateVariables` lê
+ * (`[A-Za-z0-9_]`, não só dígitos). `validate.ts` usa a mesma régua.
+ */
+export function ehChaveNomeada(chave: string): boolean {
+  return /^[A-Za-z0-9_]+$/.test(chave) && isNamedVariable(chave)
+}
+
+/**
+ * Os nomes gravados nos dois mapas, na ordem do envio e com o MESMO teto das
+ * posições (uma interpolação por nome: sem teto, um mapa enorme gravado pela
+ * API rodaria milhares delas).
+ */
+function nomes(...mapas: (Record<string, unknown> | undefined)[]): string[] {
+  const todos = new Set<string>()
+  for (const mapa of mapas) {
+    if (!mapa || typeof mapa !== 'object') continue
+    for (const k of Object.keys(mapa)) if (ehChaveNomeada(k)) todos.add(k)
+  }
+  return [...todos]
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+    .slice(0, MAX_POSICOES_DO_MODELO)
 }
 
 /**
@@ -112,6 +154,19 @@ export async function montarParametrosDoModelo(
   }
 
   const out: ParametrosDoModelo = { body }
+
+  // As NOMEADAS: a mesma régua de valor e reserva, guardadas pelo nome.
+  const doPasso = nomes(valores as Record<string, unknown>, reservas as Record<string, unknown>)
+  if (doPasso.length > 0) {
+    const nomeados: Record<string, string> = {}
+    for (const nome of doPasso) {
+      const bruto = texto((valores as Record<string, unknown>)[nome])
+      const valor = textoDeParametro(await interpolar(bruto, { cru: false }))
+      nomeados[nome] =
+        valor || textoDeParametro(texto((reservas as Record<string, unknown>)[nome]))
+    }
+    out.nomeados = nomeados
+  }
 
   const cabecalho =
     textoDeParametro(await interpolar(texto(cfg.header_text), { cru: false })) ||
@@ -154,19 +209,38 @@ export function faltaNoModelo(
   modelo: MessageTemplate | null,
   p: ParametrosDoModelo
 ): string | null {
-  const exigidas = modelo
-    ? extractVariableIndices(modelo.body_text ?? '')
-    : p.body.map((_, i) => i + 1)
-  for (const n of exigidas) {
-    if (!p.body[n - 1]) {
-      return `a variável {{${n}}} do modelo ficou vazia e o passo não tem texto de reserva para ela`
+  // NOMEADO: a lista é a do MODELO, e o valor vem pelo nome.
+  const doModelo = modelo
+    ? extractTemplateVariables(modelo.body_text ?? '').filter(isNamedVariable)
+    : []
+  if (doModelo.length > 0) {
+    for (const nome of doModelo) {
+      if (!p.nomeados?.[nome]) {
+        return `a variável {{${nome}}} do modelo ficou vazia e o passo não tem texto de reserva para ela`
+      }
+    }
+  } else {
+    const exigidas = modelo
+      ? extractVariableIndices(modelo.body_text ?? '')
+      : p.body.map((_, i) => i + 1)
+    for (const n of exigidas) {
+      if (!p.body[n - 1]) {
+        return `a variável {{${n}}} do modelo ficou vazia e o passo não tem texto de reserva para ela`
+      }
     }
   }
-  if (!modelo) return null
+  if (!modelo) {
+    // Sem a linha local o envio vai pelo caminho "só corpo", sem os nomes, e
+    // a Meta recusaria o modelo nomeado: falha aqui, dizendo o que fazer.
+    if (p.nomeados && Object.keys(p.nomeados).length > 0) {
+      return 'o modelo tem variáveis com nome e não está sincronizado no CRM — sincronize os modelos da Meta em Configurações'
+    }
+    return null
+  }
 
   if (
     modelo.header_type === 'text' &&
-    extractVariableIndices(modelo.header_content ?? '').length > 0 &&
+    extractTemplateVariables(modelo.header_content ?? '').length > 0 &&
     !p.headerText
   ) {
     return 'a variável do cabeçalho do modelo ficou vazia e o passo não tem texto de reserva para ela'
@@ -209,16 +283,24 @@ export function faltaNoModelo(
  *
  * O cabeçalho não precisa: o construtor já ignora o de texto sem variável e o
  * endereço de mídia num cabeçalho que não é de mídia.
+ *
+ * NOMEADO: o `body` é montado AQUI, pela lista de nomes do modelo, cada um com
+ * o valor gravado sob o nome (a ordem que o construtor casa com o nome).
  */
 export function recortarAoModelo(
   modelo: MessageTemplate | null,
   p: ParametrosDoModelo
 ): ParametrosDoModelo {
   if (!modelo) return p
+  const doModelo = extractTemplateVariables(modelo.body_text ?? '').filter(isNamedVariable)
   const recortado: ParametrosDoModelo = {
     ...p,
-    body: p.body.slice(0, extractVariableIndices(modelo.body_text ?? '').length),
+    body:
+      doModelo.length > 0
+        ? doModelo.map((nome) => p.nomeados?.[nome] ?? '')
+        : p.body.slice(0, extractVariableIndices(modelo.body_text ?? '').length),
   }
+  delete recortado.nomeados
   delete recortado.buttonParams
   if (!p.buttonParams) return recortado
   const botoes = modelo.buttons ?? []

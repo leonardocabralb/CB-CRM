@@ -189,9 +189,9 @@ recipient — reads it the way the CRM's own screens do:
   `+41 55 555 12 12`. A leading `00` works like `+`.
 - **Without `+`**, 10 digits, or 11 digits with `9` in the third position
   (area code + mobile), is read as **Brazilian** and gets `55`:
-  `(81) 98874-5316` → `5581988745316`. Anything else without `+` — 12
+  `(81) 98000-0016` → `5581980000016`. Anything else without `+` — 12
   digits or more, or 11 without a `9` in the third position — is taken as
-  already carrying its country code (`5581988745316`, `14155550123`).
+  already carrying its country code (`5581980000016`, `14155550123`).
 - Spaces, dots, dashes and parentheses are ignored.
 - **Rejected** with `400 bad_request`, and the message says why: too short
   (fewer than 10 digits without `+`, fewer than 8 with it), a trunk `0`
@@ -202,11 +202,11 @@ recipient — reads it the way the CRM's own screens do:
   in `rejected`.
 
 A contact's stored `phone` is digits only, with the country code
-(`5581988745316`). Send a number from any other country **with `+`**: the
+(`5581980000016`). Send a number from any other country **with `+`**: the
 US national `4155550123` without it is read as Brazilian (area code 41).
 
 > **Changed in September 2026.** Before, everything that was not a digit
-> was stripped: `(81) 98874-5316` became the contact `81988745316` —
+> was stripped: `(81) 98000-0016` became the contact `81980000016` —
 > delivered to +81 (Japan) —, and a pasted `…@s.whatsapp.net` was accepted
 > as its digits. `POST /api/v1/broadcasts` required the leading `+`. A
 > number sent **with `+`** and only digits and the separators above is
@@ -321,6 +321,17 @@ The object form needs a template the CRM has synced from Meta — it reads
 the template to place each value; for a template the CRM doesn't know, send
 the list.
 
+**Named variables.** A template created with named variables
+(`{{customer_name}}` — the default in Meta's template editor) takes its
+values in the alphabetical order of the names — the order of JavaScript's
+`sort()` (`["customer_name", "order_id"]`) —, in the list and in `body`; the
+CRM sends each value with its name. That order compares character codes,
+not numbers or words: digits come before `_` and before letters, and
+uppercase before lowercase — `item10` comes before `item2`, `data1` before
+`data_1`, and `Zip` before `city`. This needs the template synced to the
+CRM: without the local copy the values go unnamed and Meta refuses the send.
+A text header's named variable goes in `headerText`.
+
 When the CRM knows the template, it is filled in **before** anything goes to
 Meta. If something is missing, the call answers `400 bad_request` and
 `message` says what: a media header (image, video, document) with no file —
@@ -424,8 +435,8 @@ List contacts, newest first. Scope: `contacts:read`. Paginated (see
 case-insensitive substring of the name or the phone, matched literally —
 `%`, `_`, `*`, commas and parentheses are plain characters) and
 `?tag=<tagId>`. The phone is stored as digits only (see
-[Phone numbers](#phone-numbers)), so search it by digits: `8198874` finds
-`5581988745316`, while `+55 (81)` finds nothing. The `tag` filter takes only a tag **id**
+[Phone numbers](#phone-numbers)), so search it by digits: `8198000` finds
+`5581980000016`, while `+55 (81)` finds nothing. The `tag` filter takes only a tag **id**
 (from `GET /api/v1/tags`) — unlike the write endpoints below, a tag name
 there is a `400 bad_request`.
 
@@ -434,8 +445,8 @@ there is a `400 bad_request`.
 > phone of a contact that was merged into it (see
 > [Merged contacts](#post-apiv1contacts) below): the result is the contact
 > that stayed, with its **current** `phone`. A full number with `55` matches
-> with or without the mobile ninth digit (`5581988745316` or
-> `558188745316`). A shorter search, or one with anything besides digits,
+> with or without the mobile ninth digit (`5581980000016` or
+> `558180000016`). A shorter search, or one with anything besides digits,
 > matches only the current name and phone. If the CRM cannot read the old
 > phones, the answer is a `500` — never a list missing the contact.
 
@@ -837,7 +848,7 @@ tags. Group conversations are not listed.
   "last_message_text": "…", "last_message_at": "…",
   "unread_count": 0,
   "created_at": "…", "updated_at": "…",
-  "contact": { "id": "…", "phone": "5581988745316", "name": "…", "email": null, "company": null,
+  "contact": { "id": "…", "phone": "5581980000016", "name": "…", "email": null, "company": null,
                "whatsapp_user_id": null, "whatsapp_username": null, "tags": [] }
 }
 ```
@@ -957,7 +968,9 @@ curl -X POST https://your-crm.example.com/api/v1/broadcasts \
 `channel_id` is optional — see
 [Choosing which number to send from](#choosing-which-number-to-send-from).
 `params` is one list per recipient, in the order of the template's
-`{{1}}`, `{{2}}`… variables; recipients may carry lists of different
+`{{1}}`, `{{2}}`… variables — or, for a template with named variables, in
+the alphabetical order of the names (see "Named variables" under
+`POST /api/v1/messages`); recipients may carry lists of different
 lengths.
 
 **Migration required:** apply
@@ -971,11 +984,12 @@ Phone numbers outside the [rule](#phone-numbers) are dropped and counted
 as `rejected`. A number with no contact yet gets one, as
 `POST /api/v1/contacts` would create it. Recipients that resolve to the
 **same contact** — the same number twice, or two spellings of it — are
-messaged once, and the extra ones are dropped **without** being counted:
-`accepted + rejected` can be less than the number of recipients you sent.
-`total_recipients` and `accepted` are both the number of contacts the
-campaign will message. If no recipient is usable, the call fails with
-`400 bad_request` and nothing is created. Response (202):
+messaged once (the first one listed, with its `params`), and the extra ones
+are counted in `duplicates`: `accepted + rejected + duplicates` is the
+number of recipients you sent. `total_recipients` and `accepted` are both
+the number of contacts the campaign will message. If no recipient is
+usable, the call fails with `400 bad_request` and nothing is created.
+Response (202):
 
 ```json
 {
@@ -985,6 +999,7 @@ campaign will message. If no recipient is usable, the call fails with
     "total_recipients": 2,
     "accepted": 2,
     "rejected": 0,
+    "duplicates": 0,
     "channel_id": "…"
   }
 }
@@ -1003,6 +1018,17 @@ Broadcast status + counts. Scope: `broadcasts:send`. `status` moves
 `sending` → `sent` (or `failed`, when every recipient failed);
 `delivered_count` / `read_count` keep climbing as Meta delivery webhooks
 arrive. `404` for another account's broadcast.
+
+A recipient whose delivery is **uncertain** counts in neither `sent_count`
+nor `failed_count`: the CRM called Meta for it, but no answer confirmed the
+outcome (a timeout, a Meta 5xx, a dropped connection), so the message may
+have arrived. The CRM never resends it automatically — retrying failed
+recipients only covers the ones Meta refused. Once `status` leaves
+`sending`, the recipients missing from both counts are the uncertain ones.
+If Meta stops answering mid-broadcast, delivery stops at the first uncertain
+recipient instead of making every remaining one uncertain: the broadcast
+stays `sending`, with the rest pending, until someone resumes it from the
+broadcast page.
 
 ### `GET /api/v1/channels`
 
@@ -1410,7 +1436,9 @@ GET /api/v1/contacts?limit=50&cursor=eyJ…
 
 Cursors are keyset-based (stable under concurrent inserts). Pass the
 cursor back verbatim — don't parse it. `next_cursor: null` means the
-last page.
+last page. Pass back only a cursor the API gave you: a malformed or
+tampered one is ignored and you get the first page again (one carrying an
+impossible date can make the request fail instead).
 
 ## Webhooks
 
@@ -1479,10 +1507,10 @@ If you listen for "won", also check `deal.status` on `deal.created`.
 
 All under scope `webhooks:manage`.
 
-- `POST /api/v1/webhooks` — register `{ "url": "https://…", "events": ["message.received"] }`. `url` must be `https://`. **The response includes `secret` exactly once** — store it to verify signatures; wacrm keeps only an encrypted copy.
+- `POST /api/v1/webhooks` — register `{ "url": "https://…", "events": ["message.received"] }`. `url` must be `https://` and must not embed a username or password (`https://user:pass@…` is rejected with `400`; verify deliveries with the signing secret instead). **The response includes `secret` exactly once** — store it to verify signatures; wacrm keeps only an encrypted copy.
 - `GET /api/v1/webhooks` — list your endpoints (never returns the secret). Not paginated: `meta.next_cursor` is always `null`.
 - `GET /api/v1/webhooks/{id}` — read one.
-- `PATCH /api/v1/webhooks/{id}` — update `url`, `events`, or `is_active` (re-enabling clears the failure counter).
+- `PATCH /api/v1/webhooks/{id}` — update `url` (same rules as on create), `events`, or `is_active` (re-enabling clears the failure counter).
 - `DELETE /api/v1/webhooks/{id}` — remove one.
 
 ```bash
@@ -1686,7 +1714,9 @@ deliveries, and the endpoint ends up switched off.
 **Target restrictions (SSRF).** The `url` must be `https://` and must
 resolve to a public address — requests to `localhost`, private/RFC1918
 ranges, link-local (incl. cloud metadata `169.254.169.254`), and similar
-internal targets are refused at delivery time.
+internal targets are refused at delivery time. A URL with a username or
+password in it (`https://user:pass@…`) is refused when you register or
+change it: no delivery could go out to it.
 
 ## Roadmap
 

@@ -19,6 +19,11 @@ import {
   type ErroDoPostgrest,
   type MotivoDaDesconfianca,
 } from '@/lib/supabase/paginar';
+import {
+  renovarPosseDoDisparo,
+  tomarPosseDoDisparo,
+} from '@/lib/whatsapp/broadcast-posse';
+import { ENTREGA_INCERTA } from '@/lib/broadcast-status';
 import { Contact, MessageTemplate } from '@/types';
 
 export type CustomFieldOperator = 'is' | 'is_not' | 'contains';
@@ -72,8 +77,26 @@ interface BroadcastPayload {
   channelId?: string | null;
 }
 
+/**
+ * NOSSO (posse do envio, 1147): por que o assistente PAROU antes do fim.
+ * `posse_perdida` = outro envio (a retomada) assumiu a campanha e manda o
+ * que falta; `posse_incerta` = não deu para confirmar a posse (a conexão com
+ * o servidor caiu) — o resto fica pendente para o Retomar; `lote_incerto`
+ * (1151) = um envio ficou sem confirmação (a chamada do lote caiu sem
+ * resposta da rota, ou a rota parou na primeira resposta que a Meta não deu):
+ * o que foi reservado ficou com entrega incerta, o resto pendente, e a posse
+ * foi solta para o Retomar aparecer.
+ */
+export type InterrupcaoDoEnvio = 'posse_perdida' | 'posse_incerta' | 'lote_incerto';
+
+export interface ResultadoDoDisparo {
+  broadcastId: string;
+  /** `null` = o assistente foi até o fim. */
+  interrupcao: InterrupcaoDoEnvio | null;
+}
+
 interface UseBroadcastSendingReturn {
-  createAndSendBroadcast: (payload: BroadcastPayload) => Promise<string>;
+  createAndSendBroadcast: (payload: BroadcastPayload) => Promise<ResultadoDoDisparo>;
   isProcessing: boolean;
   progress: number;
 }
@@ -176,16 +199,22 @@ function sleep(ms: number) {
 
 export interface BroadcastApiResult {
   phone: string;
-  status: 'sent' | 'failed';
+  /**
+   * NOSSO (1151): `uncertain` = foi à Meta e ninguém confirmou o desfecho (a
+   * linha fica com entrega incerta); `skipped` = a linha não estava mais
+   * pendente na reserva da rota, e nada foi enviado a ela. Nos dois, o
+   * navegador não grava nada.
+   */
+  status: 'sent' | 'failed' | 'uncertain' | 'skipped';
   whatsapp_message_id?: string;
   error?: string;
   /** A linha de `broadcast_recipients` do pedido, devolvida pela rota. */
   recipient_id?: string;
   /**
-   * `true` = a rota JÁ gravou o envio na linha, na hora em que a Meta o
-   * aceitou (`anotarEnvio`, em `api/whatsapp/broadcast`). O navegador não
-   * regrava: nesse meio-tempo o recibo da Meta pode ter levado a linha a
-   * "entregue".
+   * `true` = a rota JÁ gravou o desfecho na linha que reservou (o envio na
+   * hora em que a Meta o aceitou, a recusa ou o motivo da incerta;
+   * `gravarDesfechoDaReserva`, 1151). O navegador não regrava: nesse
+   * meio-tempo o recibo da Meta pode ter levado a linha a "entregue".
    */
   anotado?: boolean;
 }
@@ -205,11 +234,18 @@ export function resolveVariables(
 ): string[] {
   // Keys are typically "1","2",... — numeric-aware sort keeps
   // {{1}} before {{10}}.
+  // Modelo NOMEADO (`{{nome}}`, D3 de 17/11/2026): as chaves são os NOMES, na
+  // ordem do CÓDIGO do caractere — a de `extractTemplateVariables`, com que o
+  // servidor casa cada valor com o nome. `localeCompare` dependia do idioma do
+  // navegador. As chaves que sobram de outro modelo saem no passo 3
+  // (`variaveisDoModelo`). Posições antes de nomes: misturadas pelo código do
+  // caractere, "1a" < "2" < "10" < "1a" daria voltas (ordem que não fecha).
   const keys = Object.keys(variables).sort((a, b) => {
-    const an = Number(a);
-    const bn = Number(b);
-    if (Number.isFinite(an) && Number.isFinite(bn)) return an - bn;
-    return a.localeCompare(b);
+    const posA = /^\d+$/.test(a);
+    const posB = /^\d+$/.test(b);
+    if (posA && posB) return Number(a) - Number(b);
+    if (posA !== posB) return posA ? -1 : 1;
+    return a < b ? -1 : a > b ? 1 : 0;
   });
 
   return keys.map((key) => {
@@ -248,6 +284,7 @@ async function marcarDestinatario(
   supabase: ReturnType<typeof createClient>,
   recipientId: string,
   patch: Record<string, unknown>,
+  origens: readonly string[] = ['pending'],
 ): Promise<boolean> {
   const { data, error } = await supabase
     .from('broadcast_recipients')
@@ -256,8 +293,10 @@ async function marcarDestinatario(
     // ⚠️ Só a linha que ainda não andou. Desde que a rota do lote anota o
     // envio na hora (`anotado`), a linha pode chegar aqui já `sent` e até
     // `delivered` pelo recibo — regravar `sent` a rebaixaria, e um `failed`
-    // do lote que estourou por cima apagaria um envio que aconteceu.
-    .eq('status', 'pending')
+    // do lote que estourou por cima apagaria um envio que aconteceu. O
+    // `sent` com wamid também vale sobre a RESERVA da rota (1151, `uncertain`):
+    // o wamid é a prova.
+    .in('status', [...origens])
     .select('id');
   return !error && (data?.length ?? 0) > 0;
 }
@@ -281,22 +320,234 @@ async function situacaoDasLinhas(
   return new Map(data.map((l) => [l.id as string, l.status as string]));
 }
 
-/** O que voltou de um lote enviado à rota `api/whatsapp/broadcast`. */
-export type DesfechoDoLote = { resultados: BroadcastApiResult[] } | { erro: string };
+/**
+ * O que voltou de um lote enviado à rota `api/whatsapp/broadcast`: o que ela
+ * respondeu por linha, a RECUSA do lote inteiro (4xx: a rota parou antes de
+ * mandar qualquer um) ou a falha INCERTA (a chamada caiu, 5xx, resposta
+ * ilegível — a rota pode ter mandado; 1151).
+ */
+export type DesfechoDoLote =
+  | { resultados: BroadcastApiResult[] }
+  | { recusa: string }
+  | { incerto: string };
 
 /**
- * Grava nas linhas de um lote o que a rota respondeu — ou o erro que
+ * Um lote: o desfecho para gravar, ou a parada por falta de posse — com o que
+ * a rota chegou a processar antes de parar (`resultados`, só esses se gravam).
+ */
+export type ResultadoDoLote =
+  | { desfecho: DesfechoDoLote }
+  | { interrupcao: InterrupcaoDoEnvio; resultados: BroadcastApiResult[] };
+
+/** O 409 da rota do lote quando ELA perdeu a posse no meio (1147). */
+function paradaDaRota(status: number, data: { code?: unknown }): InterrupcaoDoEnvio | null {
+  if (status !== 409) return null;
+  return data.code === 'posse_perdida' || data.code === 'posse_incerta' ? data.code : null;
+}
+
+/**
+ * Envia UM lote à rota `api/whatsapp/broadcast` — só com a POSSE do envio
+ * (1147) — esperando o 429 em vez de dar o lote por perdido.
+ *
+ * ⚠️⚠️ A posse é conferida ANTES do envio e depois de CADA espera do 429:
+ * sem ela, o lote não sai e volta `interrupcao`, e quem chama PARA sem gravar
+ * nada — as linhas ficam `pending` para o envio que assumiu (a retomada).
+ * Nos dois pontos nada deste lote saiu (o 429 é recusado pela rota antes de
+ * chamar a Meta, ver `batchRetryDelayMs`), então parar ali nunca deixa envio
+ * pela metade, e o lote nunca é mandado de novo por quem perdeu a posse.
+ *
+ * ⚠️ A ROTA também renova a posse (antes do 1º envio e a cada minuto do lote):
+ * se ELA a perde no meio, responde 409 com o que já processou, e isto vira a
+ * mesma parada — só os `resultados` dela se gravam.
+ *
+ * ⚠️⚠️ NOSSO (1151): a falha do lote inteiro se separa em RECUSA (a rota
+ * respondeu com o motivo, no JSON dela, ou 4xx — sessão, papel, limite, pedido
+ * inválido, sem número oficial, modelo malformado: recusado antes do laço de
+ * envio) e INCERTA (a chamada não voltou, o 502/504 do proxy sem o JSON da
+ * rota, resposta 200 ilegível: a rota pode ter mandado).
+ *
+ * `manterPosse` devolve `null` com a posse renovada, ou o motivo da parada.
+ */
+export async function enviarLoteComPosse(
+  enviar: () => Promise<Response>,
+  manterPosse: () => Promise<InterrupcaoDoEnvio | null>,
+  esperar: (ms: number) => Promise<unknown> = sleep,
+): Promise<ResultadoDoLote> {
+  const semPosse = await manterPosse();
+  if (semPosse) return { interrupcao: semPosse, resultados: [] };
+
+  try {
+    for (let attempt = 1; ; attempt++) {
+      const res = await enviar();
+      const data = (await res.json().catch(() => null)) as {
+        error?: string;
+        code?: unknown;
+        results?: BroadcastApiResult[];
+      } | null;
+      if (res.ok) {
+        // A rota RODOU e a resposta não se lê: o que ela fez está nas linhas
+        // (a reserva de cada uma), não aqui.
+        if (!data) return { desfecho: { incerto: 'Unreadable response from the batch route' } };
+        return { desfecho: { resultados: data.results ?? [] } };
+      }
+
+      const paradaNaRota = paradaDaRota(res.status, data ?? {});
+      if (paradaNaRota) {
+        return { interrupcao: paradaNaRota, resultados: data?.results ?? [] };
+      }
+
+      // Only 429 is replayed — see batchRetryDelayMs for why nothing else
+      // can be.
+      const retryIn =
+        attempt < BATCH_SEND_ATTEMPTS
+          ? batchRetryDelayMs(res.status, res.headers.get('Retry-After'))
+          : null;
+      if (retryIn === null) {
+        const erro = data?.error || `Broadcast API request failed (HTTP ${res.status})`;
+        // A ROTA respondeu com o motivo (o JSON dela): ela recusou o lote —
+        // também no 5xx dela (modelo malformado, conexão ilegível), que vem
+        // antes do laço de envio. E mesmo se viesse do meio do laço, o `failed`
+        // daqui só vai sobre `pending`, que a reserva prova que não saiu. Sem o
+        // JSON dela (o HTML do proxy) não há como saber: incerto.
+        const daRota = typeof data?.error === 'string';
+        return daRota || (res.status >= 400 && res.status < 500)
+          ? { desfecho: { recusa: erro } }
+          : { desfecho: { incerto: erro } };
+      }
+      await esperar(retryIn);
+      // A espera pode chegar a 2 min: a posse pode ter vencido e sido
+      // assumida no meio. Sem ela, o lote (recusado pelo 429) não é repetido.
+      const posseNaEspera = await manterPosse();
+      if (posseNaEspera) return { interrupcao: posseNaEspera, resultados: [] };
+    }
+  } catch (err) {
+    // A chamada não voltou (rede, aba, proxy): a rota pode ter mandado.
+    return { desfecho: { incerto: err instanceof Error ? err.message : 'Unknown error' } };
+  }
+}
+
+/**
+ * Aborto ANTES de qualquer envio (falha ao gravar ou reler os destinatários):
+ * a campanha recebe o `patch` e a posse sai junto — só com o token (1147). Se
+ * outro envio tiver assumido no meio, é ele quem decide a campanha.
+ */
+export function encerrarSemEnviar(
+  supabase: ReturnType<typeof createClient>,
+  broadcastId: string,
+  token: string,
+  patch: Record<string, unknown>,
+) {
+  return supabase
+    .from('broadcasts')
+    .update({ ...patch, delivery_lease_until: null, delivery_lease_token: null })
+    .eq('id', broadcastId)
+    .eq('delivery_lease_token', token);
+}
+
+/**
+ * O fim do assistente: grava o `status` final e solta a posse (a tela deixa
+ * de dizer "em andamento" na hora, não daqui a 5 min) — só com o token
+ * (1147). 0 linhas é MEDIDO, nunca inferido: a posse mudou de mãos
+ * (`posseMudou`: quem assumiu fecha a campanha pelas linhas,
+ * `finalizeBroadcastStatus`) ou a escrita se perdeu (`statusPerdido`, o aviso
+ * de sempre).
+ */
+export async function fecharCampanhaComAPosse(
+  supabase: ReturnType<typeof createClient>,
+  broadcastId: string,
+  token: string,
+  status: 'sent' | 'failed',
+): Promise<{ statusPerdido: boolean; posseMudou: boolean }> {
+  const { data: fechada, error } = await supabase
+    .from('broadcasts')
+    .update({ status, delivery_lease_until: null, delivery_lease_token: null })
+    .eq('id', broadcastId)
+    .eq('delivery_lease_token', token)
+    .select('id');
+  if (error) return { statusPerdido: true, posseMudou: false };
+  if (fechada?.length) return { statusPerdido: false, posseMudou: false };
+
+  const { data: atual, error: leituraErr } = await supabase
+    .from('broadcasts')
+    .select('delivery_lease_token')
+    .eq('id', broadcastId)
+    .maybeSingle();
+  if (!leituraErr && atual && atual.delivery_lease_token !== token) {
+    return { statusPerdido: false, posseMudou: true };
+  }
+  return { statusPerdido: true, posseMudou: false };
+}
+
+/**
+ * NOSSO (1151): o fim do assistente depois de um envio sem confirmação
+ * (`lote_incerto`: o lote que caiu sem resposta da rota, ou a incerta que a
+ * rota devolveu ao parar). Fecha pelas LINHAS, como `finalizeBroadcastStatus`
+ * no servidor: sobrou `pending` → a campanha segue `sending` e só a posse sai
+ * (a tela mostra "parou no meio" e o Retomar na hora, não daqui a 5 min); não
+ * sobrou → fecha `sent`/`failed` com a posse. Contagem que falha é "não sei",
+ * nunca 0: só solta a posse (se nem isso gravar, ela vence em 5 min).
+ */
+export async function pararDepoisDoLoteIncerto(
+  supabase: ReturnType<typeof createClient>,
+  broadcastId: string,
+  token: string,
+): Promise<void> {
+  const contar = async (status?: string): Promise<number | null> => {
+    const base = supabase
+      .from('broadcast_recipients')
+      .select('id', { count: 'exact', head: true })
+      .eq('broadcast_id', broadcastId);
+    const { count, error } = await (status ? base.eq('status', status) : base);
+    return error || count === null ? null : count;
+  };
+
+  if ((await contar('pending')) === 0) {
+    const falhas = await contar('failed');
+    const total = await contar();
+    if (falhas !== null && total !== null) {
+      await fecharCampanhaComAPosse(
+        supabase,
+        broadcastId,
+        token,
+        falhas > 0 && falhas === total ? 'failed' : 'sent',
+      );
+      return;
+    }
+  }
+
+  const { error } = await supabase
+    .from('broadcasts')
+    .update({ delivery_lease_until: null, delivery_lease_token: null })
+    .eq('id', broadcastId)
+    .eq('delivery_lease_token', token);
+  if (error) console.error('[broadcast] não soltou a posse depois do lote incerto:', error.message);
+}
+
+/**
+ * Grava nas linhas de um lote o que a rota respondeu — ou a recusa que
  * derrubou o lote inteiro — e devolve quantas falharam e quantas escritas se
  * perderam.
  *
- * ⚠️ A linha que a rota já anotou (`anotado`) não é tocada, e nenhuma
- * escrita daqui mexe em linha fora de `pending` (`marcarDestinatario`). O
- * erro do lote pode ter chegado DEPOIS de a rota mandar e anotar parte dele
- * (a conexão caiu no meio): marcar tudo como `failed`, como antes, apagaria
- * envios que aconteceram. Quem não gravou é conferido numa leitura só
- * (`situacaoDasLinhas`): continua `pending` = escrita perdida, como sempre;
- * já saiu de `pending` = outro escritor gravou, e só conta como falha se
- * estiver `failed`.
+ * ⚠️⚠️ NOSSO (1151): a rota RESERVA cada linha antes da Meta (`pending` →
+ * `uncertain`) e grava ela mesma o desfecho (`anotado`). Daqui só sai o que ela
+ * não gravou, e nunca por cima do que pode ter saído:
+ *  - lote RECUSADO (4xx: a rota parou antes do laço) → `failed` nas pendentes;
+ *  - lote INCERTO (a chamada caiu, 5xx, resposta ilegível) → NADA. A linha que
+ *    a rota reservou está `uncertain` (ou com o desfecho que ela gravou), e a
+ *    que ela não reservou está `pending`: comprovadamente não saiu, e o
+ *    Retomar a manda. Marcar `failed` ali, como antes, levava o "Tentar de
+ *    novo os que falharam" a mandar o modelo PAGO em dobro;
+ *  - por linha: `sent` não anotado → grava, também sobre a reserva (o wamid é
+ *    a prova); `failed` não anotado → só sobre `pending`; `uncertain` e
+ *    `skipped` → nada (a reserva diz a verdade, ou a linha é de outro envio);
+ *    linha que a rota não citou → nada;
+ *  - linha SEM telefone (nem foi à rota) → `failed`.
+ *
+ * A linha que a rota já anotou não é tocada, e nenhuma escrita sai da
+ * situação esperada (`marcarDestinatario`). Quem não gravou é conferido numa
+ * leitura só (`situacaoDasLinhas`): ainda na situação de onde a escrita partia
+ * = escrita perdida, como sempre; já em outra = outro escritor gravou, e só
+ * conta como falha se estiver `failed`.
  */
 export async function gravarDesfechoDoLote(
   supabase: ReturnType<typeof createClient>,
@@ -305,16 +556,23 @@ export async function gravarDesfechoDoLote(
 ): Promise<{ falhas: number; escritasPerdidas: number }> {
   let falhas = 0;
   let escritasPerdidas = 0;
-  const naoGravados: { id: string; falha: boolean }[] = [];
-  const escrever = async (id: string, patch: Record<string, unknown>) => {
+  const naoGravados: { id: string; falha: boolean; origens: readonly string[] }[] = [];
+  const escrever = async (
+    id: string,
+    patch: Record<string, unknown>,
+    origens: readonly string[] = ['pending'],
+  ) => {
     const falha = patch.status === 'failed';
-    if (!(await marcarDestinatario(supabase, id, patch))) naoGravados.push({ id, falha });
-    else if (falha) falhas++;
+    if (!(await marcarDestinatario(supabase, id, patch, origens))) {
+      naoGravados.push({ id, falha, origens });
+    } else if (falha) falhas++;
   };
 
-  if ('erro' in desfecho) {
+  if ('incerto' in desfecho) return { falhas, escritasPerdidas };
+
+  if ('recusa' in desfecho) {
     for (const linha of lote) {
-      await escrever(linha.id, { status: 'failed', error_message: desfecho.erro });
+      await escrever(linha.id, { status: 'failed', error_message: desfecho.recusa });
     }
   } else {
     const porLinha = new Map<string, BroadcastApiResult>();
@@ -326,23 +584,34 @@ export async function gravarDesfechoDoLote(
 
     for (const linha of lote) {
       const phone = linha.contact?.phone;
-      const result = porLinha.get(linha.id) ?? (phone ? porTelefone.get(phone) : undefined);
-
-      if (!result) {
+      if (!phone) {
         await escrever(linha.id, {
           status: 'failed',
           error_message: 'No phone number on contact',
         });
-      } else if (result.status === 'sent') {
+        continue;
+      }
+      const result = porLinha.get(linha.id) ?? porTelefone.get(phone);
+      if (!result) continue;
+
+      if (result.status === 'sent') {
         // A rota já anotou: nada a gravar daqui (ver `anotado`).
         if (result.anotado) continue;
-        await escrever(linha.id, {
-          status: 'sent',
-          sent_at: new Date().toISOString(),
-          whatsapp_message_id: result.whatsapp_message_id ?? null,
-          error_message: null,
-        });
-      } else {
+        await escrever(
+          linha.id,
+          {
+            status: 'sent',
+            sent_at: new Date().toISOString(),
+            whatsapp_message_id: result.whatsapp_message_id ?? null,
+            error_message: null,
+          },
+          result.whatsapp_message_id ? ['pending', ENTREGA_INCERTA] : ['pending'],
+        );
+      } else if (result.status === 'failed') {
+        if (result.anotado) {
+          falhas++;
+          continue;
+        }
         await escrever(linha.id, {
           status: 'failed',
           error_message: result.error ?? 'Unknown error',
@@ -356,9 +625,9 @@ export async function gravarDesfechoDoLote(
       supabase,
       naoGravados.map((n) => n.id),
     );
-    for (const { id, falha } of naoGravados) {
+    for (const { id, falha, origens } of naoGravados) {
       const status = atual?.get(id);
-      if (status === undefined || status === 'pending') {
+      if (status === undefined || origens.includes(status)) {
         // Ninguém gravou: é a escrita perdida de sempre (RLS/erro).
         escritasPerdidas++;
         if (falha) falhas++;
@@ -789,6 +1058,7 @@ export async function fetchCustomValueIndex(
 export function useBroadcastSending(): UseBroadcastSendingReturn {
   const { accountId, ownerUserId } = useAuth();
   const tDetail = useTranslations('Broadcasts.detail');
+  const tNew = useTranslations('Broadcasts.new');
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
 
@@ -927,7 +1197,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
       .filter((c): c is Contact => Boolean(c));
   }
 
-  async function createAndSendBroadcast(payload: BroadcastPayload): Promise<string> {
+  async function createAndSendBroadcast(payload: BroadcastPayload): Promise<ResultadoDoDisparo> {
     setIsProcessing(true);
     setProgress(0);
 
@@ -996,6 +1266,11 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
         ]),
       );
 
+      // NOSSO (1147): o token da posse nasce ANTES da linha da campanha —
+      // gerado depois, um `randomUUID` que lançasse (contexto sem HTTPS)
+      // deixaria a campanha em `sending`, sem destinatários e sem como excluir.
+      const tokenDaPosse = crypto.randomUUID();
+
       // ── Step 2: Create broadcast row ──────────────────────────────
       setProgress(15);
       const { data: broadcast, error: broadcastError } = await supabase
@@ -1031,6 +1306,26 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
         );
       }
 
+      // ── Step 2b: Posse do envio (NOSSO, 1147) ─────────────────────
+      // ⚠️⚠️ Tomada AQUI, antes dos destinatários: a tela da campanha só
+      // anuncia "parou no meio" (e oferece o Retomar) sem posse no prazo, e a
+      // retomada não assume enquanto ela vale. Sem a posse, o Retomar de
+      // quem abria a campanha durante o envio mandava pelo servidor os mesmos
+      // pendentes que este laço ainda ia mandar — o modelo pago em dobro.
+      // Não tomou = nada saiu e nenhum destinatário foi gravado: a campanha
+      // vira `failed` (a mesma saída da falha ao gravar os destinatários).
+      const posse = await tomarPosseDoDisparo(supabase, broadcast.id, tokenDaPosse);
+      if (posse.situacao !== 'mantida') {
+        if (posse.situacao === 'erro') {
+          console.error('[broadcast] não tomou a posse do envio:', posse.mensagem);
+        }
+        await supabase
+          .from('broadcasts')
+          .update({ status: 'failed' })
+          .eq('id', broadcast.id);
+        throw new Error(tNew('sendNotStarted'));
+      }
+
       // ── Step 3: Insert recipient rows ─────────────────────────────
       // `paramsByContact` já foi resolvido no passo 1b, antes da linha de
       // `broadcasts` — ver o comentário de lá.
@@ -1053,13 +1348,11 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
           // couldn't find some rows and the aggregate counts drifted.
           // Flip the broadcast to failed so the user sees the problem
           // immediately, then throw to abort the send loop.
-          await supabase
-            .from('broadcasts')
-            .update({
-              status: 'failed',
-              failed_count: contacts.length,
-            })
-            .eq('id', broadcast.id);
+          // Os abortos só escrevem com a posse (o token, 1147).
+          await encerrarSemEnviar(supabase, broadcast.id, tokenDaPosse, {
+            status: 'failed',
+            failed_count: contacts.length,
+          });
           throw new Error(
             `Failed to insert recipient batch ${i / INSERT_BATCH_SIZE + 1}: ${recipientError.message}`,
           );
@@ -1099,10 +1392,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
         // Aqui NADA saiu ainda — as linhas estão gravadas, mas o laço de
         // envio não rodou. A campanha vira `failed` para não ficar presa em
         // `sending` para sempre; o motivo sobe no toast.
-        await supabase
-          .from('broadcasts')
-          .update({ status: 'failed' })
-          .eq('id', broadcast.id);
+        await encerrarSemEnviar(supabase, broadcast.id, tokenDaPosse, { status: 'failed' });
         throw erroDeLeituraParcial(
           'a lista de destinatários da campanha',
           recipientsMotivo,
@@ -1128,6 +1418,17 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
       const messageParams =
         isMediaHeader && headerMediaUrl ? { headerMediaUrl } : undefined;
 
+      // A posse (1147) é renovada antes de cada lote: perdeu = PARA.
+      let interrupcao: InterrupcaoDoEnvio | null = null;
+      const manterPosse = async (): Promise<InterrupcaoDoEnvio | null> => {
+        const renovada = await renovarPosseDoDisparo(supabase, broadcast.id, tokenDaPosse);
+        if (renovada.situacao === 'mantida') return null;
+        if (renovada.situacao === 'erro') {
+          console.error('[broadcast] não renovou a posse do envio:', renovada.mensagem);
+        }
+        return renovada.situacao === 'perdida' ? 'posse_perdida' : 'posse_incerta';
+      };
+
       for (let i = 0; i < recipients.length; i += SEND_BATCH_SIZE) {
         const batch = recipients.slice(i, i + SEND_BATCH_SIZE);
 
@@ -1146,15 +1447,11 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
 
         if (apiRecipients.length === 0) continue;
 
-        // O que a rota respondeu, ou o erro que derrubou o lote inteiro.
-        let desfecho: DesfechoDoLote;
-        try {
-          // Send the batch, waiting out a 429 rather than writing the
-          // whole batch off as failed. Only 429 is replayed — see
-          // batchRetryDelayMs for why nothing else can be.
-          let data: { error?: string; results?: BroadcastApiResult[] } = {};
-          for (let attempt = 1; ; attempt++) {
-            const res = await fetch('/api/whatsapp/broadcast', {
+        // O que a rota respondeu, o erro que derrubou o lote inteiro — ou a
+        // parada por falta de posse (ver `enviarLoteComPosse`).
+        const lote = await enviarLoteComPosse(
+          () =>
+            fetch('/api/whatsapp/broadcast', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -1164,30 +1461,61 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
                 // Multi-canal: por qual numero a campanha sai. Sem isto o
                 // servidor cai no canal padrao e o relatorio mente a origem.
                 channel_id: payload.channelId ?? null,
+                // NOSSO (1147): a rota renova a posse antes do 1º envio e a
+                // cada minuto do lote, e para sem ela.
+                broadcast_id: broadcast.id,
+                posse: tokenDaPosse,
               }),
-            });
-
-            data = await res.json();
-            if (res.ok) break;
-
-            const retryIn =
-              attempt < BATCH_SEND_ATTEMPTS
-                ? batchRetryDelayMs(res.status, res.headers.get('Retry-After'))
-                : null;
-            if (retryIn === null) {
-              throw new Error(data.error || 'Broadcast API request failed');
-            }
-            await sleep(retryIn);
+            }),
+          manterPosse,
+        );
+        if ('interrupcao' in lote) {
+          // ⚠️⚠️ Posse perdida (ou incerta) = PARA, e nunca reenviar daqui. Só
+          // o que a rota chegou a processar se grava; o resto do lote NÃO é
+          // gravado como falho — não saiu, e fica `pending` para quem assumiu
+          // (ou para o Retomar).
+          if (lote.resultados.length > 0) {
+            const processados = new Set(lote.resultados.map((r) => r.recipient_id));
+            const gravado = await gravarDesfechoDoLote(
+              supabase,
+              batch.filter((linha) => processados.has(linha.id)),
+              { resultados: lote.resultados },
+            );
+            failedCount += gravado.falhas;
+            escritasPerdidas += gravado.escritasPerdidas;
           }
-
-          desfecho = { resultados: (data.results ?? []) as BroadcastApiResult[] };
-        } catch (err) {
-          desfecho = { erro: err instanceof Error ? err.message : 'Unknown error' };
+          interrupcao = lote.interrupcao;
+          break;
         }
 
-        const gravado = await gravarDesfechoDoLote(supabase, batch, desfecho);
+        if ('incerto' in lote.desfecho) {
+          // ⚠️⚠️ NOSSO (1151): a chamada do lote caiu sem resposta da rota. O que
+          // ela reservou está `uncertain` (ou com o desfecho que ela gravou); o
+          // resto não saiu. Disparar os próximos lotes contra um servidor que
+          // não responde só aumentaria a conta: PARA, sem gravar nada nas linhas,
+          // e solta a posse para o Retomar (pelo servidor) mandar os pendentes.
+          console.error('[broadcast] o lote caiu sem resposta da rota:', lote.desfecho.incerto);
+          await pararDepoisDoLoteIncerto(supabase, broadcast.id, tokenDaPosse);
+          interrupcao = 'lote_incerto';
+          break;
+        }
+
+        const gravado = await gravarDesfechoDoLote(supabase, batch, lote.desfecho);
         failedCount += gravado.falhas;
         escritasPerdidas += gravado.escritasPerdidas;
+
+        // ⚠️⚠️ Disjuntor (1151): a ROTA parou na primeira entrega incerta (a Meta,
+        // ou a rede até ela, não respondeu). O assistente para junto, em vez de
+        // tornar incerto cada destinatário seguinte numa pane da Meta: o resto
+        // não foi reservado (`pending`) e o Retomar o manda depois.
+        if (
+          'resultados' in lote.desfecho &&
+          lote.desfecho.resultados.some((r) => r.status === 'uncertain')
+        ) {
+          await pararDepoisDoLoteIncerto(supabase, broadcast.id, tokenDaPosse);
+          interrupcao = 'lote_incerto';
+          break;
+        }
 
         const progressPct =
           30 + Math.round(((i + batch.length) / totalRecipients) * 60);
@@ -1202,18 +1530,26 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
       // Aggregate counts are maintained by the DB trigger (migration
       // 003); we only flip the final status here.
       setProgress(95);
-      const finalStatus = failedCount === totalRecipients ? 'failed' : 'sent';
-      const { data: finalizado, error: finalErr } = await supabase
-        .from('broadcasts')
-        .update({ status: finalStatus })
-        .eq('id', broadcast.id)
-        .select('id');
+      let statusFinalPerdido = false;
+      if (!interrupcao) {
+        // NOSSO (1147): só com a posse — se outro envio assumiu no fim, é ele
+        // quem fecha a campanha (ver `fecharCampanhaComAPosse`). A entrega
+        // incerta (1151) não conta como falha: com ela, a campanha fecha
+        // `sent`. O lote incerto já fechou por `pararDepoisDoLoteIncerto`.
+        const fim = await fecharCampanhaComAPosse(
+          supabase,
+          broadcast.id,
+          tokenDaPosse,
+          failedCount === totalRecipients ? 'failed' : 'sent',
+        );
+        statusFinalPerdido = fim.statusPerdido;
+        if (fim.posseMudou) interrupcao = 'posse_perdida';
+      }
 
       // As mensagens JÁ SAÍRAM: nada aqui pode virar "o disparo falhou" (o
       // wizard toastaria erro e convidaria a reenviar a campanha). Escrita de
       // status perdida vira AVISO — o relatório é quem pode estar defasado,
       // não o envio.
-      const statusFinalPerdido = Boolean(finalErr) || !finalizado?.length;
       if (statusFinalPerdido || escritasPerdidas > 0) {
         console.error(
           `[broadcast] envio concluído, mas ${escritasPerdidas} status de destinatário` +
@@ -1228,7 +1564,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
       }
 
       setProgress(100);
-      return broadcast.id;
+      return { broadcastId: broadcast.id, interrupcao };
     } finally {
       setIsProcessing(false);
     }

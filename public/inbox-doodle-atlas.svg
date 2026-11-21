@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Fundo do fio da conversa com o símbolo do Atlas CRM, a marca PADRÃO.
+
+  Só aparece com a marca padrão (`useMarca().propria === false`): com marca
+  própria o fio fica no `inbox-doodle.svg`, de ícones neutros — marca própria
+  nunca herda imagem do Atlas (`.claude/rules/marca.md`).
+
+  - Ladrilho de 240x240 repetido pelo CSS, no mesmo traço do
+    `inbox-doodle.svg`: #64748b a 15%, espessura 1,5, pontas redondas.
+    16 símbolos numa grade hexagonal com tremido; os dois que cruzam a emenda
+    lateral têm a cópia do outro lado, e o ladrilho fecha sem corte.
+  - O símbolo é o logo em traço, na grade de 24 do lucide: três barras de
+    raio 2,5 sobre um triângulo equilátero de lado 16 (pontas em (12;4,944),
+    (4;18,8) e (20;18,8)); a barra de baixo por cima das outras duas, a da
+    direita por cima da esquerda no topo, como no logo. Um <path> só: o
+    traço que se cruza não escurece.
+  - Mesmo TOM do fundo antigo, medido: a média do alfa do ladrilho
+    rasterizado (4x) fica a 0,3% da do `inbox-doodle.svg`. O símbolo tem
+    mais traço que um ícone do lucide; por isso são 16 desenhos, e não 18,
+    a 93% do tamanho. Mexeu no desenho, mede de novo.
+  Escolha do operador (17/11/2026) entre duas opções de mesmo tom.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240" fill="none" stroke="#64748b" stroke-opacity="0.15" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <defs>
+    <path id="atlas" d="M4 21.3H20A2.5 2.5 0 0 0 22.165 17.55L14.165 3.694A2.5 2.5 0 0 0 9.835 3.694L1.835 17.55A2.5 2.5 0 0 0 4 21.3ZM1.835 17.55A2.5 2.5 0 0 1 4 16.3H20A2.5 2.5 0 0 1 22.165 17.55M15.67 16.3L9.835 6.194A2.5 2.5 0 0 1 9.835 3.694M8.33 16.3L12 9.943"/>
+  </defs>
+  <use href="#atlas" transform="translate(136.1 11.6) scale(0.882)"/>
+  <use href="#atlas" transform="translate(18.2 13.6) scale(0.789) rotate(-12 12 12)"/>
+  <use href="#atlas" transform="translate(204.1 16.4) scale(0.696) rotate(6 12 12)"/>
+  <use href="#atlas" transform="translate(73.7 22.9) scale(0.835) rotate(-5 12 12)"/>
+  <use href="#atlas" transform="translate(103.1 74) scale(0.742) rotate(10 12 12)"/>
+  <use href="#atlas" transform="translate(224.2 73.6) scale(0.789) rotate(-8 12 12)"/>
+  <use href="#atlas" transform="translate(-15.8 73.6) scale(0.789) rotate(-8 12 12)"/>
+  <use href="#atlas" transform="translate(44.4 86.6) scale(0.65) rotate(4 12 12)"/>
+  <use href="#atlas" transform="translate(169.8 88.5) scale(0.835)"/>
+  <use href="#atlas" transform="translate(133.8 133.8) scale(0.742) rotate(-10 12 12)"/>
+  <use href="#atlas" transform="translate(203.3 139) scale(0.789) rotate(8 12 12)"/>
+  <use href="#atlas" transform="translate(21 144.3) scale(0.696) rotate(-4 12 12)"/>
+  <use href="#atlas" transform="translate(74.3 147.3) scale(0.835) rotate(12 12 12)"/>
+  <use href="#atlas" transform="translate(46 198.2) scale(0.742) rotate(-6 12 12)"/>
+  <use href="#atlas" transform="translate(-7.8 200) scale(0.789) rotate(5 12 12)"/>
+  <use href="#atlas" transform="translate(232.2 200) scale(0.789) rotate(5 12 12)"/>
+  <use href="#atlas" transform="translate(176 207.8) scale(0.65)"/>
+  <use href="#atlas" transform="translate(107.2 206.4) scale(0.835) rotate(-9 12 12)"/>
+</svg>

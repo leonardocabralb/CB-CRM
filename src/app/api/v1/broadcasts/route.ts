@@ -25,6 +25,8 @@
 // Response (202):
 //   { "data": { "broadcast_id", "status": "sending",
 //               "total_recipients", "accepted", "rejected",
+//               "duplicates",     // recipients that hit a contact already
+//                                 // listed — messaged once (#681)
 //               "channel_id" } }   // the connection it went out through
 //                                  // (null only on the legacy single-number
 //                                  // config, which has no cb_channels row)
@@ -33,6 +35,10 @@
 import { after } from 'next/server';
 
 import { requireApiKey } from '@/lib/auth/api-context';
+import {
+  claimBroadcastDelivery,
+  releaseBroadcastDelivery,
+} from '@/lib/whatsapp/broadcast-resume';
 
 // The `after()` fan-out below sends to every recipient sequentially and
 // runs within this route's max duration (the same constraint the
@@ -122,10 +128,32 @@ export async function POST(request: Request) {
       })),
     });
 
+    // ⚠️ NOSSO (posse do envio, 1147): a trava da retomada TAMBÉM aqui. Sem
+    // ela, o "Retomar" da tela da campanha durante este envio achava a trava
+    // livre e mandava de novo, pelo servidor, o que o `after()` ainda ia
+    // mandar — o modelo pago em dobro. `ocupada` = outra passada já entrega
+    // os pendentes (a campanha acabou de nascer, então só uma retomada que
+    // chegou antes); `erro` = segue sem a trava, como era antes.
+    const trava = await claimBroadcastDelivery(ctx.supabase, ctx.accountId, plan.broadcastId);
+
     // Fan out after the response is sent. Uses the same service-role
     // client — no request-scoped auth needed for the Meta calls or
     // the account-scoped row updates.
-    after(() => deliverBroadcast(ctx.supabase, plan));
+    after(async () => {
+      if (trava === 'ocupada') {
+        // Não acontece na prática (a campanha acabou de nascer); se acontecer,
+        // o 202 já saiu e quem entrega é a outra passada — fica no log.
+        console.warn('[v1/broadcasts] trava ocupada: outra passada entrega', plan.broadcastId);
+        return;
+      }
+      try {
+        await deliverBroadcast(ctx.supabase, plan);
+      } finally {
+        if (trava === 'tomada') {
+          await releaseBroadcastDelivery(ctx.supabase, plan.broadcastId, ctx.accountId);
+        }
+      }
+    });
 
     return ok(
       {
@@ -134,6 +162,7 @@ export async function POST(request: Request) {
         total_recipients: plan.planned.length,
         accepted: plan.planned.length,
         rejected: plan.rejected,
+        duplicates: plan.duplicates,
         // Por QUAL número a campanha saiu — o que quem integra deve registrar
         // para auditoria (o mesmo contrato do 201 de `/messages`). Com o campo
         // omitido no pedido, é a única forma de saber qual o núcleo escolheu.

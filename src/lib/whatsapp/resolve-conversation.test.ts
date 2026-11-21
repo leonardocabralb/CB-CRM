@@ -284,7 +284,7 @@ describe('resolveConversationByPhone', () => {
 // ============================================================
 // Fase 3-III do merge do upstream: o `to` do integrador passa pela régua das
 // telas (`telefoneDigitado`). Antes, o que não era dígito era apagado —
-// "(81) 98874-5316" virava a ficha "81988745316" (+81), e um JID colado
+// "(81) 98000-0016" virava a ficha "81980000016" (+81), e um JID colado
 // virava os dígitos dele.
 // ============================================================
 describe('resolveConversationByPhone: o `to` passa pela régua', () => {
@@ -305,14 +305,14 @@ describe('resolveConversationByPhone: o `to` passa pela régua', () => {
       existingConversation: null,
       insertedConversationId: 'cv9',
     });
-    await resolveConversationByPhone(db, 'acct', '(81) 98874-5316');
+    await resolveConversationByPhone(db, 'acct', '(81) 98000-0016');
     expect(contatosInseridos).toHaveLength(1);
-    expect(contatosInseridos[0]).toMatchObject({ phone: '5581988745316' });
+    expect(contatosInseridos[0]).toMatchObject({ phone: '5581980000016' });
   });
 
   it.each([
-    ['sem DDD', '98874-5316', 'is too short'],
-    ['JID colado', '5581988745316@s.whatsapp.net', 'is not a valid phone number'],
+    ['sem DDD', '98000-0016', 'is too short'],
+    ['JID colado', '5581980000016@s.whatsapp.net', 'is not a valid phone number'],
     ['LID', '123456789012345@lid', 'is not a valid phone number'],
     ['grupo', '120363040000000000@g.us', 'is not a valid phone number'],
   ])('%s → 400 antes de qualquer consulta', async (_caso, to, frase) => {

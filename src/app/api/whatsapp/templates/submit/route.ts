@@ -11,11 +11,16 @@ import { decrypt } from '@/lib/whatsapp/encryption'
 import { submitMessageTemplate } from '@/lib/whatsapp/meta-api'
 import {
   validateTemplatePayload,
+  VariavelNomeadaRecusada,
   type TemplatePayload,
 } from '@/lib/whatsapp/template-validators'
 import { buildMetaTemplatePayload } from '@/lib/whatsapp/template-components'
 import { ensureMediaHeaderHandle } from '@/lib/whatsapp/template-header-handle'
 import { normalizeStatus } from '@/lib/whatsapp/template-status-normalize'
+import {
+  escolherLinhaDoModelo,
+  type LinhaDoModelo,
+} from '@/lib/whatsapp/linha-do-modelo'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 
 /**
@@ -62,22 +67,16 @@ function camposDoModelo(
 
 type CamposDoModelo = ReturnType<typeof camposDoModelo>
 
-/** O que a submissão precisa saber da linha local que já existe. */
-interface LinhaDoModelo {
-  id: string
-  channel_id: string | null
-  meta_template_id: string | null
-}
-
 /**
  * Procura o modelo local pela CONTA — nome, idioma e canal igual OU nulo,
- * a mesma régua da rota de sync.
+ * a mesma régua da rota de sync (`escolherLinhaDoModelo`).
  *
  * ⚠️ Até 23/09/2026 a busca era pelo AUTOR (`user_id`), DEPOIS da Meta, e o
  * erro era descartado. Dois danos: com outro admin a busca não achava o
  * modelo do colega e nascia um rascunho HOMÔNIMO (os índices únicos da 903
- * são por autor e deixam passar — a sync daquele modelo passava a falhar no
- * `maybeSingle` e `resolveTemplateRow` escolhia entre as duas sem critério);
+ * eram por autor e deixavam passar; por conta desde a 1150 — a sync daquele
+ * modelo passava a falhar no `maybeSingle` e `resolveTemplateRow` escolhia
+ * entre as duas sem critério);
  * e reenviar pela tela "Criar" um nome que já existia fazia a Meta recusar
  * e o caminho de falha REBAIXAR a linha aprovada para rascunho sem
  * `meta_template_id` — o modelo sumia dos seletores de disparo, da caixa de
@@ -85,9 +84,8 @@ interface LinhaDoModelo {
  *
  * Lista, não `maybeSingle`: base antiga pode ter duas linhas (a do canal e
  * a global de antes da 903, ou o homônimo que o bug acima criou). Prefere a
- * do canal, depois a vinculada à Meta, depois a mais antiga. O recorte do
- * canal é feito aqui, e não num `.or()`: em modo de ensaio o canal vem do
- * corpo do pedido, e texto de fora não entra num filtro do PostgREST.
+ * do canal, depois a vinculada à Meta, depois a mais antiga — a régua mora
+ * em `linha-do-modelo.ts`, para a sync escolher a MESMA linha.
  */
 async function buscarModeloDaConta(
   supabase: SupabaseClient,
@@ -103,15 +101,10 @@ async function buscarModeloDaConta(
     .eq('language', payload.language)
     .order('created_at', { ascending: true })
   if (error) return { linha: null, erro: error.message }
-
-  const pontos = (l: LinhaDoModelo) =>
-    (l.channel_id === channelId ? 2 : 0) + (l.meta_template_id ? 1 : 0)
-  let melhor: LinhaDoModelo | null = null
-  for (const l of (data ?? []) as LinhaDoModelo[]) {
-    if (l.channel_id !== channelId && l.channel_id !== null) continue
-    if (!melhor || pontos(l) > pontos(melhor)) melhor = l
+  return {
+    linha: escolherLinhaDoModelo((data ?? []) as LinhaDoModelo[], channelId),
+    erro: null,
   }
-  return { linha: melhor, erro: null }
 }
 
 // ⚠️ Gravação por `id` (atualizar) ou INSERT puro — nunca
@@ -235,7 +228,11 @@ export async function POST(request: Request) {
       validateTemplatePayload(payload)
     } catch (e) {
       return NextResponse.json(
-        { error: e instanceof Error ? e.message : 'Validation failed.' },
+        {
+          error: e instanceof Error ? e.message : 'Validation failed.',
+          // `{{nome}}`: a tela troca pela frase do dicionário (D3).
+          ...(e instanceof VariavelNomeadaRecusada ? { code: e.code } : {}),
+        },
         { status: 400 },
       )
     }

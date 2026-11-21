@@ -67,6 +67,15 @@ const PADROES: Padrao[] = [
     re: /^agent (.+) is suspended — conversation left unassigned$/,
     ler: (m) => frase('responsavelSuspenso', { nome: m[1] }),
   },
+  // 1148: o atendente fixo que não é membro da conta (saiu da equipe), ou o
+  // banco que recusou a atribuição. O texto é o `responsavelForaDaConta` do
+  // motor, escrito aqui por extenso (importá-lo traria o motor para o
+  // navegador); o teste amarra os dois.
+  {
+    re: /^agent (.+) is not a member of the account — conversation not assigned$/,
+    ler: (m) => frase('responsavelForaDaConta', { nome: m[1] }),
+  },
+  { re: /^no conversation to assign$/, ler: () => frase('semConversaParaAtribuir') },
   { re: /^.+ not updated: empty value$/, ler: () => frase('campoVazio') },
   { re: /^field .+ not writable from automations$/, ler: () => frase('campoNaoGravavel') },
   { re: /^name not updated: the value is not a name$/, ler: () => frase('nomeRecusado') },
@@ -174,6 +183,8 @@ export const CHAVES_DO_MOTOR = [
   'etiquetaJaEstava',
   'semResponsavel',
   'responsavelSuspenso',
+  'responsavelForaDaConta',
+  'semConversaParaAtribuir',
   'campoVazio',
   'campoNaoGravavel',
   'nomeRecusado',

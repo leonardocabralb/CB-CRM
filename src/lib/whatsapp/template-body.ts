@@ -17,6 +17,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard';
+import {
+  extractTemplateVariables,
+  isNamedVariable,
+} from '@/lib/whatsapp/template-validators';
 import type { MessageTemplate } from '@/types';
 
 /**
@@ -24,8 +28,19 @@ import type { MessageTemplate } from '@/types';
  * body. A placeholder with no corresponding param is left as-is rather
  * than blanked, so a caller that under-supplies params gets a visible
  * `{{2}}` instead of a silently truncated sentence.
+ *
+ * NAMED variables (`{{nome_do_cliente}}`): `params` follow
+ * `extractTemplateVariables` order — the same pairing the send builder
+ * uses. The positional branch below is the code it always was.
  */
 export function renderTemplateBody(body: string, params: string[]): string {
+  const nomes = extractTemplateVariables(body).filter(isNamedVariable);
+  if (nomes.length > 0) {
+    return body.replace(/\{\{([A-Za-z0-9_]+)\}\}/g, (marca, chave: string) => {
+      const i = nomes.indexOf(chave);
+      return (i >= 0 ? params[i] : undefined) ?? marca;
+    });
+  }
   return body.replace(/\{\{(\d+)\}\}/g, (_, raw) => {
     const idx = Number(raw) - 1;
     return params[idx] ?? `{{${raw}}}`;

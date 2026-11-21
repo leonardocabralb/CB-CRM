@@ -169,6 +169,16 @@ const h = vi.hoisted(() => ({
         email: 'um@cb.test',
       },
     ] as Record<string, unknown>[],
+    /** Preenchido, a leitura de UM perfil (o atendente fixo) devolve este erro. */
+    erroNoPerfil: null as string | null,
+    /**
+     * O responsável que o UPDATE de `conversations` devolve quando pede
+     * `assigned_agent_id` de volta (1148). `undefined` = o que foi pedido; outro
+     * valor = o gatilho do banco recusou quem não é membro.
+     */
+    responsavelGravado: undefined as string | null | undefined,
+    /** O UPDATE do "Atribuir" não acha conversa nenhuma (0 linhas). */
+    semConversaNoUpdate: false,
   },
 }));
 
@@ -209,6 +219,18 @@ vi.mock('./admin-client', () => {
       // do contato).
       if (type === 'update') {
         state.updateCalls.push({ table, filters: ops.filters, payload: ops.payload });
+        // O "Atribuir conversa" pede o responsável de volta (1148): o que o
+        // banco gravou, que o gatilho pode ter trocado.
+        if (/\bassigned_agent_id\b/.test(ops.colunas)) {
+          if (state.semConversaNoUpdate) return { data: [], error: null };
+          const pedido = (ops.payload as { assigned_agent_id?: string | null }).assigned_agent_id ?? null;
+          return {
+            data: [
+              { assigned_agent_id: state.responsavelGravado === undefined ? pedido : state.responsavelGravado },
+            ],
+            error: null,
+          };
+        }
         return { data: null, error: null };
       }
       // As duas leituras da Fase 2 do previdenciário, pelo que PEDEM: o
@@ -265,6 +287,7 @@ vi.mock('./admin-client', () => {
       // Leitura de UM perfil (o atendente fixo do assign_conversation, 1067):
       // o membro pelo `user_id` do filtro, ou nada.
       if (ops.unico) {
+        if (state.erroNoPerfil) return { data: null, error: { message: state.erroNoPerfil } };
         const alvo = ops.filters.find(([op, k]) => op === 'eq' && k === 'user_id')?.[2];
         return { data: state.membros.find((m) => m.user_id === alvo) ?? null, error: null };
       }
@@ -855,6 +878,9 @@ beforeEach(() => {
   h.state.membros = [
     { user_id: 'agente-fallback', full_name: 'Agente Um', email: 'um@cb.test' },
   ];
+  h.state.erroNoPerfil = null;
+  h.state.responsavelGravado = undefined;
+  h.state.semConversaNoUpdate = false;
 });
 
 describe('runAutomationsForTrigger — tenant isolation', () => {
@@ -1863,10 +1889,20 @@ describe('assign_conversation — alvo', () => {
     step_config: { mode: 'specific', agent_id: 'agente-1' },
   };
 
+  // O atendente fixo, MEMBRO ativo da conta (a leitura dele pelo `user_id`).
+  const agenteDaConta = { user_id: 'agente-1', full_name: 'Agente Fixo' };
+
+  function detalhesDoAtribuir() {
+    return h.state.logUpdates
+      .flatMap((u) => (u.steps_executed as { status: string; detail?: string }[] | undefined) ?? [])
+      .map((p) => p.detail);
+  }
+
   it('CRÍTICO: mira a conversa do contexto, não o contato inteiro', async () => {
     h.state.owned = { id: 'c1' };
     h.state.automations = [automationWithUpdateStep()];
     h.state.steps = [passoAtribuir];
+    h.state.membros = [agenteDaConta];
 
     await runAutomationsForTrigger({
       accountId: ACCOUNT,
@@ -1890,6 +1926,7 @@ describe('assign_conversation — alvo', () => {
     h.state.owned = { id: 'c1' };
     h.state.automations = [automationWithUpdateStep()];
     h.state.steps = [passoAtribuir];
+    h.state.membros = [agenteDaConta];
 
     await runAutomationsForTrigger({
       accountId: ACCOUNT,
@@ -1924,6 +1961,83 @@ describe('assign_conversation — alvo', () => {
       (u) => u.table === 'conversations'
     );
     expect(conversas).toHaveLength(0);
+  });
+
+  it('1148: atendente fixo que NÃO é membro da conta não recebe, e o registro diz por quê', async () => {
+    // A leitura sem erro que volta vazia: a pessoa saiu da equipe.
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [passoAtribuir];
+    h.state.membros = [{ user_id: 'outra-pessoa', full_name: 'Outra' }];
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { conversation_id: 'conv-do-disparo' },
+    });
+
+    expect(h.state.updateCalls.filter((u) => u.table === 'conversations')).toHaveLength(0);
+    expect(detalhesDoAtribuir()).toContain(
+      'agent agente-1 is not a member of the account — conversation not assigned'
+    );
+  });
+
+  it('1148: leitura do atendente que FALHA segue para o UPDATE (o gatilho do banco é a garantia)', async () => {
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [passoAtribuir];
+    h.state.erroNoPerfil = 'conexão perdida';
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { conversation_id: 'conv-do-disparo' },
+    });
+
+    expect(h.state.updateCalls.filter((u) => u.table === 'conversations')).toHaveLength(1);
+    expect(detalhesDoAtribuir()).toContain('assigned to agente-1');
+  });
+
+  it('1148: o banco recusou (manteve o anterior) — o registro NÃO diz "assigned"', async () => {
+    // A corrida com a remoção: a leitura viu um membro, o gatilho já não.
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [passoAtribuir];
+    h.state.membros = [agenteDaConta];
+    h.state.responsavelGravado = 'responsavel-anterior';
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { conversation_id: 'conv-do-disparo' },
+    });
+
+    const detalhes = detalhesDoAtribuir();
+    expect(detalhes).toContain('agent agente-1 is not a member of the account — conversation not assigned');
+    expect(detalhes).not.toContain('assigned to agente-1');
+  });
+
+  it('1148: o UPDATE não achou conversa (ficha sem conversa) — o registro diz isso, não "assigned"', async () => {
+    // O lead de anúncio que entra pela API v1 tem ficha e card, sem conversa.
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [passoAtribuir];
+    h.state.membros = [agenteDaConta];
+    h.state.semConversaNoUpdate = true;
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: {},
+    });
+
+    const detalhes = detalhesDoAtribuir();
+    expect(detalhes).toContain('no conversation to assign');
+    expect(detalhes.some((d) => d?.startsWith('assigned to'))).toBe(false);
   });
 });
 
@@ -4143,7 +4257,7 @@ function comNegocio(passo: Record<string, unknown>) {
   h.state.owned = {
     id: 'c1',
     name: 'Ana "Aninha" Souza\nda Silva',
-    phone: '558388745316',
+    phone: '558380000016',
   } as unknown as { id: string };
   h.state.dealExistente = {
     id: 'd1',

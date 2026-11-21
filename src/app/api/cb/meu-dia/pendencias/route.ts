@@ -111,7 +111,7 @@ export async function GET() {
       .limit(5);
 
     // Webhook cujo telefone CHEGOU e não passou pela régua (`telefoneDigitado`,
-    // Fase 3-III): "98874-5316" sem DDD, um JID colado. O lead existe — nome e
+    // Fase 3-III): "98000-0016" sem DDD, um JID colado. O lead existe — nome e
     // respostas estão no log —, mas não virou ficha, e sem esta contagem ele
     // sumiria em silêncio (antes da régua ele virava uma ficha com o número
     // errado, que ao menos aparecia). O campo que NÃO veio (`telefone` nulo)

@@ -144,11 +144,11 @@ export const PAUSAS_DO_RECIBO_DA_META_MS: readonly number[] = [1_000, 2_000, 4_0
  *     sempre inteira, para nada.
  *
  * ⚠️ No disparo pela TELA a rota do lote grava o wamid em
- * `broadcast_recipients` logo que a Meta aceita o envio (`anotarEnvio`, em
- * `api/whatsapp/broadcast`). O recibo que chega na fração de segundo antes
- * disso não é reconhecido como de disparo e espera os 7 s como mensagem
- * comum — e a rota RECONFERE o destinatário a cada tentativa dessa espera
- * (revisão do PR #277).
+ * `broadcast_recipients` logo que a Meta aceita o envio
+ * (`gravarDesfechoDaReserva`, em `api/whatsapp/broadcast`). O recibo que
+ * chega na fração de segundo antes disso não é reconhecido como de disparo
+ * e espera os 7 s como mensagem comum — e a rota RECONFERE o destinatário a
+ * cada tentativa dessa espera (revisão do PR #277).
  */
 export function pausasDoReciboDaMeta(
   recibo: StatusDoRecibo,

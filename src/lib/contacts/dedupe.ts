@@ -241,8 +241,8 @@ export function isUniqueViolation(error: unknown): boolean {
  *
  * ⚠️ O telefone é o DIGITADO numa planilha, então passa por `telefoneDigitado`
  * e a linha única SAI com os dígitos normalizados (upstream #529 + a metade
- * aditiva do #586, com a nossa régua). Sem isso, "(81) 98874-5316" no arquivo
- * virava a ficha "81988745316" — que sai para +81 — e o CSV do disparo, em vez
+ * aditiva do #586, com a nossa régua). Sem isso, "(81) 98000-0016" no arquivo
+ * virava a ficha "81980000016" — que sai para +81 — e o CSV do disparo, em vez
  * de achar a ficha do cliente, criava outra. E o telefone inválido deixa de
  * ser contado como DUPLICATA: ele não duplicou nada, e a tela dizia "N
  * duplicados ignorados" sobre linha que nunca teve par.

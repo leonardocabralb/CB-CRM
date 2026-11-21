@@ -56,7 +56,7 @@ import { ramoContem } from '@/lib/postgrest/literal';
 // ⚠️ O termo vai INTEIRO e literal ao `.or()` (`ramoContem`: `imatch` com
 // o texto escapado, entre as aspas do PostgREST). A versão anterior APAGAVA
 // o que não fosse letra, dígito, espaço ou `+@.-_` para o `.or()` não
-// quebrar — "O'Brien" buscava "OBrien" e "(83) 9887" buscava "83 9887" —
+// quebrar — "O'Brien" buscava "OBrien" e "(83) 9800" buscava "83 9800" —
 // e ainda deixava o `_` chegar ao `ilike` como curinga. Só o caractere de
 // CONTROLE sai: o NUL derruba a consulta no Postgres (22021) e o integrador
 // leria um 500.

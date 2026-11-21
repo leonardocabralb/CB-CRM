@@ -81,7 +81,7 @@ describe('textoComNomes', () => {
   })
 
   it('texto sem id, e os ids de mensagem do WhatsApp, passam intactos', () => {
-    const enviado = 'sent to 5583988745316 (3EB047485621586398652B)'
+    const enviado = 'sent to 5583980000016 (3EB047485621586398652B)'
     expect(textoComNomes(enviado, NOMES, 'send_to_number', ORFAO)).toBe(enviado)
     expect(textoComNomes('deal already existed', NOMES, 'create_deal', ORFAO)).toBe('deal already existed')
   })
@@ -95,7 +95,7 @@ describe('idsCitados', () => {
   })
 
   it('texto sem id não devolve nada', () => {
-    expect(idsCitados(['name updated', 'sent to 5583988745316 (3EB0474856)'])).toEqual([])
+    expect(idsCitados(['name updated', 'sent to 5583980000016 (3EB0474856)'])).toEqual([])
   })
 })
 

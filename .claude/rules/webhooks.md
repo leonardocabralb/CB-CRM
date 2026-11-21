@@ -51,7 +51,7 @@ I/O), a porta, o admin em `/api/cb/webhooks*` e a seção de Configurações.
   nenhuma chave produzida comece com `_`.
 - ⚠️⚠️ **O telefone passa pela régua das TELAS (`telefoneDigitado`)**, não pela
   dos sistemas (decisão do operador, 23/09/2026: o formulário não é nosso para
-  mudar). Com `digitosDoTelefone`, "98874-5316" sem DDD virava a ficha +98. O
+  mudar). Com `digitosDoTelefone`, "98000-0016" sem DDD virava a ficha +98. O
   recusado vira `sem_telefone` com o motivo (`detalheDoTelefone`); "veio e não
   serve" conta no Meu dia, numa janela de 7 dias. A coluna `telefone` é
   gravada por `comAlgoVisivel` (em branco = nulo). Pino:
@@ -128,6 +128,16 @@ I/O), a porta, o admin em `/api/cb/webhooks*` e a seção de Configurações.
   CADASTRADA (não alimenta o "Listen for test event" do n8n).
 - ⚠️ **Toda entrega, real e teste, passa pela guarda de `ssrf.ts`** antes de
   postar (a do original, por octetos, com o IPv6 mapeado). Não divergir dela.
+- ⚠️ **URL com usuário e senha é recusada no CADASTRO** (`checkWebhookUrl`,
+  porte do #681), nas QUATRO portas do app que gravam a URL (v1 e sessão,
+  POST e PATCH): o `fetch` do Node recusa URL com credencial, e toda entrega
+  falharia até desligar o endpoint, com a senha na listagem. A v1 responde a
+  frase do original; a de sessão, o código de `conferirUrlDoEndereco`
+  (`url-do-endereco.ts`, NOSSO — o `endpoints.ts` segue igual ao do
+  original), que a tela traduz. Porta nova usa a mesma régua. A policy de
+  escrita da 0028 ainda deixa um admin gravar a URL direto pelo PostgREST,
+  sem régua nenhuma (nem a do https). Pinos `endpoints.rotas.test.ts` e
+  `url-do-endereco.test.ts`.
 - ⚠️⚠️ **O teste LÊ o começo do corpo** (até `TETO_DO_TRECHO` = 2 KB, só
   `content-type` textual; `resultado-do-teste.ts`): no 404 do n8n é o corpo
   que diz o motivo. Com isso, um DNS rebinding que vença `ssrf.ts` lê 2 KB de

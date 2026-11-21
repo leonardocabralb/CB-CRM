@@ -358,6 +358,7 @@
       "copyLinkFailed": "Couldn't copy the link",
       "assignee": "Assignee",
       "assignUpdateFailed": "Failed to update assignment",
+      "assigneeNoLongerMember": "That person is no longer a member of this account: the conversation wasn't assigned to them.",
       "assigneeSuspended": "{name} (suspended)",
       "channelSectionLabel": "Messages on {channel}",
       "channelMismatch": "The last message came in on {channel}.",
@@ -1072,6 +1073,8 @@
         "etiquetaJaEstava": "the contact already had this tag",
         "semResponsavel": "nobody available to assign",
         "responsavelSuspenso": "{nome} is suspended: the conversation was left unassigned",
+        "responsavelForaDaConta": "{nome} is not a member of the account: the conversation was not assigned",
+        "semConversaParaAtribuir": "no conversation to assign",
         "campoVazio": "empty value: the field was not changed",
         "campoNaoGravavel": "this field can't be changed by an automation",
         "nomeRecusado": "the value doesn't look like a name: the name was not changed",
@@ -1495,8 +1498,8 @@
       "phoneRequired": "Phone number is required"
     },
     "telefone": {
-      "curto": "The area code is missing. Write the number with it — e.g. (81) 98874-5316 — or, for another country, with + and the country code.",
-      "invalido": "Invalid phone number. Brazilian: with the area code, e.g. (81) 98874-5316. Any other country: with + and the country code, e.g. +1 404 555 1234.",
+      "curto": "The area code is missing. Write the number with it — e.g. (81) 98000-0016 — or, for another country, with + and the country code.",
+      "invalido": "Invalid phone number. Brazilian: with the area code, e.g. (81) 98000-0016. Any other country: with + and the country code, e.g. +1 404 555 1234.",
       "regra": "Phone with area code. A number without + and without a country code is read as Brazilian and gets 55; for any other country, write + and the country code."
     },
     "detailView": {
@@ -1921,6 +1924,7 @@
       "changeColor": "Change color",
       "toastFailedSave": "Failed to save pipeline",
       "toastSaved": "Pipeline saved",
+      "toastStagesDeletedElsewhere": "{count, plural, one {A stage was deleted by someone else while you were editing and was not recreated.} other {# stages were deleted by someone else while you were editing and were not recreated.}}",
       "toastFailedAddStage": "Failed to add stage",
       "toastMoveOrDeleteDeals": "Move or delete deals in this stage first",
       "toastFailedDeleteStage": "Failed to delete stage",
@@ -2403,7 +2407,8 @@
       "pending": "Pending",
       "delivered": "Delivered",
       "read": "Read",
-      "replied": "Replied"
+      "replied": "Replied",
+      "uncertain": "Uncertain delivery"
     },
     "detail": {
       "backToBroadcasts": "Back to Broadcasts",
@@ -2424,6 +2429,8 @@
       "exportCsv": "Export CSV",
       "noRecipients": "No recipients found.",
       "noRecipientsFilter": "No recipients match this filter.",
+      "recipientsLoadFailed": "Couldn't load every recipient of this broadcast. Reload the page.",
+      "recipientsOverCeiling": "This broadcast has more than {max} recipients, more than this page can load at once.",
       "table": {
         "contact": "Contact",
         "phone": "Phone",
@@ -2448,17 +2455,34 @@
       "resumeTitle": "Some recipients need another attempt",
       "resumeStalledTitle": "This campaign stopped part-way",
       "resumeHint": "{count, plural, =1 {# recipient failed. Retrying sends it again from the server.} other {# recipients failed. Retrying sends them again from the server.}}",
-      "resumeStalledHint": "{count, plural, =1 {# recipient was never sent — the browser tab running this campaign was closed before it finished. Resuming completes it from the server.} other {# recipients were never sent — the browser tab running this campaign was closed before it finished. Resuming completes it from the server.}}",
+      "resumeStalledHint": "{count, plural, =1 {# recipient was never sent — sending stopped before the end (the browser tab was closed or the connection dropped). Resuming completes it from the server.} other {# recipients were never sent — sending stopped before the end (the browser tab was closed or the connection dropped). Resuming completes it from the server.}}",
+      "inFlightTitle": "Sending in progress",
+      "inFlightHint": "This broadcast is being sent right now, by the tab that launched it or by the server. Reload the page to follow its progress. If sending stops midway, Resume comes back when you reload the page: within {minutosAba} minutes if the tab was sending, and within {minutosServidor} minutes if the server was.",
+      "inFlightUnknownTitle": "Couldn't check the sending",
+      "inFlightUnknownHint": "We couldn't tell whether this broadcast is still being sent. Reload the page before resuming.",
       "resumePending": "Resume sending ({count})",
       "retryFailed": "Retry failed ({count})",
+      "uncertainTitle": "{count, plural, =1 {# recipient with uncertain delivery} other {# recipients with uncertain delivery}}",
+      "uncertainHint": "The CRM tried to send, but the confirmation never came back (the connection dropped or Meta did not answer in time). The message may have arrived, so these recipients are left out of Resume and Retry. If you need to send again, check with the customer and send it from their conversation.",
+      "uncertainCell": "May have arrived — check before resending",
+      "concludeTitle": "Sending finished, but the broadcast was left open",
+      "concludeHint": "Nobody is pending: sending stopped before the broadcast was closed. Concluding records the result from each recipient, without sending anything.",
+      "conclude": "Conclude broadcast",
+      "toastConcluded": "Broadcast concluded: nobody was pending, and nothing was sent.",
       "toastResumeStarted": "Sending {count} recipients in the background.",
       "toastResumeStartedCapped": "Sending {count} recipients in the background. {remaining} more will need another run.",
       "toastResumeFailed": "Could not resume: {error}",
+      "toastResumeInFlight": "This broadcast is already being sent, so Resume sent nothing. Follow its progress on this page.",
+      "toastResumeClaimFailed": "Couldn't check whether this broadcast is already being sent, so nothing was sent. Try again.",
       "unknownContact": "Unknown",
       "unknownError": "unknown error"
     },
     "new": {
       "broadcastFailed": "Broadcast failed",
+      "sendNotStarted": "Couldn't start sending this broadcast. Nothing was sent; try again.",
+      "toastSendTakenOver": "Another delivery took over this broadcast, and this tab resent nothing. Follow its progress on the broadcast page.",
+      "toastSendInterrupted": "Sending stopped because the connection to the server dropped, and the remaining recipients are still pending. In {minutes} minutes, reload the broadcast page and select \"Resume sending\" to reach them.",
+      "toastSendBatchUncertain": "Sending stopped because a request got no confirmation (the connection dropped or Meta did not answer in time). The recipients still pending were not sent: select \"Resume sending\" on the broadcast page — if it still says \"Sending in progress\", reload within {minutes} minutes. The recipient being sent at that moment has an uncertain delivery: check before resending.",
       "title": "New Broadcast",
       "subtitle": "Create and send a broadcast message to your contacts.",
       "steps": {
@@ -3312,8 +3336,8 @@
           "interativa_invalida": "Review the buttons or the list in this step: the notice inside the step says what is missing.",
           "modelo_nao_escolhido": "Choose the template to send.",
           "modelo_valores_invalidos": "Redo the template values: the saved format is not valid.",
-          "modelo_valor_fora_de_posicao": "Template values go by position (1, 2, 3…): redo the values.",
-          "modelo_posicao_acima_do_teto": "Remove the value at a position above the maximum the template accepts.",
+          "modelo_valor_fora_de_posicao": "Template values go by position (1, 2, 3…) or by variable name: redo the values.",
+          "modelo_posicao_acima_do_teto": "Remove the values beyond the maximum number of variables the template accepts.",
           "modelo_valor_sem_texto": "Fill in the template values with text.",
           "modelo_botoes_invalidos": "Redo the template button values (one text per button, at position 0 to 9).",
           "modelo_cabecalho_invalido": "The template header file must be an address starting with http:// or https://.",
@@ -4108,7 +4132,7 @@
       "revoke": "Revoke",
       "revokedToast": "Invitation revoked",
       "removeDialogTitle": "Remove member",
-      "removeDialogDesc": "Remove <bold>{name}</bold> from the account? They'll be signed out of this account and given a fresh personal account on their next sign-in. Their login isn't deleted.",
+      "removeDialogDesc": "Remove <bold>{name}</bold> from the account? They'll be signed out of this account and given a fresh personal account on their next sign-in. The conversations assigned to them go back to the queue, unassigned. Their login isn't deleted.",
       "cancel": "Cancel",
       "removing": "Removing...",
       "removeBtn": "Remove member",
@@ -4310,6 +4334,9 @@
       "category": "Category",
       "language": "Language",
       "langFixed": "Language is fixed once a template exists on Meta.",
+      "categoryFixed": "The category of an approved template can't be changed.",
+      "categoryLockedApproved": "Meta doesn't allow changing the category of an approved template. Create a new template instead.",
+      "namedVariablesNotSupported": "Named variables ({{customer_name}}) can't be created here yet: use {{1}}, {{2}}… or create the template in Meta WhatsApp Manager and use \"Sync from Meta\" to bring it in.",
       "langHint": "Must match the exact code on Meta — <code>en_US</code> and <code>en</code> are distinct.",
       "header": "Header",
       "headerNone": "None",
@@ -6309,6 +6336,7 @@
       "urlDeDestino": "Target URL",
       "urlDeDestinoAjuda": "Must be https:// and reachable from the internet.",
       "urlInvalida": "The URL must start with https:// and be reachable from outside.",
+      "urlComCredencial": "The URL can't contain a username or password (https://user:pass@…). To let your system check that a notification came from the CRM, use the signing secret shown when the endpoint is created.",
       "eventos": "Events",
       "eventosInvalidos": "Pick at least one event.",
       "segredoAvisoSaida": "It is shown exactly once. Store it in the system that will RECEIVE the calls, to verify the signature of each delivery.",
@@ -6571,7 +6599,7 @@
         },
         "mensagem": {
           "titulo": "Send a message",
-          "texto": "By phone number: with the area code — without + and without a country code it is read as Brazilian and gets 55, e.g. (81) 98874-5316; any other country, always with + and the country code. Without <code>channel_id</code>, it goes out on the number the conversation is already on (otherwise, the account default, and a conversation with no number keeps it, unpinned). With it, it goes out on that number and the conversation is PINNED to it — the client's reply comes back to the same number. A contact with no deal gets a card only if the connection the message went out on has a default pipeline and the contact has never sent an automated business message (a template with buttons or a menu of options). Scope <code>messages:send</code>."
+          "texto": "By phone number: with the area code — without + and without a country code it is read as Brazilian and gets 55, e.g. (81) 98000-0016; any other country, always with + and the country code. Without <code>channel_id</code>, it goes out on the number the conversation is already on (otherwise, the account default, and a conversation with no number keeps it, unpinned). With it, it goes out on that number and the conversation is PINNED to it — the client's reply comes back to the same number. A contact with no deal gets a card only if the connection the message went out on has a default pipeline and the contact has never sent an automated business message (a template with buttons or a menu of options). Scope <code>messages:send</code>."
         }
       },
       "erros": {
@@ -6584,7 +6612,7 @@
         "fichaUnida": "<b>Contact merged into another</b> — when an admin merges two records, the id of the one that went away still answers on <code>GET</code> and <code>PATCH /api/v1/contacts/'{id}'</code> (and on tags and fields), with the id of the record that stayed in the response, and a <code>?search=</code> made only of digits (8 or more) finds the record by the old phone. A card deleted in the merge (one per pipeline stays, the most advanced) answers <code>404</code>: its history moved to the card that stayed.",
         "usuario": "<b>Assignee not found</b> — use the member's user id, not the id of something else on the same screen.",
         "testUrl": "<b>Nothing reaches n8n</b> — the Test URL only listens for 120 seconds. Register the Production URL, with the flow published.",
-        "url": "<b>Address refused</b> — the CRM only delivers to a public https:// address: http, localhost and internal IPs do not work.",
+        "url": "<b>Address refused</b> — the CRM only delivers to a public https:// address: http, localhost, internal IPs and a URL with a username or password (<code>https://user:pass@…</code>) do not work. To prove a notification came from the CRM, use the signing secret.",
         "desligado": "<b>Endpoint switched off</b> — after {falhas} consecutive failures the CRM stops delivering. Fix the destination and click Turn back on in Webhooks → Outgoing.",
         "fichaNaLixeira": "<b>Contact deleted in the CRM</b> — it goes to the trash for 90 days. Meanwhile its id answers <code>404</code> (its conversations too), but an admin can restore it with the <b>same id</b> and its conversations and messages as they were. Don't recreate the contact on the first <code>404</code>: with a new record for the same phone, it can only come back <b>merged</b> into it, and the old id then answers with the record that stayed."
       },
@@ -7659,6 +7687,8 @@
     "failUsedBody": "This invitation has already been accepted. If that wasn’t you, ask the account admin to send a fresh link.",
     "failExpiredTitle": "Invite expired",
     "failExpiredBody": "This invitation has expired. Ask the account admin to send a new one — they take a few seconds to generate.",
+    "failRateLimitedTitle": "Too many attempts",
+    "failRateLimitedBody": "There were too many attempts from this network in a short period. Wait a minute, then try again.",
     "failServerErrorTitle": "Something went wrong",
     "failServerErrorBody": "We couldn’t verify this invitation right now. Try refreshing the page in a moment.",
     "conflictFallback": "You are already in another account. Sign in with a different email to join this one.",

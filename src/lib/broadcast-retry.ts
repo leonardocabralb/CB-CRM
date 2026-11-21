@@ -6,8 +6,12 @@
  * calling Meta — `checkRateLimit` runs before any send — so replaying
  * the batch cannot double-message a customer. A 500, a timeout, or a
  * dropped connection may all have sent some or all of the batch
- * already; those recipients are recorded as failed for the operator to
- * review rather than silently messaged twice.
+ * already, so they are never replayed.
+ *
+ * NOSSO (1151): o que pode ter saído NÃO vira mais `failed` (o "Tentar de
+ * novo os que falharam" o reenviaria): a rota RESERVA cada linha antes da
+ * Meta (`uncertain`), e o assistente, quando o lote cai sem resposta da rota,
+ * não grava nada e PARA — ver `broadcast-entrega.ts` e `enviarLoteComPosse`.
  */
 
 /** Attempts per batch, including the first. */

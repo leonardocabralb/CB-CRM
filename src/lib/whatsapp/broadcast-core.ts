@@ -29,6 +29,13 @@ import { resolveTemplateRow } from '@/lib/whatsapp/template-body';
 import type { MessageTemplate } from '@/types';
 import { findOrCreateContact } from '@/lib/api/v1/contacts';
 import { resolveMetaChannel } from '@/lib/cb-channels/resolve-meta';
+import { semTokenDaMeta } from '@/lib/cb-channels/falha-da-meta';
+import {
+  desfechoDaFalha,
+  falhaDaMontagem,
+  gravarDesfechoDaReserva,
+  reservarDestinatario,
+} from '@/lib/whatsapp/broadcast-entrega';
 
 /** Thrown by createBroadcast on a caller-visible failure; route maps it. */
 export class BroadcastError extends Error {
@@ -81,6 +88,23 @@ export interface BroadcastPlan {
   planned: PlannedRecipient[];
   /** Phones rejected up front (fora da régua `telefoneDigitado`) — counted as failed. */
   rejected: number;
+  /**
+   * NOSSO (1151): de que situação `deliverBroadcast` pode RESERVAR cada linha
+   * antes de mandar — a campanha nova, `pending`; a retomada, o escopo dela.
+   * Nunca inclui `uncertain`: o que pode ter saído não é reenviado.
+   */
+  origens?: readonly string[];
+}
+
+/**
+ * Porte do #681: o que `createBroadcast` devolve à rota. `duplicates` são os
+ * destinatários que caíram num contato JÁ listado no mesmo pedido (o mesmo
+ * número duas vezes, ou duas grafias dele) e saíram uma vez só — antes,
+ * descartados calados. Fica fora de `BroadcastPlan` porque a retomada
+ * (`broadcast-resume.ts`) monta um plano sem esse conceito.
+ */
+export interface CreatedBroadcastPlan extends BroadcastPlan {
+  duplicates: number;
 }
 
 const MAX_RECIPIENTS = 1000;
@@ -96,7 +120,7 @@ export async function createBroadcast(
   accountId: string,
   auditUserId: string,
   params: CreateBroadcastParams
-): Promise<BroadcastPlan> {
+): Promise<CreatedBroadcastPlan> {
   const { name, templateName, recipients } = params;
 
   if (!templateName) {
@@ -199,7 +223,7 @@ export async function createBroadcast(
   if (deduped.length === 0) {
     throw new BroadcastError(
       'bad_request',
-      'No recipients had a valid phone number: a Brazilian number with its area code (e.g. 81 98874-5316), or any other country\'s with + and the country code (e.g. +14155550123)',
+      'No recipients had a valid phone number: a Brazilian number with its area code (e.g. 81 98000-0016), or any other country\'s with + and the country code (e.g. +14155550123)',
       400
     );
   }
@@ -282,6 +306,7 @@ export async function createBroadcast(
     templateRow,
     planned,
     rejected,
+    duplicates: resolved.length - deduped.length,
   };
 }
 
@@ -297,15 +322,42 @@ export async function createBroadcast(
  * webhooks keep advancing them. We therefore never write those columns
  * here — only the terminal `status` — otherwise a manual value would
  * race and clobber the trigger-maintained counts.
+ *
+ * ⚠️⚠️ NOSSO (1151): cada linha é MONTADA, RESERVADA (`plan.origens` →
+ * `uncertain`) e só então enviada; o desfecho é gravado com a cerca da
+ * reserva (`broadcast-entrega.ts`). Linha que não reservou (outra mão a tem,
+ * já saiu, ou a reserva falhou) é PULADA. 5xx, tempo esgotado e erro de rede
+ * deixam a linha `uncertain` — o "Tentar de novo os que falharam" mandava de
+ * novo o que podia ter saído — e PARAM a passada (o disjuntor: o resto fica
+ * no escopo para o Retomar). O processo que morre no meio deixa incerta só a
+ * linha que estava saindo.
  */
 export async function deliverBroadcast(
   db: SupabaseClient,
   plan: BroadcastPlan
 ): Promise<void> {
+  const origens = plan.origens ?? ['pending'];
   for (const recipient of plan.planned) {
+    const naoMonta = falhaDaMontagem(plan.templateRow, recipient.params);
+    if (naoMonta) {
+      // Nunca chega à Meta: nada saiu, `failed` (reenviar depois de consertar
+      // o modelo é seguro). Só sobre a situação planejada.
+      const { error } = await db
+        .from('broadcast_recipients')
+        .update({ status: 'failed', error_message: `Template cannot be sent: ${naoMonta}` })
+        .eq('id', recipient.recipientRowId)
+        .in('status', [...origens]);
+      if (error) console.error('[broadcast-core] não gravou a falha de montagem:', error.message);
+      continue;
+    }
+
+    if ((await reservarDestinatario(db, recipient.recipientRowId, origens)) !== 'reservada') {
+      continue;
+    }
+
     const variants = phoneVariants(recipient.phone);
     let sentMessageId: string | null = null;
-    let lastError: string | null = null;
+    let lastError: unknown = null;
 
     for (const variant of variants) {
       try {
@@ -322,32 +374,35 @@ export async function deliverBroadcast(
         lastError = null;
         break;
       } catch (error) {
+        lastError = error;
         const message = error instanceof Error ? error.message : 'Unknown error';
-        lastError = message;
         // Only a "recipient not allowed" error is worth another variant.
         if (!isRecipientNotAllowedError(message)) break;
       }
     }
 
     if (sentMessageId) {
-      await db
-        .from('broadcast_recipients')
-        .update({
-          status: 'sent',
-          sent_at: new Date().toISOString(),
-          whatsapp_message_id: sentMessageId,
-          error_message: null,
-        })
-        .eq('id', recipient.recipientRowId);
-    } else {
-      await db
-        .from('broadcast_recipients')
-        .update({
-          status: 'failed',
-          error_message: lastError || 'Unknown error',
-        })
-        .eq('id', recipient.recipientRowId);
+      await gravarDesfechoDaReserva(db, recipient.recipientRowId, {
+        status: 'sent',
+        whatsappMessageId: sentMessageId,
+      });
+      continue;
     }
+
+    const desfecho = lastError === null ? 'failed' : desfechoDaFalha(lastError);
+    // A mensagem da Meta ECOA o token (CLAUDE.md, 8e).
+    await gravarDesfechoDaReserva(db, recipient.recipientRowId, {
+      status: desfecho,
+      erro: semTokenDaMeta(
+        lastError instanceof Error ? lastError.message : 'Unknown error',
+        plan.accessToken,
+      ),
+    });
+    // ⚠️⚠️ Disjuntor (1151): na primeira incerta a passada PARA — seguir faria
+    // de cada destinatário uma incerta numa pane da Meta. O resto fica no
+    // escopo (não foi reservado), a campanha segue `sending` com pendentes e o
+    // Retomar o manda depois.
+    if (desfecho === 'uncertain') break;
   }
 
   await finalizeBroadcastStatus(db, plan.broadcastId);
@@ -361,7 +416,9 @@ export async function deliverBroadcast(
  * so "nothing sent *this* pass" must not mark a campaign failed when
  * 800 of its 1 000 recipients went out earlier. `failed` means every
  * single recipient failed; anything else that reached Meta is `sent`,
- * with the per-recipient failures visible in `failed_count`.
+ * with the per-recipient failures visible in `failed_count`. A ENTREGA
+ * INCERTA (`uncertain`, 1151) não é pendente nem falha: a campanha com
+ * incertas fecha `sent`, e a tela as mostra à parte.
  *
  * Per-status counts stay trigger-owned (migrations 003/005) — only the
  * terminal `status` is written here.
@@ -370,24 +427,36 @@ export async function finalizeBroadcastStatus(
   db: SupabaseClient,
   broadcastId: string
 ): Promise<void> {
-  const countWhere = async (status: string): Promise<number> => {
-    const { count } = await db
+  // NOSSO (porte de 17/11/2026): contagem que FALHA é "não sei", nunca 0 —
+  // "0 pendentes" de um soluço do banco fecharia como "Enviado" a campanha
+  // parada com pendentes. Sem saber, não fecha: a campanha fica como está.
+  const countWhere = async (status: string): Promise<number | null> => {
+    const { count, error } = await db
       .from('broadcast_recipients')
       .select('id', { count: 'exact', head: true })
       .eq('broadcast_id', broadcastId)
       .eq('status', status);
+    if (error) {
+      console.error('[broadcast-core] finalize count failed:', error.message);
+      return null;
+    }
     return count ?? 0;
   };
 
   // Still work outstanding (a capped resume pass) — leave it 'sending'
   // so the UI keeps offering Resume.
-  if ((await countWhere('pending')) > 0) return;
+  const pendentes = await countWhere('pending');
+  if (pendentes === null || pendentes > 0) return;
 
   const failed = await countWhere('failed');
-  const { count: total } = await db
+  const { count: total, error: totalErr } = await db
     .from('broadcast_recipients')
     .select('id', { count: 'exact', head: true })
     .eq('broadcast_id', broadcastId);
+  if (failed === null || totalErr) {
+    if (totalErr) console.error('[broadcast-core] finalize count failed:', totalErr.message);
+    return;
+  }
 
   await db
     .from('broadcasts')

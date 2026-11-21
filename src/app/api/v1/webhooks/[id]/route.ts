@@ -13,7 +13,7 @@ import { normalizeEvents } from '@/lib/webhooks/events';
 import {
   WEBHOOK_PUBLIC_COLUMNS,
   serializeWebhookEndpoint,
-  normalizeWebhookUrl,
+  checkWebhookUrl,
 } from '@/lib/webhooks/endpoints';
 import { ehUuid } from '@/lib/tasks/validar';
 
@@ -67,11 +67,11 @@ export async function PATCH(
     const updates: Record<string, unknown> = {};
 
     if ('url' in body) {
-      const url = normalizeWebhookUrl(body.url);
-      if (!url) {
-        return fail('bad_request', "'url' must be a valid https:// URL", 400);
+      const urlCheck = checkWebhookUrl(body.url);
+      if (!urlCheck.ok) {
+        return fail('bad_request', urlCheck.message, 400);
       }
-      updates.url = url;
+      updates.url = urlCheck.url;
     }
 
     if ('events' in body) {

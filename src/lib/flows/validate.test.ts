@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { validateFlowForActivation, reachableFromEntry } from "./validate";
+import fs from "node:fs";
+import path from "node:path";
+import {
+  validateFlowForActivation,
+  reachableFromEntry,
+  findAutoAdvancingCycles,
+  longestAutoAdvancingChain,
+} from "./validate";
+import { AUTO_ADVANCING_NODE_TYPES, MAX_CADEIA_AUTOMATICA, MAX_NOS_POR_AVANCO } from "./types";
 
 const validFlow = {
   name: "Welcome",
@@ -714,5 +722,126 @@ describe("validateFlowForActivation — mover card de etapa (CB, 1053)", () => {
       comMover({ pipeline_id: "f", stage_id: "e", next_node_key: "h" }),
     );
     expect(issues.some((i) => i.node_key === "h")).toBe(false);
+  });
+});
+
+// ============================================================
+// Porte #674/#683 (17/11/2026): a ativação recusa ciclo de nós que não
+// esperam o cliente e cadeia acima do teto do motor.
+// ============================================================
+
+describe("ciclo e cadeia de nós automáticos (porte #674/#683)", () => {
+  const fluxo = { ...validFlow, entry_node_id: "start" };
+  const mensagem = (node_key: string, next_node_key: string) => ({
+    node_key,
+    node_type: "send_message",
+    config: { text: "oi", next_node_key },
+  });
+  const condicao = (node_key: string, true_next: string, false_next: string) => ({
+    node_key,
+    node_type: "condition",
+    config: { subject: "var", subject_key: "x", operator: "equals", value: "1", true_next, false_next },
+  });
+  const fim = { node_key: "fim", node_type: "end", config: {} };
+  const erroDeCiclo = (issues: ReturnType<typeof validateFlowForActivation>) =>
+    issues.filter((i) => i.severity === "error" && i.message.includes("ciclo"));
+  const erroDeCadeia = (issues: ReturnType<typeof validateFlowForActivation>) =>
+    issues.filter((i) => i.severity === "error" && i.message.includes("de uma vez"));
+
+  it("acusa mensagem → condição → mensagem (o laço que mandava dezenas de mensagens)", () => {
+    const nodes = [
+      { node_key: "start", node_type: "start", config: { next_node_key: "m1" } },
+      mensagem("m1", "c1"),
+      condicao("c1", "m1", "fim"),
+      fim,
+    ];
+    expect(findAutoAdvancingCycles(nodes)).toEqual([["m1", "c1"]]);
+    expect(erroDeCiclo(validateFlowForActivation(fluxo, nodes))).toEqual([
+      expect.objectContaining({ scope: "node", node_key: "m1" }),
+    ]);
+  });
+
+  it("o nó que aponta para si mesmo é ciclo", () => {
+    const nodes = [
+      { node_key: "start", node_type: "start", config: { next_node_key: "m1" } },
+      mensagem("m1", "m1"),
+    ];
+    expect(findAutoAdvancingCycles(nodes)).toEqual([["m1"]]);
+  });
+
+  it("⚠️ \"Mover card\" e etiqueta (tipos NOSSOS no laço) também fecham ciclo", () => {
+    const nodes = [
+      { node_key: "start", node_type: "start", config: { next_node_key: "mover" } },
+      {
+        node_key: "mover",
+        node_type: "move_deal_stage",
+        config: { pipeline_id: "p", stage_id: "s", origem_stage_ids: [], next_node_key: "tag" },
+      },
+      { node_key: "tag", node_type: "set_tag", config: { mode: "add", tag_id: "t", next_node_key: "mover" } },
+    ];
+    expect(findAutoAdvancingCycles(nodes)).toEqual([["mover", "tag"]]);
+  });
+
+  it("ciclo que passa por um nó que espera o cliente é legítimo", () => {
+    const nodes = [
+      { node_key: "start", node_type: "start", config: { next_node_key: "m1" } },
+      mensagem("m1", "pergunta"),
+      {
+        node_key: "pergunta",
+        node_type: "collect_input",
+        config: { prompt_text: "De novo?", var_key: "r", next_node_key: "m1" },
+      },
+    ];
+    expect(findAutoAdvancingCycles(nodes)).toEqual([]);
+    expect(findAutoAdvancingCycles(validNodes)).toEqual([]);
+  });
+
+  function linear(mensagens: number) {
+    const nodes: { node_key: string; node_type: string; config: Record<string, unknown> }[] = [
+      { node_key: "start", node_type: "start", config: { next_node_key: "m0" } },
+    ];
+    for (let i = 0; i < mensagens; i += 1) {
+      nodes.push(mensagem(`m${i}`, i + 1 < mensagens ? `m${i + 1}` : "fim"));
+    }
+    nodes.push(fim);
+    return nodes;
+  }
+
+  it("mede a maior cadeia que não espera o cliente", () => {
+    expect(longestAutoAdvancingChain(linear(3))).toEqual({ start: "start", length: 4 });
+    expect(longestAutoAdvancingChain(validNodes)).toEqual({ start: "start", length: 1 });
+  });
+
+  it("⚠️ aceita a cadeia do tamanho do teto e recusa a de um nó a mais", () => {
+    // start + 62 mensagens = 63 nós automáticos: o avanço os percorre e
+    // ainda processa o fim, dentro dos 64 passos do motor.
+    expect(erroDeCadeia(validateFlowForActivation(fluxo, linear(MAX_CADEIA_AUTOMATICA - 1)))).toEqual([]);
+    expect(erroDeCadeia(validateFlowForActivation(fluxo, linear(MAX_CADEIA_AUTOMATICA)))).toEqual([
+      expect.objectContaining({
+        scope: "node",
+        node_key: "start",
+        message: expect.stringContaining(String(MAX_CADEIA_AUTOMATICA + 1)),
+      }),
+    ]);
+  });
+
+  it("⚠️ o teto do validador é o do motor (fonte única em `types.ts`)", () => {
+    expect(MAX_CADEIA_AUTOMATICA).toBe(MAX_NOS_POR_AVANCO - 1);
+    const motor = fs.readFileSync(path.join(__dirname, "engine.ts"), "utf8");
+    expect(motor).toMatch(/for \(let safety = 0; safety < MAX_NOS_POR_AVANCO; safety \+= 1\)/);
+    // Os nós que o laço ATRAVESSA — o bloco do tipo em `advanceFromNodeKey`
+    // termina em `continue` — são EXATAMENTE os automáticos, lidos do fonte
+    // do motor: tipo novo que o laço atravesse sem entrar na lista escaparia
+    // da detecção de ciclo e de cadeia.
+    const laco = motor.slice(
+      motor.indexOf("async function advanceFromNodeKey"),
+      motor.indexOf("async function advanceCurrentNodeKey"),
+    );
+    const blocos = laco.split(/if \(node\.node_type === "/).slice(1);
+    expect(blocos.length).toBeGreaterThanOrEqual(11);
+    const queAtravessam = blocos
+      .filter((b) => /\bcontinue;/.test(b))
+      .map((b) => b.match(/^(\w+)"/)![1]);
+    expect([...AUTO_ADVANCING_NODE_TYPES].sort()).toEqual(queAtravessam.sort());
   });
 });

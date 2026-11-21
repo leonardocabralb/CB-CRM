@@ -57,7 +57,13 @@ data or send messages, add `"WACRM_ENABLE_WRITES": "true"` (and
   conversations (list/get), messages (list), broadcast status.
 - **Writes (opt-in):** send a message, create/update a contact.
 - **Broadcasts (opt-in):** launch a template broadcast — requires an
-  explicit `confirm` and is marked destructive.
+  explicit `confirm` and is marked destructive. The answer says what was
+  left out: `rejected` (numbers outside the phone rule) and `duplicates`
+  (the same contact listed twice, or two spellings of one number — messaged
+  once). `get_broadcast` then reports the status and the sent / delivered /
+  read / replied / failed counts. A recipient whose delivery is uncertain
+  (Meta never confirmed it, so it may have arrived) counts in neither sent
+  nor failed, and the CRM never resends it.
 
 ### Several WhatsApp numbers
 

@@ -16,6 +16,11 @@
 // A escrita continua sendo `conversations.assigned_agent_id` direto, sob
 // RLS, e a página espelha no estado por `onAssignChange` — o mesmo contrato
 // que o fio cumpria.
+//
+// ⚠️ 1148 (porte do #682): a página recebe o que o banco GRAVOU, nunca o
+// pedido (`resultadoDaAtribuicao`). 0 linhas sem erro é falha (a RLS barra o
+// Visualizador); outro responsável na volta é o gatilho recusando quem não é
+// mais membro — aviso, e a lista é relida (quem saiu some dela).
 // ============================================================
 
 import { useCallback, useEffect, useState } from "react";
@@ -35,6 +40,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { usePresence } from "@/hooks/use-presence";
 import { useRotuloDePresenca } from "@/hooks/use-rotulo-de-presenca";
 import { opcoesDeResponsavel } from "@/lib/account/suspensao";
+import { resultadoDaAtribuicao } from "@/lib/inbox/resultado-da-atribuicao";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { Profile } from "@/types";
@@ -55,9 +61,11 @@ export function ResponsavelMenu({
   const { getPresence, getRow, now } = usePresence();
   const presenceLabel = useRotuloDePresenca();
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  // Sobe quando o banco recusa quem não é mais membro: a lista é relida.
+  const [versaoDaLista, setVersaoDaLista] = useState(0);
 
   // Perfis sob RLS — hoje só os membros da conta. Uma busca por montagem,
-  // como o fio fazia.
+  // como o fio fazia, e outra a cada recusa do banco (`versaoDaLista`).
   useEffect(() => {
     let cancelled = false;
     const supabase = createClient();
@@ -76,21 +84,31 @@ export function ResponsavelMenu({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [versaoDaLista]);
 
   const atribuir = useCallback(
     async (agentId: string | null) => {
       const supabase = createClient();
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("conversations")
         .update({ assigned_agent_id: agentId })
-        .eq("id", conversationId);
+        .eq("id", conversationId)
+        .select("assigned_agent_id");
       if (error) {
         console.error("Failed to update assignment:", error);
         toast.error(t("assignUpdateFailed"));
         return;
       }
-      onAssignChange(conversationId, agentId);
+      const resultado = resultadoDaAtribuicao(agentId, data);
+      if (resultado.tipo === "falhou") {
+        toast.error(t("assignUpdateFailed"));
+        return;
+      }
+      if (resultado.tipo === "recusada") {
+        toast.error(t("assigneeNoLongerMember"));
+        setVersaoDaLista((v) => v + 1);
+      }
+      onAssignChange(conversationId, resultado.gravado);
     },
     [conversationId, onAssignChange, t],
   );

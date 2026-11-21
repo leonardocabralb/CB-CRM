@@ -275,3 +275,79 @@ describe('buildSendComponents — end-to-end mix', () => {
     expect((components[2] as { index: string }).index).toBe('1');
   });
 });
+
+// ── Variáveis NOMEADAS (porte do #700, D3 do plano de 17/11/2026) ──
+
+describe('buildSendComponents — variáveis nomeadas', () => {
+  it('manda o corpo com `parameter_name`, na ordem das chaves', () => {
+    const components = buildSendComponents(
+      row({ body_text: 'Oi {{nome}}, sua reunião é {{data}}.' }),
+      { body: ['segunda', 'Maria'] },
+    );
+    expect(components).toEqual([
+      {
+        type: 'body',
+        parameters: [
+          { type: 'text', parameter_name: 'data', text: 'segunda' },
+          { type: 'text', parameter_name: 'nome', text: 'Maria' },
+        ],
+      },
+    ]);
+  });
+
+  it('valor a menos é recusado ANTES da Meta (nunca zero parâmetros)', () => {
+    expect(() =>
+      buildSendComponents(row({ body_text: 'Retornamos em {{detalhes}}.' }), { body: [] }),
+    ).toThrow(/1 variable\(s\) but only 0/);
+    expect(() =>
+      buildSendComponents(row({ body_text: 'Retornamos em {{detalhes}}.' })),
+    ).toThrow();
+  });
+
+  it('valor a mais é cortado, como no posicional', () => {
+    expect(
+      buildSendComponents(row({ body_text: 'Oi {{nome}}' }), { body: ['Ana', 'sobra'] }),
+    ).toEqual([
+      { type: 'body', parameters: [{ type: 'text', parameter_name: 'nome', text: 'Ana' }] },
+    ]);
+  });
+
+  it('cabeçalho de texto nomeado leva o nome', () => {
+    const components = buildSendComponents(
+      row({ header_type: 'text', header_content: 'Olá {{primeiro_nome}}' }),
+      { headerText: 'Ana' },
+    );
+    expect(components[0]).toEqual({
+      type: 'header',
+      parameters: [{ type: 'text', parameter_name: 'primeiro_nome', text: 'Ana' }],
+    });
+    expect(() =>
+      buildSendComponents(row({ header_type: 'text', header_content: 'Olá {{primeiro_nome}}' })),
+    ).toThrow(/\{\{primeiro_nome\}\}/);
+  });
+});
+
+describe('buildSendComponents — o posicional fica IDÊNTICO', () => {
+  // O ramo nomeado é separado: nada de `parameter_name` e a mesma contagem
+  // de antes, inclusive nas bordas que a Meta nem aprova.
+  it.each([
+    ['Hi {{1}}, order {{2}}.', ['a', 'b'], ['a', 'b']],
+    ['{{1}} e {{3}}', ['a', 'b', 'c'], ['a', 'b']],
+    ['{{2}} antes de {{1}}', ['x', 'y'], ['x', 'y']],
+    ['sem variável', ['sobra'], []],
+  ])('%s', (body_text, body, esperado) => {
+    const [corpo] = buildSendComponents(row({ body_text }), { body });
+    expect(corpo).toEqual({
+      type: 'body',
+      parameters: esperado.map((text) => ({ type: 'text', text })),
+    });
+  });
+
+  it('cabeçalho {{1}} sem nome', () => {
+    expect(
+      buildSendComponents(row({ header_type: 'text', header_content: 'Oi {{1}}' }), {
+        headerText: 'Ana',
+      })[0],
+    ).toEqual({ type: 'header', parameters: [{ type: 'text', text: 'Ana' }] });
+  });
+});

@@ -4,7 +4,7 @@ import { telefoneDigitado } from '@/lib/contacts/telefone'
 import { MAX_DESCRICAO, MAX_TITULO, normalizarHora } from '@/lib/tasks/validar'
 import { motivoDeConfigInvalida } from './lembretes'
 import { lerModoDoResponsavel } from './responsavel-da-tarefa'
-import { MAX_POSICOES_DO_MODELO } from './parametros-do-modelo'
+import { MAX_POSICOES_DO_MODELO, ehChaveNomeada } from './parametros-do-modelo'
 import { lerJanela } from './hora-do-dia'
 import {
   problemaDaCondicaoPorCampo,
@@ -210,10 +210,15 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
         issues.push({ path: `${path}.template_name`, message: 'template name is required', codigo: 'modelo_nao_escolhido' })
       }
       // Os valores do modelo (Fase 2.3 do plano do previdenciário). O CORPO é
-      // POSICIONAL e o motor ignora chave que não é posição — aceitá-la aqui
-      // deixaria o operador achar que preencheu um `{{nome}}` que não sai.
+      // POSICIONAL (`{{1}}`) ou NOMEADO (`{{nome}}`, D3 de 17/11/2026), e o
+      // motor ignora a chave que não é nem uma coisa nem outra — aceitá-la
+      // aqui deixaria o operador achar que preencheu uma variável que não sai.
       // Quantas variáveis o modelo PEDE só se sabe no envio (a linha depende
       // do canal de saída); lá, faltar valor é falha com o motivo escrito.
+      // Os NOMES das duas listas, juntos: o motor junta os dois mapas e lê só
+      // os primeiros 50 (`nomes`, em parametros-do-modelo.ts). Contados por
+      // lista, 30 + 30 nomes diferentes passavam e 10 não saíam.
+      const nomeadas = new Set<string>()
       for (const campo of ['variables', 'variaveis_reserva'] as const) {
         const mapa = c[campo]
         if (mapa === undefined || mapa === null) continue
@@ -221,14 +226,17 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
           issues.push({ path: `${path}.${campo}`, message: `${campo} must be an object`, codigo: 'modelo_valores_invalidos' })
           continue
         }
+        for (const k of Object.keys(mapa as Record<string, unknown>)) {
+          if (ehChaveNomeada(k)) nomeadas.add(k)
+        }
         for (const [k, v] of Object.entries(mapa as Record<string, unknown>)) {
-          if (!/^[1-9]\d*$/.test(k)) {
+          if (!/^[1-9]\d*$/.test(k) && !ehChaveNomeada(k)) {
             issues.push({
               path: `${path}.${campo}`,
-              message: `template variable keys must be positions (1, 2, …), got "${k}"`,
+              message: `template variable keys must be positions (1, 2, …) or variable names, got "${k}"`,
               codigo: 'modelo_valor_fora_de_posicao',
             })
-          } else if (Number(k) > MAX_POSICOES_DO_MODELO) {
+          } else if (!ehChaveNomeada(k) && Number(k) > MAX_POSICOES_DO_MODELO) {
             // O motor ignora acima do teto (um laço por posição); aceitar aqui
             // deixaria o operador achar que preencheu uma variável que não sai.
             issues.push({
@@ -240,6 +248,13 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
             issues.push({ path: `${path}.${campo}.${k}`, message: 'template variable values must be text', codigo: 'modelo_valor_sem_texto' })
           }
         }
+      }
+      if (nomeadas.size > MAX_POSICOES_DO_MODELO) {
+        issues.push({
+          path: `${path}.variables`,
+          message: `template variables go up to ${MAX_POSICOES_DO_MODELO}, got ${nomeadas.size} names`,
+          codigo: 'modelo_posicao_acima_do_teto',
+        })
       }
       const bp = c.button_params
       if (bp !== undefined && bp !== null) {

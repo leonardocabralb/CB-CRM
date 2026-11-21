@@ -248,8 +248,8 @@ Volta para `main` por PR no CB-CRM.
   o embutido nulo; com `!inner` some quem não tem o embutido (toda conversa
   de grupo). Recorte por campo do contato vai em JS. Sem FK não há embed
   (buscar por id).
-- `onConflict`/upsert só com índice único TOTAL: os parciais da 903 em
-  `message_templates`/`ai_configs` não servem. Upsert exige as colunas NOT
+- `onConflict`/upsert só com índice único TOTAL: os parciais de
+  `message_templates` (1150) e `ai_configs` (903) não servem. Upsert exige as colunas NOT
   NULL → atualização parcial por RPC ou lookup + update. `maybeSingle` só com
   recorte que garante UMA linha (o canal, ou `.is('channel_id', null)`).
 - `storage.exists()`: objeto ausente resolve `{ data: false, error }` → ler
@@ -394,6 +394,10 @@ Volta para `main` por PR no CB-CRM.
   `supabase/` e na raiz (exceção só em `EXCECOES`, com motivo);
   `scripts/env-documentado.test.ts` exige toda `process.env.X` no
   `.env.local.example`.
+- Telefone de exemplo (teste, doc, comentário) é o fictício `5583980000016`
+  / "(83) 98000-0016", nunca um de verdade, nem o do contato de teste: o
+  repositório é público. `scripts/telefones-proibidos.test.ts` reprova o que
+  já vazou, em qualquer grafia.
 
 ## 9. i18n
 
@@ -500,7 +504,10 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   (1137): o interruptor por conexão, o QR e o Reparear do computador, os
   alarmes dele e a sentinela do contêiner.
 - `.claude/rules/whatsapp-envio.md` — núcleo de envio, entrega incerta,
-  modelos da Meta por WABA, `resolveTemplateRow`, escopo da conversa.
+  escopo da conversa, robô, disparo.
+- `.claude/rules/modelos-da-meta.md` — modelos por WABA (`resolveTemplateRow`),
+  únicos por conta (1150), submissão e sincronização, categoria do aprovado,
+  variáveis nomeadas, stub do webhook.
 - `.claude/rules/canais.md` — peças de UI de canal, escopo vazio = todos,
   saúde das conexões, atraso de entrega (`lagging`).
 - `.claude/rules/canal-na-conversa.md` — qual número nesta conversa, cor do

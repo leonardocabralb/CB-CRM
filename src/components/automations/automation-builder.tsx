@@ -83,7 +83,10 @@ import {
   blankListPayload,
 } from "@/components/interactive/interactive-builder"
 import { interactivePayloadPreviewText } from "@/lib/whatsapp/interactive"
-import { extractVariableIndices } from "@/lib/whatsapp/template-validators"
+import {
+  extractTemplateVariables,
+  extractVariableIndices,
+} from "@/lib/whatsapp/template-validators"
 import { linhaDoModeloNaTela } from "@/lib/automations/parametros-do-modelo"
 import {
   camposDaJanela,
@@ -1485,10 +1488,12 @@ function ValoresDoModelo({
   const valores = (cfg.variables as Record<string, string> | undefined) ?? {}
   const reservas = (cfg.variaveis_reserva as Record<string, string> | undefined) ?? {}
   const botoes = (cfg.button_params as Record<string, string> | undefined) ?? {}
-  const doCorpo = extractVariableIndices(modelo.body_text ?? "")
+  // Posição (`{{1}}`) ou NOME (`{{nome_do_cliente}}`): a chave gravada em
+  // `variables` é a mesma que aparece no rótulo, e o motor a lê assim.
+  const doCorpo = extractTemplateVariables(modelo.body_text ?? "")
   const cabecalhoDeTexto =
     modelo.header_type === "text" &&
-    extractVariableIndices(modelo.header_content ?? "").length > 0
+    extractTemplateVariables(modelo.header_content ?? "").length > 0
   const cabecalhoDeMidia =
     modelo.header_type === "image" ||
     modelo.header_type === "video" ||
@@ -1647,8 +1652,18 @@ function ValoresGravadosSemModelo({
   const valores = (cfg.variables as Record<string, unknown> | undefined) ?? {}
   const reservas = (cfg.variaveis_reserva as Record<string, unknown> | undefined) ?? {}
   const botoes = (cfg.button_params as Record<string, unknown> | undefined) ?? {}
+  // Posições em ordem numérica, ANTES dos nomes (modelo NOMEADO), que vêm na
+  // ordem do envio (código do caractere). As duas réguas num comparador só
+  // não são transitivas ("2" < "10" < "1a" < "2") e a ordem saía ao acaso.
+  const ehPosicao = (k: string) => /^\d+$/.test(k)
   const posicoes = [...new Set([...Object.keys(valores), ...Object.keys(reservas)])].sort(
-    (a, b) => Number(a) - Number(b),
+    (a, b) => {
+      const pa = ehPosicao(a)
+      const pb = ehPosicao(b)
+      if (pa && pb) return Number(a) - Number(b)
+      if (pa !== pb) return pa ? -1 : 1
+      return a < b ? -1 : a > b ? 1 : 0
+    },
   )
   const linhas: { rotulo: string; valor: string }[] = []
   const comReserva = (valor: unknown, reserva: unknown) =>

@@ -212,7 +212,7 @@ describe('nomeDigitadoNoChat', () => {
 
   it('frase, número, várias linhas ou texto longo NÃO são nome', () => {
     expect(nomeDigitadoNoChat('Meu nome é João e sofri acidente em 2019')).toBeNull();
-    expect(nomeDigitadoNoChat('(83) 98874-5316')).toBeNull();
+    expect(nomeDigitadoNoChat('(83) 98000-0016')).toBeNull();
     expect(nomeDigitadoNoChat('João\nSilva')).toBeNull();
     expect(nomeDigitadoNoChat('Maria, 45 anos')).toBeNull();
     expect(nomeDigitadoNoChat('Silva, Maria')).toBeNull();
@@ -338,7 +338,7 @@ describe('gravarRespostaNaFicha', () => {
       accountId: 'acc',
       contactId: 'ct',
       destino: { tipo: 'nome' },
-      valor: '(83) 98874-5316',
+      valor: '(83) 98000-0016',
     });
     expect(r.gravou).toBe(false);
     expect(chamadas).toHaveLength(0);

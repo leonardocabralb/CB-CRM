@@ -70,7 +70,14 @@ describe("Gerenciar funil", () => {
     // Reaberto durante o salvamento (ou a lixeira), o diálogo leria o banco
     // de antes, e salvar de novo desfaria o que acabou de ser gravado.
     expect(settings).toMatch(/await gravacaoRef\.current\?\.catch\(\(\) => undefined\);\s*const \[funil, etapas\] = await Promise\.all/);
-    expect(settings).toMatch(/const \[renameRes, stagesRes\] = await registrarGravacao\(/);
+    // Porte #679 (17/11/2026): o salvamento inteiro — a leitura dos ids que
+    // ainda existem e o upsert só deles — é UMA gravação registrada.
+    expect(settings).toMatch(/const resultado = await registrarGravacao\(salvarFunil\(\)\);/);
+    expect(settings).toMatch(/async function salvarFunil\(\)[\s\S]{0,400}\.from\("pipeline_stages"\)\s*\.select\("id"\)/);
+    // E o UPDATE do funil confere a linha: apagado por outra pessoa, ele casa
+    // zero linhas sem erro, e a tela dizia "Funil salvo".
+    expect(settings).toMatch(/\.eq\("id", pipeline\.id\)\s*\.select\("id"\),/);
+    expect(settings).toContain("if (!renameRes.data?.length) return { ok: false };");
     expect(settings).toContain("return registrarGravacao(adicionarEtapa());");
     expect(settings).toContain("return registrarGravacao(removerEtapa(stageId));");
     expect(settings).toMatch(/gravacaoRef\.current = Promise\.allSettled\(\[anteriores, gravacao\]\);/);
@@ -99,5 +106,29 @@ describe("Gerenciar funil", () => {
     expect(settings).toContain(`disabled={saving || situacao !== "pronto" || !name.trim()}`);
     expect(settings).toContain(`disabled={situacao !== "pronto" || !newStageName.trim()}`);
     expect(settings).toMatch(/\{situacao === "pronto" &&\s*localStages\.some\(\(s\) => s\.degrau\)/);
+  });
+
+  it("adicionar e remover etapa avisam o quadro na hora, depois de gravar e antes da cerca da abertura (porte #679)", () => {
+    // Sem o aviso, a coluna nova só aparecia depois do "Salvar" — e quem
+    // fechava a janela ficava com o quadro sem ela (ou com a removida, onde o
+    // arrasto falha). Antes da cerca: o quadro reflete o banco mesmo com a
+    // janela já fechada.
+    const trecho = (de: string, ate: string) =>
+      settings.slice(settings.indexOf(de), settings.indexOf(ate));
+    const adicionar = trecho("async function adicionarEtapa", "function handleRemoveStage");
+    const remover = trecho("async function removerEtapa", "async function handleDeletePipeline");
+    for (const [corpo, falha] of [
+      [adicionar, 'toast.error(t("toastFailedAddStage"));'],
+      [remover, 'toast.error(t("toastFailedDeleteStage"));'],
+    ] as const) {
+      const posFalha = corpo.indexOf(falha);
+      const aviso = corpo.indexOf("onStagesChanged();");
+      const cerca = corpo.indexOf("if (aberturaRef.current !== abertura) return;", posFalha);
+      expect(posFalha).toBeGreaterThan(-1);
+      // Depois da gravação que deu certo (a falha retorna antes)…
+      expect(aviso).toBeGreaterThan(posFalha);
+      // …e antes da cerca da abertura.
+      expect(cerca).toBeGreaterThan(aviso);
+    }
   });
 });

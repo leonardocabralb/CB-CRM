@@ -15,6 +15,10 @@ import {
 } from '@/components/ui/select';
 import { ArrowLeft, ArrowRight, Eye, ImageIcon, Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import {
+  extractTemplateVariables,
+  isNamedVariable,
+} from '@/lib/whatsapp/template-validators';
 
 type VariableType = 'static' | 'field' | 'custom_field';
 
@@ -48,6 +52,27 @@ function isValidHttpUrl(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Os valores do disparo restritos às variáveis DESTE modelo, quando ele é
+ * NOMEADO (D3, 17/11/2026). O assistente não zera `variables` ao trocar de
+ * modelo, e `resolveVariables` ordena TODAS as chaves: com nomes, a que sobrou
+ * do modelo anterior entraria no meio da lista e deslocaria os valores — o
+ * cliente receberia o de outra variável. No posicional nada muda (a chave que
+ * sobra fica no fim e é cortada pela contagem no envio): devolve o mesmo objeto.
+ */
+export function variaveisDoModelo(
+  variables: Record<string, VariableMapping>,
+  bodyText: string,
+): Record<string, VariableMapping> {
+  const nomes = extractTemplateVariables(bodyText).filter(isNamedVariable);
+  if (nomes.length === 0) return variables;
+  const doModelo = new Set(nomes);
+  const podado = Object.fromEntries(
+    Object.entries(variables).filter(([chave]) => doModelo.has(chave)),
+  );
+  return Object.keys(podado).length === Object.keys(variables).length ? variables : podado;
 }
 
 const contactFields = [
@@ -136,6 +161,12 @@ export function Step3Personalize({
   }, []);
 
   const placeholders = useMemo(() => {
+    // NOMEADO (`{{nome_do_cliente}}`, o padrão do editor da Meta): sem isto o
+    // modelo parecia não ter variável e a campanha saía sem valores — a Meta
+    // recusa cada envio (#132000). A ordem é a do envio
+    // (`extractTemplateVariables`); `resolveVariables` a segue.
+    const nomes = extractTemplateVariables(template.body_text).filter(isNamedVariable);
+    if (nomes.length > 0) return nomes.map((k) => `{{${k}}}`);
     const matches = template.body_text.match(/\{\{(\d+)\}\}/g);
     if (!matches) return [];
     return [...new Set(matches)].sort();
@@ -196,7 +227,8 @@ export function Step3Personalize({
 
   /**
    * Substitute placeholders using the first real contact where
-   * possible. Placeholders keyed by "{{N}}" map to variable key "N".
+   * possible. Placeholders keyed by "{{N}}" or "{{nome}}" map to variable
+   * key "N" / "nome".
    */
   const previewText = useMemo(() => {
     const contact = firstContact ?? {
@@ -453,7 +485,11 @@ export function Step3Personalize({
           {t('back')}
         </Button>
         <Button
-          onClick={onNext}
+          onClick={() => {
+            const doModelo = variaveisDoModelo(variables, template.body_text);
+            if (doModelo !== variables) onUpdate(doModelo);
+            onNext();
+          }}
           disabled={unmappedKeys.length > 0 || headerMediaError !== null}
           className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >

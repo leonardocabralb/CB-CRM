@@ -87,10 +87,10 @@ beforeEach(() => {
 
 describe('GET /api/v1/contacts?search=', () => {
   it('busca nome e telefone com o termo literal, entre aspas', async () => {
-    const res = await buscar("O'Brien, (83) 9887_50%*");
+    const res = await buscar("O'Brien, (83) 9800_50%*");
     expect(res.status).toBe(200);
     expect(chamadas.or).toEqual([
-      `name.imatch."O'Brien, \\\\(83\\\\) 9887_50%\\\\*",phone.imatch."O'Brien, \\\\(83\\\\) 9887_50%\\\\*"`,
+      `name.imatch."O'Brien, \\\\(83\\\\) 9800_50%\\\\*",phone.imatch."O'Brien, \\\\(83\\\\) 9800_50%\\\\*"`,
     ]);
   });
 

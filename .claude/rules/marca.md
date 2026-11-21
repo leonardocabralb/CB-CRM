@@ -90,7 +90,14 @@ instalado, em `.claude/rules/celular.md`.
   não enviada fica `null`, e a tela cai em símbolo + nome em texto. `logoPara`:
   vertical que falta → horizontal do MESMO fundo; nunca troca de fundo (logo
   de texto branco em fundo claro some). O Atlas aparece inteiro ou não
-  aparece.
+  aparece. Vale para o que é DESENHO do Atlas fora de `public/marca/`: o
+  fundo do fio com o símbolo (`inbox-doodle-atlas.svg`) só sai com
+  `useMarca().propria === false`; a marca própria fica com os ícones neutros
+  (`inbox-doodle.svg`). As duas classes de `fundoDoFio` são LITERAIS (a
+  montada não é gerada pelo Tailwind). Os dois fundos têm o mesmo traço e o
+  mesmo TOM MÉDIO, MEDIDO (média do alfa do ladrilho rasterizado; o símbolo
+  tem mais traço, daí 16 desenhos menores contra 18 ícones): mexeu num, mede
+  os dois (o método está no cabeçalho do SVG).
 - ⚠️ **`LogoDaMarca` põe as DUAS versões no HTML e o CSS esconde a do outro
   modo** (`.marca-so-no-escuro` / `.marca-so-no-claro`, FORA de camada no fim
   do `globals.css`): `dark:` está inerte (raiz, 8c), e ler o modo num hook

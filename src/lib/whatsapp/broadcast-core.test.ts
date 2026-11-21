@@ -198,6 +198,8 @@ function statusDb(
   counts: Record<string, number>,
   total: number,
   writes: { update?: Record<string, unknown> },
+  // Contagens que FALHAM: o nome da situação, ou 'total' para a contagem geral.
+  falhas: ReadonlySet<string> = new Set(),
 ) {
   return {
     from(table: string) {
@@ -212,11 +214,18 @@ function statusDb(
           if (table === 'broadcasts') writes.update = row;
           return b;
         },
-        then: (resolve: (r: { count: number; error: null }) => unknown) =>
-          resolve({
-            count: status === null ? total : (counts[status] ?? 0),
-            error: null,
-          }),
+        then: (
+          resolve: (r: {
+            count: number | null;
+            error: { message: string } | null;
+          }) => unknown,
+        ) =>
+          falhas.has(status ?? 'total')
+            ? resolve({ count: null, error: { message: 'timeout' } })
+            : resolve({
+                count: status === null ? total : (counts[status] ?? 0),
+                error: null,
+              }),
       };
       return b;
     },
@@ -260,6 +269,42 @@ describe('finalizeBroadcastStatus', () => {
     );
     expect(writes.update?.status).toBe('sent');
   });
+
+  // NOSSO (1151): a entrega INCERTA não é pendente nem falha — a campanha só
+  // com incertas (ou com incertas e falhas) fecha `sent`; a tela as mostra à
+  // parte. Ela não segura a campanha em `sending`.
+  it('só incertas (nenhuma pendente nem falha): fecha `sent`', async () => {
+    const writes: { update?: Record<string, unknown> } = {};
+    await finalizeBroadcastStatus(statusDb({ pending: 0, failed: 0, uncertain: 4 }, 4, writes), 'b-1');
+    expect(writes.update?.status).toBe('sent');
+  });
+
+  it('falhas e incertas: `sent` (a incerta não faz "todas falharam")', async () => {
+    const writes: { update?: Record<string, unknown> } = {};
+    await finalizeBroadcastStatus(statusDb({ pending: 0, failed: 3, uncertain: 1 }, 4, writes), 'b-1');
+    expect(writes.update?.status).toBe('sent');
+  });
+
+  it('com pendente e incerta: não fecha (o Retomar ainda tem o que mandar)', async () => {
+    const writes: { update?: Record<string, unknown> } = {};
+    await finalizeBroadcastStatus(statusDb({ pending: 6, uncertain: 1 }, 7, writes), 'b-1');
+    expect(writes.update).toBeUndefined();
+  });
+
+  // NOSSO (porte de 17/11/2026): contagem que falha é "não sei", nunca 0.
+  // "0 pendentes" de um soluço do banco fechava como "Enviado" a campanha
+  // parada com pendentes, e o Retomar sumia da tela.
+  it.each(['pending', 'failed', 'total'])(
+    'não fecha a campanha quando a contagem "%s" falha',
+    async (qual) => {
+      const writes: { update?: Record<string, unknown> } = {};
+      await finalizeBroadcastStatus(
+        statusDb({ pending: 0, failed: 0 }, 10, writes, new Set([qual])),
+        'b-1',
+      );
+      expect(writes.update).toBeUndefined();
+    },
+  );
 });
 
 // ============================================================
@@ -410,7 +455,7 @@ describe('o canal pedido chega ao resolvedor', () => {
 // ============================================================
 // Fase 3-III do merge do upstream: o destinatário do disparo pela API lê o
 // telefone pela NOSSA régua (`telefoneDigitado`), e não pelo `+` obrigatório
-// do original (#586). O escritório escreve "(81) 98874-5316"; o `+` continua
+// do original (#586). O escritório escreve "(81) 98000-0016"; o `+` continua
 // sendo o jeito de dizer "é de outro país".
 // ============================================================
 describe('createBroadcast: o telefone do destinatário passa pela régua', () => {
@@ -428,7 +473,7 @@ describe('createBroadcast: o telefone do destinatário passa pela régua', () =>
     comContatoPorTelefone();
     const { db, calls } = makeDb({
       data: [
-        { broadcast_id: 'b-1', recipient_id: 'r-1', contact_id: 'c:(81) 98874-5316' },
+        { broadcast_id: 'b-1', recipient_id: 'r-1', contact_id: 'c:(81) 98000-0016' },
         { broadcast_id: 'b-1', recipient_id: 'r-2', contact_id: 'c:+1 415 555 0123' },
       ],
       error: null,
@@ -436,11 +481,11 @@ describe('createBroadcast: o telefone do destinatário passa pela régua', () =>
 
     const plan = await createBroadcast(db, 'acc', 'user', {
       templateName: 'promo',
-      recipients: [{ to: '(81) 98874-5316' }, { to: '+1 415 555 0123' }],
+      recipients: [{ to: '(81) 98000-0016' }, { to: '+1 415 555 0123' }],
     });
 
     expect(plan.rejected).toBe(0);
-    expect(plan.planned.map((p) => p.phone)).toEqual(['5581988745316', '14155550123']);
+    expect(plan.planned.map((p) => p.phone)).toEqual(['5581980000016', '14155550123']);
     expect(calls.rpc).toHaveLength(1);
   });
 
@@ -466,23 +511,75 @@ describe('createBroadcast: o telefone do destinatário passa pela régua', () =>
   it('fora da régua é descartado e contado: sem DDD, JID colado, LID', async () => {
     comContatoPorTelefone();
     const { db } = makeDb({
-      data: [{ broadcast_id: 'b-1', recipient_id: 'r-1', contact_id: 'c:5581988745316' }],
+      data: [{ broadcast_id: 'b-1', recipient_id: 'r-1', contact_id: 'c:5581980000016' }],
       error: null,
     });
 
     const plan = await createBroadcast(db, 'acc', 'user', {
       templateName: 'promo',
       recipients: [
-        { to: '5581988745316' },
-        { to: '98874-5316' }, // sem DDD: sairia para +98
-        { to: '5581988745316@s.whatsapp.net' }, // JID: letra no meio
+        { to: '5581980000016' },
+        { to: '98000-0016' }, // sem DDD: sairia para +98
+        { to: '5581980000016@s.whatsapp.net' }, // JID: letra no meio
         { to: '123456789012345@lid' }, // o LID não é telefone
       ],
     });
 
     expect(plan.rejected).toBe(3);
-    expect(plan.planned.map((p) => p.phone)).toEqual(['5581988745316']);
+    expect(plan.planned.map((p) => p.phone)).toEqual(['5581980000016']);
     expect(findOrCreateContact).toHaveBeenCalledTimes(1);
+  });
+
+  it('porte do #681: duas grafias do MESMO número saem uma vez e são contadas em `duplicates`', async () => {
+    // O find-or-create real acha a ficha pela PESSOA, não pela grafia: aqui,
+    // pelos dígitos lidos.
+    vi.mocked(findOrCreateContact).mockClear();
+    vi.mocked(findOrCreateContact).mockImplementation(async (_db, _acc, _u, input) => ({
+      id: `c:${String(input.phone).replace(/\D/g, '')}`,
+      created: false,
+    }));
+    const { db, calls } = makeDb({
+      data: [{ broadcast_id: 'b-1', recipient_id: 'r-1', contact_id: 'c:14155550123' }],
+      error: null,
+    });
+
+    const plan = await createBroadcast(db, 'acc', 'user', {
+      templateName: 'promo',
+      recipients: [
+        { to: '+14155550123', params: ['first'] },
+        { to: '+1 415 555 0123', params: ['second'] },
+        { to: 'invalid' },
+      ],
+    });
+
+    expect(plan.rejected).toBe(1);
+    expect(plan.duplicates).toBe(1);
+    // Fica o PRIMEIRO (com os parâmetros dele), e a soma fecha com o pedido.
+    expect(plan.planned).toEqual([
+      { recipientRowId: 'r-1', phone: '14155550123', params: ['first'] },
+    ]);
+    expect(plan.planned.length + plan.rejected + plan.duplicates).toBe(3);
+    expect((calls.rpc[0].args as { p_contact_ids: string[] }).p_contact_ids).toEqual([
+      'c:14155550123',
+    ]);
+  });
+
+  it('sem repetido, `duplicates` é 0', async () => {
+    comContatoPorTelefone();
+    const { db } = makeDb({
+      data: [
+        { broadcast_id: 'b-1', recipient_id: 'r-1', contact_id: 'c:+14155550123' },
+        { broadcast_id: 'b-1', recipient_id: 'r-2', contact_id: 'c:+14155550124' },
+      ],
+      error: null,
+    });
+
+    const plan = await createBroadcast(db, 'acc', 'user', {
+      templateName: 'promo',
+      recipients: [{ to: '+14155550123' }, { to: '+14155550124' }],
+    });
+
+    expect(plan.duplicates).toBe(0);
   });
 
   it('nenhum destinatário válido → 400 com a regra escrita, sem criar contato nem campanha', async () => {
@@ -491,7 +588,7 @@ describe('createBroadcast: o telefone do destinatário passa pela régua', () =>
 
     const erro = await createBroadcast(db, 'acc', 'user', {
       templateName: 'promo',
-      recipients: [{ to: '98874-5316' }, { to: '120363040000000000@g.us' }],
+      recipients: [{ to: '98000-0016' }, { to: '120363040000000000@g.us' }],
     }).catch((e: unknown) => e);
 
     expect(erro).toBeInstanceOf(BroadcastError);

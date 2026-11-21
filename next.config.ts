@@ -74,6 +74,20 @@ const nextConfig: NextConfig = {
   output: "standalone",
 
   /**
+   * Quatro workers no `next build` (porte do #722 do original). O Next abre
+   * `núcleos − 1` workers para coletar os dados das páginas, cada um com o
+   * binário nativo do Turbopack e o seu pool de threads: no servidor de build
+   * da hospedagem Node da Hostinger (que se apresenta com ~64 núcleos; o
+   * NOSSO build roda no runner do GitHub), o limite de threads estourava e o
+   * build abortava (SIGABRT). ⚠️ O número é EXATO, não só teto: no runner de
+   * 4 núcleos (repositório público) passa de 3 para 4 workers; no de 2
+   * (privado, 7 GB), de 1 para 4 — vigiar a memória do build se mudar.
+   */
+  experimental: {
+    cpus: 4,
+  },
+
+  /**
    * ⚠️ O `next dev` da 16.3 REESCREVE o `AGENTS.md` rastreado sempre que
    * detecta um agente de IA (`generate-agent-files.js`) — medido em
    * 21/09/2026: o arquivo mudou um segundo depois de o servidor subir. Aqui
@@ -139,7 +153,8 @@ const nextConfig: NextConfig = {
    *   - Three paths of `public/` stay out of the no-store rule (Next's
    *     own `public, max-age=0` applies, revalidated by ETag): the
    *     voice-note encoder (`opus/`, ~380 KB, loaded on every
-   *     recording), the chat background (`inbox-doodle.svg`) and the
+   *     recording), the two chat backgrounds (`inbox-doodle.svg`, and
+   *     `inbox-doodle-atlas.svg` for the default brand) and the
    *     default brand images (`marca/`, the sidebar and login logos on
    *     every page). Under no-store the browser would download them
    *     again each time.
@@ -157,7 +172,7 @@ const nextConfig: NextConfig = {
       },
       {
         source:
-          "/:path((?!_next/static|_next/image|api|opus/|inbox-doodle\\.svg|marca/).*)",
+          "/:path((?!_next/static|_next/image|api|opus/|inbox-doodle(?:-atlas)?\\.svg|marca/).*)",
         headers: [{ key: "Cache-Control", value: "private, no-store" }],
       },
       {

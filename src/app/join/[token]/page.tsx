@@ -53,18 +53,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { createClient } from '@/lib/supabase/client';
-
-interface PeekOk {
-  ok: true;
-  account_name: string;
-  role: 'admin' | 'agent' | 'viewer';
-  expires_at: string;
-}
-interface PeekFail {
-  ok: false;
-  reason: 'not_found' | 'used' | 'expired' | 'server_error';
-}
-type PeekResult = PeekOk | PeekFail;
+import {
+  RETRYABLE_PEEK_FAIL_REASONS,
+  toPeekResult,
+  type PeekFailReason,
+  type PeekOk,
+  type PeekResult,
+} from '@/lib/auth/peek-result';
 
 export default function JoinPage() {
   const t = useTranslations('JoinPage');
@@ -78,7 +73,7 @@ export default function JoinPage() {
   };
 
   const FAIL_COPY: Record<
-    PeekFail['reason'],
+    PeekFailReason,
     { title: string; body: string }
   > = {
     not_found: {
@@ -92,6 +87,12 @@ export default function JoinPage() {
     expired: {
       title: t('failExpiredTitle'),
       body: t('failExpiredBody'),
+    },
+    // O 429 do limite por IP (30/min): sem estado próprio, a página QUEBRAVA
+    // (`peek-result.ts`).
+    rate_limited: {
+      title: t('failRateLimitedTitle'),
+      body: t('failRateLimitedBody'),
     },
     server_error: {
       title: t('failServerErrorTitle'),
@@ -127,7 +128,10 @@ export default function JoinPage() {
         }),
         createClient().auth.getUser(),
       ]);
-      const peekBody = (await peekRes.json()) as PeekResult;
+      const peekBody = toPeekResult(
+        peekRes.status,
+        await peekRes.json().catch(() => null),
+      );
       setPeek(peekBody);
       setAuthedUserId(authRes.data.user?.id ?? null);
     } catch (err) {
@@ -152,7 +156,10 @@ export default function JoinPage() {
           }),
           createClient().auth.getUser(),
         ]);
-        const peekBody = (await peekRes.json()) as PeekResult;
+        const peekBody = toPeekResult(
+          peekRes.status,
+          await peekRes.json().catch(() => null),
+        );
         if (cancelled) return;
         setPeek(peekBody);
         setAuthedUserId(authRes.data.user?.id ?? null);
@@ -250,14 +257,14 @@ export default function JoinPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
-          {/* For server_error the failure is transient — the network
-              flapped or the peek endpoint hiccupped. Try-again is
-              the right primary action; the "create account" /
-              "sign in" links stay as secondary options. Other
-              failure reasons (not_found / used / expired) are
-              terminal for this token, so no retry — just the
-              signup/sign-in escape hatches. */}
-          {peek.reason === 'server_error' ? (
+          {/* For server_error and rate_limited the failure is transient —
+              the network flapped, the peek endpoint hiccupped or the
+              per-IP limit kicked in. Try-again is the right primary
+              action; the "create account" / "sign in" links stay as
+              secondary options. Other failure reasons (not_found / used
+              / expired) are terminal for this token, so no retry — just
+              the signup/sign-in escape hatches. */}
+          {RETRYABLE_PEEK_FAIL_REASONS.has(peek.reason) ? (
             <>
               <Button
                 onClick={loadPeekAndAuth}

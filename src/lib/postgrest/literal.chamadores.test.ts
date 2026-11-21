@@ -22,11 +22,19 @@ const ler = (rel: string) =>
     .replace(/^\s*\/\/.*$/gm, '');
 
 describe('buscas de contato por texto livre', () => {
-  it('a tela de Contatos: `.or()` por ramoContem e o termo da RPC com escaparLike', () => {
+  it('a tela de Contatos: `.or()` pela busca da tabela e o termo da RPC com escaparLike', () => {
+    // Porte #679 (17/11/2026): a tela deixou de montar `name/phone/email`
+    // à mão — o telefone cru não achava "(83) 98000-0016" — e passou a
+    // `ramosDaBuscaNaTabela` (todo ramo por `ramoContem`, pinado abaixo). A
+    // RPC recebe os DÍGITOS quando o termo tem cara de telefone, sempre pelo
+    // escape do LIKE.
     const fonte = ler('src/app/(dashboard)/contacts/page.tsx');
-    expect(fonte).toMatch(/ramoContem\(coluna, term\)/);
-    expect(fonte).toMatch(/p_search:\s*term \? escaparLike\(term\) : null/);
+    expect(fonte).toMatch(/ramosDaBuscaNaTabela\(term\)/);
+    expect(fonte).toMatch(
+      /p_search:\s*term\s*\?\s*escaparLike\(temCaraDeTelefone\(term\) \? term\.replace\(\/\\D\/g, ''\) : term\)\s*:\s*null/,
+    );
     expect(fonte).not.toMatch(/ilike\.\$\{/);
+    expect(fonte).not.toMatch(/\.or\(\s*\[/);
   });
 
   it('a API v1: `.or()` por ramoContem, sem o filtro que apagava caracteres', () => {
@@ -37,9 +45,14 @@ describe('buscas de contato por texto livre', () => {
     expect(fonte).not.toMatch(/sanitizeSearch/);
   });
 
-  it('os seletores de cliente: todo ramo por ramoContem (26/09/2026)', () => {
+  it('os seletores de cliente e a tabela de Contatos: todo ramo por ramoContem', () => {
+    // 26/09/2026: os quatro ramos dos seletores (nome, os dois `@`,
+    // telefone). 17/11/2026 (porte #679): a busca da tabela reusa as peças e
+    // soma nome e e-mail — seis no total. Ramo novo escrito de outro jeito
+    // muda a conta e reprova aqui.
     const fonte = ler('src/lib/contacts/busca-remota.ts');
-    expect(fonte.match(/ramoContem\(/g)?.length).toBe(4);
+    expect(fonte.match(/ramoContem\(/g)?.length).toBe(6);
+    expect(fonte).toMatch(/ramoContem\('email', limpo\)/);
     expect(fonte).not.toMatch(/ilike/);
   });
 

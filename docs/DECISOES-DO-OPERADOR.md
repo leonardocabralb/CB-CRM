@@ -61,6 +61,18 @@ qualquer uma é pergunta ao operador.
   sozinho, nem pela resposta da equipe; cliente assim, card à mão (29/09/2026).
 - Encerrar conversa SOLTA o responsável; quem reabre enviando fica
   responsável; cliente, celular e API reabrem sem responsável (02/09/2026).
+- Remover membro DEVOLVE À FILA as conversas em que ele é responsável
+  (tarefas e negócios ficam com ele); suspender não mexe em nada
+  (17/11/2026, `perfis.md`).
+- O Visualizador continua subindo arquivo no `chat-media` (anexo fora das
+  anotações); no `flow-media`, só atendente para cima (17/11/2026).
+- Botão direito e toque longo na mensagem mantêm a NOSSA barra de ações
+  (também no cartão de documento); o menu do navegador só sobre o link do
+  texto. Do porte do upstream, só se corrige erro (17/11/2026,
+  `inbox-conversa.md`, `celular.md`).
+- A API v1 continua renomeando o contato que já existe pelo `name` do
+  `POST /messages`, respeitando o nome fixado (`nome_fixado_em`); o original
+  deixou de renomear (17/11/2026, `api-v1.md`).
 - De ADMIN: "Gerenciar funil" e as abas Lista/Desempenho/Saúde
   (08/09/2026). A automação é da CONTA: qualquer admin edita, ativa,
   duplica e apaga, nunca só o autor (23/09/2026).
@@ -249,6 +261,12 @@ qualquer uma é pergunta ao operador.
 - Cartão de contato com Copiar e Conversar; `.html` recebido só baixa e só
   se ENVIA por QR code (02/10/2026). Documento e cartão em destaque na
   bolha; fundo do fio a 15% (01/10/2026).
+- Disparo (18/11/2026): o que PODE ter saído (a chamada do lote que caiu,
+  5xx, tempo esgotado) fica "Entrega incerta" e NENHUM reenvio o pega — nem o
+  Retomar, nem o "Tentar de novo os que falharam"; quem envia reserva a linha
+  antes da Meta; o envio PARA na primeira entrega incerta (o lote que cai, a
+  Meta que não responde) e solta a campanha para o Retomar; o CSV sai com a
+  situação traduzida (`whatsapp-envio.md`, 1151).
 - Envio que não saiu fica no fio como bolha "não enviada", PARA TODOS: a do
   robô (06/10/2026) e a da equipe (31/10/2026), inclusive a incerta ("pode
   ter saído"). A da equipe — a incerta também — não pausa a IA nem para a
