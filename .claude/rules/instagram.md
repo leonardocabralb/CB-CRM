@@ -167,3 +167,30 @@ devolve só o App ID). O canal criado pelo login continua gravando o segredo em
 - D5: o que a API não cobre — apagar-para-todos, responder citando, documento
   que não seja PDF, editar — fica INACESSÍVEL na conversa Instagram; nota de
   voz cabe via WAV.
+
+### Login unificado e o app da Atlas (decisões de 21/11/2026)
+
+O produto troca o login do Instagram pelo login unificado (Facebook Login for
+Business com `config_id`) num app ÚNICO da Atlas. Estudo:
+`docs/ESTUDO-instagram-login-unificado.md`; plano:
+`docs/PLANO-instagram-login-unificado.md`. Até esse código existir, tudo acima
+vale para o CB, que segue no login do Instagram até migrar (U2 pendente).
+
+- U3: app único da Atlas, como Provedor de Tecnologia (a marcação não se
+  desfaz), com verificação da empresa e análise de acesso avançado. Revê a D3
+  para o produto.
+- U8: só `instagram_basic` e `instagram_manage_messages`. Permissão nova
+  (comentários, para social selling) exige outra análise da Meta e que cada
+  escritório reconecte uma vez; social selling revê a D1 (estudo, §14).
+- U7: token do usuário do sistema que nunca vence; uma checagem diária de
+  saúde faz o papel da renovação.
+- U5: a volta do login e os webhooks do app passam pela central no CRM de
+  homologação do Atlas, com endereço próprio; o repasse às instâncias é
+  assinado, e só o que falhou vai para a fila.
+- ⚠️ **No unificado as credenciais são OUTRAS:** o App ID e o App Secret
+  PRINCIPAIS do app e o host `graph.facebook.com`. O `mid` muda de formato e,
+  com as duas conexões na mesma conta, a DM chega em dobro: cada conexão só
+  aceita a entrega assinada pelo segredo do seu modo.
+- ⚠️ **App NOVO da Meta já não monta o login do Instagram** (medido em
+  21/11/2026): o "traga o seu app" da instalação própria só servirá pelo
+  unificado.

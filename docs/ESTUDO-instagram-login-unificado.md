@@ -305,11 +305,31 @@ Uma migration nova, ADITIVA (aplicar antes do deploy). O número é o maior do
 
 ### 3.3 Onde ela mora (U5)
 
+**Decidido pelo operador em 21/11/2026: a central mora no CRM de
+homologação do Atlas, com endereço próprio** (por exemplo
+`central.<domínio da Atlas>`). É o código do Atlas CRM, ligado por
+variável de ambiente só naquela instância.
+- **Riscos aceitos pelo operador:** o de homologação (versão em teste) e o
+  de LGPD (DMs de clientes no banco da homologação).
+- **O endereço próprio** existe para a central poder mudar de servidor
+  trocando só o DNS, sem mexer no app da Meta nem nos escritórios.
+- **Desempenho** [ESTIMATIVA, 21/11]: 1 a 3 operações no banco por evento do
+  Instagram, contra cerca de 300 por mensagem no próprio CRM. Com 50
+  escritórios, o pico deve ficar entre 5 e 10 eventos por segundo.
+  - O PostgREST usa um grupo fixo de conexões: requisição a mais entra na
+    fila, e não abre conexão nova.
+  - Cuidados de construção: tabelas da central fora da publicação realtime;
+    repasse na hora, com a fila só para o que falhou e limpa ao entregar;
+    nenhuma transação aberta durante o HTTP; índice na conta do Instagram.
+
+As opções que estavam na mesa:
+
 | Opção | A favor | Contra |
 | --- | --- | --- |
-| **Função no Supabase do Atlas Gestor** (recomendada) | O Gestor já conhece cada hospedado e o endereço dele, e já fala com as instâncias (a licença). É gerenciada, com HTTPS pronto e sem VPS a mais | É outro repositório. A DM passa e espera na fila no banco do Gestor, o que pede cuidado de LGPD (retenção curta) |
+| Função no Supabase do Atlas Gestor | O Gestor já conhece cada hospedado e o endereço dele, e já fala com as instâncias (a licença). É gerenciada, com HTTPS pronto e sem VPS a mais | É outro produto, com clientes dentro: um deploy dele derrubaria o Instagram do CRM, e a DM ficaria no banco de outro sistema |
+| Projeto Supabase próprio da central | Isolada de tudo | Mais um projeto para cuidar (cerca de US$ 10/mês no Micro, a conferir) |
 | Serviço próprio numa VPS da Atlas | Controle total, sem os limites de uma função | Mais uma máquina para cuidar. A VPS de operação guarda credencial de infraestrutura e não deveria receber tráfego público |
-| O próprio CRM em "modo central" | Reaproveita assinatura e OAuth | Mistura papéis no produto |
+| **O CRM de homologação em "modo central"** (decidida) | Reaproveita assinatura e OAuth; fica no código do Atlas CRM | Mistura papéis e corre os riscos da homologação (aceitos) |
 
 ⚠️ **Concentração:** a central e o app único passam a ser um ponto só para o
 Instagram de todos os escritórios.
@@ -699,14 +719,14 @@ empresa, nem por mensagem do Direct.
 
 | # | Pergunta | Minha recomendação |
 | --- | --- | --- |
-| U1 | Trocar para o unificado e construir a Fase 4 (responder) já sobre ele? | Sim. As Fases 4 e 6 do plano antigo param até lá (a 6 vira checagem de saúde) |
+| U1 | Trocar para o unificado e construir a Fase 4 (responder) já sobre ele? | Para o Atlas, sim (21/11). Em 21/11 outra sessão já faz a Fase 4 e a 6 no login atual do CB; o unificado entra como mais um ramo desse envio (plano, U-1) |
 | U2 | Que app atende o CB: A (cliente do app da Atlas), B (o app do CB atende os dois) ou C (dois apps)? | A |
-| U3 | Revisar a **D3**: no app da Atlas, acesso avançado, Provedor de Tecnologia e verificação da empresa da Atlas? | Sim, e começar a verificação já |
+| U3 | Revisar a **D3**: no app da Atlas, acesso avançado, Provedor de Tecnologia e verificação da empresa da Atlas? | **Decidido (21/11):** sim. App "Atlas CRM" criado como Provedor de Tecnologia (§13); a verificação é do operador |
 | U4 | Fazer as medições do §7.2 num app descartável antes do código? | Sim |
-| U5 | Onde mora a central? | Função no Supabase do Gestor |
+| U5 | Onde mora a central? | **Decidido (21/11):** no CRM de homologação do Atlas, com endereço próprio (§3.3) |
 | U6 | A central guarda a DM numa fila até entregar? Por quanto tempo? | Sim, até 7 dias, apagando ao entregar |
-| U7 | Validade do token: "nunca vence" ou 60 dias? | Nunca vence, com checagem diária de saúde |
-| U8 | Permissões: só mensagens, ou já comentários e publicação? | Só mensagens (permissão a mais é análise a mais) |
+| U7 | Validade do token: "nunca vence" ou 60 dias? | Nunca vence, com checagem diária de saúde. A configuração criada em 21/11 já está assim |
+| U8 | Permissões: só mensagens, ou já comentários e publicação? | **Decidido (21/11):** só mensagens. Os comentários entram com o social selling (§14), numa segunda análise |
 | U9 | Pedir o "Human Agent" (7 dias) na mesma análise? A D2 o deixava para depois | Pedir junto se o escritório responde depois de 24 h; senão, depois |
 | U10 | O token colado (alternativa da D3) sai no unificado? | Sai |
 | U11 | "Traga o seu app" (modo direto): oferecer no Personalizado e na instalação própria, como caminho avançado, e o manual em PDF passa a ser deste caminho? | Sim, depois da central e das medições |
@@ -852,10 +872,77 @@ ANTIGO de criação de app também não tem a tela do login do Instagram:
    → Status de verificação → Ver detalhes"). É do operador: CNPJ no campo de
    identificação fiscal, documentos e a confirmação por e-mail, telefone ou
    domínio. É a fila mais longa.
-2. **Decisão U5** (onde a central mora), e então a URL de retorno e o
-   webhook do objeto Instagram na configuração já criada.
+2. **A U5 está decidida** (§3.3). A URL de retorno e o webhook do objeto
+   Instagram entram na configuração quando a central existir. O plano das
+   fases está em `docs/PLANO-instagram-login-unificado.md`.
 3. **A análise** só depois do código (U-1 a U-4) e do escritório de
    demonstração.
+
+---
+
+## 14. Social selling (ideia futura do operador, 21/11/2026)
+
+**Pergunta do operador:** automações no Instagram como as do ManyChat.
+Exemplos: quando alguém começa a seguir, quando alguém comenta, mandar uma
+mensagem. Isso é viável? Muda alguma coisa no pedido do app da Atlas à Meta?
+
+### 14.1 O que a API permite e o que não permite [DOC, 21/11]
+
+| Gatilho ou ação | Dá? | Como |
+| --- | --- | --- |
+| Alguém comenta num post, reel, story, Live ou anúncio | Sim | Webhook `comments` (e `live_comments`) |
+| Responder em privado a quem comentou (o "comentou, recebe a DM") | Sim, com limites | "Private Replies": **uma** mensagem por comentário, em até 7 dias (no Live, só durante a transmissão). A mensagem leva o link do post. Só dá para continuar se a pessoa responder, dentro de 24 h |
+| Responder ou ocultar o comentário em público | Sim | Moderação de comentários |
+| Alguém menciona a conta | Sim | Webhook `mentions` |
+| Resposta ou menção em story | Sim | Chegam como mensagem no webhook `messages` |
+| Palavra-chave na DM, botões, cards, respostas rápidas, menu e "ice breakers" | Sim | API de mensagens (dentro da janela de 24 h) |
+| **Alguém começou a seguir** | **Não** | Nenhum campo de webhook avisa seguidor novo, e a API não deixa escrever primeiro para quem nunca interagiu |
+| "Segue a conta?" como **condição** | Sim, quando a pessoa interage | A API de perfil devolve `is_user_follow_business`. É o "siga para receber" do ManyChat. A medir com o token do unificado |
+
+**Sobre a ideia de "quando seguir, mandar mensagem":** não dá do jeito
+direto. O caminho que existe é o inverso: a pessoa comenta ou escreve, e a
+automação confere se ela segue antes de entregar o prometido.
+
+### 14.2 Motor próprio × trazer um clone do ManyChat
+
+**Recomendo o motor próprio.** O CRM já tem automações com gatilhos, passos,
+esperas e agentes de IA. O social selling pede gatilhos novos ("comentou",
+"mencionou", "respondeu ao story", "palavra-chave na DM") e ações novas
+("resposta privada", "responder o comentário", "ocultar o comentário").
+
+Trazer o motor de outro repositório traria:
+- a licença para conferir: muitos projetos abertos do gênero são copyleft;
+- um segundo motor, que repetiria as regras que o nosso já cumpre (dono
+  durável, janela de 24 h, esperas, quem responde);
+- outra pilha de tecnologia para manter.
+
+### 14.3 O que muda no pedido à Meta
+
+- **Permissão nova: `instagram_manage_comments`.** O webhook de comentários
+  exige acesso avançado [DOC]. A resposta privada pede também
+  `instagram_manage_messages`, que já está no pedido.
+- **Pedir agora não funciona:**
+  - a Meta recusa, na análise, permissão que o app ainda não usa [DOC];
+  - no modo Ativo, o login só pede permissões aprovadas [DOC]. Uma permissão
+    sem acesso avançado na configuração travaria a conexão dos escritórios.
+- **Por isso, a ordem é:**
+  1. primeira análise só com mensagens, como está;
+  2. quando o social selling existir, segunda análise com
+     `instagram_manage_comments` e o vídeo da automação funcionando;
+  3. depois da aprovação, a permissão entra na configuração do login, e os
+     escritórios já conectados reconectam uma vez para concedê-la (a medir).
+- **Nada precisa mudar hoje** no que foi feito no painel.
+
+### 14.4 Decisões e esforço
+
+- ⚠️ **Revê a D1** ("o robô não responde no Direct"). Ligar automação no
+  Instagram é decisão do operador.
+- **Divulgação da automação:** a página de mensagens da Meta cita exemplos de
+  aviso de robô ("I'm the [Page Name] bot"). Conferir a política quando o
+  desenho existir.
+- [ESTIMATIVA] Primeira versão ("comentou com a palavra X no post Y → resposta
+  privada + resposta pública"): 2 a 3 semanas. Vem depois do envio (Fase 4) e
+  do modo unificado (U-1).
 
 ---
 
@@ -909,3 +996,9 @@ ANTIGO de criação de app também não tem a tela do login do Instagram:
   https://developers.facebook.com/documentation/business-messaging/instagram-messaging/app-review/apps-for-your-own-business
 - App Review (jogos), a faixa de 1 a 5 dias úteis:
   https://developers.facebook.com/documentation/games/launch/reviews/app-review
+- Private Replies (consultada em 21/11/2026):
+  https://developers.facebook.com/documentation/instagram-platform/private-replies
+- Instagram User Profile API, `is_user_follow_business` (21/11/2026):
+  https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/messaging-api/user-profile
+- Comment Moderation (21/11/2026):
+  https://developers.facebook.com/documentation/instagram-platform/comment-moderation

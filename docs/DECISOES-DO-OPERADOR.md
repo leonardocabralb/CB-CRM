@@ -273,7 +273,12 @@ qualquer uma é pergunta ao operador.
   retomada; "Tentar de novo" só para quem tentou, e a vermelha fica como registro
   (`whatsapp-envio.md`).
 - Instagram: robô não responde no Direct; unificar fichas é manual; o que a
-  API não cobre fica inacessível na conversa.
+  API não cobre fica inacessível na conversa. No produto (21/11/2026): app
+  ÚNICO da Atlas pelo login unificado, como Provedor de Tecnologia, só com as
+  permissões de mensagens e token que nunca vence; a volta do login e os
+  webhooks passam por uma central no CRM de homologação do Atlas, com
+  endereço próprio. O CB segue no login do Instagram até migrar
+  (`instagram.md`).
 - Conversa ENCERRADA quando nasce sem o cliente ter escrito: webhook de
   entrada (21/09/2026) e passo de envio da automação para ficha sem conversa
   (27/09/2026). Calendly e `send_to_number` a criam aberta.
