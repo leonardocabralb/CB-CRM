@@ -40,6 +40,8 @@ import { registrarEntrega } from '@/lib/cb-channels/atraso-de-entrega';
 import { isUniqueViolation } from '@/lib/contacts/dedupe';
 import { reopenClosedConversation } from '@/lib/conversations/reopen';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
+import { CHAT_MEDIA_BUCKET } from '@/lib/storage/buckets';
+import { caminhoNoChatMedia } from '@/lib/storage/caminho-no-chat-media';
 import { findOrCreateConversation } from '@/lib/whatsapp/inbound-store';
 
 import {
@@ -277,6 +279,85 @@ async function idDaMensagem(
   return (data?.id as string | undefined) ?? null;
 }
 
+/**
+ * Quanto o eco espera pela linha do NOSSO envio (Fase 4). É o `jaGravada` da
+ * Evolution (2 s): o núcleo grava DEPOIS de a Meta responder, e o eco pode
+ * chegar no meio.
+ */
+export const ESPERA_PELO_NOSSO_ENVIO_MS = 2_000;
+
+export interface OpcoesDaPersistencia {
+  /** Injetável no teste; o padrão é o `setTimeout`. */
+  esperar?: (ms: number) => Promise<void>;
+}
+
+const esperarDeVerdade = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * O eco é de uma mensagem que o CRM enviou? A linha do núcleo tem o mesmo
+ * `mid`. Sem ela, espera um pouco e confere de novo: gravar o eco antes faria
+ * a nossa resposta aparecer como "digitada no app do Instagram" (o núcleo a
+ * retoma pelo UNIQUE, mas só se ele chegar depois). Leitura que falha conta
+ * como "não está": o eco entra, e o núcleo assume a linha.
+ */
+async function ecoDoNossoEnvio(
+  db: SupabaseClient,
+  conversationId: string,
+  mid: string,
+  esperar: (ms: number) => Promise<void>
+): Promise<boolean> {
+  if (await idDaMensagem(db, conversationId, mid)) return true;
+  await esperar(ESPERA_PELO_NOSSO_ENVIO_MS);
+  return (await idDaMensagem(db, conversationId, mid)) !== null;
+}
+
+/**
+ * A cópia que esta entrega BAIXOU perdeu o INSERT para outra linha com o
+ * mesmo `mid` (Codex, PR #539): o eco esperou 2 s, não achou a nossa linha,
+ * baixou o anexo — e o núcleo de envio gravou a resposta no meio. Se a linha
+ * que ficou cita OUTRO objeto (o arquivo que a equipe anexou), a cópia não tem
+ * dono e sai do bucket; nem a exclusão definitiva do contato a acharia.
+ *
+ * ⚠️ O nome do objeto é fixo por `mid` (`ig-<hash>`, `midia.ts`): numa
+ * reentrega da Meta a linha que ficou cita ESTE mesmo arquivo, e ele fica.
+ * Leitura que falha = "não sei": o arquivo fica. Só arquivo desta conta, fora
+ * do acervo (`caminhoNoChatMedia`, a guarda da drenagem). Nunca lança.
+ */
+async function descartarCopiaSemDono(
+  db: SupabaseClient,
+  ctx: ContextoDoCanal,
+  conversationId: string,
+  mid: string,
+  url: string
+): Promise<void> {
+  const copia = caminhoNoChatMedia(url, ctx.accountId);
+  if (!copia) return;
+  const { data, error } = await db
+    .from('messages')
+    .select('media_url')
+    .eq('conversation_id', conversationId)
+    .eq('message_id', mid)
+    .maybeSingle();
+  if (error || !data) {
+    if (error) console.error(`${TAG} conferir a linha que ficou falhou:`, error.message);
+    return;
+  }
+  const citada = caminhoNoChatMedia(
+    (data as { media_url?: string | null }).media_url,
+    ctx.accountId
+  );
+  if (citada === copia) return;
+  try {
+    const { error: erroRemove } = await db.storage
+      .from(CHAT_MEDIA_BUCKET)
+      .remove([copia]);
+    if (erroRemove) console.error(`${TAG} apagar a cópia sem dono falhou:`, erroRemove.message);
+  } catch (e) {
+    console.error(`${TAG} apagar a cópia sem dono falhou:`, e instanceof Error ? e.message : e);
+  }
+}
+
 /** Texto da prévia na lista, no molde do `inbound-store`. */
 function previa(c: ConteudoDaMensagem): string {
   return c.content_text || `[${c.content_type}]`;
@@ -318,7 +399,8 @@ async function gravarMensagem(
   ctx: ContextoDoCanal,
   ev: EventoMensagem,
   salvarMidia: SalvarMidia,
-  enriquecer?: Enriquecer
+  enriquecer?: Enriquecer,
+  opcoes: OpcoesDaPersistencia = {}
 ): Promise<ResultadoDaPersistencia> {
   const igsid = clienteDe(ev);
   const contato = await findOrCreateContatoDoInstagram(db, ctx, igsid);
@@ -353,6 +435,21 @@ async function gravarMensagem(
         channel_id: ctx.channelId,
       })
     : Promise.resolve();
+
+  // O eco do que o CRM ACABOU de enviar (Fase 4): a linha é do núcleo. Antes
+  // de baixar o anexo — a cópia seria jogada fora pelo UNIQUE.
+  if (
+    ev.ehEco &&
+    (await ecoDoNossoEnvio(
+      db,
+      conversation.id,
+      ev.mid,
+      opcoes.esperar ?? esperarDeVerdade
+    ))
+  ) {
+    await avisoDeConversaCriada;
+    return { resultado: 'duplicada' };
+  }
 
   // Um `mid` = uma linha. O Instagram aceita VÁRIOS arquivos numa DM; o
   // primeiro fica na mensagem e os demais viram linhas irmãs com o mid
@@ -399,7 +496,12 @@ async function gravarMensagem(
     // da mensagem que o PRÓPRIO CRM acabou de enviar (Fase 4). Nos dois
     // casos a linha certa já está lá.
     await avisoDeConversaCriada;
-    if (error && isUniqueViolation(error)) return { resultado: 'duplicada' };
+    if (error && isUniqueViolation(error)) {
+      if (midia) {
+        await descartarCopiaSemDono(db, ctx, conversation.id, ev.mid, midia.url);
+      }
+      return { resultado: 'duplicada' };
+    }
     console.error(`${TAG} inserir mensagem falhou:`, error?.message);
     return { resultado: 'falhou' };
   }
@@ -583,13 +685,14 @@ export async function persistirEventoDoInstagram(
   ctx: ContextoDoCanal,
   ev: EventoDoInstagram,
   salvarMidia: SalvarMidia,
-  enriquecer?: Enriquecer
+  enriquecer?: Enriquecer,
+  opcoes: OpcoesDaPersistencia = {}
 ): Promise<ResultadoDaPersistencia> {
   switch (ev.tipo) {
     case 'mensagem':
       return ev.apagada
         ? marcarApagada(db, ctx, ev)
-        : gravarMensagem(db, ctx, ev, salvarMidia, enriquecer);
+        : gravarMensagem(db, ctx, ev, salvarMidia, enriquecer, opcoes);
     case 'postback':
       return gravarPostback(db, ctx, ev, salvarMidia, enriquecer);
     case 'edicao':

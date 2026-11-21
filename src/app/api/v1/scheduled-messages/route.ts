@@ -46,6 +46,8 @@ import { instanteValido } from '@/lib/agenda/validar';
 import { resolveChannelForConversation } from '@/lib/cb-channels/resolve';
 import { ehUuid } from '@/lib/tasks/validar';
 import { alvoDeEnvio } from '@/lib/whatsapp/alvo-de-envio';
+import { ehInstagram } from '@/lib/cb-channels/transporte';
+import { bytesDoTexto, TETO_DO_TEXTO_DO_DIRECT } from '@/lib/instagram/envio';
 
 /** Same ceilings as the dashboard route and the 925 CHECK. */
 const MAX_TEXTO = 4000;
@@ -215,6 +217,18 @@ export async function POST(request: Request) {
           409
         );
       }
+    }
+
+    // Instagram Direct (Phase 4): the text cap is 1000 BYTES (UTF-8), not
+    // characters. Checked here without the signature (it may change before
+    // dispatch); the send core checks again with it. Mirror of
+    // `/api/cb/scheduled`. The 24-hour window is checked at dispatch time.
+    if (ehInstagram(canal) && bytesDoTexto(texto) > TETO_DO_TEXTO_DO_DIRECT) {
+      return fail(
+        'text_too_long',
+        `Instagram Direct accepts at most ${TETO_DO_TEXTO_DO_DIRECT} bytes of UTF-8 text per message.`,
+        409
+      );
     }
 
     const author = await resolveApiAuthor(ctx.supabase, ctx.accountId);

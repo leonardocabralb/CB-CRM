@@ -230,39 +230,70 @@ construídas em 10/09.
 - [x] D1 na prática: **nenhum** `runAutomationsForTrigger`/`findEntryFlow`/
       auto-reply chamado neste caminho — com teste estrutural no molde de
       `cb-groups/persist.ts` (o módulo não importa os motores).
-- [ ] Deploy → o operador conecta o Instagram em produção (token + segredo),
-      cola a URL de callback e o verify token no painel da Meta (ou eu, pelo
-      Chrome dele), re-verifica; conferir com uma DM real; desligar o túnel
-      e o receptor de teste.
+- [x] Deploy → o operador conectou @cbadv.bancario em produção pelo login do
+      Instagram (21/11/2026, depois do #535), com o webhook do app no domínio
+      de produção; a 1ª DM real chegou (ficha só do Instagram, com nome, @ e
+      foto).
 
 ### Fase 4 — Saída: responder pela caixa
-- [ ] `sendMessageToConversation` ganha o ramo `ehInstagram`: destinatário =
-      `contact.instagram_id`; texto (**1000 bytes**, `text_too_long`); imagem
-      png/jpg ≤ 8 MB, vídeo ≤ 25 MB, áudio (`aac/m4a/wav/mp4`) ≤ 25 MB,
-      **só PDF** como documento ≤ 25 MB (outro formato → `not_supported` com
-      frase que diz "só PDF"), por URL pública do Storage;
-      `messaging_type`/`tag HUMAN_AGENT` fora das 24h só com
-      `ig_human_agent`; **janela conferida no servidor**
-      (`window_closed`, traduzido); `message_id` = `message_id` da resposta.
-      `reply_to_message_id` é IGNORADO no envio (a API não cita) — e a tela
-      não oferece. Roteamento para funil e reabertura vêm de graça (é o núcleo).
-- [ ] **Nota de voz em conversa Instagram**: o gravador (`opus-recorder`) grava
-      com o `waveWorker` em vez do encoder Opus quando `ehInstagram(channelKind)`
-      → arquivo `.wav`, mime `audio/wav`, teto 25 MB (avisar antes de estourar:
-      WAV 48 kHz mono 16-bit ≈ 5,8 MB/min); `MIMES_POR_TIPO`/bucket já aceitam
-      `audio/wav`? — conferir a 023 e alargar na 989 se preciso.
-- [ ] Senders do robô (`flows/meta-send.ts`, `automations/meta-send.ts`),
-      `react`, apagar-para-todos: `ehInstagram` → erro claro, nunca "Meta"
-      (já valendo desde a Fase 1; aqui viram frases traduzidas).
-- [ ] `janela-24h.ts` recebe `horas` (24 ou 168) e o fio/compositor ganham o
-      estado **"janela fechada — só a pessoa pode reabrir"** (sem "use um
-      modelo"), chaves novas nos dois dicionários; contador de 1000 bytes.
-- [ ] **Inacessível em conversa Instagram** (D5): Responder/citar, reagir,
-      apagar-para-todos, editar, modelo, interativa, anexo que não seja
-      imagem/vídeo/áudio/PDF — o gate é o canal ATIVO da conversa
-      (`activeChannel`), como o `channelKind` do compositor já faz.
-- [ ] Agendada: passa pelo núcleo; fora da janela vira `failed` com motivo
-      traduzido (nada muda no disparador).
+Branch `feat/instagram-responder` (21/11/2026). Recorte aprovado pelo
+operador em 21/11/2026, no login ATUAL do Instagram (o login unificado fica
+para depois: host e token isolados em `graph.ts`). Regras:
+`.claude/rules/instagram.md`, "Responder pela caixa".
+- [x] `sendMessageToConversation` ganha o ramo `ehInstagram` (antes do da
+      Evolution): destino = `contact.instagram_id`; texto até **1000 bytes**
+      já com a assinatura (`text_too_long`); imagem png/jpeg, vídeo, áudio
+      `aac/m4a/wav/mp4` e **só PDF** como documento, por URL pública do
+      Storage, pela régua pura `src/lib/instagram/envio.ts`; **janela
+      conferida no servidor** (`window_closed`, `window_unknown` na leitura
+      que falha); `message_id` = o `mid` da resposta; 4xx =
+      `instagram_rejected`, rede/5xx/2xx sem `mid` = `instagram_error`
+      (entrega incerta). Roteamento para funil e reabertura vêm do núcleo.
+- [x] ⚠️ O ECO do nosso envio pode chegar antes da nossa linha:
+      `persistir.ts` espera 2 s por ela, e o núcleo assume a linha do eco no
+      23505 (medido no desenho, não em produção).
+- [x] **Citar CABE** (revisão do D5 em 21/11/2026: a doc da Meta de hoje
+      aceita `reply_to: { mid }`). Citada apagada ou de outra conexão é
+      recusada. **Reagir fica fora**: o botão some na conversa do Instagram.
+- [x] **Anexo sem legenda** (decisão do operador, 21/11/2026): o campo some na
+      prévia, e o servidor recusa a que chegar por outro caminho.
+- [x] **Nota de voz em WAV**: o compositor grava pelo `waveWorker`
+      (`public/opus/waveWorker.min.js`, do mesmo opus-recorder 8.0.5) quando
+      o canal ativo é Instagram, `.wav`/`audio/wav` (o bucket aceita desde a
+      1115), teto de **2 min 30 s** (WAV 48 kHz mono ≈ 5,8 MB/min contra os
+      16 MB de envio).
+- [x] Senders do robô, `react`, apagar/editar: seguem falhando fechado (D1, D5).
+- [x] O fio conta a janela pelo carimbo do canal (já valia); a dica, o
+      placeholder e a recusa dizem "só a pessoa reabre" (sem "use um modelo").
+      Arquivo fora da régua é recusado antes de subir (`arquivoCabeNoDirect`),
+      também o do acervo; texto acima de 1000 bytes fica no campo, com aviso.
+- [x] Agendada (tela e `POST /v1/scheduled-messages`): recusa no AGENDAMENTO
+      o que não cabe; fora da janela na hora do envio vira `failed` com a
+      frase; `instagram_error` entra em `CODIGOS_POS_ENTREGA`. Doc pública
+      atualizada.
+- [x] **Teste real em 21/11/2026**, pelo preview, para o Instagram pessoal do
+      operador (autorizado por ele): texto, resposta citando, PDF e nota de
+      voz WAV gravada pelo compositor — a Meta aceitou as quatro e as quatro
+      chegaram; uma linha por envio, sem duplicata do eco; o .docx foi
+      recusado antes de subir. O teste mostrou que o Direct NÃO formata: a
+      assinatura passou a sair `Nome:` (sem asteriscos) e os botões de
+      formatação somem no Instagram (decisões do operador no mesmo dia).
+- [x] Revisão antes do merge (Codex + revisor independente, 21/11/2026):
+      a desconexão do token cercada pelo carimbo (190 atrasado não derruba a
+      conta reconectada); `POST /v1/messages` com `soWhatsApp` (a conversa
+      por telefone que responde pelo Instagram é recusada, não vira DM); o
+      compositor conta a assinatura nos 1000 bytes; `.jfif`/`.jpe` aceitos
+      como JPEG; card da ficha sem nome com o `@`; testes provando os filtros
+      da janela. Limites que ficam: `.claude/rules/instagram.md`.
+- [ ] **Human Agent (D2) fica fora**: o interruptor segue na conexão, com o
+      aviso "ainda sem efeito". Depende de o operador pedir a feature à Meta e
+      de medir o formato da tag (a doc lida em 21/11 não o traz).
+- [ ] Medir na primeira resposta real: o eco chega antes da nossa linha? O
+      anexo `image` vai como `attachment` (a doc mostra `attachments` num
+      exemplo)? A janela de 7 dias do anúncio Click-to-Direct (a doc cita)
+      não é lida: o CRM trava em 24 h.
+- [ ] Selo da janela na LISTA de conversas só sai para número oficial
+      (`selo-da-janela.ts`): o Instagram fica sem ele (o fio tem).
 
 ### Fase 5 — Unificação manual de fichas (D4)
 - [ ] Migration própria (número conferido na hora): RPC
@@ -293,14 +324,22 @@ construídas em 10/09.
       conversa (`follow`).
 
 ### Fase 6 — Token: o canal não pode morrer sozinho
-- [ ] `GET /api/cb/instagram/cron` (`x-cron-secret`): renova tokens com
-      `ig_token_refreshed_at` > 7 dias e idade > 24h; **compara `expires_in`**,
-      não o status HTTP (200 com o mesmo token não é renovação); falha →
-      `status='disconnected'` + `last_error`. Alerta na tela de Conexões
-      quando faltam < 10 dias.
-- [ ] `docker-stack.yml`: `cb/instagram` no laço lento — ⚠️ vale só depois de
-      `docker stack deploy` manual na VPS (o CI não relê o `command`).
-- [ ] Teste do cron contra a Meta com o canal real.
+Na mesma branch da Fase 4 (21/11/2026).
+- [x] **Sem rota nova** (decisão do operador, 21/11/2026): a renovação roda na
+      manutenção do ciclo das agendadas (`src/lib/instagram/renovar-token.ts`
+      em `rodarManutencaoDoCiclo`, laço de 15 min já no agendador), logo
+      depois dos alarmes. Nada muda no `docker-stack.yml` nem na VPS.
+- [x] Renova o token com `ig_token_refreshed_at` de 7 dias ou mais e ainda
+      válido (`GET graph.instagram.com/refresh_access_token`, token na query
+      como a doc mostra); **compara o vencimento novo com o antigo**, não o
+      status HTTP; escrita cercada pelo carimbo lido. Só o 190 marca
+      `status='disconnected'` + `last_error`; rede, limite e erro da Meta
+      tentam no ciclo seguinte. O alerta de "faltam < 10 dias" já existia no
+      cartão da conexão (Fase 2).
+- [ ] Ver a primeira renovação real: o token de @cbadv.bancario foi gravado em
+      21/11/2026 às 19:41 UTC, então a primeira tentativa sai a partir de
+      28/11/2026 (carimbo de 7 dias). Conferir `ig_token_refreshed_at` e
+      `ig_token_expires_at` depois dessa data.
 
 ### Fase 7 — Fechamento
 - [ ] `CLAUDE.md`: seção "Instagram Direct" com o que morde código novo

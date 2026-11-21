@@ -213,6 +213,10 @@ export async function POST(request: Request) {
           typeof body.reply_to_message_id === 'string'
             ? body.reply_to_message_id
             : null,
+        // Esta rota endereça por TELEFONE: a conversa achada pelo telefone que
+        // responde pelo Instagram Direct é recusada, nunca vira DM (doc
+        // pública; revisão do PR #539).
+        soWhatsApp: true,
       }
     );
 

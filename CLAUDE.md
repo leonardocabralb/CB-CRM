@@ -615,7 +615,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 - `.claude/rules/meu-dia.md` — porta de entrada, resumo do dia, área de
   trabalho `/meu-dia`.
 - `.claude/rules/instagram.md` — Instagram Direct, login OAuth, webhook,
-  ramos que falham fechado.
+  responder pela caixa (IGSID, janela, eco), renovação do token, ramos que
+  falham fechado.
 - `.claude/rules/i18n.md` — portões de i18n por dentro, chave montada,
   date-fns.
 - `.claude/rules/deploy.md` — pipeline, agendador, Node, stack deploy,

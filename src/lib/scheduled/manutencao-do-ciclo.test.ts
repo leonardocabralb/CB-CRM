@@ -1,9 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { ordem, alarmes, gerar, vencer, vencerNotas, podar, gravacoes, drenar, transcricoes } = vi.hoisted(() => ({
+const { ordem, alarmes, token, gerar, vencer, vencerNotas, podar, gravacoes, drenar, transcricoes } = vi.hoisted(() => ({
   ordem: [] as string[],
   alarmes: vi.fn(),
+  token: vi.fn(),
   gerar: vi.fn(),
   vencer: vi.fn(),
   vencerNotas: vi.fn(),
@@ -17,6 +18,12 @@ vi.mock('@/lib/cb-channels/avisar-alarmes', () => ({
   avisarAlarmesDeConexao: (...a: unknown[]) => {
     ordem.push('alarmes');
     return alarmes(...a);
+  },
+}));
+vi.mock('@/lib/instagram/renovar-token', () => ({
+  renovarTokensDoInstagram: (...a: unknown[]) => {
+    ordem.push('token');
+    return token(...a);
   },
 }));
 vi.mock('@/lib/tasks/gerar-recorrentes', () => ({
@@ -66,11 +73,17 @@ import {
 } from './manutencao-do-ciclo';
 
 const admin = {} as SupabaseClient;
-const ORDEM = ['alarmes', 'tarefas', 'vencer', 'notas', 'podar', 'gravacoes', 'drenar', 'transcricoes'];
+const ORDEM = ['alarmes', 'token', 'tarefas', 'vencer', 'notas', 'podar', 'gravacoes', 'drenar', 'transcricoes'];
 
 beforeEach(() => {
   ordem.length = 0;
   alarmes.mockResolvedValue(undefined);
+  token.mockResolvedValue({
+    renovados: 0,
+    falhas: 0,
+    desconectadas: 0,
+    erro: null,
+  });
   gerar.mockResolvedValue({ geradas: 0, semAviso: 0, erro: null });
   vencer.mockResolvedValue({ excluidas: 0, arquivos: 0, erro: null });
   vencerNotas.mockResolvedValue({ excluidas: 0, erro: null });
@@ -87,10 +100,18 @@ beforeEach(() => {
 });
 
 describe('a manutenção do ciclo das agendadas', () => {
-  it('roda os oito passos EM SEQUÊNCIA: alarmes → tarefas → vencimento da Lixeira → vencimento das anotações → poda dos turnos da IA → poda das gravações → fila → transcrições (o aviso de conexão primeiro; os vencimentos enchem a fila que a drenagem leva; a transcrição, que chama o provedor, por último)', async () => {
+  it('roda os nove passos EM SEQUÊNCIA: alarmes → token do Instagram → tarefas → vencimento da Lixeira → vencimento das anotações → poda dos turnos da IA → poda das gravações → fila → transcrições (o aviso de conexão primeiro; os vencimentos enchem a fila que a drenagem leva; a transcrição, que chama o provedor, por último)', async () => {
     await rodarManutencaoDoCiclo(admin, 1_000);
     expect(ordem).toEqual(ORDEM);
     expect(alarmes).toHaveBeenCalledWith(admin, 1_000);
+    // A renovação do token mede a idade a partir do INÍCIO e corre sob o
+    // MESMO prazo dos outros passos (Codex, PR #539).
+    expect(token).toHaveBeenCalledWith(
+      admin,
+      new Date(1_000),
+      undefined,
+      1_000 + PRAZO_DA_MANUTENCAO_MS
+    );
     expect(gerar).toHaveBeenCalledWith(admin);
     // O vencimento das anotações mede os 90 dias a partir do INÍCIO.
     expect(vencerNotas).toHaveBeenCalledWith(admin, 1_000);
@@ -112,6 +133,7 @@ describe('a manutenção do ciclo das agendadas', () => {
 
   it('cada passo é ISOLADO: o que lança (ou rejeita) não impede o seguinte, e nada sai para fora', async () => {
     alarmes.mockRejectedValue(new Error('alarmes quebrou'));
+    token.mockRejectedValue(new Error('token quebrou'));
     gerar.mockRejectedValue(new Error('tarefas quebrou'));
     vencer.mockImplementation(() => {
       throw new Error('vencimento quebrou');

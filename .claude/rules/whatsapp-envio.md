@@ -86,8 +86,11 @@ abrir negócio e carimbo de canal na ingestão estão em
   assim que ficam de fora sem linha de guarda — "reusar o núcleo no broadcast"
   parece limpeza e traz o roteador de funil junto (500 cards de uma vez). Pino
   default-deny `pipeline-routing.chamadores.test.ts`.
-- Instagram falha FECHADO no envio: `not_supported` no núcleo,
-  `exigirWhatsApp` nos senders do robô (robô não responde no Direct).
+- Instagram: o núcleo RESPONDE pelo Direct desde a Fase 4 (IGSID, recusas
+  antes da Meta, janela no servidor, eco assumido no 23505 — regras em
+  `.claude/rules/instagram.md`); `exigirWhatsApp` nos senders do robô (robô
+  não responde no Direct, D1). Ramo novo no núcleo vem DEPOIS do do Instagram
+  (a cadeia `ehInstagram → ehEvolution → Meta`).
   `POST /api/v1/messages` confere `ehWhatsApp` ANTES de criar contato e de
   fixar o canal — `pinConversationChannel` confere só a POSSE, e a conta do
   Instagram fixada prendia a conversa do telefone. Pino

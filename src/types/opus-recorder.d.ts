@@ -17,6 +17,8 @@ declare module "opus-recorder" {
     encoderBitRate?: number;
     /** When false (default), ondataavailable fires once with the full file. */
     streamPages?: boolean;
+    /** WAV recorder only (`waveWorker`): 8 | 16 | 24 | 32. Defaults to 16. */
+    wavBitDepth?: number;
   }
 
   export default class Recorder {

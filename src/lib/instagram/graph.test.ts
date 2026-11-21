@@ -4,7 +4,10 @@ import {
   InstagramApiError,
   MARCA_DE_TOKEN,
   codigoDoErro,
+  corpoDaMensagem,
   criarClienteInstagram,
+  envioRecusado,
+  renovarTokenLongo,
   doGraphDoInstagram,
   semSegredo,
 } from './graph';
@@ -187,3 +190,165 @@ describe('assinarWebhooks', () => {
     ).rejects.toBeInstanceOf(InstagramApiError);
   });
 });
+
+describe('enviarMensagem (Fase 4)', () => {
+  function capturando(status: number, corpo: unknown) {
+    const visto: { url?: string; init?: RequestInit } = {};
+    const fetchFn = (async (
+      url: string | URL | Request,
+      init?: RequestInit
+    ) => {
+      visto.url = String(url);
+      visto.init = init;
+      return new Response(JSON.stringify(corpo), {
+        status,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as unknown as typeof fetch;
+    return { visto, fetchFn };
+  }
+
+  it('POST em /me/messages, token no cabeçalho, corpo JSON com recipient e texto', async () => {
+    const { visto, fetchFn } = capturando(200, {
+      recipient_id: '1',
+      message_id: 'mid-1',
+    });
+    const r = await criarClienteInstagram(TOKEN, fetchFn).enviarMensagem({
+      para: 'igsid-1',
+      texto: 'oi',
+    });
+    expect(r).toEqual({ messageId: 'mid-1' });
+    expect(visto.url).toBe('https://graph.instagram.com/v26.0/me/messages');
+    expect(visto.url).not.toContain(TOKEN);
+    expect(visto.init?.method).toBe('POST');
+    const headers = visto.init?.headers as Record<string, string>;
+    expect(headers.Authorization).toBe(`Bearer ${TOKEN}`);
+    expect(headers['Content-Type']).toBe('application/json');
+    expect(JSON.parse(String(visto.init?.body))).toEqual({
+      recipient: { id: 'igsid-1' },
+      message: { text: 'oi' },
+    });
+  });
+
+  it('anexo vai em `attachment` com a URL; a citação em `reply_to.mid`', () => {
+    expect(
+      corpoDaMensagem({
+        para: 'igsid-1',
+        citando: 'mid-antiga',
+        anexo: { tipo: 'file', url: 'https://x/contrato.pdf' },
+      })
+    ).toEqual({
+      recipient: { id: 'igsid-1' },
+      message: {
+        attachment: {
+          type: 'file',
+          payload: { url: 'https://x/contrato.pdf' },
+        },
+      },
+      reply_to: { mid: 'mid-antiga' },
+    });
+  });
+
+  it('⚠️ 2xx sem `message_id` é "não sei" (status 200), nunca recusa', async () => {
+    const { fetchFn } = capturando(200, { recipient_id: '1' });
+    const erro = await criarClienteInstagram(TOKEN, fetchFn)
+      .enviarMensagem({ para: 'x', texto: 'oi' })
+      .catch((e) => e);
+    expect(erro).toBeInstanceOf(InstagramApiError);
+    expect(erro.status).toBe(200);
+    expect(envioRecusado(erro)).toBe(false);
+  });
+
+  it('só o 4xx é recusa comprovada; rede e 5xx são "pode ter saído"', async () => {
+    const recusa = await criarClienteInstagram(
+      TOKEN,
+      respondendo(400, { error: { message: 'bad', code: 100 } })
+    )
+      .enviarMensagem({ para: 'x', texto: 'oi' })
+      .catch((e) => e);
+    expect(envioRecusado(recusa)).toBe(true);
+    const cincoxx = await criarClienteInstagram(TOKEN, respondendo(503, {}))
+      .enviarMensagem({ para: 'x', texto: 'oi' })
+      .catch((e) => e);
+    expect(envioRecusado(cincoxx)).toBe(false);
+    const rede = await criarClienteInstagram(TOKEN, (async () => {
+      throw new Error('timeout');
+    }) as unknown as typeof fetch)
+      .enviarMensagem({ para: 'x', texto: 'oi' })
+      .catch((e) => e);
+    expect(rede.codigo).toBe('rede');
+    expect(envioRecusado(rede)).toBe(false);
+  });
+
+  it('fora da janela (subcódigo 2534022) vira `janela_fechada`', async () => {
+    const erro = await criarClienteInstagram(
+      TOKEN,
+      respondendo(400, {
+        error: { message: 'outside', code: 10, error_subcode: 2534022 },
+      })
+    )
+      .enviarMensagem({ para: 'x', texto: 'oi' })
+      .catch((e) => e);
+    expect(erro.codigo).toBe('janela_fechada');
+  });
+});
+
+describe('renovarTokenLongo (Fase 6)', () => {
+  it('GET em /refresh_access_token com o grant da doc; devolve o token novo e o prazo', async () => {
+    let urlVista = '';
+    let headers: Record<string, string> = {};
+    const fetchFn = (async (
+      url: string | URL | Request,
+      init?: RequestInit
+    ) => {
+      urlVista = String(url);
+      headers = (init?.headers as Record<string, string>) ?? {};
+      return new Response(
+        JSON.stringify({
+          access_token: 'IGAAnovo1234567890',
+          token_type: 'bearer',
+          expires_in: 5183944,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      );
+    }) as unknown as typeof fetch;
+    await expect(renovarTokenLongo(TOKEN, fetchFn)).resolves.toEqual({
+      token: 'IGAAnovo1234567890',
+      expiraEmSeg: 5183944,
+    });
+    const u = new URL(urlVista);
+    expect(u.origin + u.pathname).toBe(
+      'https://graph.instagram.com/refresh_access_token'
+    );
+    expect(u.searchParams.get('grant_type')).toBe('ig_refresh_token');
+    // A exceção documentada: o token viaja na query (como a troca do login).
+    expect(u.searchParams.get('access_token')).toBe(TOKEN);
+    expect(headers.Authorization).toBeUndefined();
+  });
+
+  it('erro da Meta sai sem o token; resposta sem expires_in é erro', async () => {
+    const erro = await renovarTokenLongo(
+      TOKEN,
+      respondendo200ComErro(400, {
+        error: { message: `bad token ${TOKEN}`, code: 190 },
+      })
+    ).catch((e) => e);
+    expect(erro.codigo).toBe('token_invalido');
+    expect(erro.message).not.toContain(TOKEN);
+    await expect(
+      renovarTokenLongo(
+        TOKEN,
+        respondendo200ComErro(200, { access_token: 'x' })
+      )
+    ).rejects.toMatchObject({ codigo: 'meta_error' });
+  });
+});
+
+/** Como `respondendo`, sem exigir o cabeçalho (a renovação vai pela query). */
+function respondendo200ComErro(status: number, corpo: unknown): typeof fetch {
+  return (async () =>
+    new Response(JSON.stringify(corpo), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    })) as unknown as typeof fetch;
+}

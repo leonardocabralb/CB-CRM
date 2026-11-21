@@ -278,6 +278,12 @@ qualquer uma é pergunta ao operador.
   (`whatsapp-envio.md`).
 - Instagram: robô não responde no Direct; unificar fichas é manual; o que a
   API não cobre fica inacessível na conversa.
+- Responder pelo Instagram (21/11/2026): no login ATUAL do Instagram, nada do
+  login unificado agora. Citar cabe; reagir fica fora; o anexo sai sem
+  legenda (o campo some); o Human Agent fica sem efeito até a Meta aprovar; o
+  token renova sozinho na manutenção das agendadas, sem rota nova no
+  agendador. Depois do 1º envio real: a assinatura sai sem os asteriscos
+  (`Nome:`) e os botões de formatação somem no Instagram (`instagram.md`).
 - Conversa ENCERRADA quando nasce sem o cliente ter escrito: webhook de
   entrada (21/09/2026) e passo de envio da automação para ficha sem conversa
   (27/09/2026). Calendly e `send_to_number` a criam aberta.

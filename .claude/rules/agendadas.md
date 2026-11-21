@@ -29,8 +29,9 @@ anexos, em `.claude/rules/midia.md`. O texto antigo, com a história, está em
   enche — o destino de `broadcasts.scheduled_at`, viva e sem leitor desde a
   001.
 - ⚠️ **A rota carrega também, no `after()` (`rodarManutencaoDoCiclo`), os
-  ALARMES DE CONEXÃO no sino** (1122, `.claude/rules/canais.md`), **as
-  TAREFAS RECORRENTES** (1074), **a limpeza da Lixeira de contatos** (1097:
+  ALARMES DE CONEXÃO no sino** (1122, `.claude/rules/canais.md`), **a
+  RENOVAÇÃO do token das conexões do Instagram** (Fase 6,
+  `.claude/rules/instagram.md`), **as TAREFAS RECORRENTES** (1074), **a limpeza da Lixeira de contatos** (1097:
   o vencimento e a fila de arquivos, `.claude/rules/deploy.md`), **o
   vencimento da lixeira de anotações** (1132, `anotacoes.md`), **a poda do
   conteúdo dos turnos da IA** (1110, `ia-central.md`) **e, das ligações pelo
@@ -46,9 +47,9 @@ anexos, em `.claude/rules/midia.md`. O texto antigo, com a história, está em
   para amanhã.
 - ⚠️ **`failed` NÃO quer dizer "não saiu".** `db_error` e tempo esgotado da
   Evolution estouram DEPOIS de o WhatsApp aceitar — daí `entrega_incerta`
-  (`CODIGOS_POS_ENTREGA` = `db_error` + `evolution_error`). `evolution_rejected`
-  (4xx: a Evolution recusou) fica DE FORA — nada saiu, e é por isso que a 932
-  separou os dois. Nada reenvia a partir de incerta nem de `sending`: retentar
+  (`CODIGOS_POS_ENTREGA` = `db_error` + `evolution_error` + `instagram_error`).
+  `evolution_rejected`/`instagram_rejected` (4xx: recusou) e `window_closed`
+  ficam DE FORA — nada saiu, e é por isso que a 932 separou os dois. Nada reenvia a partir de incerta nem de `sending`: retentar
   manda duas vezes ao cliente. Todo caminho novo de reenvio usa a mesma
   guarda (`podeDispararAgora`).
 - ⚠️ **`failed` e `entrega_incerta` se contam SEPARADAS e DISJUNTAS.** A

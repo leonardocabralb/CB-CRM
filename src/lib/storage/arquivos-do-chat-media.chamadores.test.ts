@@ -100,6 +100,14 @@ const DECLARADOS: Record<string, Uso> = {
     papel: 'só lê',
     nota: 'confere se o anexo da agendada ainda existe antes de reivindicar',
   },
+  'src/lib/instagram/persistir.ts': {
+    papel: 'só apaga',
+    nota: 'Instagram (PR #539): o eco que perde o INSERT depois de baixar o anexo apaga a cópia que baixou — só quando a linha que ficou cita OUTRO objeto (a reentrega cita o mesmo, ig-<hash do mid>), e só pela guarda caminhoNoChatMedia. A mensagem em si é gravada por este arquivo com a URL que salvarMidia devolve (ver os ajudantes abaixo)',
+  },
+  'src/lib/whatsapp/send-message.ts': {
+    papel: 'só apaga',
+    nota: 'Instagram (PR #539): ao assumir a linha que o ECO gravou primeiro, apaga a cópia do anexo que o eco baixou — depois de a linha passar a citar o nosso arquivo, e só pela guarda caminhoNoChatMedia (desta conta, fora do acervo)',
+  },
   'src/hooks/use-acoes-da-agendada.ts': {
     papel: 'só apaga',
     nota: 'cancelar a agendada apaga o anexo — menos quando ela já virou mensagem (message_id)',

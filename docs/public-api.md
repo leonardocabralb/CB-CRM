@@ -1025,8 +1025,11 @@ Instagram Direct accounts. Scope: `channels:read`. Not paginated.
 An account can have several numbers — official Meta (Cloud API) ones and
 unofficial QR-code ones. The ids whose `kind` is `meta` or `evolution` are
 valid `channel_id`s for `POST /api/v1/messages`; an `instagram` one is not
-(the API does not send through Instagram — the call fails with
-`not_supported` before anything is created or changed), so don't pass it. `POST /api/v1/broadcasts` only accepts
+(that endpoint addresses by phone, and Instagram has no phone — the call
+fails with `not_supported` before anything is created or changed), so don't
+pass it. To reply on Instagram Direct through the API, schedule the message
+on the Instagram conversation
+([`POST /api/v1/scheduled-messages`](#post-apiv1scheduled-messages)). `POST /api/v1/broadcasts` only accepts
 the ones whose `kind` is `meta` (broadcasts are template-only).
 
 ```jsonc
@@ -1162,8 +1165,9 @@ message would fire at the wrong hour with no error anywhere.
 The sending channel is resolved **now** and frozen on the row (it does
 not follow the conversation later). Domain error codes: `no_channel`
 (409 — the account has no registered connection),
-`group_channel_unknown` (409 — a group whose number isn't known yet) and
-`not_supported` (409 — see below).
+`group_channel_unknown` (409 — a group whose number isn't known yet),
+`not_supported` (409 — see below) and `text_too_long` (409 — an Instagram
+conversation, see below).
 Response: `201` with the scheduled message.
 
 **When it goes out**, the message counts as written by the **account
@@ -1185,6 +1189,26 @@ schedule it on a conversation whose channel is the official Meta number.
 If the resolved channel is a QR Code (Evolution) connection, the request
 is refused with `409 not_supported` and nothing is queued — otherwise the
 refusal would only surface at dispatch time, with nobody watching.
+
+**Instagram Direct conversations.** A conversation whose channel is an
+Instagram account (`kind: "instagram"` in
+[`GET /api/v1/channels`](#get-apiv1channels)) can be scheduled too, and the
+message goes out as an Instagram Direct reply. Two Instagram rules apply:
+
+- **1,000 bytes of UTF-8 text** per message — bytes, not characters: an
+  accented letter takes 2, an emoji 4. A longer `body` is refused now with
+  `409 text_too_long`. The check repeats at dispatch time with the
+  signature added (*Settings → Message signature*); a message that only
+  goes over then fails with the reason in `error`.
+- **The 24-hour window**: Instagram only accepts a reply within 24 hours of
+  the customer's last message on that account, and only the customer can
+  reopen it (there are no templates on Instagram). It is checked at
+  dispatch time, not when scheduling — the customer may write again in the
+  meantime. Outside it the row ends `failed` with the reason, and nothing
+  was sent (`entrega_incerta: false`).
+
+A timeout or a server error from Instagram leaves `entrega_incerta: true`,
+exactly as on WhatsApp: the message may have gone out — don't re-send.
 
 > Scheduled rows are dispatched by the external scheduler hitting the
 > cron endpoint — the API only enqueues.

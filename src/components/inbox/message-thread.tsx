@@ -1142,6 +1142,15 @@ export function MessageThread({
       janelaFechada(mensagensRef.current, new Date(), canalDaJanelaRef.current),
     [],
   );
+  // NOSSO — Instagram Direct (Fase 4): lá não há modelo; só a pessoa reabre
+  // a janela. A frase da recusa diz isso em vez de "use um modelo".
+  const fraseDaJanelaFechada = useCallback(
+    () =>
+      ehInstagram(canalDaJanelaRef.current)
+        ? t("sessionExpiredBlockedInstagram")
+        : t("sessionExpiredBlocked"),
+    [t],
+  );
 
   /**
    * A conversa NA TELA agora.
@@ -1982,7 +1991,14 @@ export function MessageThread({
         // ⚠️ Já nasce ASSINADA. Sem isto a mensagem aparece sem o nome e
         // muda sozinha um instante depois, quando a resposta do servidor
         // chega — parecendo que o sistema reescreveu o que foi digitado.
-        content_text: aplicarAssinatura(text, nomeQueAssina) ?? text,
+        // NOSSO — no Instagram Direct a assinatura sai sem o negrito do
+        // WhatsApp, como o núcleo grava (`send-message.ts`).
+        content_text:
+          aplicarAssinatura(
+            text,
+            nomeQueAssina,
+            ehInstagram(canalDaJanelaRef.current) ? "simples" : "whatsapp",
+          ) ?? text,
         // Nasce CARIMBADA com o número da tela, como já nasce assinada. Em
         // conversa que mistura números, a resposta sem carimbo ficava
         // desenhada no trecho do número ANTERIOR até o realtime trocar a
@@ -2026,8 +2042,8 @@ export function MessageThread({
       // Ver `janelaFechadaAgora`: a janela pode ter fechado — ou só ter
       // ficado CONHECIDA — entre o Enter e este instante.
       if (naTela && janelaFechadaAgora()) {
-        falhou({ motivo: "barrado", detalhe: t("sessionExpiredBlocked"), podeTentarDeNovo: false });
-        toast.error(t("sessionExpiredBlocked"));
+        falhou({ motivo: "barrado", detalhe: fraseDaJanelaFechada(), podeTentarDeNovo: false });
+        toast.error(fraseDaJanelaFechada());
         return;
       }
 
@@ -2113,6 +2129,7 @@ export function MessageThread({
       marcarEnviada,
       nomeQueAssina,
       janelaFechadaAgora,
+      fraseDaJanelaFechada,
     ]
   );
 
@@ -2141,7 +2158,13 @@ export function MessageThread({
       const r = reenviaveis.get(id);
       if (r?.retida) return;
       const gravada = !r && id === gravadaReenviavel ? messages.find((m) => m.id === id) : undefined;
-      const texto = r?.texto ?? removerAssinaturaDe(gravada?.content_text, nomeQueAssina);
+      const texto =
+        r?.texto ??
+        removerAssinaturaDe(
+          gravada?.content_text,
+          nomeQueAssina,
+          ehInstagram(canalDaJanelaRef.current) ? "simples" : "whatsapp",
+        );
       if (!texto) return;
       const replyToId = r ? r.replyToId : (gravada?.reply_to_message_id ?? undefined);
       if (!compositorRef.current?.reenviarTexto(texto, replyToId, id)) return;
@@ -2222,9 +2245,9 @@ export function MessageThread({
       if (naTela && janelaFechadaAgora()) {
         onUpdateMessage(
           tempId,
-          naBolha({ motivo: "barrado", detalhe: t("sessionExpiredBlocked"), podeTentarDeNovo: false }),
+          naBolha({ motivo: "barrado", detalhe: fraseDaJanelaFechada(), podeTentarDeNovo: false }),
         );
-        toast.error(t("sessionExpiredBlocked"));
+        toast.error(fraseDaJanelaFechada());
         // ⚠️ O objeto FICA: com o retorno `false` o compositor mantém o anexo
         // na fila e volta a ser dono dele. Apagar aqui deixaria o rascunho
         // apontando para um arquivo que não existe mais.
@@ -2277,6 +2300,7 @@ export function MessageThread({
       pintarFalha,
       marcarEnviada,
       janelaFechadaAgora,
+      fraseDaJanelaFechada,
       t,
       activeChannel?.id,
     ],
@@ -2315,9 +2339,9 @@ export function MessageThread({
       if (naTela && janelaFechadaAgora()) {
         onUpdateMessage(
           tempId,
-          naBolha({ motivo: "barrado", detalhe: t("sessionExpiredBlocked"), podeTentarDeNovo: false }),
+          naBolha({ motivo: "barrado", detalhe: fraseDaJanelaFechada(), podeTentarDeNovo: false }),
         );
-        toast.error(t("sessionExpiredBlocked"));
+        toast.error(fraseDaJanelaFechada());
         return;
       }
 
@@ -2360,6 +2384,7 @@ export function MessageThread({
       pintarFalha,
       marcarEnviada,
       janelaFechadaAgora,
+      fraseDaJanelaFechada,
       t,
       activeChannel?.id,
     ],

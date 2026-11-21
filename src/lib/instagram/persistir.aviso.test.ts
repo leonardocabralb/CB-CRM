@@ -19,6 +19,9 @@ const h = vi.hoisted(() => ({
   conversaExiste: true,
   filtrosDaExclusao: [] as [string, unknown][],
   conversasAchadasOuCriadas: 0,
+  /** Em que leitura a linha do NOSSO envio aparece (1 = já na primeira). */
+  nossoEnvioAparece: null as number | null,
+  leiturasDoEco: 0,
 }));
 
 vi.mock('@/lib/whatsapp/inbound-store', () => ({
@@ -106,6 +109,24 @@ function fakeDb() {
     }
     if (tabela === 'messages') {
       return {
+        // `idDaMensagem`: o eco procura a linha do nosso envio pelo `mid`.
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              maybeSingle: async () => {
+                h.leiturasDoEco++;
+                h.ordem.push('procura-envio');
+                const achou =
+                  h.nossoEnvioAparece !== null &&
+                  h.leiturasDoEco >= h.nossoEnvioAparece;
+                return {
+                  data: achou ? { id: 'msg-do-nucleo' } : null,
+                  error: null,
+                };
+              },
+            }),
+          }),
+        }),
         update: (valores: Record<string, unknown>) => {
           h.ordem.push('marca-apagada');
           h.filtrosDaExclusao = [['deleted_by', valores.deleted_by]];
@@ -180,8 +201,18 @@ beforeEach(() => {
   h.conversaExiste = true;
   h.filtrosDaExclusao = [];
   h.conversasAchadasOuCriadas = 0;
+  h.nossoEnvioAparece = null;
+  h.leiturasDoEco = 0;
   dispatch.mockResolvedValue('tentado');
 });
+
+/** A espera do eco, sem relógio: o teste não dorme 2 s. */
+const esperas: number[] = [];
+const SEM_ESPERA = {
+  esperar: async (ms: number) => {
+    esperas.push(ms);
+  },
+};
 
 describe('Instagram: conversation.created não segura a gravação', () => {
   it('com a entrega PRESA, a DM é gravada e a conversa segue o fluxo', async () => {
@@ -253,13 +284,23 @@ describe('Instagram: conversation.created é a ENTRADA do cliente', () => {
       ehEco: true,
     };
 
-    expect(await persistirEventoDoInstagram(fakeDb(), CTX, ECO, semMidia)).toMatchObject({
+    expect(
+      await persistirEventoDoInstagram(fakeDb(), CTX, ECO, semMidia, undefined, SEM_ESPERA),
+    ).toMatchObject({
       resultado: 'gravada',
       messageId: 'msg-1',
     });
     // A conversa nasceu (o mock devolve `created: true`) e a mensagem foi
-    // gravada pelo caminho do eco — sem bump de não lidas, com prévia.
-    expect(h.ordem).toEqual(['grava', 'reabre', 'previa', 'funil']);
+    // gravada pelo caminho do eco — sem bump de não lidas, com prévia. Antes,
+    // as duas procuras pela linha do NOSSO envio (Fase 4), que não existe.
+    expect(h.ordem).toEqual([
+      'procura-envio',
+      'procura-envio',
+      'grava',
+      'reabre',
+      'previa',
+      'funil',
+    ]);
     expect(eventos()).toEqual([]);
   });
 
@@ -268,11 +309,73 @@ describe('Instagram: conversation.created é a ENTRADA do cliente', () => {
     const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
     const ECO: EventoDoInstagram = { ...DM, remetente: '100', destinatario: '200', ehEco: true };
 
-    expect(await persistirEventoDoInstagram(fakeDb(), CTX, ECO, semMidia)).toEqual({
+    expect(
+      await persistirEventoDoInstagram(fakeDb(), CTX, ECO, semMidia, undefined, SEM_ESPERA),
+    ).toEqual({
       resultado: 'falhou',
     });
     expect(eventos()).toEqual([]);
     erro.mockRestore();
+  });
+});
+
+describe('Instagram: o eco do que o CRM enviou (Fase 4)', () => {
+  const ECO: EventoDoInstagram = {
+    ...DM,
+    remetente: '100',
+    destinatario: '200',
+    mid: 'mid-do-crm',
+    texto: 'Resposta pelo CRM',
+    ehEco: true,
+  };
+
+  it('a linha do núcleo já existe: o eco é descartado, sem baixar anexo nem reabrir', async () => {
+    h.nossoEnvioAparece = 1;
+    const salvar = vi.fn(semMidia);
+    expect(
+      await persistirEventoDoInstagram(
+        fakeDb(),
+        CTX,
+        ECO,
+        salvar,
+        undefined,
+        SEM_ESPERA
+      )
+    ).toEqual({ resultado: 'duplicada' });
+    expect(h.ordem).toEqual(['procura-envio']);
+    expect(salvar).not.toHaveBeenCalled();
+    expect(eventos()).toEqual([]);
+  });
+
+  it('⚠️ o eco chega ANTES da linha: espera 2 s e, achando-a, descarta', async () => {
+    h.nossoEnvioAparece = 2;
+    esperas.length = 0;
+    expect(
+      await persistirEventoDoInstagram(
+        fakeDb(),
+        CTX,
+        ECO,
+        semMidia,
+        undefined,
+        SEM_ESPERA
+      )
+    ).toEqual({ resultado: 'duplicada' });
+    expect(esperas).toEqual([2_000]);
+    expect(h.ordem).toEqual(['procura-envio', 'procura-envio']);
+  });
+
+  it('a DM do CLIENTE não procura nem espera', async () => {
+    esperas.length = 0;
+    await persistirEventoDoInstagram(
+      fakeDb(),
+      CTX,
+      DM,
+      semMidia,
+      undefined,
+      SEM_ESPERA
+    );
+    expect(esperas).toEqual([]);
+    expect(h.ordem).not.toContain('procura-envio');
   });
 });
 

@@ -69,7 +69,10 @@ describe('quem pergunta "alguém falou?" ignora a tentativa que não saiu', () =
   it('o menu da bolha esconde reagir e responder no que não saiu', () => {
     const f = fonte('components/inbox/message-actions.tsx');
     expect(f).toMatch(/const naoSaiu = message\.nao_saiu === true/);
-    expect((f.match(/\{!naoSaiu && \(/g) ?? []).length).toBe(2);
+    // Responder: só o `naoSaiu`. Reagir: o `naoSaiu` E o Instagram Direct, onde
+    // reagir fica fora (Fase 4, 21/11/2026) — as duas guardas, sempre.
+    expect((f.match(/\{!naoSaiu && \(/g) ?? []).length).toBe(1);
+    expect((f.match(/\{!naoSaiu && !ehInstagram\(channelKind\) && \(/g) ?? []).length).toBe(1);
   });
 
   it('a bolha decide por `envioQueNaoSaiu` (o booleano), e o gravador marca a linha', () => {

@@ -25,6 +25,8 @@ describe("Cache-Control — arquivos de public/ usados a toda hora", () => {
   // Next, revalidado por ETag.
   it.each([
     "/opus/encoderWorker.min.js",
+    // O de WAV, da nota de voz do Instagram Direct (Fase 4).
+    "/opus/waveWorker.min.js",
     "/inbox-doodle.svg",
     "/inbox-doodle-atlas.svg",
     "/marca/atlas-simbolo.png",

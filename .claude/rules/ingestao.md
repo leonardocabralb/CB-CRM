@@ -228,12 +228,10 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
 - `META_APP_SECRET` aceita vários segredos separados por vírgula (sem espaço).
   Qualquer um deles assina entrega para QUALQUER número da instalação: só apps
   de confiança (`docs/multi-waba.md`).
-- Instagram: cada `entry` só é gravada se a SUA conexão assina
-  (`quaisAssinam`) — senão quem tem o segredo de um app forjaria outra conta.
-  Edição e exclusão alcançam a mensagem pela CONVERSA, nunca por `mid` solto.
-  Não lidas pela RPC `bump_conversation_on_inbound`. Perfil lido ANTES do
-  roteamento (o card nasce com o nome). Eco com `mid` já gravado é o nosso
-  envio; sem linha, é o app do Instagram (`from_device`).
+- Instagram (`instagram.md`): cada `entry` só é gravada se a SUA conexão
+  assina (`quaisAssinam`); edição e exclusão pela CONVERSA, nunca por `mid`
+  solto; perfil ANTES do roteamento; o eco espera 2 s pela linha do NOSSO
+  envio antes de entrar como do app (`from_device`).
 
 ## Recibo de status
 - ⚠️ **Escada**: status só AVANÇA (`escada-de-status.ts`: `aceitamAvancoPara`,

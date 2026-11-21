@@ -129,3 +129,67 @@ describe('POST /api/cb/scheduled — ficha só-BSUID (Fase 11.3)', () => {
     expect(h.inseridas).toHaveLength(1);
   });
 });
+
+describe('POST /api/cb/scheduled — conversa do Instagram Direct (Fase 4)', () => {
+  const agendarCom = (extra: Record<string, unknown>) =>
+    POST(
+      new Request('http://localhost/api/cb/scheduled', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          conversation_id: 'conv-1',
+          scheduled_for: new Date(Date.now() + 3_600_000).toISOString(),
+          ...extra,
+        }),
+      }),
+    );
+
+  beforeEach(() => {
+    h.conversa = {
+      id: 'conv-1',
+      channel_id: 'canal-ig',
+      group_id: null,
+      group: null,
+      contact: { phone: null, wa_user_id: null, instagram_id: 'igsid-1' },
+    };
+    h.canal = { channelId: 'canal-ig', provider: 'instagram' };
+  });
+
+  it('texto que cabe: agenda, com o canal do Instagram fixado', async () => {
+    const res = await agendarCom({ body: 'Bom dia' });
+    expect(res.status).toBe(200);
+    expect(h.inseridas[0].channel_id).toBe('canal-ig');
+  });
+
+  it('⚠️ texto acima de 1000 BYTES é recusado no AGENDAMENTO, não de madrugada', async () => {
+    // 600 caracteres de 2 bytes: cabe nos 4000 caracteres da agendada, não no Direct.
+    const res = await agendarCom({ body: 'é'.repeat(600) });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/1000 bytes/);
+    expect(h.inseridas).toEqual([]);
+  });
+
+  it('documento que não é PDF é recusado no agendamento', async () => {
+    const res = await agendarCom({
+      body: '',
+      media_path: 'account-conta-1/1700000000000-contrato.docx',
+      media_kind: 'document',
+      media_filename: 'contrato.docx',
+    });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/PDF/);
+    expect(h.inseridas).toEqual([]);
+  });
+
+  it('anexo com legenda é recusado no agendamento (o Direct não tem legenda)', async () => {
+    const res = await agendarCom({
+      body: 'veja o contrato',
+      media_path: 'account-conta-1/1700000000000-contrato.pdf',
+      media_kind: 'document',
+      media_filename: 'contrato.pdf',
+    });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/legenda/);
+    expect(h.inseridas).toEqual([]);
+  });
+});

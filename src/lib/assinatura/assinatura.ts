@@ -74,12 +74,24 @@ export function nomeDePessoa(
 }
 
 /**
+ * Como a assinatura se escreve. `whatsapp` = em negrito do WhatsApp
+ * (`*Nome:*`), o de sempre. `simples` = sem marcador (`Nome:`): o Instagram
+ * Direct não formata, e o cliente leria os asteriscos crus (decisão do
+ * operador, 21/11/2026, depois do primeiro envio real).
+ */
+export type EstiloDaAssinatura = 'whatsapp' | 'simples';
+
+/**
  * Monta o prefixo. Vazio (string vazia) quando não há nome — o chamador
  * concatena sem precisar de `if`.
  */
-export function prefixoDeAssinatura(nome: string | null | undefined): string {
+export function prefixoDeAssinatura(
+  nome: string | null | undefined,
+  estilo: EstiloDaAssinatura = 'whatsapp',
+): string {
   const limpo = saneiaNome(nome);
-  return limpo ? `*${limpo}:*${SEPARADOR}` : '';
+  if (!limpo) return '';
+  return estilo === 'simples' ? `${limpo}:${SEPARADOR}` : `*${limpo}:*${SEPARADOR}`;
 }
 
 /**
@@ -96,11 +108,12 @@ export function prefixoDeAssinatura(nome: string | null | undefined): string {
 export function aplicarAssinatura(
   texto: string | null | undefined,
   nome: string | null | undefined,
+  estilo: EstiloDaAssinatura = 'whatsapp',
 ): string | null | undefined {
   if (texto === null || texto === undefined) return texto;
   if (!texto.trim()) return texto;
 
-  const prefixo = prefixoDeAssinatura(nome);
+  const prefixo = prefixoDeAssinatura(nome, estilo);
   if (!prefixo) return texto;
   if (texto.startsWith(prefixo)) return texto;
 
@@ -144,9 +157,10 @@ export function removerAssinatura(
 export function removerAssinaturaDe(
   texto: string | null | undefined,
   nome: string | null | undefined,
+  estilo: EstiloDaAssinatura = 'whatsapp',
 ): string | null | undefined {
   if (texto === null || texto === undefined) return texto;
-  const prefixo = prefixoDeAssinatura(nome);
+  const prefixo = prefixoDeAssinatura(nome, estilo);
   return prefixo && texto.startsWith(prefixo) ? texto.slice(prefixo.length) : texto;
 }
 
