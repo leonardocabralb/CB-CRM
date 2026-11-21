@@ -1176,6 +1176,8 @@
       "open": "Open image",
       "close": "Close",
       "download": "Download",
+      "downloadPdf": "Download as PDF",
+      "downloadPdfFailed": "Couldn't create a PDF from this image.",
       "rotateLeft": "Rotate left",
       "rotateRight": "Rotate right",
       "zoomIn": "Zoom in",

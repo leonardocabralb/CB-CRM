@@ -286,3 +286,10 @@ citações valem só no `chat-media`.
   `media-lightbox.tsx` e `message-media.tsx` vieram do upstream e NÃO estão
   ligados — religá-los dá dois visualizadores. De `src/lib/media`, o
   `download.ts` serve o Baixar da nota de voz.
+- ⚠️ **"Baixar em PDF" do visualizador** (`baixar-em-pdf.ts`, no navegador;
+  `pdf-de-imagem.ts`, puro, sem biblioteca): a imagem SEMPRE passa pelo
+  canvas, mesmo já sendo JPEG. Embutir o arquivo original parece economia e
+  quebra o PDF em silêncio: o PDF ignora a orientação do EXIF
+  (foto em pé na tela sai deitada), o giro da tela se perde e o PNG
+  transparente sai preto. O binário vem por `fetch` (blob): desenhado pelo
+  endereço do bucket, o canvas "sujo" não exporta.
