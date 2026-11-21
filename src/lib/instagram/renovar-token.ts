@@ -93,6 +93,13 @@ export async function renovarTokensDoInstagram(
     .eq('status', 'connected')
     .not('access_token', 'is', null)
     .or(`ig_token_refreshed_at.is.null,ig_token_refreshed_at.lt.${limite}`)
+    // ⚠️ O vencido sai NO BANCO, antes do limite (Codex, PR #539): pulado só
+    // no laço, ele não muda nada na linha e voltaria em todo ciclo — 100
+    // vencidos ocupariam o lote e os válidos nunca seriam renovados. Dois
+    // `.or()` na mesma consulta já rodam em produção (`atraso-de-entrega.ts`).
+    .or(`ig_token_expires_at.is.null,ig_token_expires_at.gt.${agoraIso}`)
+    // O que vence primeiro vai primeiro: o prazo do ciclo pode cortar o resto.
+    .order('ig_token_expires_at', { ascending: true, nullsFirst: false })
     .limit(100);
   if (error) {
     console.error(

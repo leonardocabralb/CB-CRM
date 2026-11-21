@@ -57,6 +57,10 @@ function fakeAdmin(opcoes: {
         return b;
       },
       limit: () => b,
+      order: (c: string) => {
+        leitura.push(['order', c]);
+        return b;
+      },
       then: (ok: (v: unknown) => unknown) => {
         if (escrita) {
           const n = opcoes.linhasGravadas ?? 1;
@@ -102,6 +106,12 @@ describe('renovarTokensDoInstagram', () => {
       'or',
       `ig_token_refreshed_at.is.null,ig_token_refreshed_at.lt.${em(-7)}`,
     ]);
+    // ⚠️ O vencido sai NO BANCO, antes do limite (Codex, PR #539).
+    expect(leitura).toContainEqual([
+      'or',
+      `ig_token_expires_at.is.null,ig_token_expires_at.gt.${AGORA.toISOString()}`,
+    ]);
+    expect(leitura).toContainEqual(['order', 'ig_token_expires_at']);
   });
 
   it('renova: grava o token novo CIFRADO, o vencimento MEDIDO e o carimbo, cercado pelo carimbo lido', async () => {
