@@ -270,9 +270,33 @@ export function interpretarWebhook(payload: unknown): ResultadoDoWebhook {
       const evento = eventoDe(igUserId, ev);
       if (evento) eventos.push(evento);
     }
+    // A outra forma: `changes[{ field, value }]`, com o evento inteiro no
+    // `value`. É como o webhook do login unificado entregou o evento de TESTE
+    // do painel (medido em 22/11/2026); as DMs reais de 09/09 vieram em
+    // `messaging[]`, e a do unificado se mede na primeira (M10). Só os campos
+    // de mensagem; comentário e menção (que o CRM não assina) ficam fora.
+    for (const c of arr(entry.changes)) {
+      const change = obj(c);
+      const valor = change ? obj(change.value) : null;
+      if (!change || !valor || !CAMPOS_DE_MENSAGEM.has(str(change.field) ?? '')) {
+        continue;
+      }
+      const evento = eventoDe(igUserId, valor);
+      if (evento) eventos.push(evento);
+    }
   }
   return { ehInstagram: true, eventos };
 }
+
+/** Os campos de `changes[]` que carregam um evento de mensagem. */
+const CAMPOS_DE_MENSAGEM = new Set([
+  'messages',
+  'message_edit',
+  'message_reactions',
+  'messaging_postbacks',
+  'messaging_referral',
+  'messaging_seen',
+]);
 
 /** O IGSID do CLIENTE num evento: no eco, é o destinatário. */
 export function clienteDe(ev: Base & { ehEco?: boolean }): string {

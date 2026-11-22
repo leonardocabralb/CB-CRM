@@ -538,6 +538,15 @@ async function createInstagramChannel(
         { status: 400 },
       );
     }
+    // O token colado é do login do Instagram (graph.instagram.com): o segredo
+    // de um app do login unificado não assina as entregas dele, e a conexão
+    // nasceria muda (1153).
+    if (app.login !== 'instagram') {
+      return NextResponse.json(
+        { error: 'O app cadastrado é do login unificado: o token colado precisa do Instagram App Secret do app antigo. Para o app novo, use "Conectar com Instagram ou Facebook".' },
+        { status: 400 },
+      );
+    }
     igAppSecret = app.appSecret;
   }
 
@@ -566,6 +575,8 @@ async function createInstagramChannel(
     // Token colado pode ter sido gerado dias antes: a validade é presunção
     // (o login do Instagram grava a medida — ver o callback).
     tokenExpiraEm: validadeDoToken(),
+    login: 'instagram',
+    clientBusinessId: null,
   });
   if (!r.ok) {
     return NextResponse.json(

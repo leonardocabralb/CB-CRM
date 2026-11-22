@@ -101,6 +101,9 @@ describe('renovarTokensDoInstagram', () => {
     const { admin, leitura } = fakeAdmin({ canais: [] });
     await renovarTokensDoInstagram(admin, AGORA, renovar);
     expect(leitura).toContainEqual(['kind', 'instagram']);
+    // Só o login do Instagram tem token de 60 dias: o do unificado não vence,
+    // e o refresh do graph.instagram.com o recusaria com 190 (1153).
+    expect(leitura).toContainEqual(['ig_login', 'instagram']);
     expect(leitura).toContainEqual(['status', 'connected']);
     expect(leitura).toContainEqual([
       'or',

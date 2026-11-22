@@ -48,12 +48,19 @@ export interface ResolvedChannel {
   /** `whatsapp_config.id` — alvo do self-heal de token legado (Meta). */
   legacyConfigId: string | null;
   source: 'cb_channels' | 'whatsapp_config';
+  /**
+   * Instagram (1153): por qual login a conexão entrou e o ID da conta. O
+   * envio do unificado leva o ID no caminho (`contaDaConexao`, `graph.ts`).
+   * Opcionais: o fallback de `whatsapp_config` e o WhatsApp não os têm.
+   */
+  ig_login?: string | null;
+  ig_user_id?: string | null;
 }
 
 // Server-side: inclui os segredos (não é o SAFE_COLUMNS do client).
 const CHANNEL_COLS =
   'id, kind, is_default, phone_number_id, waba_id, access_token, ' +
-  'server_url, instance_name, api_key';
+  'server_url, instance_name, api_key, ig_login, ig_user_id';
 
 interface ChannelRow {
   id: string;
@@ -64,6 +71,8 @@ interface ChannelRow {
   server_url: string | null;
   instance_name: string | null;
   api_key: string | null;
+  ig_login?: string | null;
+  ig_user_id?: string | null;
 }
 
 function mapChannelRow(row: ChannelRow): ResolvedChannel {
@@ -79,6 +88,8 @@ function mapChannelRow(row: ChannelRow): ResolvedChannel {
     channelId: row.id,
     legacyConfigId: null,
     source: 'cb_channels',
+    ig_login: row.ig_login ?? null,
+    ig_user_id: row.ig_user_id ?? null,
   };
 }
 

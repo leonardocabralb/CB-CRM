@@ -1,7 +1,7 @@
 // ============================================================
-// Gravar a conexão do Instagram em `cb_channels` — o trecho comum aos DOIS
-// caminhos de conexão: o token colado (`POST /api/cb/channels`) e o login
-// do Instagram (`/api/cb/instagram/oauth/callback`). Quem chama já conferiu
+// Gravar a conexão do Instagram em `cb_channels` — o trecho comum aos
+// caminhos de conexão: o token colado (`POST /api/cb/channels`) e os logins
+// do Instagram e unificado (`/api/cb/instagram/oauth/callback`). Quem chama já conferiu
 // o token no `/me`; aqui é só a escrita, com a regra do índice único GLOBAL
 // de `ig_user_id` (989): na MESMA conta, reconectar é recuperação (token e
 // segredo novos, verify token preservado — o painel da Meta já o conhece);
@@ -26,12 +26,27 @@ export interface DadosDoCanalDoInstagram {
    */
   label: string | null;
   accessToken: string;
+  /**
+   * O segredo que ASSINA a entrega desta conexão (1153): o Instagram App
+   * Secret no login do Instagram, o App Secret principal no unificado.
+   */
   igAppSecret: string;
   /** Mesma regra do `label`: `null` preserva o que "Configurar" gravou. */
   humanAgent: boolean | null;
   perfil: PerfilDaConta;
-  /** ISO do vencimento do token — medido (`expires_in`) ou presumido. */
-  tokenExpiraEm: string;
+  /**
+   * ISO do vencimento do token — medido (`expires_in`) ou presumido. `null` =
+   * não vence (o token do usuário do sistema do unificado): a renovação o pula
+   * e a tela não avisa vencimento.
+   */
+  tokenExpiraEm: string | null;
+  /**
+   * Por qual login a conexão entrou. Reconectar pelo OUTRO login troca o modo
+   * da mesma linha (o índice único de `ig_user_id` não deixa nascer outra).
+   */
+  login: 'instagram' | 'unificado';
+  /** O portfólio do cliente, no unificado. */
+  clientBusinessId: string | null;
 }
 
 export type ResultadoDoCanal =
@@ -59,6 +74,8 @@ export async function gravarCanalDoInstagram(
     ig_username: dados.perfil.username,
     ig_token_expires_at: dados.tokenExpiraEm,
     ig_token_refreshed_at: nowIso,
+    ig_login: dados.login,
+    ig_client_business_id: dados.clientBusinessId,
     status: 'connected',
     connected_at: nowIso,
     last_error: null,

@@ -90,6 +90,11 @@ export async function renovarTokensDoInstagram(
     .from('cb_channels')
     .select('id, access_token, ig_token_expires_at, ig_token_refreshed_at')
     .eq('kind', 'instagram')
+    // ⚠️ Só o login do Instagram tem token de 60 dias (1153). O do usuário do
+    // sistema (unificado) não vence nem se renova por aqui: o
+    // `refresh_access_token` do graph.instagram.com o recusaria, e o 190
+    // marcaria desconectada uma conexão sadia.
+    .eq('ig_login', 'instagram')
     .eq('status', 'connected')
     .not('access_token', 'is', null)
     .or(`ig_token_refreshed_at.is.null,ig_token_refreshed_at.lt.${limite}`)

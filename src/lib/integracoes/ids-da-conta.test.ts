@@ -76,6 +76,7 @@ function canal(parcial: Partial<CbChannel> & Pick<CbChannel, 'id' | 'label' | 'k
     ig_user_id: null,
     ig_username: null,
     ig_token_expires_at: null,
+    ig_login: 'instagram',
     ig_human_agent: false,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',

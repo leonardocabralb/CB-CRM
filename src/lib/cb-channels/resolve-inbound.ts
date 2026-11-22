@@ -259,10 +259,16 @@ export interface InboundInstagramRoute {
    */
   ownerUserId: string;
   channelId: string;
-  /** Instagram App Secret CIFRADO — quem assina a entrega (Teste B). */
+  /**
+   * O segredo CIFRADO que assina a entrega: o Instagram App Secret (Teste B)
+   * ou, no login unificado, o App Secret principal (1153).
+   */
   igAppSecretCifrado: string;
   /** Token CIFRADO, para ler o perfil do cliente. Nulo = não lê. */
   accessTokenCifrado: string | null;
+  /** Por qual login a conexão entrou e o ID da conta (`contaDaConexao`). */
+  igLogin: string;
+  igUserId: string;
 }
 
 /**
@@ -277,7 +283,7 @@ export async function resolveInboundInstagramChannel(
 ): Promise<InboundInstagramRoute | null> {
   const { data: channel, error } = await db
     .from('cb_channels')
-    .select('id, account_id, ig_app_secret, access_token')
+    .select('id, account_id, ig_app_secret, access_token, ig_login, ig_user_id')
     .eq('kind', 'instagram')
     .eq('ig_user_id', igUserId)
     .maybeSingle();
@@ -298,5 +304,7 @@ export async function resolveInboundInstagramChannel(
     channelId: channel.id,
     igAppSecretCifrado: channel.ig_app_secret,
     accessTokenCifrado: channel.access_token ?? null,
+    igLogin: channel.ig_login ?? 'instagram',
+    igUserId: channel.ig_user_id ?? igUserId,
   };
 }

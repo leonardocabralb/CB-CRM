@@ -66,6 +66,7 @@ export async function GET(
       verifyToken: r.canal.verify_token ? decrypt(r.canal.verify_token) : null,
       igUserId: r.canal.ig_user_id,
       igUsername: r.canal.ig_username,
+      igLogin: r.canal.ig_login,
       tokenExpiresAt: r.canal.ig_token_expires_at,
       humanAgent: r.canal.ig_human_agent,
     });
@@ -102,6 +103,16 @@ export async function POST(
     const r = await conexaoDoInstagram(ctx, id);
     if ('erro' in r) return r.erro;
     const { canal } = r;
+
+    // O token colado é do login do Instagram (60 dias, graph.instagram.com).
+    // A conexão do unificado tem token que não vence e se refaz pelo botão:
+    // gravar um token de outro login aqui a deixaria muda (1153).
+    if (canal.ig_login !== 'instagram') {
+      return NextResponse.json(
+        { error: 'Esta conexão entrou pelo login unificado: para renovar, use "Conectar com Instagram ou Facebook".' },
+        { status: 400 }
+      );
+    }
 
     // O `/me` do token novo diz de QUAL conta ele é. Gravar o token de outra
     // conta trocaria a identidade da conexão sem ninguém perceber — e o

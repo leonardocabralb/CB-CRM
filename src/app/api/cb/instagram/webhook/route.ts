@@ -10,7 +10,11 @@
 // O que morde código novo (tudo medido na Fase 0, 09/09/2026):
 //
 // · Quem assina é o Instagram App Secret da aba do produto — por canal,
-//   cifrado em `cb_channels.ig_app_secret`. `META_APP_SECRET` não serve.
+//   cifrado em `cb_channels.ig_app_secret`. `META_APP_SECRET` não serve. No
+//   login unificado (1153) a mesma coluna guarda o App Secret principal, que
+//   é quem assina ali (doc de 22/11): a rota não muda, e a conta que passou
+//   de um login ao outro só aceita a entrega do app novo (a DM em dobro da
+//   migração se barra aqui).
 // · Assinatura que NÃO casa é 401: é a única barreira entre um POST anônimo
 //   e uma mensagem falsa na caixa. Todo o resto é 200 — `object` errado,
 //   conta desconhecida, forma estranha —, porque 4xx repetido faz a Meta
@@ -32,6 +36,7 @@ import { createClient } from '@supabase/supabase-js';
 import { resolveInboundInstagramChannel } from '@/lib/cb-channels/resolve-inbound';
 import { precisaConferirFoto } from '@/lib/contacts/foto-de-perfil';
 import { quaisAssinam } from '@/lib/instagram/assinatura';
+import { contaDaConexao } from '@/lib/instagram/graph';
 import { salvarMidiaDoInstagram } from '@/lib/instagram/midia';
 import { completarPerfilDoContato } from '@/lib/instagram/perfil';
 import {
@@ -206,6 +211,10 @@ export async function POST(request: Request) {
             contactId: contato.id,
             igsid,
             token: decrypt(rota.accessTokenCifrado),
+            conta: contaDaConexao({
+              ig_login: rota.igLogin,
+              ig_user_id: rota.igUserId,
+            }),
             nomeAtual: contato.name,
             agoraMs: agora,
           });

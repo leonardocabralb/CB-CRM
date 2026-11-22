@@ -104,6 +104,8 @@ interface CbChannel {
   display_phone: string | null;
   ig_username: string | null;
   ig_token_expires_at: string | null;
+  /** Por qual login a conexão do Instagram entrou (1153). */
+  ig_login: 'instagram' | 'unificado' | 'central';
   ig_human_agent: boolean;
   is_default: boolean;
   status: 'disconnected' | 'connecting' | 'connected';
@@ -212,6 +214,8 @@ export function CbChannelsPanel() {
   const [igWebhook, setIgWebhook] = useState<{
     label: string;
     verifyToken: string | null;
+    /** O login da conexão (1153): o webhook do unificado mora em outra aba. */
+    unificado: boolean;
   } | null>(null);
   const [igRenewTarget, setIgRenewTarget] = useState<CbChannel | null>(null);
   const [igRenewToken, setIgRenewToken] = useState('');
@@ -223,11 +227,20 @@ export function CbChannelsPanel() {
    */
   const [igApp, setIgApp] = useState<{
     configurado: boolean;
+    /** Tipo do app cadastrado (1153); `null` sem app. */
+    login: 'instagram' | 'unificado' | null;
     appId: string | null;
+    configId: string | null;
     redirectUri: string;
     falhou?: boolean;
   } | null>(null);
   const [igAppEditando, setIgAppEditando] = useState(false);
+  /**
+   * O tipo escolhido no formulário. App criado hoje na Meta só tem o login
+   * unificado (medido em 21/11/2026): é o padrão de quem ainda não cadastrou.
+   */
+  const [igAppLogin, setIgAppLogin] = useState<'instagram' | 'unificado'>('unificado');
+  const [igConfigId, setIgConfigId] = useState('');
   const [igAppId, setIgAppId] = useState('');
   const [igAppSecretNovo, setIgAppSecretNovo] = useState('');
   const [showIgAppSecret, setShowIgAppSecret] = useState(false);
@@ -286,6 +299,12 @@ export function CbChannelsPanel() {
     typeof window !== 'undefined'
       ? `${window.location.origin}${CAMINHO_DO_WEBHOOK}`
       : '';
+  // O tipo do app que a tela descreve (1153): o cadastrado, enquanto não se
+  // edita; o escolhido no formulário, ao cadastrar ou trocar.
+  const igModoUnificado =
+    igApp?.configurado && !igAppEditando
+      ? igApp.login === 'unificado'
+      : igAppLogin === 'unificado';
 
   const load = useCallback(async () => {
     // Este painel é o ÚNICO escritor de canal, e todo escritor recarrega por
@@ -610,7 +629,11 @@ export function CbChannelsPanel() {
           toast.error(payload.error || t('loadFailed'));
           return;
         }
-        setIgWebhook({ label: channel.label, verifyToken: payload.verifyToken ?? null });
+        setIgWebhook({
+          label: channel.label,
+          verifyToken: payload.verifyToken ?? null,
+          unificado: payload.igLogin === 'unificado' || payload.igLogin === 'central',
+        });
       } catch {
         toast.error(t('networkError'));
       }
@@ -626,18 +649,24 @@ export function CbChannelsPanel() {
       const res = await fetch('/api/cb/instagram/app');
       const payload = await res.json();
       if (!res.ok) {
-        setIgApp({ configurado: false, appId: null, redirectUri: '', falhou: true });
+        setIgApp({ configurado: false, login: null, appId: null, configId: null, redirectUri: '', falhou: true });
         toast.error(payload.error || t('instagramAppLoadFailed'));
         return;
       }
+      const login =
+        payload.login === 'instagram' || payload.login === 'unificado' ? payload.login : null;
       setIgApp({
         configurado: Boolean(payload.configurado),
+        login,
         appId: typeof payload.appId === 'string' ? payload.appId : null,
+        configId: typeof payload.configId === 'string' ? payload.configId : null,
         redirectUri: typeof payload.redirectUri === 'string' ? payload.redirectUri : '',
       });
+      setIgAppLogin(login ?? 'unificado');
       setIgAppId(typeof payload.appId === 'string' ? payload.appId : '');
+      setIgConfigId(typeof payload.configId === 'string' ? payload.configId : '');
     } catch {
-      setIgApp({ configurado: false, appId: null, redirectUri: '', falhou: true });
+      setIgApp({ configurado: false, login: null, appId: null, configId: null, redirectUri: '', falhou: true });
       toast.error(t('networkError'));
     }
   }, [t]);
@@ -652,7 +681,12 @@ export function CbChannelsPanel() {
       const res = await fetch('/api/cb/instagram/app', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ app_id: igAppId.trim(), app_secret: igAppSecretNovo.trim() }),
+        body: JSON.stringify({
+          login: igAppLogin,
+          app_id: igAppId.trim(),
+          app_secret: igAppSecretNovo.trim(),
+          config_id: igAppLogin === 'unificado' ? igConfigId.trim() : '',
+        }),
       });
       const payload = await res.json();
       if (!res.ok) {
@@ -662,7 +696,9 @@ export function CbChannelsPanel() {
       toast.success(t('instagramAppSaved'));
       setIgApp({
         configurado: true,
+        login: igAppLogin,
         appId: typeof payload.appId === 'string' ? payload.appId : igAppId.trim(),
+        configId: typeof payload.configId === 'string' ? payload.configId : null,
         redirectUri:
           typeof payload.redirectUri === 'string' ? payload.redirectUri : (igApp?.redirectUri ?? ''),
       });
@@ -688,10 +724,14 @@ export function CbChannelsPanel() {
     const canalId = searchParams.get('canal');
     const username = searchParams.get('username') ?? '';
     const primeira = searchParams.get('primeira') === '1';
+    // Login unificado (1153): quantas contas a MAIS entraram no mesmo login e
+    // quais não entraram.
+    const outras = Number(searchParams.get('outras') ?? '0');
+    const falharam = searchParams.get('falharam') ?? '';
     const motivo = motivoDoOAuth(searchParams.get('motivo'));
     const detalhe = searchParams.get('detalhe') ?? '';
     const params = new URLSearchParams(searchParams.toString());
-    for (const chave of ['instagram', 'motivo', 'detalhe', 'canal', 'username', 'primeira']) {
+    for (const chave of ['instagram', 'motivo', 'detalhe', 'canal', 'username', 'primeira', 'outras', 'falharam']) {
       params.delete(chave);
     }
     router.replace(`/settings?${params.toString()}`);
@@ -701,7 +741,11 @@ export function CbChannelsPanel() {
         // O sucesso é afirmado só depois de a conexão aparecer NESTA conta
         // (o GET é escopado por conta): a URL é de quem a escreveu, e um
         // link forjado não pode anunciar "Instagram conectado: @qualquer".
-        let payload: { igUsername?: string | null; verifyToken?: string | null } | null = null;
+        let payload: {
+          igUsername?: string | null;
+          verifyToken?: string | null;
+          igLogin?: string | null;
+        } | null = null;
         try {
           const res = canalId ? await fetch(`/api/cb/channels/${canalId}/instagram`) : null;
           if (res?.ok) payload = await res.json();
@@ -714,12 +758,20 @@ export function CbChannelsPanel() {
         }
         const nome = `@${payload.igUsername ?? username}`;
         toast.success(t('instagramConnectedToast', { username: nome.slice(1) }));
+        if (Number.isInteger(outras) && outras > 0) {
+          toast.success(t('instagramConnectedMoreToast', { n: outras }));
+        }
+        if (falharam) toast.error(t('instagramConnectedFailedToast', { contas: falharam }));
         // O webhook no painel da Meta é UMA vez por app: o diálogo (que diz
         // "nada chega até isto ser feito") só abre para a PRIMEIRA conexão;
         // nas demais ele mentiria, e com um verify token diferente do
         // registrado. O callback é quem sabe se foi a primeira.
         if (primeira) {
-          setIgWebhook({ label: nome, verifyToken: payload.verifyToken ?? null });
+          setIgWebhook({
+            label: nome,
+            verifyToken: payload.verifyToken ?? null,
+            unificado: payload.igLogin === 'unificado' || payload.igLogin === 'central',
+          });
         } else {
           toast.info(t('instagramWebhookAlreadyToast'));
         }
@@ -762,7 +814,8 @@ export function CbChannelsPanel() {
       // criação); no recadastro ele vem do GET da conexão.
       const verifyToken = payload.webhook?.verifyToken as string | undefined;
       if (verifyToken) {
-        setIgWebhook({ label: payload.channel?.label ?? label, verifyToken });
+        // O token colado é sempre do login do Instagram (app antigo).
+        setIgWebhook({ label: payload.channel?.label ?? label, verifyToken, unificado: false });
       } else if (payload.channel?.id) {
         void abrirWebhookDoInstagram(payload.channel as CbChannel);
       }
@@ -1282,17 +1335,22 @@ export function CbChannelsPanel() {
                           <Copy className="mr-2 h-4 w-4" />
                           {t('instagramWebhookAction')}
                         </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setIgRenewTarget(channel);
-                            setIgRenewToken('');
-                          }}
-                        >
-                          <RefreshCw className="mr-2 h-4 w-4" />
-                          {t('instagramRenewAction')}
-                        </Button>
+                        {/* O token do login unificado não vence (1153): renovar é
+                            só do login do Instagram, e o token colado de lá
+                            deixaria a conexão do unificado muda. */}
+                        {channel.ig_login === 'instagram' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setIgRenewTarget(channel);
+                              setIgRenewToken('');
+                            }}
+                          >
+                            <RefreshCw className="mr-2 h-4 w-4" />
+                            {t('instagramRenewAction')}
+                          </Button>
+                        )}
                       </>
                     )}
                     {/* Texto visível, não só ícone: quem procura "funil" não
@@ -1655,7 +1713,9 @@ export function CbChannelsPanel() {
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="text-sm font-medium text-foreground">{t('instagramAppTitle')}</p>
-                      <p className="text-xs text-muted-foreground">{t('instagramAppDesc')}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {igModoUnificado ? t('instagramAppDescUnificado') : t('instagramAppDesc')}
+                      </p>
                     </div>
                     {igApp?.configurado && !igAppEditando && (
                       <Button
@@ -1687,12 +1747,47 @@ export function CbChannelsPanel() {
                   ) : igApp.configurado && !igAppEditando ? (
                     <p className="flex items-center gap-1 text-sm text-foreground">
                       <BadgeCheck className="h-4 w-4 text-emerald-500" />
-                      {t('instagramAppConfigured', { appId: igApp.appId ?? '' })}
+                      {igApp.login === 'unificado'
+                        ? t('instagramAppConfiguredUnificado', { appId: igApp.appId ?? '' })
+                        : t('instagramAppConfigured', { appId: igApp.appId ?? '' })}
                     </p>
                   ) : (
                     <div className="space-y-3">
+                      {/* Os dois tipos de app (1153). App criado hoje na Meta só
+                          tem o login unificado; o do Instagram é de app antigo. */}
+                      <div className="space-y-1">
+                        <Label>{t('instagramAppLoginTitle')}</Label>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={igAppLogin === 'unificado' ? 'default' : 'outline'}
+                            aria-pressed={igAppLogin === 'unificado'}
+                            onClick={() => setIgAppLogin('unificado')}
+                          >
+                            {t('instagramAppLoginNovo')}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={igAppLogin === 'instagram' ? 'default' : 'outline'}
+                            aria-pressed={igAppLogin === 'instagram'}
+                            onClick={() => setIgAppLogin('instagram')}
+                          >
+                            {t('instagramAppLoginAntigo')}
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">{t('instagramAppLoginHint')}</p>
+                        {igApp.configurado && igApp.login !== igAppLogin && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400">
+                            {t('instagramAppChangeLoginHint')}
+                          </p>
+                        )}
+                      </div>
                       <div>
-                        <Label htmlFor="cb-ig-app-id">{t('instagramAppIdField')}</Label>
+                        <Label htmlFor="cb-ig-app-id">
+                          {igModoUnificado ? t('instagramAppIdFieldUnificado') : t('instagramAppIdField')}
+                        </Label>
                         <Input
                           id="cb-ig-app-id"
                           inputMode="numeric"
@@ -1700,17 +1795,38 @@ export function CbChannelsPanel() {
                           onChange={(e) => setIgAppId(e.target.value)}
                           className="font-mono"
                         />
-                        <p className="mt-1 text-xs text-muted-foreground">{t('instagramAppIdHint')}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {igModoUnificado ? t('instagramAppIdHintUnificado') : t('instagramAppIdHint')}
+                        </p>
                       </div>
+                      {igModoUnificado && (
+                        <div>
+                          <Label htmlFor="cb-ig-config-id">{t('instagramConfigIdField')}</Label>
+                          <Input
+                            id="cb-ig-config-id"
+                            inputMode="numeric"
+                            value={igConfigId}
+                            onChange={(e) => setIgConfigId(e.target.value)}
+                            className="font-mono"
+                          />
+                          <p className="mt-1 text-xs text-muted-foreground">{t('instagramConfigIdHint')}</p>
+                        </div>
+                      )}
                       <div>
-                        <Label htmlFor="cb-ig-app-secret">{t('instagramFieldAppSecret')}</Label>
+                        <Label htmlFor="cb-ig-app-secret">
+                          {igModoUnificado ? t('instagramAppSecretFieldUnificado') : t('instagramFieldAppSecret')}
+                        </Label>
                         <div className="relative">
                           <Input
                             id="cb-ig-app-secret"
                             type={showIgAppSecret ? 'text' : 'password'}
                             value={igAppSecretNovo}
                             onChange={(e) => setIgAppSecretNovo(e.target.value)}
-                            placeholder={igApp.configurado ? t('instagramAppSecretKeep') : undefined}
+                            placeholder={
+                              igApp.configurado && igApp.login === igAppLogin
+                                ? t('instagramAppSecretKeep')
+                                : undefined
+                            }
                             className="pr-10"
                           />
                           <button
@@ -1722,7 +1838,9 @@ export function CbChannelsPanel() {
                             {showIgAppSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           </button>
                         </div>
-                        <p className="mt-1 text-xs text-muted-foreground">{t('instagramAppSecretHint')}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {igModoUnificado ? t('instagramAppSecretHintUnificado') : t('instagramAppSecretHint')}
+                        </p>
                         {igApp.configurado && (
                           <p className="mt-1 text-xs text-muted-foreground">{t('instagramAppChangeHint')}</p>
                         )}
@@ -1730,18 +1848,26 @@ export function CbChannelsPanel() {
                       <Accordion>
                         <AccordionItem className="border-border">
                           <AccordionTrigger className="text-muted-foreground hover:text-foreground hover:no-underline">
-                            {t('instagramHelpSecret')}
+                            {igModoUnificado ? t('instagramHelpUnificado') : t('instagramHelpSecret')}
                           </AccordionTrigger>
                           <AccordionContent className="text-muted-foreground">
-                            <ol className="list-inside list-decimal space-y-1 text-sm">
-                              <li>{t('instagramHelpToken_1')}</li>
-                              <li>{t('instagramHelpSecret_1')}</li>
-                              <li>{t('instagramHelpSecret_2')}</li>
-                              {/* App criado hoje na Meta não tem a tela do login do
-                                  Instagram (medido em 21/11/2026): sem isto, o
-                                  escritório procura uma aba que não existe. */}
-                              <li>{t('instagramHelpSecret_3')}</li>
-                            </ol>
+                            {igModoUnificado ? (
+                              <ol className="list-inside list-decimal space-y-1 text-sm">
+                                <li>{t('instagramHelpUnificado_1')}</li>
+                                <li>{t('instagramHelpUnificado_2')}</li>
+                                <li>{t('instagramHelpUnificado_3')}</li>
+                              </ol>
+                            ) : (
+                              <ol className="list-inside list-decimal space-y-1 text-sm">
+                                <li>{t('instagramHelpToken_1')}</li>
+                                <li>{t('instagramHelpSecret_1')}</li>
+                                <li>{t('instagramHelpSecret_2')}</li>
+                                {/* App criado hoje na Meta não tem a tela do login do
+                                    Instagram (medido em 21/11/2026): sem isto, o
+                                    escritório procura uma aba que não existe. */}
+                                <li>{t('instagramHelpSecret_3')}</li>
+                              </ol>
+                            )}
                           </AccordionContent>
                         </AccordionItem>
                       </Accordion>
@@ -1755,6 +1881,8 @@ export function CbChannelsPanel() {
                               setIgAppEditando(false);
                               setIgAppSecretNovo('');
                               setIgAppId(igApp.appId ?? '');
+                              setIgAppLogin(igApp.login ?? 'unificado');
+                              setIgConfigId(igApp.configId ?? '');
                             }}
                           >
                             {t('cancel')}
@@ -1767,7 +1895,11 @@ export function CbChannelsPanel() {
                           disabled={
                             salvandoApp ||
                             !igAppId.trim() ||
-                            (!igApp.configurado && !igAppSecretNovo.trim())
+                            (igAppLogin === 'unificado' && !igConfigId.trim()) ||
+                            // Sem app, ou trocando o tipo: o segredo guardado
+                            // é do outro login e não serve.
+                            ((!igApp.configurado || igApp.login !== igAppLogin) &&
+                              !igAppSecretNovo.trim())
                           }
                         >
                           {salvandoApp && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -1794,7 +1926,9 @@ export function CbChannelsPanel() {
                           <Copy className="h-4 w-4" />
                         </Button>
                       </div>
-                      <p className="text-xs text-muted-foreground">{t('instagramRedirectUriHint')}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {igModoUnificado ? t('instagramRedirectUriHintUnificado') : t('instagramRedirectUriHint')}
+                      </p>
                     </div>
                   ) : null}
                 </div>
@@ -1810,7 +1944,9 @@ export function CbChannelsPanel() {
                 <div className="space-y-2 rounded-md border border-border p-3">
                   <ol className="list-inside list-decimal space-y-1 text-xs text-muted-foreground">
                     <li>{t('instagramOauthStep_1')}</li>
-                    <li>{t('instagramOauthStep_2')}</li>
+                    <li>
+                      {igModoUnificado ? t('instagramOauthStepUnificado_2') : t('instagramOauthStep_2')}
+                    </li>
                   </ol>
                   <Button
                     type="button"
@@ -1819,7 +1955,7 @@ export function CbChannelsPanel() {
                     onClick={() => window.location.assign('/api/cb/instagram/oauth/start')}
                   >
                     <InstagramGlyph className="mr-2 h-4 w-4" />
-                    {t('instagramOauthConnect')}
+                    {igModoUnificado ? t('instagramOauthConnectUnificado') : t('instagramOauthConnect')}
                   </Button>
                   <p className="text-xs text-muted-foreground">
                     {igApp === null
@@ -1827,12 +1963,17 @@ export function CbChannelsPanel() {
                       : igApp.falhou
                         ? t('instagramAppLoadFailed')
                         : igApp.configurado
-                          ? t('instagramOauthSymptom')
+                          ? igModoUnificado
+                            ? t('instagramOauthSymptomUnificado')
+                            : t('instagramOauthSymptom')
                           : t('instagramOauthNeedsApp')}
                   </p>
                 </div>
 
-                {/* 3. O token colado (o desenho original da D3) continua valendo. */}
+                {/* 3. O token colado (o desenho original da D3) continua valendo —
+                    só no app antigo: o token do painel é do login do Instagram, e
+                    o segredo do app novo não assina as entregas dele (1153). */}
+                {!igModoUnificado && (
                 <Accordion>
                   <AccordionItem className="border-border">
                     <AccordionTrigger className="text-muted-foreground hover:text-foreground hover:no-underline">
@@ -1946,6 +2087,7 @@ export function CbChannelsPanel() {
                     </AccordionContent>
                   </AccordionItem>
                 </Accordion>
+                )}
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setAddStep('choose')}>
@@ -2369,10 +2511,24 @@ export function CbChannelsPanel() {
           </DialogHeader>
           <div className="space-y-4">
             <ol className="list-inside list-decimal space-y-1 text-sm text-muted-foreground">
-              <li>{t('instagramWebhookStep_1')}</li>
+              {/* O webhook do unificado mora em OUTRA aba do caso de uso
+                  (M1, 22/11/2026): configurar um não mexe no outro. */}
+              <li>
+                {igWebhook?.unificado
+                  ? t('instagramWebhookStepUnificado_1')
+                  : t('instagramWebhookStep_1')}
+              </li>
               <li>{t('instagramWebhookStep_2')}</li>
-              <li>{t('instagramWebhookStep_3')}</li>
-              <li>{t('instagramWebhookStep_4')}</li>
+              <li>
+                {igWebhook?.unificado
+                  ? t('instagramWebhookStepUnificado_3')
+                  : t('instagramWebhookStep_3')}
+              </li>
+              <li>
+                {igWebhook?.unificado
+                  ? t('instagramWebhookStepUnificado_4')
+                  : t('instagramWebhookStep_4')}
+              </li>
             </ol>
             <div className="space-y-1">
               <Label>{t('instagramWebhookUrl')}</Label>

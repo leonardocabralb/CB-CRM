@@ -22,7 +22,11 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { guardarFoto } from '@/lib/whatsapp/foto-do-contato';
 
-import { criarClienteInstagram, type ClienteInstagram } from './graph';
+import {
+  criarClienteInstagram,
+  type ClienteInstagram,
+  type ContaDoToken,
+} from './graph';
 
 const TAG = '[instagram/perfil]';
 
@@ -33,6 +37,8 @@ export async function completarPerfilDoContato(args: {
   igsid: string;
   /** Token DECIFRADO do canal. */
   token: string;
+  /** O login da conexão (1153): decide host e caminho. Padrão: o do Instagram. */
+  conta?: ContaDoToken;
   nomeAtual: string | null;
   cliente?: ClienteInstagram;
   agoraMs?: number;
@@ -40,7 +46,8 @@ export async function completarPerfilDoContato(args: {
   const { db, accountId, contactId, igsid, nomeAtual } = args;
   const agora = args.agoraMs ?? Date.now();
   try {
-    const cliente = args.cliente ?? criarClienteInstagram(args.token);
+    const cliente =
+      args.cliente ?? criarClienteInstagram(args.token, fetch, args.conta);
     const perfil = await cliente.perfil(igsid);
 
     const nomeNovo = nomeAtual

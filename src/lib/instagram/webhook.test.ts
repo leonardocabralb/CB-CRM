@@ -17,6 +17,41 @@ function corpo(messaging: unknown[]) {
 }
 
 describe('interpretarWebhook', () => {
+  it('a forma changes[] do login unificado (o evento de teste do painel, 22/11/2026) vira o mesmo evento', () => {
+    const r = interpretarWebhook({
+      object: 'instagram',
+      entry: [
+        {
+          id: CONTA,
+          time: 1757460907,
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                sender: { id: CLIENTE },
+                recipient: { id: CONTA },
+                timestamp: '1757460907',
+                message: { mid: MID, text: 'Oi' },
+              },
+            },
+            // Comentário (o CRM não assina) fica fora.
+            { field: 'comments', value: { id: '1', text: 'x' } },
+          ],
+        },
+      ],
+    });
+    expect(r.eventos).toHaveLength(1);
+    expect(r.eventos[0]).toMatchObject({
+      tipo: 'mensagem',
+      igUserId: CONTA,
+      remetente: CLIENTE,
+      mid: MID,
+      texto: 'Oi',
+      // O teste do painel manda o carimbo em TEXTO: sem número, sem carimbo.
+      timestampMs: null,
+    });
+  });
+
   it('texto: remetente, destinatário, mid, texto', () => {
     const r = interpretarWebhook(
       corpo([

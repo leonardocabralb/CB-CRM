@@ -36,6 +36,8 @@ import { ehUrlAlcancavel } from '@/lib/cb-channels/webhook-url';
 
 import { CAMINHO_DO_CALLBACK } from './conexao';
 import {
+  FACEBOOK_API_VERSION,
+  FACEBOOK_GRAPH,
   INSTAGRAM_GRAPH,
   InstagramApiError,
   codigoDoErro,
@@ -150,6 +152,86 @@ export function urlDeAutorizacao(args: {
   // conta que já está logada no navegador, sem perguntar qual.
   u.searchParams.set('force_reauth', 'true');
   return u.toString();
+}
+
+// ------------------------------------------------------------
+// Login unificado (Facebook Login for Business com `config_id`, 1153)
+// ------------------------------------------------------------
+
+const DIALOGO_DO_UNIFICADO = 'https://www.facebook.com/dialog/oauth';
+
+/**
+ * A URL do login unificado, na forma que o PRÓPRIO painel da Meta gera
+ * (medido em 22/11/2026, no app da Atlas): `client_id` (App ID principal),
+ * `config_id`, `redirect_uri`, `response_type=code`,
+ * `override_default_response_type=true`, `state` e `prompt=login`. Sem
+ * `scope`: as permissões são as da configuração. O `prompt=login` faz o papel
+ * do `force_reauth` (e mostra as duas portas, Instagram e Facebook); o
+ * `display=popup` do painel fica de fora porque aqui é a página inteira.
+ */
+export function urlDeAutorizacaoUnificada(args: {
+  appId: string;
+  configId: string;
+  redirectUri: string;
+  estado: string;
+}): string {
+  const u = new URL(DIALOGO_DO_UNIFICADO);
+  u.searchParams.set('client_id', args.appId);
+  u.searchParams.set('config_id', args.configId);
+  u.searchParams.set('redirect_uri', args.redirectUri);
+  u.searchParams.set('response_type', 'code');
+  u.searchParams.set('override_default_response_type', 'true');
+  u.searchParams.set('state', args.estado);
+  u.searchParams.set('prompt', 'login');
+  return u.toString();
+}
+
+export interface TokenDoUnificado {
+  /** Token do usuário do sistema do portfólio do cliente. Nunca vai à tela. */
+  token: string;
+  /** `null` = a Meta não deu prazo (a configuração "nunca vence"). */
+  expiraEmSeg: number | null;
+}
+
+/**
+ * `GET graph.facebook.com/v27.0/oauth/access_token` com o App ID e o App
+ * Secret PRINCIPAIS (doc de 22/11/2026). Uma troca só: não há token curto.
+ *
+ * ⚠️ O `client_secret` viaja na query, a forma documentada (a mesma exceção
+ * da troca do login do Instagram): nenhum log imprime a URL, e `semSegredo`
+ * apaga segredo e código da mensagem de erro. O `redirect_uri` vai junto: o
+ * guia do login manual o exige na troca, e o do unificado o omite.
+ *
+ * A Facebook Login for Business não entrega token com permissão a menos (ou a
+ * pessoa concede todas, ou nada), então não há conferência de permissão aqui.
+ */
+export async function trocarCodigoUnificado(
+  args: { appId: string; appSecret: string; redirectUri: string; code: string },
+  fetchFn: Fetch = fetch
+): Promise<TokenDoUnificado> {
+  const u = new URL(`${FACEBOOK_GRAPH}/${FACEBOOK_API_VERSION}/oauth/access_token`);
+  u.searchParams.set('client_id', args.appId);
+  u.searchParams.set('client_secret', args.appSecret);
+  u.searchParams.set('redirect_uri', args.redirectUri);
+  u.searchParams.set('code', args.code);
+  const r = await pedir(
+    u.toString(),
+    { headers: { Accept: 'application/json' } },
+    [args.appSecret, args.code],
+    fetchFn
+  );
+  if (typeof r.access_token !== 'string' || !r.access_token) {
+    const campos = Object.keys(r).join(', ') || 'nenhum';
+    throw new InstagramApiError(
+      'meta_error',
+      `A troca do código veio sem access_token (campos: ${campos})`
+    );
+  }
+  const expira = Number(r.expires_in);
+  return {
+    token: r.access_token,
+    expiraEmSeg: Number.isFinite(expira) && expira > 0 ? expira : null,
+  };
 }
 
 // ------------------------------------------------------------
