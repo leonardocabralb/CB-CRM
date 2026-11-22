@@ -2324,3 +2324,20 @@ nome da época em que foram aplicadas.
   COMMENT, a incerta fora dos contadores, `authenticated` com UPDATE, e os 3
   destinatários e os contadores das 3 campanhas iguais aos de antes (a
   reserva da conferência foi desfeita).
+- **1152_cb_instagram_tentativa_da_renovacao** — a TENTATIVA de renovar o
+  token do Instagram fica carimbada: `cb_channels.ig_token_refresh_tried_at`
+  (`timestamptz`, nula, com COMMENT), gravada pela renovação ANTES do pedido
+  à Meta e usada para ordenar o lote (a tentada há mais tempo primeiro). Só
+  do servidor: fora de `CB_CHANNEL_SAFE_COLUMNS` e da publicação realtime.
+  PR #540.
+
+  ADITIVA, aplicada ANTES do deploy com a autorização explícita do operador
+  ("Pode gravar", em resposta a "Posso aplicar a 1152 na produção quando o
+  CI ficar verde?", 22/11/2026), em 22/11/2026 às 16:36 BRT (histórico
+  `20261122193601`), pela Management API, com o arquivo idêntico ao do commit
+  `a4014177` (sha256 `f348385e…`), cujo replay do CI passou. Antes: o replay
+  local do zero (276 migrations, `verify-schema.sql` OK) e a 1152 reaplicada
+  sem erro; medido na produção (só leitura): a coluna ausente e 1 conexão do
+  Instagram. Conferida na produção: a coluna `timestamptz` nula com o
+  COMMENT, o registro no histórico e nenhuma conexão carimbada (o código que
+  carimba chega no deploy do PR #540).

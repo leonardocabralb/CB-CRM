@@ -8,6 +8,8 @@ import {
   conferirParaODirect,
   extensaoDoArquivo,
   janelaDoDirectAberta,
+  MIMES_DO_DIRECT,
+  nomeComExtensaoDoDirect,
   type RecusaDoDirect,
 } from './envio';
 
@@ -179,5 +181,46 @@ describe('JPEG com outra extensão (revisão do PR #539)', () => {
   it('`.jfif` e `.jpe` são JPEG: o servidor aceita o que o compositor aceitou pelo MIME', () => {
     expect(conferirParaODirect({ tipo: 'image', texto: null, filename: 'foto.jfif' }).ok).toBe(true);
     expect(conferirParaODirect({ tipo: 'image', texto: null, filename: 'foto.JPE' }).ok).toBe(true);
+  });
+});
+
+describe('nomeComExtensaoDoDirect — arquivo sem extensão (revisão do PR #539)', () => {
+  it('nome sem extensão ganha a do MIME, e o servidor passa a aceitá-lo', () => {
+    const nome = nomeComExtensaoDoDirect('image', 'foto', 'image/jpeg');
+    expect(nome).toBe('foto.jpg');
+    // O caminho no Storage sai do nome (`buildMediaPath`): sem a extensão
+    // ele terminava em `.bin`, e o servidor recusava o que o compositor aceitou.
+    expect(
+      conferirParaODirect({ tipo: 'image', texto: null, mediaUrl: `account-x/1-${nome}` }).ok
+    ).toBe(true);
+    expect(nomeComExtensaoDoDirect('document', 'contrato', 'application/pdf')).toBe('contrato.pdf');
+    expect(nomeComExtensaoDoDirect('audio', 'voz', 'audio/mp4')).toBe('voz.m4a');
+  });
+
+  it('nome com extensão aceita fica como está', () => {
+    expect(nomeComExtensaoDoDirect('image', 'foto.JPEG', 'image/jpeg')).toBe('foto.JPEG');
+    expect(nomeComExtensaoDoDirect('document', 'a.pdf', 'application/pdf')).toBe('a.pdf');
+  });
+
+  it('extensão que o Direct não aceita na classe ganha a do MIME no fim', () => {
+    expect(nomeComExtensaoDoDirect('image', 'foto.final', 'image/png')).toBe('foto.final.png');
+  });
+
+  it('MIME fora da régua ou classe desconhecida não mexe no nome (quem recusa é a régua)', () => {
+    expect(nomeComExtensaoDoDirect('image', 'foto', 'image/gif')).toBe('foto');
+    expect(nomeComExtensaoDoDirect('sticker', 'foto', 'image/png')).toBe('foto');
+  });
+
+  it('todo MIME aceito tem extensão aceita na MESMA classe', () => {
+    for (const [classe, mimes] of Object.entries(MIMES_DO_DIRECT)) {
+      for (const mime of mimes) {
+        const nome = nomeComExtensaoDoDirect(classe, 'x', mime);
+        expect(nome, `${classe} ${mime}`).not.toBe('x');
+        expect(
+          conferirParaODirect({ tipo: classe, texto: null, filename: nome }).ok,
+          `${classe} ${mime}`
+        ).toBe(true);
+      }
+    }
   });
 });
