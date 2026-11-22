@@ -226,6 +226,11 @@ export function CbChannelsPanel() {
    * voltou, e a tela diz isso em vez de afirmar "nenhum app cadastrado".
    */
   const [igApp, setIgApp] = useState<{
+    /**
+     * A instalação conecta pela central do Instagram (U-3): o app é o da
+     * Atlas, e a tela não pede app nenhum.
+     */
+    central: boolean;
     configurado: boolean;
     /** Tipo do app cadastrado (1153); `null` sem app. */
     login: 'instagram' | 'unificado' | null;
@@ -319,9 +324,10 @@ export function CbChannelsPanel() {
       : igAppLogin === 'unificado';
   // O login que o botão "Conectar" de fato abre: o do app SALVO (a rota lê o
   // app gravado). Durante a edição, o formulário pode mostrar o outro tipo.
-  const igConectaPeloUnificado = igApp?.configurado
-    ? igApp.login === 'unificado'
-    : igAppLogin === 'unificado';
+  const igPelaCentral = igApp?.central === true;
+  const igConectaPeloUnificado =
+    igPelaCentral ||
+    (igApp?.configurado ? igApp.login === 'unificado' : igAppLogin === 'unificado');
 
   const load = useCallback(async () => {
     // Este painel é o ÚNICO escritor de canal, e todo escritor recarrega por
@@ -666,13 +672,14 @@ export function CbChannelsPanel() {
       const res = await fetch('/api/cb/instagram/app');
       const payload = await res.json();
       if (!res.ok) {
-        setIgApp({ configurado: false, login: null, appId: null, configId: null, redirectUri: '', falhou: true });
+        setIgApp({ central: false, configurado: false, login: null, appId: null, configId: null, redirectUri: '', falhou: true });
         toast.error(payload.error || t('instagramAppLoadFailed'));
         return;
       }
       const login =
         payload.login === 'instagram' || payload.login === 'unificado' ? payload.login : null;
       setIgApp({
+        central: payload.central === true,
         configurado: Boolean(payload.configurado),
         login,
         appId: typeof payload.appId === 'string' ? payload.appId : null,
@@ -683,7 +690,7 @@ export function CbChannelsPanel() {
       setIgAppId(typeof payload.appId === 'string' ? payload.appId : '');
       setIgConfigId(typeof payload.configId === 'string' ? payload.configId : '');
     } catch {
-      setIgApp({ configurado: false, login: null, appId: null, configId: null, redirectUri: '', falhou: true });
+      setIgApp({ central: false, configurado: false, login: null, appId: null, configId: null, redirectUri: '', falhou: true });
       toast.error(t('networkError'));
     }
   }, [t]);
@@ -712,6 +719,7 @@ export function CbChannelsPanel() {
       }
       toast.success(t('instagramAppSaved'));
       setIgApp({
+        central: igApp?.central ?? false,
         configurado: true,
         login: igAppLogin,
         appId: typeof payload.appId === 'string' ? payload.appId : igAppId.trim(),
@@ -789,7 +797,8 @@ export function CbChannelsPanel() {
             verifyToken: payload.verifyToken ?? null,
             unificado: payload.igLogin === 'unificado' || payload.igLogin === 'central',
           });
-        } else {
+        } else if (payload.igLogin !== 'central') {
+          // Pela central, o webhook é o do app da Atlas: não há o que lembrar.
           toast.info(t('instagramWebhookAlreadyToast'));
         }
       })();
@@ -1344,14 +1353,18 @@ export function CbChannelsPanel() {
                     )}
                     {ehInstagram(channel) && (
                       <>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => void abrirWebhookDoInstagram(channel)}
-                        >
-                          <Copy className="mr-2 h-4 w-4" />
-                          {t('instagramWebhookAction')}
-                        </Button>
+                        {/* Pela central (U-3), o webhook é o do app da Atlas, na
+                            central: o escritório não tem o que colar na Meta. */}
+                        {channel.ig_login !== 'central' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void abrirWebhookDoInstagram(channel)}
+                          >
+                            <Copy className="mr-2 h-4 w-4" />
+                            {t('instagramWebhookAction')}
+                          </Button>
+                        )}
                         {/* O token do login unificado não vence (1153): renovar é
                             só do login do Instagram, e o token colado de lá
                             deixaria a conexão do unificado muda. */}
@@ -1721,11 +1734,21 @@ export function CbChannelsPanel() {
             <>
               <DialogHeader>
                 <DialogTitle>{t('instagramStepTitle')}</DialogTitle>
-                <DialogDescription>{t('instagramStepDescription')}</DialogDescription>
+                {/* Pela central não há app a cadastrar nem token a colar: a
+                    descrição de sempre afirmaria os dois. */}
+                <DialogDescription>
+                  {igPelaCentral ? t('instagramStepDescriptionCentral') : t('instagramStepDescription')}
+                </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
                 {/* 1. O app da Meta (990): cadastrado uma vez, serve a todas as
-                    contas do escritório. */}
+                    contas do escritório. Pela central (U-3), não há app a
+                    cadastrar: o da Atlas serve a todos os escritórios. */}
+                {igPelaCentral ? (
+                  <p className="rounded-md border border-border p-3 text-sm text-muted-foreground">
+                    {t('instagramCentralDesc')}
+                  </p>
+                ) : (
                 <div className="space-y-3 rounded-md border border-border p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -1949,6 +1972,7 @@ export function CbChannelsPanel() {
                     </div>
                   ) : null}
                 </div>
+                )}
 
                 {/* 2. O login do Instagram: a conta entra, autoriza, e o CRM
                     recebe o token direto da Meta. É navegação, não fetch.
@@ -1960,7 +1984,7 @@ export function CbChannelsPanel() {
                     erro do Instagram), então o sintoma é nomeado aqui. */}
                 <div className="space-y-2 rounded-md border border-border p-3">
                   <ol className="list-inside list-decimal space-y-1 text-xs text-muted-foreground">
-                    <li>{t('instagramOauthStep_1')}</li>
+                    {!igPelaCentral && <li>{t('instagramOauthStep_1')}</li>}
                     <li>
                       {igConectaPeloUnificado ? t('instagramOauthStepUnificado_2') : t('instagramOauthStep_2')}
                     </li>
@@ -1968,7 +1992,7 @@ export function CbChannelsPanel() {
                   <Button
                     type="button"
                     className="w-full"
-                    disabled={!igApp?.configurado}
+                    disabled={!igApp?.configurado && !igPelaCentral}
                     onClick={() => window.location.assign('/api/cb/instagram/oauth/start')}
                   >
                     <InstagramGlyph className="mr-2 h-4 w-4" />
@@ -1979,11 +2003,13 @@ export function CbChannelsPanel() {
                       ? t('instagramAppLoading')
                       : igApp.falhou
                         ? t('instagramAppLoadFailed')
-                        : igApp.configurado
-                          ? igConectaPeloUnificado
-                            ? t('instagramOauthSymptomUnificado')
-                            : t('instagramOauthSymptom')
-                          : t('instagramOauthNeedsApp')}
+                        : igPelaCentral
+                          ? t('instagramOauthSymptomCentral')
+                          : igApp.configurado
+                            ? igConectaPeloUnificado
+                              ? t('instagramOauthSymptomUnificado')
+                              : t('instagramOauthSymptom')
+                            : t('instagramOauthNeedsApp')}
                   </p>
                 </div>
 

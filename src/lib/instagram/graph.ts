@@ -228,6 +228,11 @@ export interface ClienteInstagram {
    */
   assinarWebhooks(campos: readonly string[]): Promise<void>;
   /**
+   * `DELETE /{ig-id}/subscribed_apps`: a conta para de entregar ao app (a
+   * conexão pela central que sai do CRM, U-3).
+   */
+  tirarWebhooks(): Promise<void>;
+  /**
    * `POST /me/messages` (Fase 4; no unificado, `/{ig-id}/messages`, o mesmo
    * corpo). Devolve o `mid` da mensagem — o mesmo que
    * volta no eco do webhook e que o UNIQUE `(conversation_id, message_id)`
@@ -287,7 +292,7 @@ async function lerResposta(
 }
 
 interface InitDoPedido {
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'DELETE';
   corpo?: unknown;
   prazoMs?: number;
 }
@@ -408,6 +413,15 @@ export function criarClienteInstagram(
         throw new InstagramApiError(
           'meta_error',
           'A assinatura do webhook não confirmou (`success` ausente)'
+        );
+      }
+    },
+    async tirarWebhooks() {
+      const r = await pedir(`${dono}/subscribed_apps`, { method: 'DELETE' });
+      if (r.success !== true) {
+        throw new InstagramApiError(
+          'meta_error',
+          'A retirada do webhook não confirmou (`success` ausente)'
         );
       }
     },

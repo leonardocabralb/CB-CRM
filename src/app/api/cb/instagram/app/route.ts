@@ -4,7 +4,8 @@
 //   GET — está cadastrado? de que tipo (login do Instagram ou unificado)?
 //         qual App ID e ID da configuração? e a URI de retorno que o painel
 //         da Meta precisa conhecer (derivada do pedido, como o callback a
-//         deriva). O segredo NÃO sai daqui, nem mascarado.
+//         deriva). O segredo NÃO sai daqui, nem mascarado. Com a central do
+//         Instagram no ambiente (U-3), `central: true` e app nenhum.
 //   PUT — cadastra ou troca: `login` (`instagram`, o padrão, ou
 //         `unificado`), `app_id` (só dígitos), `config_id` (só no unificado)
 //         e `app_secret` (obrigatório no primeiro cadastro e ao TROCAR o tipo
@@ -27,6 +28,7 @@ import {
   lerAppDoInstagram,
   loginDoApp,
 } from '@/lib/instagram/app';
+import { estadoDoCliente } from '@/lib/instagram/central/cliente';
 import { origemDoPedido, urlDeRedirecionamento } from '@/lib/instagram/oauth';
 
 export async function GET(request: Request) {
@@ -35,6 +37,21 @@ export async function GET(request: Request) {
     const limit = checkRateLimit(`cb:igApp:${ctx.userId}`, RATE_LIMITS.adminAction);
     if (!limit.success) return rateLimitResponse(limit);
 
+    // Pela central (U-3), o app é o da Atlas: a tela não pede app nenhum, e o
+    // app antigo da conta nem é lido (um segredo que não decifra mais, depois
+    // de uma troca de chave, não pode tirar o botão de conectar).
+    const central = estadoDoCliente();
+    if (central.ligado && central.incompleto === null) {
+      return NextResponse.json({
+        central: true,
+        configurado: false,
+        login: null,
+        appId: null,
+        configId: null,
+        atualizadoEm: null,
+        redirectUri: urlDeRedirecionamento(origemDoPedido(request)),
+      });
+    }
     let app;
     try {
       app = await lerAppDoInstagram(supabaseAdmin(), ctx.accountId);
@@ -43,6 +60,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Não foi possível ler o app da Meta.' }, { status: 500 });
     }
     return NextResponse.json({
+      central: false,
       configurado: app !== null,
       login: app?.login ?? null,
       appId: app?.appId ?? null,
