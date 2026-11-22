@@ -196,6 +196,58 @@ export function arquivoCabeNoDirect(
 }
 
 /**
+ * A extensão de cada MIME de `MIMES`, para o nome do arquivo que chega sem
+ * ela. Pino em `envio.test.ts`: todo MIME aceito tem extensão aceita na MESMA
+ * classe.
+ */
+const EXTENSAO_DO_MIME: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'video/mp4': 'mp4',
+  'video/ogg': 'ogg',
+  'video/x-msvideo': 'avi',
+  'video/avi': 'avi',
+  'video/quicktime': 'mov',
+  'video/webm': 'webm',
+  'audio/aac': 'aac',
+  'audio/x-aac': 'aac',
+  'audio/mp4': 'm4a',
+  'audio/m4a': 'm4a',
+  'audio/x-m4a': 'm4a',
+  'audio/wav': 'wav',
+  'audio/x-wav': 'wav',
+  'audio/wave': 'wav',
+  'application/pdf': 'pdf',
+};
+
+/**
+ * O nome com que o arquivo sobe para o Direct: o mesmo, ou com a extensão do
+ * MIME quando ele não traz uma que o Direct aceite.
+ *
+ * ⚠️ O compositor aceita pelo MIME (`arquivoCabeNoDirect`) e o servidor
+ * confere pela EXTENSÃO do nome ou do caminho (`conferirParaODirect`). Uma
+ * foto chamada só "foto" subia como `foto.bin` (`buildMediaPath`): passava
+ * numa ponta e era recusada na outra (revisão do PR #539).
+ */
+export function nomeComExtensaoDoDirect(
+  classe: string,
+  nome: string,
+  mime: string
+): string {
+  if (!ehClasseDoCrm(classe)) return nome;
+  const ext = extensaoDoArquivo(nome, null);
+  if (ext && EXTENSOES[classe].includes(ext)) return nome;
+  const daMime = EXTENSAO_DO_MIME[mime.split(';')[0].trim().toLowerCase()];
+  if (!daMime || !EXTENSOES[classe].includes(daMime)) return nome;
+  return `${nome.trim() || 'arquivo'}.${daMime}`;
+}
+
+/** Os MIMEs aceitos por classe — só para o pino de `EXTENSAO_DO_MIME`. */
+export const MIMES_DO_DIRECT: Readonly<Record<ClasseDoCrm, readonly string[]>> =
+  MIMES;
+
+/**
  * A janela do Direct está aberta, contada da última mensagem da PESSOA por
  * esta conexão? Sem mensagem dela, fechada: só ela abre a conversa.
  */

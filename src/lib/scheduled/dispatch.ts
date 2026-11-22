@@ -16,6 +16,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { ehInstagram } from '@/lib/cb-channels/transporte';
 import { CHAT_MEDIA_BUCKET } from '@/lib/storage/buckets';
 import {
   sendMessageToConversation,
@@ -433,7 +434,7 @@ async function resolverCitacao(
 
   const { data, error } = await admin
     .from('messages')
-    .select('id, deleted_at')
+    .select('id, deleted_at, channel_id')
     .eq('id', linha.reply_to_message_id)
     .eq('conversation_id', linha.conversation_id)
     .maybeSingle();
@@ -447,8 +448,28 @@ async function resolverCitacao(
     return { citar: null, perdida: true };
   }
 
-  const vale = citacaoAindaVale(data as { deleted_at?: string | null } | null);
-  return { citar: vale ? linha.reply_to_message_id : null, perdida: !vale };
+  const citada = data as { deleted_at?: string | null; channel_id?: string | null } | null;
+  if (!citacaoAindaVale(citada)) return { citar: null, perdida: true };
+
+  // NOSSO — Instagram Direct (Fase 4): o núcleo RECUSA citar, pelo Direct, a
+  // mensagem que passou por outra conexão (o `mid` dela não existe lá) — e a
+  // agendada falhava inteira em vez de sair sem a citação, como sai a apagada
+  // (revisão do PR #539). O canal só é lido quando as duas conexões diferem.
+  if (citada?.channel_id && linha.channel_id && citada.channel_id !== linha.channel_id) {
+    const { data: canal, error: erroDoCanal } = await admin
+      .from('cb_channels')
+      .select('kind')
+      .eq('id', linha.channel_id)
+      // Service role, sem RLS por baixo (como em `reivindicar`).
+      .eq('account_id', linha.account_id)
+      .maybeSingle();
+    if (erroDoCanal) {
+      console.warn('[agendadas] não deu para conferir a conexão da citação:', erroDoCanal.message);
+      return { citar: null, perdida: true };
+    }
+    if (ehInstagram(canal as { kind: string } | null)) return { citar: null, perdida: true };
+  }
+  return { citar: linha.reply_to_message_id, perdida: false };
 }
 
 /** O cadeado. `true` = esta chamada é a dona da linha agora. */

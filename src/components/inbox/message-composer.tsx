@@ -119,6 +119,7 @@ import { ehEvolution, ehInstagram } from "@/lib/cb-channels/transporte";
 import {
   arquivoCabeNoDirect,
   bytesDoTexto,
+  nomeComExtensaoDoDirect,
   TETO_DO_TEXTO_DO_DIRECT,
   type RecusaDoDirect,
 } from "@/lib/instagram/envio";
@@ -272,6 +273,8 @@ type Retida =
       origem: string;
       itens: MediaDraft[];
       replyToId?: string;
+      /** NOSSO — Instagram Direct: o canal da RETENÇÃO não leva legenda. */
+      semLegenda: boolean;
       enviar: (payload: SendMediaPayload) => boolean | Promise<boolean>;
       rascunho: (novo: NovosAnexos<MediaDraft>) => void;
     };
@@ -872,7 +875,14 @@ export function MessageComposer({
         path: item.path,
         // Audio takes no caption (Meta rejects it). Everything else: the
         // trimmed caption, or undefined when blank.
-        caption: podeTerLegenda(item.kind) ? item.caption.trim() || undefined : undefined,
+        // ⚠️ NOSSO — no Instagram o campo some (`semLegenda`), mas a legenda
+        // digitada ANTES de a conexão carregar continuava no item: ia ao
+        // servidor, que recusa, e ninguém a via para apagar (revisão do PR
+        // #539). Ela fica no item: volta à prévia no Desfazer ou na falha.
+        caption:
+          podeTerLegenda(item.kind) && !p.semLegenda
+            ? item.caption.trim() || undefined
+            : undefined,
         filename: item.kind === "document" ? item.filename : undefined,
         replyToId: p.replyToId,
       });
@@ -1585,24 +1595,31 @@ export function MessageComposer({
       // NOSSO — Instagram Direct (Fase 4, D5): só imagem png/jpeg até 8 MB,
       // vídeo, áudio aac/m4a/wav/mp4 e PDF. Recusado ANTES de subir: no bucket
       // ele viraria órfão, e o envio morreria no servidor.
+      let paraSubir = file;
       if (ehInstagram(channelKind)) {
         const recusa = arquivoCabeNoDirect(kind, file.type, file.size);
         if (recusa) {
           toast.error(fraseDoDirect(recusa));
           return;
         }
+        // ⚠️ Aceito pelo MIME, conferido pela EXTENSÃO no servidor: o nome
+        // sem ela ("foto") subiria como `foto.bin` e seria recusado no envio.
+        const nome = nomeComExtensaoDoDirect(kind, file.name, file.type);
+        if (nome !== file.name) {
+          paraSubir = new File([file], nome, { type: file.type, lastModified: file.lastModified });
+        }
       }
       const origem = conversationId;
       setBusy(true);
       try {
-        const { publicUrl, path } = await uploadAccountMedia(CHAT_MEDIA_BUCKET, file);
+        const { publicUrl, path } = await uploadAccountMedia(CHAT_MEDIA_BUCKET, paraSubir);
         // ⚠️ ACRESCENTA à fila (não substitui): o compositor passou a levar
         // vários anexos, e cada um vira uma mensagem.
         const item = novoDraft({
           kind,
           mediaUrl: publicUrl,
           path,
-          filename: file.name,
+          filename: paraSubir.name,
           caption: "",
           mime: file.type,
         });
@@ -1978,7 +1995,9 @@ export function MessageComposer({
           // dobro.
           if (entreguesRef.current.has(item.path)) continue;
           if (!lerDrafts().some((d) => d.id === item.id)) continue;
-          const legenda = podeTerLegenda(item.kind) ? item.caption.trim() : "";
+          // NOSSO — no Instagram, sem a legenda escondida (ver `enviarAnexo`).
+          const legenda =
+            podeTerLegenda(item.kind) && !ehInstagram(channelKind) ? item.caption.trim() : "";
           const ok = await agendar(legenda, { anexo: item, replyToId: citada });
           // ⚠️ Só sai da fila quando DEU CERTO, e sem apagar o objeto do
           // bucket: ele passou a pertencer à agendada, e o disparador vai
@@ -2024,6 +2043,7 @@ export function MessageComposer({
       origem: conversationId,
       itens,
       replyToId: citada,
+      semLegenda: ehInstagram(channelKind),
       // O despachante da ORIGEM, capturado na retenção — ver `handleSend`.
       enviar: onSendMediaRef.current,
       // E a fila de rascunho dela, para onde volta o que falhar ou for desfeito.
@@ -2035,7 +2055,7 @@ export function MessageComposer({
     const retidos = new Set(itens.map((d) => d.id));
     setDrafts((atual) => atual.filter((d) => !retidos.has(d.id)));
     setSelecionado(null);
-  }, [drafts, setDrafts, lerDrafts, busy, conexaoForaDoAr, replyTo?.id, quandoAg, agendar, porQrCode, t, liberarPendente, conversationId]);
+  }, [drafts, setDrafts, lerDrafts, busy, conexaoForaDoAr, replyTo?.id, quandoAg, agendar, porQrCode, t, liberarPendente, conversationId, channelKind]);
 
   /** Descarta UM item — recolhe o objeto, que subiu e não foi enviado. */
   const discardDraft = useCallback(

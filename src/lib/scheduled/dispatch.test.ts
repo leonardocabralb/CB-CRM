@@ -49,7 +49,11 @@ interface Cfg {
   /** Erro do Storage — separado de "não existe", e tratado diferente. */
   storageFalhou?: boolean;
   /** A mensagem citada, como o banco a devolve. `null` = sumiu. */
-  citada?: { id: string; deleted_at: string | null } | null;
+  citada?: { id: string; deleted_at: string | null; channel_id?: string | null } | null;
+  /** A conexão da agendada, lida só quando a citada passou por OUTRA. */
+  canalDaAgendada?: { kind: string } | null;
+  /** A leitura da conexão da agendada falha. */
+  canalFalhou?: boolean;
 }
 
 function makeDb(cfg: Cfg) {
@@ -81,6 +85,11 @@ function makeDb(cfg: Cfg) {
         data: 'citada' in cfg ? cfg.citada : { id: 'msg-citada', deleted_at: null },
         error: null,
       };
+    }
+    if (op.tabela === 'cb_channels') {
+      return cfg.canalFalhou
+        ? { data: null, error: { message: 'banco fora do ar' } }
+        : { data: cfg.canalDaAgendada ?? { kind: 'evolution' }, error: null };
     }
     if (op.eq.status === 'pending') return { data: cfg.vencidas ?? [], error: null };
     if (op.in.status) return { data: cfg.uma ?? null, error: null };
@@ -584,6 +593,69 @@ describe('citação (932)', () => {
     expect(r.enviadas).toBe(1);
     expect(enviar.mock.calls[0][2].replyToMessageId).toBeNull();
     expect(desfechos()[0].payload!.citacao_perdida).toBe(true);
+  });
+
+  describe('citada que passou por OUTRA conexão (revisão do PR #539)', () => {
+    const DE_OUTRA = { id: 'msg-citada', deleted_at: null, channel_id: 'canal-do-whatsapp' };
+
+    it('⚠️ pelo Instagram: sai sem a citação, em vez de falhar inteira', async () => {
+      // O núcleo recusa citar pelo Direct a mensagem de outra conexão (o
+      // `mid` dela não existe lá): passada adiante, a agendada virava `failed`.
+      const { db, desfechos, selects } = makeDb({
+        vencidas: [CITANDO],
+        citada: DE_OUTRA,
+        canalDaAgendada: { kind: 'instagram' },
+      });
+
+      const r = await dispararVencidas(db);
+
+      // A conexão lida é a DA AGENDADA, presa à conta (service role).
+      expect(selects.find((s) => s.tabela === 'cb_channels')!.eq).toEqual({
+        id: 'canal-1',
+        account_id: 'conta-1',
+      });
+      expect(r.enviadas).toBe(1);
+      expect(enviar.mock.calls[0][2].replyToMessageId).toBeNull();
+      expect(desfechos()[0].payload!.citacao_perdida).toBe(true);
+    });
+
+    it('pelo WhatsApp nada muda: cita, como o núcleo aceita', async () => {
+      const { db, desfechos } = makeDb({
+        vencidas: [CITANDO],
+        citada: DE_OUTRA,
+        canalDaAgendada: { kind: 'evolution' },
+      });
+
+      await dispararVencidas(db);
+
+      expect(enviar.mock.calls[0][2].replyToMessageId).toBe('msg-citada');
+      expect(desfechos()[0].payload!.citacao_perdida).toBe(false);
+    });
+
+    it('a conexão não se lê: cai no lado de não citar, como a citada ilegível', async () => {
+      const { db, desfechos } = makeDb({ vencidas: [CITANDO], citada: DE_OUTRA, canalFalhou: true });
+
+      const r = await dispararVencidas(db);
+
+      expect(r.enviadas).toBe(1);
+      expect(enviar.mock.calls[0][2].replyToMessageId).toBeNull();
+      expect(desfechos()[0].payload!.citacao_perdida).toBe(true);
+    });
+
+    it('a MESMA conexão (ou citada sem carimbo) não lê o canal', async () => {
+      for (const citada of [
+        { id: 'msg-citada', deleted_at: null, channel_id: 'canal-1' },
+        { id: 'msg-citada', deleted_at: null, channel_id: null },
+      ]) {
+        enviar.mockClear();
+        const { db, selects } = makeDb({ vencidas: [CITANDO], citada });
+
+        await dispararVencidas(db);
+
+        expect(enviar.mock.calls[0][2].replyToMessageId).toBe('msg-citada');
+        expect(selects.some((s) => s.tabela === 'cb_channels')).toBe(false);
+      }
+    });
   });
 
   it('linha sem citação não marca nada e não vai ao banco por isso', async () => {
