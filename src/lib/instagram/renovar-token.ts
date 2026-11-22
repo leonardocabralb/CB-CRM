@@ -17,6 +17,9 @@
 //     200 com o mesmo prazo não é renovação (fica para o próximo ciclo);
 //   · só o token RECUSADO (190) marca a conexão como desconectada, com o
 //     motivo. Rede, limite e erro da Meta tentam de novo no ciclo seguinte;
+//   · a tentativa é carimbada ANTES do pedido (1152), e o lote começa pela
+//     tentada há mais tempo: a conexão que falha sempre vai para o fim da
+//     fila e não segura as outras;
 //   · as DUAS escritas (o token novo e a marca de desconectada) são CERCADAS
 //     pelo carimbo lido: reconectar a conta no meio grava um token novo, e a
 //     resposta atrasada sobre o velho não o sobrescreve nem o desconecta.
@@ -103,7 +106,11 @@ export async function renovarTokensDoInstagram(
     // vencidos ocupariam o lote e os válidos nunca seriam renovados. Dois
     // `.or()` na mesma consulta já rodam em produção (`atraso-de-entrega.ts`).
     .or(`ig_token_expires_at.is.null,ig_token_expires_at.gt.${agoraIso}`)
-    // O que vence primeiro vai primeiro: o prazo do ciclo pode cortar o resto.
+    // ⚠️ RODÍZIO (1152): a tentada há mais tempo (ou nunca) vai primeiro. Pela
+    // validade só, a conexão que a Meta recusa sempre ficava na frente do lote
+    // a cada ciclo, e as de trás nunca renovavam (revisão do PR #539). Entre
+    // as empatadas, o que vence primeiro: o prazo do ciclo pode cortar o resto.
+    .order('ig_token_refresh_tried_at', { ascending: true, nullsFirst: true })
     .order('ig_token_expires_at', { ascending: true, nullsFirst: false })
     .limit(100);
   if (error) {
@@ -125,6 +132,24 @@ export async function renovarTokensDoInstagram(
       canal.ig_token_expires_at &&
       new Date(canal.ig_token_expires_at).getTime() <= agora.getTime()
     ) {
+      continue;
+    }
+    // ⚠️ A TENTATIVA é carimbada ANTES do trabalho (1152): o pedido pode
+    // estourar o prazo, e o processo pode morrer no `-m` do agendador — um
+    // carimbo depois não chegaria a ser gravado, e a conexão voltaria à frente
+    // do lote. Sem carimbo, sem pedido: o banco que não grava isto também não
+    // gravaria o token novo.
+    const { error: erroDoCarimbo } = await admin
+      .from('cb_channels')
+      .update({ ig_token_refresh_tried_at: agoraIso })
+      .eq('id', canal.id)
+      .eq('kind', 'instagram');
+    if (erroDoCarimbo) {
+      console.error(
+        `[instagram/token] ${canal.id}: carimbar a tentativa falhou:`,
+        erroDoCarimbo.message
+      );
+      resultado.falhas++;
       continue;
     }
     let tokenAtual: string;

@@ -300,3 +300,29 @@ describe('a fila de anexos e a troca de conversa (#146)', () => {
     expect(tipo).not.toContain('replyTo');
   });
 });
+
+describe('Instagram Direct: a legenda escondida não sai (revisão do PR #539)', () => {
+  // No Instagram o campo de legenda some (`semLegenda`), mas a digitada antes
+  // de a conexão carregar ficava no item: ia ao servidor, que recusa, e
+  // ninguém a via para apagar. O item a GUARDA (volta à prévia no Desfazer ou
+  // na falha); só o envio e o agendamento a deixam de fora.
+  it('a retenção carimba o canal, e o envio de cada anexo respeita a marca', () => {
+    const c = compositor();
+    expect(c).toMatch(/semLegenda: ehInstagram\(channelKind\),/);
+    expect(c).toMatch(
+      /caption:\s*podeTerLegenda\(item\.kind\) && !p\.semLegenda\s*\?\s*item\.caption\.trim\(\) \|\| undefined\s*:\s*undefined,/,
+    );
+  });
+
+  it('o agendamento dos anexos também deixa a legenda de fora no Instagram', () => {
+    expect(compositor()).toMatch(
+      /const legenda =\s*podeTerLegenda\(item\.kind\) && !ehInstagram\(channelKind\) \? item\.caption\.trim\(\) : "";/,
+    );
+  });
+
+  it('o arquivo sobe com a extensão que o servidor confere (`foto` → `foto.jpg`)', () => {
+    const c = compositor();
+    expect(c).toMatch(/const nome = nomeComExtensaoDoDirect\(kind, file\.name, file\.type\);/);
+    expect(c).toMatch(/await uploadAccountMedia\(CHAT_MEDIA_BUCKET, paraSubir\);/);
+  });
+});

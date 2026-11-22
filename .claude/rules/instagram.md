@@ -135,6 +135,11 @@ Pino `send-message-instagram.test.ts`.
   vídeo mp4/ogg/avi/mov/webm, áudio aac/m4a/wav/mp4, documento SÓ PDF), pela
   extensão do nome ou do caminho. O compositor recusa antes de subir
   (`arquivoCabeNoDirect`, pelo MIME; imagem até 8 MB), o acervo também.
+  ⚠️ As duas pontas medem coisas diferentes (MIME × extensão): o compositor
+  sobe com a extensão do MIME o nome que não a traz (`nomeComExtensaoDoDirect`;
+  "foto" subia como `foto.bin`), e o envio e o agendamento deixam de fora a
+  legenda digitada antes de a conexão carregar (`Retida.semLegenda`; o item a
+  guarda para o Desfazer). Revisão do PR #539.
 - ⚠️⚠️ **A janela é conferida no SERVIDOR**: a última mensagem da PESSOA por
   ESTA conexão (`messages.channel_id`), 24 h. Sem mensagem dela, fechada (só
   ela abre). `window_closed` (409) e o subcódigo 2534022 da Meta dão a mesma
@@ -157,15 +162,18 @@ Pino `send-message-instagram.test.ts`.
   resposta aparecia como do celular, ou o envio virava `db_error` incerto.
 - **Citar cabe** (`reply_to: { mid }`; D5 revisto em 21/11/2026 pela doc
   nova): a citada é a DM inteira (o `#n` da linha irmã de anexo extra é
-  cortado), e citada apagada ou de outra conexão é recusada. Reagir segue
-  fora (o botão some).
+  cortado), e citada apagada ou de outra conexão é recusada pelo núcleo. A
+  AGENDADA sai sem a citação nos dois casos (`resolverCitacao`, como a
+  apagada desde a 932), em vez de falhar inteira. Reagir segue fora (o botão
+  some).
 - **Nota de voz em WAV** (D5): o compositor grava pelo `waveWorker` do
   opus-recorder (`/public/opus/`) quando o canal ativo é Instagram, com teto
   de 2 min 30 s (WAV 48 kHz ≈ 5,8 MB/min contra os 16 MB de envio).
 - ⚠️ **O Direct não formata** (medido no 1º envio real, 21/11/2026: o
   `*Nome:*` chegou com os asteriscos). A assinatura sai `Nome:` (estilo
   `simples` de `assinatura.ts`), no núcleo, na bolha otimista e no "Tentar de
-  novo" — os três pelo canal; os botões N/I/S/</> e os atalhos de formatação
+  novo" — os três pelo canal (o "Tentar de novo" da linha GRAVADA, pelo canal
+  por onde ELA saiu: a conversa pode ter trocado); os botões N/I/S/</> e os atalhos de formatação
   somem na conversa do Instagram.
 - **Human Agent (D2) segue sem efeito**: o interruptor existe e diz isso;
   nada lê `ig_human_agent` até a Meta aprovar a feature.
@@ -199,7 +207,10 @@ Pino `send-message-instagram.test.ts`.
   é o `expires_in` MEDIDO e tem de passar do antigo (200 sem estender não é
   renovação); as duas escritas (token novo e `disconnected`) são cercadas pelo
   carimbo lido (reconectar no meio ganha). Só o 190 marca `disconnected` com
-  `last_error`; o resto tenta no ciclo seguinte. Corre sob o PRAZO COMUM da
+  `last_error`; o resto tenta no ciclo seguinte. ⚠️ A TENTATIVA é carimbada
+  ANTES do pedido (`ig_token_refresh_tried_at`, 1152) e o lote começa pela
+  tentada há mais tempo: ordenada só pela validade, a conexão que a Meta
+  recusa sempre ficava à frente das 100, e as de trás venciam sem renovar. Corre sob o PRAZO COMUM da
   manutenção: não começa pedido (10 s) que não caiba nele. É a segunda exceção do `Bearer`: a doc só mostra o token na
   query do `refresh_access_token`.
 

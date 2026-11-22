@@ -6,7 +6,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 // ============================================================
 
 vi.mock('@/lib/whatsapp/encryption', () => ({
-  decrypt: (s: string) => s.replace(/^cifrado:/, ''),
+  decrypt: (s: string) => {
+    if (s === 'quebrado') throw new Error('não decifra');
+    return s.replace(/^cifrado:/, '');
+  },
   encrypt: (s: string) => `cifrado:${s}`,
 }));
 
@@ -30,8 +33,13 @@ function fakeAdmin(opcoes: {
   canais: Record<string, unknown>[];
   erroDaLeitura?: string;
   linhasGravadas?: number;
+  /** O carimbo da tentativa (1152) não grava. */
+  erroDoCarimbo?: string;
 }) {
+  // `escritas` é o TRABALHO (token novo, desconectada); o carimbo da
+  // tentativa, que vem antes de todo pedido, fica à parte em `carimbos`.
   const escritas: Escrita[] = [];
+  const carimbos: Escrita[] = [];
   const leitura: [string, unknown][] = [];
   const from = () => {
     let escrita: Escrita | null = null;
@@ -39,7 +47,8 @@ function fakeAdmin(opcoes: {
       select: () => b,
       update: (valores: Record<string, unknown>) => {
         escrita = { valores, filtros: [] };
-        escritas.push(escrita);
+        if ('ig_token_refresh_tried_at' in valores) carimbos.push(escrita);
+        else escritas.push(escrita);
         return b;
       },
       eq: (c: string, v: unknown) => {
@@ -62,6 +71,13 @@ function fakeAdmin(opcoes: {
         return b;
       },
       then: (ok: (v: unknown) => unknown) => {
+        if (escrita && 'ig_token_refresh_tried_at' in escrita.valores) {
+          return Promise.resolve(
+            opcoes.erroDoCarimbo
+              ? { data: null, error: { message: opcoes.erroDoCarimbo } }
+              : { data: null, error: null }
+          ).then(ok);
+        }
         if (escrita) {
           const n = opcoes.linhasGravadas ?? 1;
           return Promise.resolve({
@@ -78,7 +94,7 @@ function fakeAdmin(opcoes: {
     };
     return b;
   };
-  return { admin: { from } as unknown as SupabaseClient, escritas, leitura };
+  return { admin: { from } as unknown as SupabaseClient, escritas, carimbos, leitura };
 }
 
 const CANAL = {
@@ -221,6 +237,62 @@ describe('renovarTokensDoInstagram', () => {
     for (const chamada of erro.mock.calls) {
       expect(chamada.join(' ')).not.toContain('IGAAvelho');
     }
+  });
+});
+
+describe('rodízio: a tentativa é carimbada ANTES do pedido (1152, revisão do PR #539)', () => {
+  it('o lote começa pela tentada há mais tempo, e só depois pela validade', async () => {
+    const { admin, leitura } = fakeAdmin({ canais: [] });
+    await renovarTokensDoInstagram(admin, AGORA, renovar);
+    const ordens = leitura.filter(([c]) => c === 'order').map(([, v]) => v);
+    expect(ordens).toEqual(['ig_token_refresh_tried_at', 'ig_token_expires_at']);
+  });
+
+  it('carimba a conexão antes de pedir à Meta, mesmo quando o pedido falha', async () => {
+    const ordem: string[] = [];
+    const { admin, carimbos } = fakeAdmin({ canais: [CANAL] });
+    renovar.mockImplementation(async () => {
+      ordem.push(`pedido com ${carimbos.length} carimbo(s)`);
+      throw new InstagramApiError('meta_error', 'falhou', 500);
+    });
+    const r = await renovarTokensDoInstagram(admin, AGORA, renovar);
+    expect(ordem).toEqual(['pedido com 1 carimbo(s)']);
+    expect(carimbos[0].valores).toEqual({ ig_token_refresh_tried_at: AGORA.toISOString() });
+    expect(carimbos[0].filtros).toContainEqual(['eq', 'id', 'ch-ig']);
+    expect(carimbos[0].filtros).toContainEqual(['eq', 'kind', 'instagram']);
+    expect(r.falhas).toBe(1);
+  });
+
+  it('o token que não decifra também é carimbado (senão voltaria à frente em todo ciclo)', async () => {
+    const { admin, carimbos } = fakeAdmin({ canais: [{ ...CANAL, access_token: 'quebrado' }] });
+    const r = await renovarTokensDoInstagram(admin, AGORA, renovar);
+    expect(carimbos).toHaveLength(1);
+    expect(renovar).not.toHaveBeenCalled();
+    expect(r.falhas).toBe(1);
+  });
+
+  it('conexão sem token: não há o que tentar, nem carimbo', async () => {
+    const { admin, carimbos } = fakeAdmin({ canais: [{ ...CANAL, access_token: null }] });
+    await renovarTokensDoInstagram(admin, AGORA, renovar);
+    expect(carimbos).toEqual([]);
+    expect(renovar).not.toHaveBeenCalled();
+  });
+
+  it('sem carimbo, sem pedido: o banco que não grava isso não gravaria o token novo', async () => {
+    const { admin, escritas } = fakeAdmin({ canais: [CANAL], erroDoCarimbo: 'banco fora do ar' });
+    const r = await renovarTokensDoInstagram(admin, AGORA, renovar);
+    expect(renovar).not.toHaveBeenCalled();
+    expect(escritas).toEqual([]);
+    expect(r).toMatchObject({ renovados: 0, falhas: 1, desconectadas: 0 });
+  });
+
+  it('vencido e prazo esgotado não são carimbados: não houve tentativa', async () => {
+    const vencido = fakeAdmin({ canais: [{ ...CANAL, ig_token_expires_at: em(-1) }] });
+    await renovarTokensDoInstagram(vencido.admin, AGORA, renovar);
+    expect(vencido.carimbos).toEqual([]);
+    const semPrazo = fakeAdmin({ canais: [CANAL] });
+    await renovarTokensDoInstagram(semPrazo.admin, AGORA, renovar, 5_000, () => 0);
+    expect(semPrazo.carimbos).toEqual([]);
   });
 });
 

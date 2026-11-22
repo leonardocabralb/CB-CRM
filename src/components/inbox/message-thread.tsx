@@ -2158,19 +2158,27 @@ export function MessageThread({
       const r = reenviaveis.get(id);
       if (r?.retida) return;
       const gravada = !r && id === gravadaReenviavel ? messages.find((m) => m.id === id) : undefined;
+      // ⚠️ NOSSO — o estilo da assinatura é o do canal por onde a LINHA saiu
+      // (o carimbo dela), não o de agora: na conversa que trocou do WhatsApp
+      // para o Instagram, o `*Nome:*` gravado não casava com `Nome:` e ficava
+      // no texto, e o envio assinava de novo (revisão do PR #539). Sem
+      // carimbo conhecido, o canal da tela.
+      const canalDaGravada =
+        (gravada?.channel_id ? channelsById.get(gravada.channel_id) : undefined) ??
+        canalDaJanelaRef.current;
       const texto =
         r?.texto ??
         removerAssinaturaDe(
           gravada?.content_text,
           nomeQueAssina,
-          ehInstagram(canalDaJanelaRef.current) ? "simples" : "whatsapp",
+          ehInstagram(canalDaGravada) ? "simples" : "whatsapp",
         );
       if (!texto) return;
       const replyToId = r ? r.replyToId : (gravada?.reply_to_message_id ?? undefined);
       if (!compositorRef.current?.reenviarTexto(texto, replyToId, id)) return;
       marcarReenviavel(id, { texto, replyToId, retida: true });
     },
-    [reenviaveis, marcarReenviavel, gravadaReenviavel, messages, nomeQueAssina],
+    [reenviaveis, marcarReenviavel, gravadaReenviavel, messages, nomeQueAssina, channelsById],
   );
 
   // O "Desfazer" do compositor cancelou o reenvio: o botão volta — se a bolha

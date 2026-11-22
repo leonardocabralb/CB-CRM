@@ -118,10 +118,15 @@ describe('o fio: botão só no texto, e a mesma bolha no reenvio', () => {
     // cliente receberia as duas assinaturas.
     // Só a assinatura DE QUEM TENTOU: `removerAssinatura` comeria um
     // `*Atenção:*` da primeira linha com a assinatura desligada.
-    // No estilo da conversa: no Instagram Direct a assinatura não tem o
-    // negrito do WhatsApp (21/11/2026), e o reenvio tira a que a linha tem.
+    // No estilo do canal por onde a LINHA saiu: no Instagram Direct a
+    // assinatura não tem o negrito do WhatsApp (21/11/2026), e na conversa que
+    // trocou de canal o de AGORA não casaria com o que a linha tem (revisão do
+    // PR #539). Sem carimbo conhecido, o canal da tela.
     expect(tentar).toMatch(
-      /r\?\.texto \?\?\s*removerAssinaturaDe\(\s*gravada\?\.content_text,\s*nomeQueAssina,\s*ehInstagram\(canalDaJanelaRef\.current\) \? "simples" : "whatsapp",?\s*\)/,
+      /const canalDaGravada =\s*\(gravada\?\.channel_id \? channelsById\.get\(gravada\.channel_id\) : undefined\) \?\?\s*canalDaJanelaRef\.current;/,
+    );
+    expect(tentar).toMatch(
+      /r\?\.texto \?\?\s*removerAssinaturaDe\(\s*gravada\?\.content_text,\s*nomeQueAssina,\s*ehInstagram\(canalDaGravada\) \? "simples" : "whatsapp",?\s*\)/,
     );
     expect(tentar).toMatch(/compositorRef\.current\?\.reenviarTexto\(texto, replyToId, id\)/);
   });
