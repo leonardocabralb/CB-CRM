@@ -51,14 +51,18 @@
 No app da Atlas em desenvolvimento, com contas testadoras, e com o receptor
 de teste (`feat/instagram-receptor-de-teste`) atrás de um túnel. Cada passo
 no painel espera o "pode".
-- [ ] M1: o webhook do objeto Instagram é a mesma configuração do webhook da
-      aba antiga? (no app da Atlas só existe a nova; olhar o do CB, só lendo)
-- [ ] M2: que segredo assina a entrega do unificado.
+Em 22/11, o app da Atlas recebeu a URL de retorno e o webhook do receptor de
+teste, provisórios (estudo, §13).
+- [x] M1: o webhook do objeto Instagram é a mesma configuração do webhook da
+      aba antiga? **Não:** são separados (22/11).
+- [ ] M2: que segredo assina a entrega do unificado. (Espera o operador.)
 - [ ] M3: a DM de quem não tem papel no app chega com acesso padrão e o app
-      publicado.
-- [ ] M4: o token sai quando a conta está no mesmo portfólio do app.
-- [ ] M5: o IGSID é o mesmo nos dois logins.
-- [ ] M6: o `subscribed_apps` aceita `message_edit`.
+      publicado. (Espera a verificação: publicar está bloqueado.)
+- [ ] M4: o token sai quando a conta está no mesmo portfólio do app. (Sem
+      conta no portfólio da Atlas para medir.)
+- [ ] M5: o IGSID é o mesmo nos dois logins. (Espera o operador.)
+- [ ] M6: o `subscribed_apps` aceita `message_edit`. O campo está na lista do
+      app (22/11); falta a chamada da conta.
 - [ ] M8: o que a troca do código devolve.
 - [ ] M9: a leitura do perfil funciona com o token novo.
 - [ ] M10: o bloco `messaging` chega igual ao de hoje.
@@ -158,9 +162,10 @@ Branch `feat/instagram-unificado-central`.
       `atlas.env`.
 
 ### U-4 — Painel da Meta (cada passo com o "pode")
-- [ ] A URL de retorno da central na configuração do unificado.
-- [ ] O webhook do objeto Instagram apontando para a central, com os campos
-      de mensagem.
+- [ ] A URL de retorno da central na configuração do unificado, no lugar da
+      do receptor de teste.
+- [ ] O webhook do objeto Instagram apontando para a central, no lugar do
+      receptor de teste (os campos de mensagem já estão assinados).
 - [ ] As contas testadoras.
 - [ ] Publicar o app (modo Ativo).
 

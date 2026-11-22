@@ -563,6 +563,48 @@ conteúdo no Instagram", sem portfólio empresarial):
 - O caminho antigo de criação de app também não tem a tela (complemento no
   §13).
 
+**Medições de 22/11/2026** [MEDIDO]. Foram feitas pelo painel e por um
+receptor de teste fora do repositório, atrás de um túnel temporário, no app da
+Atlas, que está em desenvolvimento. O app do CB foi só lido.
+- **M1, respondida.** No app do CB, o webhook da aba do login do Instagram
+  aponta para o CRM, e o da aba do unificado está vazio. São configurações
+  separadas. O app não tem um produto "Webhooks" à parte: o endereço antigo
+  cai no painel. Configurar o unificado não mexe na conexão de hoje.
+- **A URL de login que a própria Meta gera** (no app da Atlas, depois de
+  salvar a URL de retorno):
+  - `www.facebook.com/dialog/oauth`, sem versão no caminho;
+  - com `client_id`, `config_id`, `display=popup`,
+    `override_default_response_type=true`, `redirect_uri`,
+    `response_type=code`, `state` e `prompt=login`.
+  
+  Confirma o §2.1 e acrescenta o `override_default_response_type=true`.
+- **M6, metade.** A lista de campos do webhook do unificado TEM
+  `message_edit`. Ela traz também `messages`, `message_reactions`,
+  `messaging_postbacks`, `messaging_referral`, `messaging_seen`,
+  `messaging_handover`, `standby`, comentários, menções e `story_insights`.
+  Os seis de mensagem foram assinados no app da Atlas. Falta o
+  `subscribed_apps` da conta, que precisa do token.
+- **O evento de teste da Meta** (botão "Teste" do campo `messages`) chega no
+  formato `entry[].changes[]`, e não em `entry[].messaging[]`:
+  - o `field` é `messages`, e o `value` traz `sender`, `recipient`,
+    `timestamp` em texto e `message`;
+  - o leitor de hoje (`webhook.ts`) só lê `messaging[]`, e as DMs reais de
+    09/09 vieram assim;
+  - então o evento de teste não serve para provar o CRM de ponta a ponta, e
+    a M10 continua dependendo de uma DM real.
+- **Publicar o app da Atlas está bloqueado até a verificação da empresa.** O
+  botão "Publicar" fica desabilitado, com a verificação no topo da página.
+  Em 09/09 o app do CB publicou sem análise, mas o portfólio do CB é
+  verificado. Consequências:
+  - a M3 espera a verificação da Atlas;
+  - até lá, a DM de teste precisa vir de quem tem papel no app (um testador
+    do Instagram).
+- **Ficam para o operador**, porque precisam do App Secret colado por ele, do
+  login e de uma DM: M2, M5, M6 (a chamada), M8, M9, M10 e M11. O receptor
+  faz sozinho as chamadas de cada uma e grava só a forma das respostas,
+  nunca o token nem o texto. A M4 não tem conta para medir: pede uma conta
+  do Instagram no próprio portfólio da Atlas, e hoje não há nenhuma.
+
 ### 7.3 O que fica para o primeiro uso real
 
 - **A DM em dobro durante a migração** (§2.5): se a proteção pelo segredo
@@ -877,6 +919,17 @@ ANTIGO de criação de app também não tem a tela do login do Instagram:
    fases está em `docs/PLANO-instagram-login-unificado.md`.
 3. **A análise** só depois do código (U-1 a U-4) e do escritório de
    demonstração.
+
+### 22/11/2026
+
+- ⚠️ **O app da Atlas tem hoje, PROVISÓRIOS, a URL de retorno e o webhook do
+  receptor de teste** (um túnel `trycloudflare.com`, que muda a cada vez que
+  é aberto). Eles saem quando a central existir (U-4). Até lá, um túnel
+  fechado só faz a entrega falhar no app em desenvolvimento.
+- Assinados no webhook do unificado: `messages`, `message_edit`,
+  `message_reactions`, `messaging_postbacks`, `messaging_referral` e
+  `messaging_seen`.
+- Resultados das medições no §7.2.
 
 ---
 
