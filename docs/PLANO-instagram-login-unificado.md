@@ -53,6 +53,13 @@ de teste (`feat/instagram-receptor-de-teste`) atrás de um túnel. Cada passo
 no painel espera o "pode".
 Em 22/11, o app da Atlas recebeu a URL de retorno e o webhook do receptor de
 teste, provisórios (estudo, §13).
+
+**Decisão do operador (22/11): o que pede a mão dele fica para o piloto
+(U-5).** A Meta só mostra o App Secret depois de pedir de novo a senha do
+Facebook, e a DM de teste tem de sair de outra conta do Instagram: as duas
+coisas são do operador. O receptor e o túnel foram desligados. M2, M5, M6 (a
+chamada), M8–M11 se medem na primeira conexão do piloto, com os mesmos
+registros de forma.
 - [x] M1: o webhook do objeto Instagram é a mesma configuração do webhook da
       aba antiga? **Não:** são separados (22/11).
 - [ ] M2: que segredo assina a entrega do unificado. (Espera o operador.)
@@ -117,6 +124,29 @@ falta. Nada muda na conexão do CB, que segue no login do Instagram.
 ### U-2 — A central no Atlas CRM (repositório `atlas-crm-dev`)
 Ligada por variável de ambiente só no CRM de homologação (U5). Ela usa o
 módulo do U-1, portado antes.
+
+**O protocolo (desenho de 22/11):**
+- **A instância fala com a Meta sozinha** para enviar, ler perfil e assinar
+  ou tirar o webhook. O token do usuário do sistema não precisa do App
+  Secret.
+- **Pela central passam só a volta do login e as entregas do webhook.** A
+  central não guarda token depois do resgate.
+- **Cada instância tem um id e uma chave**, mostrada uma vez no cadastro. A
+  central guarda só o hash da chave.
+- **A volta do login, em três passos:**
+  1. a instância manda o navegador à central com o `state` dela, que é opaco
+     para a central;
+  2. a central confere que o retorno é da `base_url` cadastrada e faz o
+     login unificado com a URI dela;
+  3. ela devolve um tíquete de uso único, válido por 5 min.
+  
+  O resgate do tíquete é de servidor para servidor, com a chave no `Bearer`.
+- **A central assina o repasse com a CHAVE da instância**, no mesmo formato
+  `X-Hub-Signature-256`, e entrega na rota de webhook de hoje. A conexão do
+  modo `central` guarda a chave em `ig_app_secret`, então a rota da
+  instância não muda.
+- **A fila do que falhou** é drenada na manutenção do ciclo que já existe
+  (sem rota de cron nova), até 7 dias (U6).
 - [ ] **Tabelas da central:**
   - instâncias, com a credencial guardada em hash;
   - rotas: conta do Instagram → instância, com índice único;
@@ -144,8 +174,10 @@ módulo do U-1, portado antes.
       a variável e o segredo do app ficam no ambiente dela. O segredo quem
       cola é o operador.
 
-### U-3 — Cliente da central (CB CRM, depois porte ao Atlas)
-Branch `feat/instagram-unificado-central`.
+### U-3 — Cliente da central (Atlas primeiro; CB se a U2 disser sim)
+Os escritórios do SaaS são o primeiro cliente, então a U-3 nasce no Atlas,
+junto com a central. No CB, ela espera a U2 e o merge da U-1 (branch
+`feat/instagram-unificado-central`).
 - [ ] **Modo `central` da conexão:**
   - o botão leva à central;
   - a volta traz um tíquete, e o resgate, de servidor para servidor, traz o

@@ -926,6 +926,9 @@ ANTIGO de criação de app também não tem a tela do login do Instagram:
   receptor de teste** (um túnel `trycloudflare.com`, que muda a cada vez que
   é aberto). Eles saem quando a central existir (U-4). Até lá, um túnel
   fechado só faz a entrega falhar no app em desenvolvimento.
+- **O túnel foi desligado no mesmo dia:** o operador decidiu deixar para o
+  piloto o que pede a mão dele (o App Secret, que a Meta só mostra com a
+  senha do Facebook, e a DM de outra conta).
 - Assinados no webhook do unificado: `messages`, `message_edit`,
   `message_reactions`, `messaging_postbacks`, `messaging_referral` e
   `messaging_seen`.
