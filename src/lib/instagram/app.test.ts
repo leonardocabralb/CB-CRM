@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import { APP_ID_VALIDO } from './app';
+import { APP_ID_VALIDO, CONFIG_ID_VALIDO, loginDoApp } from './app';
 
 // `APP_ID_VALIDO` diz ser espelho do CHECK da 990. Divergindo, um App ID que
 // a rota aceita morre no banco como 500 "Não foi possível salvar" — que não
@@ -16,9 +16,26 @@ describe('APP_ID_VALIDO', () => {
   });
 
   it('aceita só dígitos, entre 5 e 32', () => {
-    expect(APP_ID_VALIDO.test('1611401280593179')).toBe(true);
+    expect(APP_ID_VALIDO.test('1000000000000001')).toBe(true);
     expect(APP_ID_VALIDO.test('1234')).toBe(false);
     expect(APP_ID_VALIDO.test('16114 01280')).toBe(false);
-    expect(APP_ID_VALIDO.test('Ins-ta CRM CB')).toBe(false);
+    expect(APP_ID_VALIDO.test('Nome do app')).toBe(false);
+  });
+});
+
+// O mesmo para o ID da configuração do login unificado (1153).
+describe('CONFIG_ID_VALIDO', () => {
+  it('é a MESMA expressão do CHECK de cb_instagram_config.config_id (1153)', () => {
+    const sql = readFileSync('supabase/migrations/1153_cb_instagram_login_unificado.sql', 'utf8');
+    const noSql = /login\s*=\s*'unificado'\s+AND\s+config_id\s+IS\s+NOT\s+NULL\s+AND\s+config_id\s*~\s*'([^']+)'/.exec(sql);
+    expect(noSql).not.toBeNull();
+    expect(noSql![1]).toBe(CONFIG_ID_VALIDO.source);
+  });
+
+  it('só os dois tipos de app', () => {
+    expect(loginDoApp('unificado')).toBe('unificado');
+    expect(loginDoApp('instagram')).toBe('instagram');
+    expect(loginDoApp('central')).toBeNull();
+    expect(loginDoApp(undefined)).toBeNull();
   });
 });

@@ -46,7 +46,11 @@ import { situacaoDaMaquina, type SituacaoDaMaquina } from '@/lib/whatsapp/ligaco
 import { lerEstadosDosAlarmes } from './estado-dos-alarmes';
 import { lerAlarmesDaSentinela, type AlarmeDaSentinela } from './alarmes-da-sentinela';
 import { identidadeDoCanal } from './display';
-import { InstagramApiError, criarClienteInstagram } from '@/lib/instagram/graph';
+import {
+  InstagramApiError,
+  contaDaConexao,
+  criarClienteInstagram,
+} from '@/lib/instagram/graph';
 
 /** Cor do glifo. `unknown` = configuração incompleta, nem dá para sondar. */
 export type HealthTone = 'ok' | 'warn' | 'down' | 'unknown';
@@ -532,7 +536,7 @@ export async function probeChannels(
     .select(
       'id, kind, label, display_phone, is_default, status, connected_at, ' +
         'last_error, last_checked_at, phone_number_id, server_url, ' +
-        'instance_name, access_token, ig_user_id, ig_username, ' +
+        'instance_name, access_token, ig_user_id, ig_username, ig_login, ' +
         // ⚠️ Por NOME, então a janela pré-1002 devolve 42703 e a consulta
         // inteira falha — de propósito: a rota já traduz esse código em
         // `unavailable`, e o cabeçalho some em vez de afirmar saúde a
@@ -688,7 +692,12 @@ export async function probeChannels(
       } else {
         try {
           await comCache(`ig:${c.id}`, TTL_META_MS, async () => {
-            await criarClienteInstagram(decrypt(c.access_token!)).me();
+            // O login da conexão decide host e caminho (1153).
+            await criarClienteInstagram(
+              decrypt(c.access_token!),
+              fetch,
+              contaDaConexao(c),
+            ).me();
             return true;
           });
           estadoVivo = 'open';

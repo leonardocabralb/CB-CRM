@@ -31,7 +31,7 @@ export const CB_CHANNEL_SAFE_COLUMNS =
   'connected_at, last_error, phone_number_id, waba_id, server_url, ' +
   'instance_name, default_pipeline_id, default_stage_id, groups_enabled, ' +
   'radar_enabled, ig_user_id, ig_username, ig_token_expires_at, ' +
-  'ig_human_agent, created_at, updated_at';
+  'ig_login, ig_human_agent, created_at, updated_at';
 
 /** Canal como o client o enxerga. */
 export interface CbChannel {
@@ -81,8 +81,17 @@ export interface CbChannel {
    */
   ig_user_id: string | null;
   ig_username: string | null;
-  /** Quando o token de 60 dias do Instagram vence (o cron renova antes). */
+  /**
+   * Quando o token de 60 dias do Instagram vence (o cron renova antes). NULL
+   * no login unificado: o token do usuário do sistema não vence.
+   */
   ig_token_expires_at: string | null;
+  /**
+   * Por qual login a conexão do Instagram entrou (1153): `instagram`,
+   * `unificado` ou `central`. `instagram` em canal de WhatsApp (o padrão da
+   * coluna), sem significado lá.
+   */
+  ig_login: 'instagram' | 'unificado' | 'central';
   /**
    * Instagram: manda a tag HUMAN_AGENT fora das 24h (janela de 7 dias).
    * Nasce desligado — exige a feature aprovada no painel da Meta (D2).
@@ -99,7 +108,10 @@ export interface CbChannelWithSecrets extends CbChannel {
   access_token: string | null;
   api_key: string | null;
   verify_token: string | null;
-  /** Instagram: o Instagram App Secret CIFRADO — é quem assina o webhook. */
+  /**
+   * Instagram: o segredo CIFRADO que assina o webhook desta conexão — o
+   * Instagram App Secret, ou o App Secret principal no unificado (1153).
+   */
   ig_app_secret: string | null;
 }
 

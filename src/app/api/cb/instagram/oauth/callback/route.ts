@@ -1,12 +1,18 @@
 // ============================================================
-// /api/cb/instagram/oauth/callback — a volta do login do Instagram. Admin+.
+// /api/cb/instagram/oauth/callback — a volta do login. Admin+.
 //
-// O Instagram devolve a pessoa aqui com `?code=…&state=…` (ou `?error=…`).
+// A Meta devolve a pessoa aqui com `?code=…&state=…` (ou `?error=…`), pelos
+// dois logins (o tipo do app da conta decide qual, 1153).
 // A ordem importa, e cada passo tem a sua saída para Conexões
 // (`?instagram=erro&motivo=…`, traduzido pela tela):
 //   1. sessão de admin — o callback chega como navegação, com os cookies;
 //   2. `state` assinado + nonce do cookie, amarrados à conta e ao membro
 //      da sessão (login CSRF: um link forjado não amarra Instagram alheio);
+//   → login UNIFICADO: uma troca só, as contas que o login trouxe
+//     (`lerContasDoToken`) e uma conexão por conta
+//     (`conectarContasDoUnificado`); volta com a principal, quantas
+//     `outras` entraram e as que `falharam`;
+//   → login do INSTAGRAM, os passos abaixo:
 //   3. código → token curto → token longo (`oauth.ts`);
 //   4. a pessoa concedeu a permissão de mensagens? (dá para desmarcar na
 //      tela de consentimento, e sem ela a conexão nasceria muda);
@@ -22,8 +28,13 @@ import { ForbiddenError, UnauthorizedError, requireRole } from '@/lib/auth/accou
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 import { lerAppDoInstagram } from '@/lib/instagram/app';
 import { gravarCanalDoInstagram } from '@/lib/instagram/canal';
+import { conectarContasDoUnificado } from '@/lib/instagram/conectar-unificado';
 import type { MotivoDoOAuth } from '@/lib/instagram/conexao';
-import { InstagramApiError, criarClienteInstagram } from '@/lib/instagram/graph';
+import {
+  InstagramApiError,
+  criarClienteInstagram,
+  lerContasDoToken,
+} from '@/lib/instagram/graph';
 import {
   CAMPOS_DO_WEBHOOK,
   COOKIE_DO_OAUTH,
@@ -31,6 +42,7 @@ import {
   lerEstado,
   origemDoPedido,
   trocarCodigoPorToken,
+  trocarCodigoUnificado,
   trocarPorTokenLongo,
   urlDeRedirecionamento,
   vencimentoDoToken,
@@ -115,6 +127,70 @@ export async function GET(request: NextRequest) {
   }
   if (!app) return voltar('sem_app');
 
+  // ---- Login unificado (app novo, 1153): um login, várias contas ----
+  if (app.login === 'unificado') {
+    try {
+      const troca = await trocarCodigoUnificado({
+        appId: app.appId,
+        appSecret: app.appSecret,
+        redirectUri: urlDeRedirecionamento(origem),
+        code,
+      });
+      const alcance = await lerContasDoToken(troca.token);
+      if (alcance.contas.length === 0) return voltar('sem_contas');
+
+      // O webhook do app é configurado UMA vez no painel da Meta: o diálogo
+      // abre só para a primeira conexão do login unificado desta conta (a
+      // conta pode vir do login do Instagram, cujo webhook é OUTRO, M1).
+      // Leitura que falha conta como "não é a primeira", como no outro login.
+      const { count, error: erroDaContagem } = await ctx.supabase
+        .from('cb_channels')
+        .select('id', { count: 'exact', head: true })
+        .eq('account_id', ctx.accountId)
+        .eq('kind', 'instagram')
+        .eq('ig_login', 'unificado');
+      const primeira = !erroDaContagem && (count ?? 0) === 0;
+
+      const r = await conectarContasDoUnificado(ctx.supabase, {
+        accountId: ctx.accountId,
+        userId: ctx.userId,
+        appSecret: app.appSecret,
+        token: troca.token,
+        expiraEmSeg: troca.expiraEmSeg,
+        alcance,
+      });
+      const [principal, ...outras] = r.conectadas;
+      if (!principal) {
+        const falha = r.naoEntraram[0];
+        if (falha?.motivo === 'outra_conta') return voltar('outra_conta', falha.conta);
+        if (falha?.motivo === 'meta') return voltar('meta', falha.detalhe ?? undefined);
+        return voltar('erro');
+      }
+      const url = new URL('/settings', origem);
+      url.searchParams.set('tab', 'channels');
+      url.searchParams.set('instagram', 'conectado');
+      url.searchParams.set('canal', principal.canalId);
+      url.searchParams.set('username', principal.username);
+      if (outras.length > 0) url.searchParams.set('outras', String(outras.length));
+      if (r.naoEntraram.length > 0) {
+        url.searchParams.set(
+          'falharam',
+          r.naoEntraram.map((f) => f.conta).join(', ').slice(0, TETO_DO_DETALHE)
+        );
+      }
+      if (primeira) url.searchParams.set('primeira', '1');
+      return semCookie(NextResponse.redirect(url));
+    } catch (err) {
+      if (err instanceof InstagramApiError) {
+        console.warn('[cb/instagram/oauth] a Meta recusou (unificado):', err.codigo, err.message);
+        return voltar('meta', err.message);
+      }
+      console.error('[cb/instagram/oauth] falha inesperada (unificado):', err instanceof Error ? err.message : err);
+      return voltar('erro');
+    }
+  }
+
+  // ---- Login do Instagram (app antigo) ----
   try {
     const curto = await trocarCodigoPorToken({
       appId: app.appId,
@@ -141,11 +217,13 @@ export async function GET(request: NextRequest) {
     // abre o diálogo dele para a PRIMEIRA conexão de Instagram da conta.
     // Leitura que falha conta como "não é a primeira": abrir o diálogo à toa
     // afirma "nada chega até você fazer isto" sobre webhook já configurado.
+    // Só as conexões DESTE login: o webhook do unificado é outro (M1).
     const { count, error: erroDaContagem } = await ctx.supabase
       .from('cb_channels')
       .select('id', { count: 'exact', head: true })
       .eq('account_id', ctx.accountId)
-      .eq('kind', 'instagram');
+      .eq('kind', 'instagram')
+      .eq('ig_login', 'instagram');
     const primeira = !erroDaContagem && (count ?? 0) === 0;
 
     const r = await gravarCanalDoInstagram(ctx.supabase, {
@@ -159,6 +237,8 @@ export async function GET(request: NextRequest) {
       humanAgent: null,
       perfil,
       tokenExpiraEm: vencimentoDoToken(longo.expiraEmSeg),
+      login: 'instagram',
+      clientBusinessId: null,
     });
     if (!r.ok) {
       return r.codigo === 'outra_conta'

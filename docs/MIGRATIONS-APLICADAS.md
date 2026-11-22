@@ -2341,3 +2341,24 @@ nome da época em que foram aplicadas.
   Instagram. Conferida na produção: a coluna `timestamptz` nula com o
   COMMENT, o registro no histórico e nenhuma conexão carimbada (o código que
   carimba chega no deploy do PR #540).
+
+- **1153_cb_instagram_login_unificado** — Instagram pelo login unificado
+  (Facebook Login for Business), modo direto: `cb_channels.ig_login`
+  (`instagram` | `unificado` | `central`, padrão `instagram`, CHECK
+  `cb_channels_ig_login_check`) e `ig_client_business_id`;
+  `cb_instagram_config.login` e `config_id` (CHECK
+  `cb_instagram_config_login_check`, que exige o `config_id` NÃO NULO no
+  unificado). O CHECK da 0989 fica: `ig_app_secret` passa a ser o segredo
+  que assina a entrega da conexão. PR #541. (A 1152, do PR #540, foi aplicada
+  7 minutos antes.)
+
+  ADITIVA, aplicada ANTES do merge com a autorização explícita do operador
+  ("Pode aplicar", em resposta a "Aplico a migration 1153 na produção
+  agora?", 22/11/2026), em 22/11/2026 às 16:43 BRT (histórico
+  `20261122194310`), pela Management API, com o arquivo idêntico ao do
+  commit `5b670f63` (sha256 `d3c3464c…`), cujo replay do CI passou. Antes: o
+  replay local do zero (276 migrations e o `verify-schema.sql`), a 1153
+  reaplicada (idempotente) e 6 cenários. Conferida na produção: as quatro
+  colunas com os padrões, os dois CHECKs, o registro no histórico,
+  `cb_instagram_config` fechada a `authenticated`, e a conexão do Instagram
+  e o app que já existiam no login `instagram`.

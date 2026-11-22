@@ -1,9 +1,10 @@
 // ============================================================
-// /api/cb/instagram/oauth/start — o começo do login do Instagram. Admin+.
+// /api/cb/instagram/oauth/start — o começo do login. Admin+.
 //
 // Monta o `state` assinado (conta + membro + nonce + validade), guarda o
-// nonce num cookie HttpOnly e manda a pessoa para a página de autorização
-// do Instagram. Qualquer coisa que impeça isso volta para Conexões com
+// nonce num cookie HttpOnly e manda a pessoa para a página de autorização:
+// a do login unificado (Facebook, app novo) ou a do Instagram (app antigo),
+// pelo tipo do app da conta. Qualquer coisa que impeça isso volta para Conexões com
 // `?instagram=erro&motivo=…` — é um clique de navegador, não um fetch, então
 // JSON aqui não teria quem o lesse.
 // ============================================================
@@ -25,6 +26,7 @@ import {
   novoNonce,
   origemDoPedido,
   urlDeAutorizacao,
+  urlDeAutorizacaoUnificada,
   urlDeRedirecionamento,
 } from '@/lib/instagram/oauth';
 
@@ -76,13 +78,22 @@ export async function GET(request: NextRequest) {
     console.error('[cb/instagram/oauth] sem chave para o state:', err instanceof Error ? err.message : err);
     return voltar('erro');
   }
-  const resposta = NextResponse.redirect(
-    urlDeAutorizacao({
+  // O app da conta decide a porta (1153): o login unificado (app novo) ou o
+  // do Instagram (app antigo). A volta é a MESMA rota nos dois.
+  const redirectUri = urlDeRedirecionamento(origem);
+  let destino: string;
+  if (app.login === 'unificado') {
+    if (!app.configId) return voltar('sem_app');
+    destino = urlDeAutorizacaoUnificada({
       appId: app.appId,
-      redirectUri: urlDeRedirecionamento(origem),
+      configId: app.configId,
+      redirectUri,
       estado,
-    }),
-  );
+    });
+  } else {
+    destino = urlDeAutorizacao({ appId: app.appId, redirectUri, estado });
+  }
+  const resposta = NextResponse.redirect(destino);
   resposta.cookies.set({
     name: COOKIE_DO_OAUTH,
     value: nonce,

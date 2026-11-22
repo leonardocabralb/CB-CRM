@@ -278,7 +278,14 @@ describe('resolveInboundInstagramChannel', () => {
     let vezes = 0;
     const db = makeDb({
       cb_channels: () => ({
-        data: { id: 'chi', account_id: 'acc1', ig_app_secret: 'enc-s', access_token: null },
+        data: {
+          id: 'chi',
+          account_id: 'acc1',
+          ig_app_secret: 'enc-s',
+          access_token: null,
+          ig_login: 'unificado',
+          ig_user_id: 'ig1',
+        },
       }),
       accounts: (f) => (++vezes === 1 ? { error: { message: 'timeout' } } : accounts(f)),
     });
@@ -288,6 +295,9 @@ describe('resolveInboundInstagramChannel', () => {
       channelId: 'chi',
       igAppSecretCifrado: 'enc-s',
       accessTokenCifrado: null,
+      // O login da conexão viaja até a leitura do perfil (1153).
+      igLogin: 'unificado',
+      igUserId: 'ig1',
     });
     expect(err).toHaveBeenCalledTimes(1);
   });

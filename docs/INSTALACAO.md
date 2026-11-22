@@ -866,14 +866,46 @@ conhecimento (RAG) só com **OpenAI**. O Radar fica desligado por padrão e
 planos gratuitos podem usar o conteúdo enviado.
 
 **Instagram Direct** (em *Configurações → Conexões*, não em Integrações):
-use um app próprio no painel da Meta e cadastre no CRM o *Instagram App
-ID* e o *Instagram App Secret* (um app serve a todas as contas). Os dois
-ficam em *Meus apps → seu app → Casos de uso → Gerenciar mensagens e
-conteúdo no Instagram → Personalizar → Configuração da API com login do
-Instagram*, no alto da tela ("ID do app do Instagram" e "Chave secreta do
-app do Instagram"). ⚠️ **Um app criado hoje na Meta não mostra mais essa
-tela** (conferido em novembro de 2026), e o CRM ainda não aceita o login
-unificado que a substitui: por enquanto, só serve um app que já a tenha.
+use um app próprio no painel da Meta e cadastre-o no CRM. Um app serve a
+todas as contas do escritório. Há dois tipos, e o CRM aceita os dois.
+
+*App novo — login unificado* (é o único que um app criado hoje na Meta
+mostra, conferido em novembro de 2026):
+1. crie o app do tipo **Negócios**, num portfólio empresarial, com o caso de
+   uso *Gerenciar mensagens e conteúdo no Instagram*;
+2. em *Casos de uso → Personalizar → API setup with Unified login →
+   1. Configure seu app*, crie a configuração e deixe só as permissões
+   `instagram_basic` e `instagram_manage_messages`, com o token que nunca
+   vence;
+3. no CRM, escolha **App novo (login unificado)** e cadastre o *App ID* e a
+   *Chave secreta do aplicativo* (*Configurações do app → Básico*) e a
+   *Identificação da configuração*;
+4. registre a **OAuth Redirect URI** que o CRM mostra em *1. Configure seu
+   app → Registrar um novo URL de redirecionamento*;
+5. conecte pelo botão **Conectar com Instagram ou Facebook**. Entre com a
+   conta que administra o portfólio, escolha as contas do Instagram (cada
+   uma vira uma conexão) e deixe ligado *Permitir acesso às mensagens*;
+6. na primeira conexão, o CRM mostra a Callback URL e o Verify Token: cole-os
+   em *3. Configurar webhooks* da mesma aba e assine `messages`,
+   `message_edit`, `message_reactions`, `messaging_postbacks`,
+   `messaging_referral` e `messaging_seen`;
+7. para receber de qualquer pessoa, publique o app (menu da esquerda,
+   *Publicar*). A Meta pede a **verificação da empresa** antes: até lá, só
+   quem tem papel no app consegue entrar e mandar mensagem. Publicar também
+   pede uma URL de política de privacidade: o CRM serve uma em
+   `/privacidade`, que você deve revisar antes de usar.
+
+O token do login unificado **não vence**. Ele só deixa de valer se a empresa
+tirar o app do portfólio ou mudar a conta de portfólio; nesse caso, a conexão
+aparece fora do ar, e é só conectar de novo.
+
+*App antigo — login do Instagram* (só em apps que ainda mostram a tela
+*Configuração da API com login do Instagram*): no CRM, escolha **App antigo
+(login do Instagram)** e cadastre o *Instagram App ID* e o *Instagram App
+Secret*. Os dois ficam em *Meus apps → seu app → Casos de uso → Gerenciar
+mensagens e conteúdo no Instagram → Personalizar → Configuração da API com
+login do Instagram*, no alto da tela ("ID do app do Instagram" e "Chave
+secreta do app do Instagram").
 Nessa tela:
 1. em *4. Configurar o login da empresa no Instagram → Configurar*, registre
    a **OAuth Redirect URI** que o CRM mostra (uma vez por app);

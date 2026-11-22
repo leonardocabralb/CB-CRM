@@ -80,6 +80,7 @@ import { CHAT_MEDIA_BUCKET } from '@/lib/storage/buckets';
 import { caminhoNoChatMedia } from '@/lib/storage/caminho-no-chat-media';
 import {
   InstagramApiError,
+  contaDaConexao,
   criarClienteInstagram,
   envioRecusado,
   type TipoDeAnexoDoDirect,
@@ -841,7 +842,13 @@ export async function sendMessageToConversation(
       conversationId,
       channel.channelId
     );
-    const cliente = criarClienteInstagram(decrypt(channel.access_token!));
+    // O login da conexão decide host e caminho (1153): no unificado, o envio
+    // leva o ID da conta (`{ig-id}/messages` em graph.facebook.com).
+    const cliente = criarClienteInstagram(
+      decrypt(channel.access_token!),
+      fetch,
+      contaDaConexao(channel)
+    );
     // A linha irmã de um anexo extra do cliente tem o `mid` sufixado
     // (`persistir.ts`): no Direct, a citação é a DM inteira.
     const citando = contextMessageId ? contextMessageId.split('#')[0] : null;

@@ -197,7 +197,8 @@ Pino `send-message-instagram.test.ts`.
 
 - ⚠️ **Token só no cabeçalho `Authorization: Bearer`, nunca em
   `?access_token=`; a mensagem de erro da Meta ECOA o token e passa por
-  `semSegredo`; o host é preso a `graph.instagram.com`** (`graph.ts`). O token
+  `semSegredo`; o host é preso ao do login** (`graph.instagram.com`, ou
+  `graph.facebook.com` no unificado; `pedirComToken` em `graph.ts`). O token
   do painel dura 60 dias; a validade fica em `ig_token_expires_at`.
 - ⚠️ **A renovação (Fase 6) roda na manutenção do ciclo das agendadas**
   (`renovar-token.ts` em `rodarManutencaoDoCiclo`, laço de 15 min), não em
@@ -262,6 +263,70 @@ devolve só o App ID). O canal criado pelo login continua gravando o segredo em
 - **Standard Access**: só conta adicionada ao app no painel da Meta autoriza;
   `force_reauth=true` obriga o Instagram a PERGUNTAR qual conta (senão
   autorizaria a que está logada no navegador).
+
+### Login unificado (1153, U-1 do plano)
+
+O app novo da Meta só tem o login unificado (Facebook Login for Business com
+`config_id`). O tipo do app da conta (`cb_instagram_config.login`) decide a
+porta; o login de cada conexão fica em `cb_channels.ig_login`. Estudo:
+`docs/ESTUDO-instagram-login-unificado.md`; plano:
+`docs/PLANO-instagram-login-unificado.md`.
+
+- ⚠️⚠️ **`contaDaConexao` decide host e caminho** (`graph.ts`): no unificado,
+  `graph.facebook.com/v27.0` e o ID da conta no caminho
+  (`{ig-id}/messages`, `{ig-id}/subscribed_apps`, `{ig-id}?fields=…`),
+  porque o `/me` dali é o USUÁRIO DO SISTEMA, não a conta. Quem lê a conexão
+  seleciona `ig_login` E `ig_user_id` (envio, saúde, entrada): sem a coluna,
+  a conexão cai no host do Instagram e toda chamada volta 190.
+- ⚠️⚠️ **`cb_channels.ig_app_secret` é "o segredo que ASSINA a entrega desta
+  conexão"**: o Instagram App Secret no login do Instagram, o App Secret
+  PRINCIPAL no unificado (doc de 22/11). O webhook não muda, e a DM em dobro
+  da migração se barra sozinha: a conta tem UMA linha (índice único global),
+  e ela só casa a assinatura de um app — a entrega do app antigo vira 401 até
+  o webhook antigo sair do painel.
+- ⚠️ **A renovação pula o unificado** (`.eq('ig_login', 'instagram')` em
+  `renovar-token.ts`): o token do usuário do sistema não vence
+  (`ig_token_expires_at` nulo), e o `refresh_access_token` do
+  graph.instagram.com o recusaria com 190 — que marcaria desconectada uma
+  conexão sadia. A saúde é a sonda de Conexões (`/{ig-id}`).
+- ⚠️ **Um login, várias contas** (`conectar-unificado.ts`): cada conta de
+  `/me/assigned_instagram_accounts` vira uma conexão, com o mesmo token
+  repetido; a falha de uma não derruba as outras (volta com `outras` e
+  `falharam`). O `next` da paginação NÃO é seguido (URL da resposta, token no
+  cabeçalho).
+- ⚠️ **O CHECK do `config_id` tem o `IS NOT NULL`**: com o valor nulo, o `~`
+  dá NULL, e CHECK que dá NULL passa (pego no replay local da 1153).
+- **Token colado só no app antigo**: a rota do canal e a de renovar recusam
+  com o app ou a conexão do unificado; a tela esconde as duas.
+- **A troca do código manda o `client_secret` na query** (forma documentada),
+  como no login do Instagram, e não confere permissão: o Facebook Login for
+  Business dá todas ou nenhuma.
+- **O webhook do unificado mora em OUTRA aba do caso de uso** (M1, 22/11): o
+  diálogo do webhook diz qual pelo `ig_login` da conexão, e o `?primeira=1`
+  conta só as conexões do MESMO login.
+- **`interpretarWebhook` lê também `changes[{field, value}]`**: a forma do
+  evento de teste do painel do unificado (22/11). A DM real ainda se mede
+  (M10).
+
+### Login unificado e o app da Atlas (decisões de 21/11/2026)
+
+O produto troca o login do Instagram pelo login unificado num app ÚNICO da
+Atlas. Até a central existir, tudo acima vale para o CB, que segue no login do
+Instagram até migrar (U2 pendente).
+
+- U3: app único da Atlas, como Provedor de Tecnologia (a marcação não se
+  desfaz), com verificação da empresa e análise de acesso avançado. Revê a D3
+  para o produto.
+- U8: só `instagram_basic` e `instagram_manage_messages`. Permissão nova
+  (comentários, para social selling) exige outra análise da Meta e que cada
+  escritório reconecte uma vez; social selling revê a D1 (estudo, §14).
+- U7: token do usuário do sistema que nunca vence; a sonda de saúde faz o
+  papel da renovação.
+- U5: a volta do login e os webhooks do app passam pela central no CRM de
+  homologação do Atlas, com endereço próprio; o repasse às instâncias é
+  assinado, e só o que falhou vai para a fila.
+- ⚠️ **App NOVO da Meta já não monta o login do Instagram** (medido em
+  21/11/2026): o "traga o seu app" da instalação própria é pelo unificado.
 
 ### Decisões do operador (10/09/2026)
 

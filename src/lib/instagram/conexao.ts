@@ -65,6 +65,8 @@ export const MOTIVOS_DO_OAUTH = [
   'permissao',
   'meta',
   'outra_conta',
+  /** Login unificado que voltou sem nenhuma conta do Instagram marcada. */
+  'sem_contas',
   'erro',
 ] as const;
 export type MotivoDoOAuth = (typeof MOTIVOS_DO_OAUTH)[number];

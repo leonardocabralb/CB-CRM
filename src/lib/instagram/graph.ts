@@ -21,13 +21,62 @@
 // arquivo não antecipa endpoint que nenhuma tela chama ainda.
 //
 // ⚠️ É o ÚNICO ponto que conhece o host e a forma do token (Fase 4,
-// 21/11/2026): o login unificado (docs/ESTUDO-instagram-login-unificado.md)
-// troca o host para `graph.facebook.com` e o token pelo da Página. O núcleo de
-// envio, a renovação e a saúde falam com este módulo, nunca com a URL.
+// 21/11/2026). O núcleo de envio, a renovação e a saúde falam com este
+// módulo, nunca com a URL.
+//
+// O LOGIN UNIFICADO (1153, docs/ESTUDO-instagram-login-unificado.md) é a
+// segunda forma, escolhida por conexão (`ContaDoToken`):
+//   · host `graph.facebook.com`, na `v27.0` (a doc de 22/11: "graph.instagram.com
+//     não funciona com o login unificado");
+//   · o token é do USUÁRIO DO SISTEMA do portfólio do cliente e nunca vence;
+//     `/me` é esse usuário, NÃO a conta — toda chamada leva o ID da conta no
+//     caminho (`{ig-id}/messages`, `{ig-id}/subscribed_apps`);
+//   · as contas que o login trouxe saem de `/me/assigned_instagram_accounts`
+//     (`lerContasDoToken`).
 // ============================================================
 
 export const INSTAGRAM_GRAPH = 'https://graph.instagram.com';
 export const INSTAGRAM_API_VERSION = 'v26.0';
+
+/** O host do login unificado (o mesmo da Cloud API do WhatsApp, outro token). */
+export const FACEBOOK_GRAPH = 'https://graph.facebook.com';
+export const FACEBOOK_API_VERSION = 'v27.0';
+
+/** Por qual login a conexão entrou (`cb_channels.ig_login`, 1153). */
+export const LOGINS_DA_CONEXAO = ['instagram', 'unificado', 'central'] as const;
+export type LoginDaConexao = (typeof LOGINS_DA_CONEXAO)[number];
+
+/**
+ * O que o cliente precisa saber do token para falar com a Meta. No login do
+ * Instagram o token É da conta (`/me` diz qual); no unificado é do usuário do
+ * sistema, e a conta vai no caminho de cada chamada. A conexão pela central
+ * (U-3) usa o mesmo token e o mesmo host do unificado.
+ */
+export type ContaDoToken =
+  | { login: 'instagram' }
+  | { login: 'unificado'; igUserId: string };
+
+/**
+ * A `ContaDoToken` de uma linha de `cb_channels`. ⚠️ Quem lê a conexão
+ * seleciona `ig_login` E `ig_user_id`: sem a coluna, a conexão do unificado
+ * cairia no host do Instagram e toda chamada voltaria 190.
+ */
+export function contaDaConexao(c: {
+  ig_login?: string | null;
+  ig_user_id?: string | null;
+}): ContaDoToken {
+  if (c.ig_login === 'unificado' || c.ig_login === 'central') {
+    // O CHECK da 989 exige `ig_user_id` em toda conexão do Instagram.
+    if (!c.ig_user_id) {
+      throw new InstagramApiError(
+        'meta_error',
+        'Conexão do login unificado sem o ID da conta'
+      );
+    }
+    return { login: 'unificado', igUserId: c.ig_user_id };
+  }
+  return { login: 'instagram' };
+}
 
 /** Curto de propósito: as chamadas daqui rodam no caminho de uma tela
  *  (cadastro, saúde) — segurar o cabeçalho é pior que responder "não sei". */
@@ -47,6 +96,16 @@ export function doGraphDoInstagram(url: string): boolean {
   try {
     const u = new URL(url);
     return u.protocol === 'https:' && u.host === 'graph.instagram.com';
+  } catch {
+    return false;
+  }
+}
+
+/** Só o host do login unificado, sempre por HTTPS. */
+export function doGraphDoFacebook(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' && u.host === 'graph.facebook.com';
   } catch {
     return false;
   }
@@ -162,13 +221,15 @@ export interface ClienteInstagram {
   me(): Promise<PerfilDaConta>;
   perfil(igsid: string): Promise<PerfilDoCliente>;
   /**
-   * `POST /me/subscribed_apps`: a conta passa a entregar estes campos ao
-   * app. A doc exige a chamada por conta; o botão "Gerar token" do painel a
-   * faz por baixo, o login do Instagram não — daí o callback chamar aqui.
+   * `POST /me/subscribed_apps` (no unificado, `/{ig-id}/subscribed_apps`): a
+   * conta passa a entregar estes campos ao app. A doc exige a chamada por
+   * conta; o botão "Gerar token" do painel a faz por baixo, o login não — daí
+   * o callback chamar aqui.
    */
   assinarWebhooks(campos: readonly string[]): Promise<void>;
   /**
-   * `POST /me/messages` (Fase 4). Devolve o `mid` da mensagem — o mesmo que
+   * `POST /me/messages` (Fase 4; no unificado, `/{ig-id}/messages`, o mesmo
+   * corpo). Devolve o `mid` da mensagem — o mesmo que
    * volta no eco do webhook e que o UNIQUE `(conversation_id, message_id)`
    * usa para não gravar duas vezes.
    *
@@ -225,49 +286,71 @@ async function lerResposta(
   return corpo;
 }
 
+interface InitDoPedido {
+  method?: 'GET' | 'POST';
+  corpo?: unknown;
+  prazoMs?: number;
+}
+
+/**
+ * Um pedido com o token no `Bearer`, preso ao host do login: a URL é montada
+ * AQUI, e a guarda recusa qualquer outro host antes de o token sair.
+ */
+async function pedirComToken(
+  login: ContaDoToken['login'],
+  token: string,
+  caminho: string,
+  init: InitDoPedido,
+  fetchFn: Fetch
+): Promise<Record<string, unknown>> {
+  const unificado = login === 'unificado';
+  const url = unificado
+    ? `${FACEBOOK_GRAPH}/${FACEBOOK_API_VERSION}/${caminho}`
+    : `${INSTAGRAM_GRAPH}/${INSTAGRAM_API_VERSION}/${caminho}`;
+  if (unificado ? !doGraphDoFacebook(url) : !doGraphDoInstagram(url)) {
+    throw new InstagramApiError(
+      'meta_error',
+      unificado ? 'URL fora do graph.facebook.com' : 'URL fora do graph.instagram.com'
+    );
+  }
+  let resposta: Response;
+  try {
+    resposta = await fetchFn(url, {
+      method: init.method ?? 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        ...(init.corpo !== undefined
+          ? { 'Content-Type': 'application/json' }
+          : {}),
+      },
+      ...(init.corpo !== undefined ? { body: JSON.stringify(init.corpo) } : {}),
+      signal: AbortSignal.timeout(init.prazoMs ?? TIMEOUT_MS),
+    });
+  } catch (e) {
+    throw new InstagramApiError(
+      'rede',
+      semSegredo(e instanceof Error ? e.message : String(e), token)
+    );
+  }
+  return lerResposta(resposta, token);
+}
+
 export function criarClienteInstagram(
   token: string,
-  fetchFn: Fetch = fetch
+  fetchFn: Fetch = fetch,
+  conta: ContaDoToken = { login: 'instagram' }
 ): ClienteInstagram {
-  async function pedir(
-    caminho: string,
-    init: { method?: 'GET' | 'POST'; corpo?: unknown; prazoMs?: number } = {}
-  ): Promise<Record<string, unknown>> {
-    const url = `${INSTAGRAM_GRAPH}/${INSTAGRAM_API_VERSION}/${caminho}`;
-    if (!doGraphDoInstagram(url)) {
-      throw new InstagramApiError(
-        'meta_error',
-        'URL fora do graph.instagram.com'
-      );
-    }
-    let resposta: Response;
-    try {
-      resposta = await fetchFn(url, {
-        method: init.method ?? 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
-          ...(init.corpo !== undefined
-            ? { 'Content-Type': 'application/json' }
-            : {}),
-        },
-        ...(init.corpo !== undefined
-          ? { body: JSON.stringify(init.corpo) }
-          : {}),
-        signal: AbortSignal.timeout(init.prazoMs ?? TIMEOUT_MS),
-      });
-    } catch (e) {
-      throw new InstagramApiError(
-        'rede',
-        semSegredo(e instanceof Error ? e.message : String(e), token)
-      );
-    }
-    return lerResposta(resposta, token);
-  }
+  const pedir = (caminho: string, init: InitDoPedido = {}) =>
+    pedirComToken(conta.login, token, caminho, init, fetchFn);
+  // Quem a chamada representa: no login do Instagram, o próprio token (`me`);
+  // no unificado, a conta — o `me` dali é o usuário do sistema.
+  const dono =
+    conta.login === 'unificado' ? encodeURIComponent(conta.igUserId) : 'me';
 
   return {
     async enviarMensagem(m) {
-      const r = await pedir('me/messages', {
+      const r = await pedir(`${dono}/messages`, {
         method: 'POST',
         corpo: corpoDaMensagem(m),
         prazoMs: TIMEOUT_DO_ENVIO_MS,
@@ -284,6 +367,23 @@ export function criarClienteInstagram(
       return { messageId: r.message_id };
     },
     async me() {
+      if (conta.login === 'unificado') {
+        // O nó da conta no Graph do Facebook: `id` (o mesmo `entry.id` do
+        // webhook), `username` e `name`.
+        const r = await pedir(`${dono}?fields=id,username,name`);
+        const username = r.username;
+        if (typeof r.id !== 'string' || !r.id) {
+          throw new InstagramApiError('meta_error', 'A conta veio sem id');
+        }
+        if (typeof username !== 'string' || !username) {
+          throw new InstagramApiError('meta_error', 'A conta veio sem username');
+        }
+        return {
+          igUserId: r.id,
+          username,
+          nome: typeof r.name === 'string' && r.name ? r.name : null,
+        };
+      }
       const r = await pedir('me?fields=user_id,username,name');
       const igUserId = r.user_id;
       const username = r.username;
@@ -301,7 +401,7 @@ export function criarClienteInstagram(
     },
     async assinarWebhooks(campos) {
       const r = await pedir(
-        `me/subscribed_apps?subscribed_fields=${encodeURIComponent(campos.join(','))}`,
+        `${dono}/subscribed_apps?subscribed_fields=${encodeURIComponent(campos.join(','))}`,
         { method: 'POST' }
       );
       if (r.success !== true) {
@@ -325,6 +425,65 @@ export function criarClienteInstagram(
             : null,
       };
     },
+  };
+}
+
+/** O que o token do login unificado alcança. */
+export interface ContasDoToken {
+  /** O portfólio do cliente (`/me?fields=client_business_id`); a doc manda guardá-lo com o token. */
+  clientBusinessId: string | null;
+  /** As contas que a pessoa compartilhou no login — pode vir mais de uma. */
+  contas: { igUserId: string; username: string | null }[];
+}
+
+/** Uma página de contas basta: um escritório não compartilha 100 contas num login. */
+const TETO_DE_CONTAS = 100;
+
+/**
+ * Login unificado: quem é o portfólio e quais contas do Instagram o token
+ * alcança (`/me/assigned_instagram_accounts`, doc de 22/11/2026). O `next` da
+ * paginação NÃO é seguido (URL vinda da resposta, com o token no cabeçalho):
+ * passou de uma página, fica o registro.
+ */
+export async function lerContasDoToken(
+  token: string,
+  fetchFn: Fetch = fetch
+): Promise<ContasDoToken> {
+  const me = await pedirComToken(
+    'unificado',
+    token,
+    'me?fields=client_business_id',
+    {},
+    fetchFn
+  );
+  const lista = await pedirComToken(
+    'unificado',
+    token,
+    `me/assigned_instagram_accounts?fields=id,username&limit=${TETO_DE_CONTAS}`,
+    {},
+    fetchFn
+  );
+  if (ehObjeto(lista.paging) && typeof lista.paging.next === 'string') {
+    console.warn(
+      `[instagram/graph] o login trouxe mais de ${TETO_DE_CONTAS} contas: só a primeira página entra`
+    );
+  }
+  const contas: ContasDoToken['contas'] = [];
+  for (const item of Array.isArray(lista.data) ? lista.data : []) {
+    // O id vem como texto; como número JSON perderia dígitos (passa de 2^53).
+    if (!ehObjeto(item) || typeof item.id !== 'string' || !item.id) continue;
+    contas.push({
+      igUserId: item.id,
+      username:
+        typeof item.username === 'string' && item.username ? item.username : null,
+    });
+  }
+  return {
+    clientBusinessId:
+      typeof me.client_business_id === 'string' && me.client_business_id
+        ? me.client_business_id
+        : null,
+    contas,
   };
 }
 
