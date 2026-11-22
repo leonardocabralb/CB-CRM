@@ -16,10 +16,10 @@ describe('APP_ID_VALIDO', () => {
   });
 
   it('aceita só dígitos, entre 5 e 32', () => {
-    expect(APP_ID_VALIDO.test('1611401280593179')).toBe(true);
+    expect(APP_ID_VALIDO.test('1000000000000001')).toBe(true);
     expect(APP_ID_VALIDO.test('1234')).toBe(false);
     expect(APP_ID_VALIDO.test('16114 01280')).toBe(false);
-    expect(APP_ID_VALIDO.test('Ins-ta CRM CB')).toBe(false);
+    expect(APP_ID_VALIDO.test('Nome do app')).toBe(false);
   });
 });
 

@@ -242,6 +242,18 @@ export function CbChannelsPanel() {
   const [igAppLogin, setIgAppLogin] = useState<'instagram' | 'unificado'>('unificado');
   const [igConfigId, setIgConfigId] = useState('');
   const [igAppId, setIgAppId] = useState('');
+  /**
+   * Trocar o tipo no formulário: o App ID do app antigo (o do Instagram) não
+   * serve ao novo (o principal), e vice-versa. Os campos voltam ao que está
+   * salvo só quando o tipo volta ao salvo.
+   */
+  const escolherTipoDoApp = (login: 'instagram' | 'unificado') => {
+    setIgAppLogin(login);
+    if (!igApp?.configurado) return;
+    const doSalvo = igApp.login === login;
+    setIgAppId(doSalvo ? (igApp.appId ?? '') : '');
+    setIgConfigId(doSalvo ? (igApp.configId ?? '') : '');
+  };
   const [igAppSecretNovo, setIgAppSecretNovo] = useState('');
   const [showIgAppSecret, setShowIgAppSecret] = useState(false);
   const [salvandoApp, setSalvandoApp] = useState(false);
@@ -305,6 +317,11 @@ export function CbChannelsPanel() {
     igApp?.configurado && !igAppEditando
       ? igApp.login === 'unificado'
       : igAppLogin === 'unificado';
+  // O login que o botão "Conectar" de fato abre: o do app SALVO (a rota lê o
+  // app gravado). Durante a edição, o formulário pode mostrar o outro tipo.
+  const igConectaPeloUnificado = igApp?.configurado
+    ? igApp.login === 'unificado'
+    : igAppLogin === 'unificado';
 
   const load = useCallback(async () => {
     // Este painel é o ÚNICO escritor de canal, e todo escritor recarrega por
@@ -1763,7 +1780,7 @@ export function CbChannelsPanel() {
                             size="sm"
                             variant={igAppLogin === 'unificado' ? 'default' : 'outline'}
                             aria-pressed={igAppLogin === 'unificado'}
-                            onClick={() => setIgAppLogin('unificado')}
+                            onClick={() => escolherTipoDoApp('unificado')}
                           >
                             {t('instagramAppLoginNovo')}
                           </Button>
@@ -1772,7 +1789,7 @@ export function CbChannelsPanel() {
                             size="sm"
                             variant={igAppLogin === 'instagram' ? 'default' : 'outline'}
                             aria-pressed={igAppLogin === 'instagram'}
-                            onClick={() => setIgAppLogin('instagram')}
+                            onClick={() => escolherTipoDoApp('instagram')}
                           >
                             {t('instagramAppLoginAntigo')}
                           </Button>
@@ -1945,7 +1962,7 @@ export function CbChannelsPanel() {
                   <ol className="list-inside list-decimal space-y-1 text-xs text-muted-foreground">
                     <li>{t('instagramOauthStep_1')}</li>
                     <li>
-                      {igModoUnificado ? t('instagramOauthStepUnificado_2') : t('instagramOauthStep_2')}
+                      {igConectaPeloUnificado ? t('instagramOauthStepUnificado_2') : t('instagramOauthStep_2')}
                     </li>
                   </ol>
                   <Button
@@ -1955,7 +1972,7 @@ export function CbChannelsPanel() {
                     onClick={() => window.location.assign('/api/cb/instagram/oauth/start')}
                   >
                     <InstagramGlyph className="mr-2 h-4 w-4" />
-                    {igModoUnificado ? t('instagramOauthConnectUnificado') : t('instagramOauthConnect')}
+                    {igConectaPeloUnificado ? t('instagramOauthConnectUnificado') : t('instagramOauthConnect')}
                   </Button>
                   <p className="text-xs text-muted-foreground">
                     {igApp === null
@@ -1963,7 +1980,7 @@ export function CbChannelsPanel() {
                       : igApp.falhou
                         ? t('instagramAppLoadFailed')
                         : igApp.configurado
-                          ? igModoUnificado
+                          ? igConectaPeloUnificado
                             ? t('instagramOauthSymptomUnificado')
                             : t('instagramOauthSymptom')
                           : t('instagramOauthNeedsApp')}
@@ -1973,7 +1990,7 @@ export function CbChannelsPanel() {
                 {/* 3. O token colado (o desenho original da D3) continua valendo —
                     só no app antigo: o token do painel é do login do Instagram, e
                     o segredo do app novo não assina as entregas dele (1153). */}
-                {!igModoUnificado && (
+                {!igConectaPeloUnificado && (
                 <Accordion>
                   <AccordionItem className="border-border">
                     <AccordionTrigger className="text-muted-foreground hover:text-foreground hover:no-underline">
