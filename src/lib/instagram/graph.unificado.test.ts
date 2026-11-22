@@ -109,6 +109,16 @@ describe('criarClienteInstagram no login unificado', () => {
     expect(pedidos[0].method).toBe('POST');
   });
 
+  it('tira os webhooks da conta (a conexão pela central que sai, U-3); sem `success`, é erro', async () => {
+    const { fetchFn, pedidos } = gravando([{ success: true }, {}]);
+    await criarClienteInstagram(TOKEN, fetchFn, conta).tirarWebhooks();
+    expect(pedidos[0].url).toBe(`https://graph.facebook.com/v27.0/${CONTA}/subscribed_apps`);
+    expect(pedidos[0].method).toBe('DELETE');
+    await expect(criarClienteInstagram(TOKEN, fetchFn, conta).tirarWebhooks()).rejects.toBeInstanceOf(
+      InstagramApiError
+    );
+  });
+
   it('o perfil do cliente sai do mesmo host', async () => {
     const { fetchFn, pedidos } = gravando([{ name: 'Maria', username: 'maria', profile_pic: 'https://x/y.jpg' }]);
     await criarClienteInstagram(TOKEN, fetchFn, conta).perfil('9988776655443322');

@@ -2,7 +2,8 @@
 // /api/cb/channels/[id]
 //
 //   PATCH  — renomear o canal.
-//   DELETE — remover o canal (e sua instância no servidor Evolution).
+//   DELETE — remover o canal (e sua instância no servidor Evolution, ou a
+//            conta na central do Instagram).
 //
 // Ambos admin+. O canal PADRÃO não pode ser excluído aqui (é o espelho de
 // whatsapp_config que o código herdado lê) — promova outro canal primeiro,
@@ -23,7 +24,8 @@ import {
 } from '@/lib/cb-channels/repo';
 import { deleteChannelInstance } from '@/lib/cb-channels/evolution-admin';
 import { setDefaultChannel } from '@/lib/cb-channels/set-default';
-import { ehEvolution } from '@/lib/cb-channels/transporte';
+import { ehEvolution, ehInstagram } from '@/lib/cb-channels/transporte';
+import { desligarDaCentral } from '@/lib/instagram/central/desligar';
 
 const MAX_LABEL_LEN = 60;
 
@@ -351,6 +353,14 @@ export async function DELETE(
     if (error) {
       console.error('[cb/channels DELETE] erro:', error.message);
       return NextResponse.json({ error: 'Falha ao remover o canal.' }, { status: 500 });
+    }
+
+    // A conexão pela central do Instagram (U-3): a conta para de entregar ao
+    // app da Atlas e a rota sai da central, para ela poder ir a outro
+    // escritório. DEPOIS de a linha sair, com o token já lido: antes, uma
+    // falha no meio deixaria a conexão de pé e muda. Best-effort (nunca lança).
+    if (ehInstagram(channel) && channel.ig_login === 'central') {
+      await desligarDaCentral(channel);
     }
     return NextResponse.json({ ok: true, warning: mirrorWarning });
   } catch (err) {

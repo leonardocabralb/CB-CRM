@@ -867,7 +867,9 @@ planos gratuitos podem usar o conteúdo enviado.
 
 **Instagram Direct** (em *Configurações → Conexões*, não em Integrações):
 use um app próprio no painel da Meta e cadastre-o no CRM. Um app serve a
-todas as contas do escritório. Há dois tipos, e o CRM aceita os dois.
+todas as contas do escritório. Há dois tipos, e o CRM aceita os dois. Sem
+app próprio, a conexão é pela central do Instagram da Atlas (o fim desta
+seção).
 
 *App novo — login unificado* (é o único que um app criado hoje na Meta
 mostra, conferido em novembro de 2026):
@@ -921,6 +923,31 @@ Nessa tela:
    antes de usar.
 O token vale **60 dias**; o CRM avisa quando estiver para vencer, e a
 renovação é entrar de novo pelo login do Instagram.
+
+*Pela central do Instagram (o app da Atlas, sem app próprio na Meta):* o
+CRM conecta como uma **instância** da central, que recebe a volta do login
+e os webhooks do app da Atlas e repassa a este CRM o que é dele.
+1. o operador da central cadastra a instância com o endereço público deste
+   CRM — só a origem, `https://…`, sem caminho — e entrega três valores;
+2. ponha os três no `crm.env`: `INSTAGRAM_CENTRAL_URL` (a origem da
+   central), `INSTAGRAM_CENTRAL_INSTANCIA` (o id desta instância lá) e
+   `INSTAGRAM_CENTRAL_CHAVE` (a chave desta instância, mostrada uma vez no
+   cadastro: é segredo, e a central guarda só o hash dela). O
+   `docker-stack.yml` já os repassa ao contêiner, mas eles só chegam lá
+   num `docker stack deploy` com o `crm.env` carregado (passo 5.3);
+3. o endereço gravado no build (`NEXT_PUBLIC_SITE_URL`, passo 5.1) tem de
+   ser a mesma origem cadastrada na central: a central só devolve o login
+   a ela;
+4. em *Configurações → Conexões*, o Instagram passa a mostrar só o botão
+   **Conectar com Instagram ou Facebook**: não há app a cadastrar, URI a
+   registrar nem webhook a configurar, e cada conta marcada no login vira
+   uma conexão.
+
+Com as três variáveis, a central vence o app cadastrado na conta. Faltando
+uma (ou com um valor fora da forma), conectar volta com erro, e o log diz
+qual falta. Uma conta do Instagram fica num CRM só: a que já está em outro
+CRM da central é recusada. Apagar a conexão tira a assinatura da conta e
+avisa a central, e a conta fica livre para outro CRM.
 
 **Webhooks de entrada e de saída** (Typebot, n8n, outros sistemas): ver
 [`webhooks.md`](./webhooks.md).

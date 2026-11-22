@@ -58,6 +58,12 @@ services:
       # Ligar pelo CRM (1134): o segredo de onde sai o de cada computador de
       # ligações (HMAC pelo nome). Vazio = as rotas das ligações respondem 503.
       LIGACOES_SEGREDO: ${LIGACOES_SEGREDO:-}
+      # Cliente da central do Instagram (U-3): o Instagram pelo app da Atlas.
+      # Vazias = o app da própria conta; pela metade = conectar falha
+      # (.env.local.example). Só chegam ao contêiner num `docker stack deploy`.
+      INSTAGRAM_CENTRAL_URL: ${INSTAGRAM_CENTRAL_URL:-}
+      INSTAGRAM_CENTRAL_INSTANCIA: ${INSTAGRAM_CENTRAL_INSTANCIA:-}
+      INSTAGRAM_CENTRAL_CHAVE: ${INSTAGRAM_CENTRAL_CHAVE:-}
     networks:
       - CBAdvNet
       # A rede SÓ do CRM com os computadores de ligações (contêineres avulsos

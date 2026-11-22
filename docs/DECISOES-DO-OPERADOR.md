@@ -281,8 +281,14 @@ qualquer uma é pergunta ao operador.
   ÚNICO da Atlas pelo login unificado, como Provedor de Tecnologia, só com as
   permissões de mensagens e token que nunca vence; a volta do login e os
   webhooks passam por uma central no CRM de homologação do Atlas, com
-  endereço próprio. O CB segue no login do Instagram até migrar
-  (`instagram.md`).
+  endereço próprio (`instagram.md`).
+- Instagram, o CB pela central (U2, 22/11/2026): o CB conecta pelo app da
+  Atlas, pela central, como instância de fora do SaaS; a conexão de hoje, do
+  login do Instagram, migra depois (`instagram.md`).
+- Instagram, a fila da central (U6, 22/11/2026): a central guarda a entrega
+  que falhou por até 7 dias e a apaga ao entregar (`instagram.md`).
+- Instagram, Human Agent (U9, 22/11/2026): o recurso vai na mesma análise da
+  Meta do app da Atlas (`instagram.md`).
 - Responder pelo Instagram (21/11/2026): no login ATUAL do Instagram, nada do
   login unificado agora. Citar cabe; reagir fica fora; o anexo sai sem
   legenda (o campo some); o Human Agent fica sem efeito até a Meta aprovar; o

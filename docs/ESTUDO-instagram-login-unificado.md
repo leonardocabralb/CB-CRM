@@ -670,7 +670,7 @@ Nenhum agora: todos esperam o "pode" e as decisões.
    - acesso avançado a `instagram_basic` e `instagram_manage_messages` (e
      `public_profile`, que o Facebook Login for Business pede antes de ir ao
      ar [DOC]);
-   - "Human Agent" se U9 disser sim;
+   - "Human Agent" (U9 = sim, 22/11);
    - vídeo da tela em inglês ou com legenda [DOC], mostrando o login, a
      escolha do portfólio e das contas, a DM chegando e a resposta;
    - um escritório de demonstração com conta de teste para o revisor.
@@ -762,14 +762,14 @@ empresa, nem por mensagem do Direct.
 | # | Pergunta | Minha recomendação |
 | --- | --- | --- |
 | U1 | Trocar para o unificado e construir a Fase 4 (responder) já sobre ele? | Para o Atlas, sim (21/11). Em 21/11 outra sessão já faz a Fase 4 e a 6 no login atual do CB; o unificado entra como mais um ramo desse envio (plano, U-1) |
-| U2 | Que app atende o CB: A (cliente do app da Atlas), B (o app do CB atende os dois) ou C (dois apps)? | A |
+| U2 | Que app atende o CB: A (cliente do app da Atlas), B (o app do CB atende os dois) ou C (dois apps)? | **Decidido (22/11):** A. O CB conecta pelo app da Atlas, pela central, como instância de fora do SaaS |
 | U3 | Revisar a **D3**: no app da Atlas, acesso avançado, Provedor de Tecnologia e verificação da empresa da Atlas? | **Decidido (21/11):** sim. App "Atlas CRM" criado como Provedor de Tecnologia (§13); a verificação é do operador |
 | U4 | Fazer as medições do §7.2 num app descartável antes do código? | Sim |
 | U5 | Onde mora a central? | **Decidido (21/11):** no CRM de homologação do Atlas, com endereço próprio (§3.3) |
-| U6 | A central guarda a DM numa fila até entregar? Por quanto tempo? | Sim, até 7 dias, apagando ao entregar |
+| U6 | A central guarda a DM numa fila até entregar? Por quanto tempo? | **Decidido (22/11):** sim. A central guarda a entrega que falhou por até 7 dias e a apaga ao entregar |
 | U7 | Validade do token: "nunca vence" ou 60 dias? | Nunca vence, com checagem diária de saúde. A configuração criada em 21/11 já está assim |
 | U8 | Permissões: só mensagens, ou já comentários e publicação? | **Decidido (21/11):** só mensagens. Os comentários entram com o social selling (§14), numa segunda análise |
-| U9 | Pedir o "Human Agent" (7 dias) na mesma análise? A D2 o deixava para depois | Pedir junto se o escritório responde depois de 24 h; senão, depois |
+| U9 | Pedir o "Human Agent" (7 dias) na mesma análise? A D2 o deixava para depois | **Decidido (22/11):** sim. O recurso Human Agent vai na mesma análise da Meta |
 | U10 | O token colado (alternativa da D3) sai no unificado? | Sai |
 | U11 | "Traga o seu app" (modo direto): oferecer no Personalizado e na instalação própria, como caminho avançado, e o manual em PDF passa a ser deste caminho? | Sim, depois da central e das medições |
 | U12 | A instalação própria pode usar a central da Atlas (pela licença)? | Não por agora (modalidade em espera desde 16/11) |
@@ -933,6 +933,13 @@ ANTIGO de criação de app também não tem a tela do login do Instagram:
   `message_reactions`, `messaging_postbacks`, `messaging_referral` e
   `messaging_seen`.
 - Resultados das medições no §7.2.
+- **Decisões do operador:** U2, U6 e U9 = sim (§11).
+- **A verificação da empresa da Atlas foi solicitada** pelo operador na
+  Meta e está em análise.
+- **Domínio do portfólio da Atlas:** o domínio antigo foi removido, e o
+  `atlasjus.com` foi cadastrado e verificado pela metatag
+  `facebook-domain-verification` na página inicial do site. ⚠️ Não tirar a
+  metatag do site.
 
 ---
 

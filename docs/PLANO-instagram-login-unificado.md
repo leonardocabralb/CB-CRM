@@ -22,9 +22,11 @@
 | U5 | A central mora no CRM de homologação do Atlas, com endereço próprio (`central.<domínio da Atlas>`) | Decidida (21/11) |
 | U7 | Token do usuário do sistema que nunca vence, com checagem diária de saúde | A configuração já nasceu assim (21/11) |
 | U8 | Só as permissões de mensagens (`instagram_basic`, `instagram_manage_messages`) | Decidida e aplicada na configuração (21/11) |
-| U2 | O CB vira cliente do app da Atlas (opção A) | **Pendente** (recomendada) |
+| U2 | O CB vira cliente do app da Atlas (opção A): conecta pela central, como instância de fora do SaaS | Decidida (22/11): sim |
+| U6 | A central guarda a entrega que falhou por até 7 dias e a apaga ao entregar | Decidida (22/11): sim |
+| U9 | O Human Agent vai na mesma análise da Meta | Decidida (22/11): sim |
 | U4 | Medições antes do código | **Pendente** (recomendada); a M7 já foi medida |
-| U6, U9–U14 | Fila da central, Human Agent, token colado, "traga o seu app", instalação própria, migração do CB, várias contas | **Pendentes** (estudo, §11) |
+| U10–U14 | Token colado, "traga o seu app", instalação própria, migração do CB, várias contas | **Pendentes** (estudo, §11) |
 | — | Social selling (automações no Instagram) | Ideia futura; revê a D1 (estudo, §14) |
 
 ## O que já existe (21/11/2026)
@@ -117,13 +119,14 @@ falta. Nada muda na conexão do CB, que segue no login do Instagram.
       Nenhuma variável de ambiente nova.
 - [x] Typecheck e testes verdes, e replay das migrations num Postgres vazio
       (local). O login atual segue igual.
-- [ ] **Falta, com o operador:** revisão, PR, aplicar a 1153 e mesclar. A
-      primeira conexão real pelo unificado é o piloto (U-5) ou a medição com
-      o receptor de teste.
+- [x] **Mesclada:** PR #541, merge `9b8b11ff` (22/11/2026), com a 1153
+      aplicada antes. A primeira conexão real pelo unificado é o piloto
+      (U-5) ou a medição com o receptor de teste.
 
 ### U-2 — A central no Atlas CRM (repositório `atlas-crm-dev`)
 Ligada por variável de ambiente só no CRM de homologação (U5). Ela usa o
-módulo do U-1, portado antes.
+módulo do U-1, portado antes. Construída no PR #107 de lá (22/11); o que
+mudou do desenho abaixo está marcado, e as caixas são do Atlas.
 
 **O protocolo (desenho de 22/11):**
 - **A instância fala com a Meta sozinha** para enviar, ler perfil e assinar
@@ -141,10 +144,13 @@ módulo do U-1, portado antes.
   3. ela devolve um tíquete de uso único, válido por 5 min.
   
   O resgate do tíquete é de servidor para servidor, com a chave no `Bearer`.
-- **A central assina o repasse com a CHAVE da instância**, no mesmo formato
+- **A central assina o repasse com o segredo DERIVADO da chave da
+  instância** (HKDF-SHA256, `info` `cb-ig-central-repasse`; ela guarda só o
+  hash da chave e esse segredo cifrado), no mesmo formato
   `X-Hub-Signature-256`, e entrega na rota de webhook de hoje. A conexão do
-  modo `central` guarda a chave em `ig_app_secret`, então a rota da
-  instância não muda.
+  modo `central` guarda esse segredo em `ig_app_secret`, então a rota da
+  instância não muda. (Mudou na construção, 22/11: com só o hash guardado, a
+  central não assinaria com a chave crua.)
 - **A fila do que falhou** é drenada na manutenção do ciclo que já existe
   (sem rota de cron nova), até 7 dias (U6).
 - [ ] **Tabelas da central:**
@@ -160,10 +166,11 @@ módulo do U-1, portado antes.
       duas últimas vieram da U-1: o `signed_request` é assinado pelo segredo
       do app da Atlas).
 - [ ] **Repasse ao escritório na hora:**
-  - assinado com o destino e a hora;
+  - assinado com o segredo do repasse (o carimbo de hora contra a repetição
+    ficou fora da primeira versão, na construção);
   - o que falha vai para a fila;
-  - a fila é tentada de novo pelo laço rápido do agendador (rota de cron
-    nova entra no laço) e limpa ao entregar;
+  - a fila é drenada na manutenção do ciclo (sem rota de cron nova, na
+    construção) e limpa ao entregar;
   - nenhuma transação aberta durante o HTTP.
 - [ ] **Conta sem rota:** 200 com log. Nunca 4xx para a Meta.
 - [ ] **A mesma conta em dois escritórios:** a central recusa.
@@ -174,21 +181,34 @@ módulo do U-1, portado antes.
       a variável e o segredo do app ficam no ambiente dela. O segredo quem
       cola é o operador.
 
-### U-3 — Cliente da central (Atlas primeiro; CB se a U2 disser sim)
-Os escritórios do SaaS são o primeiro cliente, então a U-3 nasce no Atlas,
-junto com a central. No CB, ela espera a U2 e o merge da U-1 (branch
-`feat/instagram-unificado-central`).
-- [ ] **Modo `central` da conexão:**
-  - o botão leva à central;
+### U-3 — Cliente da central (Atlas primeiro; o CB com a U2 = sim)
+Os escritórios do SaaS são o primeiro cliente, então a U-3 nasceu no Atlas,
+junto com a central (PRs #107, a central, e #108, o cliente, no
+`atlas-crm-dev`). No CB, com a U2 = sim e a U-1 mesclada, é o porte do #108
+na branch `feat/instagram-cliente-da-central` (22/11/2026). O CB é só
+instância: nada da central (rotas, fila, cadastro, migration) vem.
+- [x] **Modo `central` da conexão** (`src/lib/instagram/central/`):
+  - com as três variáveis, o botão leva à central, sem ler o app da conta;
   - a volta traz um tíquete, e o resgate, de servidor para servidor, traz o
     token e as contas;
-  - a sessão de admin e o nonce do cookie valem como hoje.
-- [ ] **Rota de entrega da central:** confere a assinatura da central, o
-      destino e a hora, e segue pelo mesmo `persistir.ts`.
-- [ ] **Variáveis de ambiente:** o endereço da central e a credencial da
-      instância. Entram no `environment:` da stack e no
-      `.env.local.example`; no Atlas, o provisionador as grava no
-      `atlas.env`.
+  - a sessão de admin e o nonce do cookie valem como hoje;
+  - cada conta vira uma conexão `ig_login = 'central'`, com o segredo do
+    repasse em `ig_app_secret`, sem assinar o webhook de novo; a que não
+    virou conexão sai da central se não for conexão de ninguém no CRM;
+  - apagar a conexão tira a assinatura da conta e avisa a central.
+- [x] **Entrega da central:** sem rota nova. A central assina com o segredo
+      do repasse, e a rota de webhook de hoje confere pela conexão
+      (`quaisAssinam`) e segue pelo mesmo `persistir.ts`. O carimbo de hora
+      contra a repetição ficou fora da primeira versão (o UNIQUE da mensagem
+      descarta a repetida).
+- [x] **Variáveis de ambiente:** `INSTAGRAM_CENTRAL_URL`,
+      `INSTAGRAM_CENTRAL_INSTANCIA` e `INSTAGRAM_CENTRAL_CHAVE`, no
+      `environment:` da stack, no `.env.local.example` e em
+      `docs/INSTALACAO.md`. Nenhuma migration (a 1153 já aceita `central`).
+- [ ] **Falta, com o operador:** revisão, PR e merge; o cadastro do CB na
+      central (a origem do `NEXT_PUBLIC_SITE_URL` do CB); as três variáveis
+      no `crm.env` e um `docker stack deploy` com ele carregado (o CI não
+      relê o `environment:`); a primeira conexão é o piloto (U-5).
 
 ### U-4 — Painel da Meta (cada passo com o "pode")
 - [ ] A URL de retorno da central na configuração do unificado, no lugar da
@@ -199,8 +219,8 @@ junto com a central. No CB, ela espera a U2 e o merge da U-1 (branch
 - [ ] Publicar o app (modo Ativo).
 
 ### U-5 — Piloto
-- [ ] Um escritório de teste da Atlas, e o CB se a U2 for "sim", conectam
-      pela central com acesso padrão.
+- [ ] Um escritório de teste da Atlas e o CB (U2 = sim) conectam pela
+      central com acesso padrão.
 - [ ] Medir: DM entra, resposta sai, desconectar e reconectar, a M3 no
       unificado.
 
@@ -209,7 +229,7 @@ Depende da verificação da empresa, que é do operador e pode correr desde já.
 - [ ] Escritório de demonstração com conta de teste para o revisor.
 - [ ] Vídeo da tela em inglês ou com legenda: login, portfólio, contas, DM
       chegando, resposta.
-- [ ] Textos de cada permissão; "Human Agent" se a U9 disser sim.
+- [ ] Textos de cada permissão e do "Human Agent" (U9 = sim, 22/11).
 - [ ] Enviar e acompanhar.
 
 ### U-7 — Migração do CB e retirada do login antigo

@@ -1,7 +1,7 @@
 // ============================================================
 // Gravar a conexão do Instagram em `cb_channels` — o trecho comum aos
-// caminhos de conexão: o token colado (`POST /api/cb/channels`) e os logins
-// do Instagram e unificado (`/api/cb/instagram/oauth/callback`). Quem chama já conferiu
+// caminhos de conexão: o token colado (`POST /api/cb/channels`), os logins
+// do Instagram e unificado e a central (`/api/cb/instagram/oauth/callback`). Quem chama já conferiu
 // o token no `/me`; aqui é só a escrita, com a regra do índice único GLOBAL
 // de `ig_user_id` (989): na MESMA conta, reconectar é recuperação (token e
 // segredo novos, verify token preservado — o painel da Meta já o conhece);
@@ -28,7 +28,8 @@ export interface DadosDoCanalDoInstagram {
   accessToken: string;
   /**
    * O segredo que ASSINA a entrega desta conexão (1153): o Instagram App
-   * Secret no login do Instagram, o App Secret principal no unificado.
+   * Secret no login do Instagram, o App Secret principal no unificado, o
+   * segredo do repasse da central (`segredoDasEntregas`) pela central.
    */
   igAppSecret: string;
   /** Mesma regra do `label`: `null` preserva o que "Configurar" gravou. */
@@ -44,7 +45,7 @@ export interface DadosDoCanalDoInstagram {
    * Por qual login a conexão entrou. Reconectar pelo OUTRO login troca o modo
    * da mesma linha (o índice único de `ig_user_id` não deixa nascer outra).
    */
-  login: 'instagram' | 'unificado';
+  login: 'instagram' | 'unificado' | 'central';
   /** O portfólio do cliente, no unificado. */
   clientBusinessId: string | null;
 }

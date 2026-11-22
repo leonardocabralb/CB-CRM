@@ -308,12 +308,48 @@ porta; o login de cada conexão fica em `cb_channels.ig_login`. Estudo:
   evento de teste do painel do unificado (22/11). A DM real ainda se mede
   (M10).
 
-### Login unificado e o app da Atlas (decisões de 21/11/2026)
+### Pela central do Instagram (U-3, o cliente)
+
+`central/cliente.ts` liga com `INSTAGRAM_CENTRAL_URL`, `_INSTANCIA` e
+`_CHAVE` (as três; pela metade = erro, nunca o app da conta) e, ligado, VENCE
+o app da conta: o `start` vai à central sem ler `cb_instagram_config`. Este
+CRM é só INSTÂNCIA: central, fila e cadastro moram no Atlas (porte do PR #108
+de lá; `chave.ts` e `contrato.ts` trazem só o lado da instância).
+- ⚠️ **O `state` e o nonce do cookie valem como sempre**: a volta traz
+  `tiquete` (ou o `erro` da central) no lugar do `code`, e só depois do
+  `state` conferido o tíquete é resgatado (`Bearer`, `redirect: 'manual'`).
+- ⚠️⚠️ **`ig_app_secret` da conexão `central` é o segredo do REPASSE**
+  (`segredoDoRepasse`, HKDF da chave, preso num valor conhecido em
+  `cliente.test.ts`), nunca a chave crua: com ele a central assina a entrega,
+  e a rota de webhook não muda. Derivação diferente da de lá = toda DM 401.
+- **A conexão nasce `ig_login = 'central'`, sem assinar o webhook** (a
+  central já assinou), pelo cliente da sessão, como o unificado daqui;
+  `contaDaConexao` a trata como unificado (perfil, saúde, envio).
+- **A conta do tíquete que não virou conexão** volta em `falharam` e a rota
+  dela sai da central (confirmada no resgate, nunca venceria) SÓ se não for
+  conexão de NINGUÉM neste CRM (`soltarAsQueNaoSaoDeNinguem`, service role):
+  a de outra conta daqui recebe por ela. Leitura que falha não solta.
+- **Ligado, `/api/cb/instagram/app` não lê o app antigo** (segredo que não
+  decifra não tira o botão), e a tela tem só "Conectar com Instagram ou
+  Facebook": sem app, URI, token colado nem "Webhook na Meta" na conexão.
+- **Apagar a conexão** tira a assinatura (`DELETE {ig-id}/subscribed_apps`,
+  token do escritório) e avisa a central (`desligarDaCentral`, nunca lança),
+  DEPOIS de a linha sair: antes, uma falha no meio a deixava de pé e muda.
+- ⚠️ **`NEXT_PUBLIC_SITE_URL` é a origem cadastrada na central**: o retorno
+  sai dele, e a central só devolve o login a ela (o preview não passa). As
+  três variáveis chegam ao contêiner só com `docker stack deploy`.
+
+### Login unificado e o app da Atlas (decisões de 21 e 22/11/2026)
 
 O produto troca o login do Instagram pelo login unificado num app ÚNICO da
-Atlas. Até a central existir, tudo acima vale para o CB, que segue no login do
-Instagram até migrar (U2 pendente).
+Atlas, e o CB conecta pela central (acima).
 
+- U2 (22/11): o CB conecta pelo app da Atlas, pela central, como instância
+  de fora do SaaS; a conexão de hoje, do login do Instagram, migra na U-7.
+- U6 (22/11): a central guarda a entrega que falhou por até 7 dias e a
+  apaga ao entregar (código da central, no Atlas).
+- U9 (22/11): o Human Agent vai na mesma análise da Meta; até a aprovação,
+  nada lê `ig_human_agent`.
 - U3: app único da Atlas, como Provedor de Tecnologia (a marcação não se
   desfaz), com verificação da empresa e análise de acesso avançado. Revê a D3
   para o produto.

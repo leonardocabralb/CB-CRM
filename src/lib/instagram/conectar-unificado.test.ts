@@ -63,6 +63,7 @@ function clienteFalso(falhar: Set<string>) {
         }
         return { igUserId: id, username: `conta_${id.slice(-1)}`, nome: null };
       },
+      async tirarWebhooks() {},
       async assinarWebhooks() {
         assinadas.push(id);
       },
@@ -120,6 +121,28 @@ describe('conectarContasDoUnificado', () => {
     });
   });
 
+  it('pela central (U-3): a conexão nasce `central`, com o segredo das entregas, e o webhook não é assinado de novo', async () => {
+    const { db, inseridas } = bancoFalso();
+    const { criar, assinadas } = clienteFalso(new Set());
+    const r = await conectarContasDoUnificado(
+      db,
+      {
+        ...BASE,
+        appSecret: 'segredoDasEntregasFicticio',
+        alcance: { clientBusinessId: null, contas: [{ igUserId: '17841400000000001', username: 'conta_1' }] },
+        login: 'central',
+        assinar: false,
+      },
+      criar
+    );
+    expect(r.conectadas).toHaveLength(1);
+    expect(assinadas).toEqual([]);
+    expect(inseridas[0]).toMatchObject({
+      ig_login: 'central',
+      ig_app_secret: 'cifrado(segredoDasEntregasFicticio)',
+    });
+  });
+
   it('a conta que a Meta recusa fica de fora, e as outras entram', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { db } = bancoFalso();
@@ -140,7 +163,7 @@ describe('conectarContasDoUnificado', () => {
     );
     expect(r.conectadas.map((c) => c.username)).toEqual(['conta_2']);
     expect(r.naoEntraram).toEqual([
-      { conta: '@conta_1', motivo: 'meta', detalhe: '(#200) acesso às mensagens desligado' },
+      { conta: '@conta_1', igUserId: '17841400000000001', motivo: 'meta', detalhe: '(#200) acesso às mensagens desligado' },
     ]);
   });
 
@@ -157,7 +180,7 @@ describe('conectarContasDoUnificado', () => {
       criar
     );
     expect(r.conectadas).toEqual([]);
-    expect(r.naoEntraram).toEqual([{ conta: '@conta_1', motivo: 'outra_conta', detalhe: null }]);
+    expect(r.naoEntraram).toEqual([{ conta: '@conta_1', igUserId: '17841400000000001', motivo: 'outra_conta', detalhe: null }]);
   });
 
   it('prazo medido vira vencimento gravado', async () => {

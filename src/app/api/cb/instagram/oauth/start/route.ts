@@ -4,7 +4,10 @@
 // Monta o `state` assinado (conta + membro + nonce + validade), guarda o
 // nonce num cookie HttpOnly e manda a pessoa para a página de autorização:
 // a do login unificado (Facebook, app novo) ou a do Instagram (app antigo),
-// pelo tipo do app da conta. Qualquer coisa que impeça isso volta para Conexões com
+// pelo tipo do app da conta. Com a central do Instagram no ambiente
+// (`INSTAGRAM_CENTRAL_*`, U-3), a porta é a CENTRAL: o app é o da Atlas, a
+// conta não cadastra app nenhum, e a volta traz um tíquete em vez do código.
+// Qualquer coisa que impeça isso volta para Conexões com
 // `?instagram=erro&motivo=…` — é um clique de navegador, não um fetch, então
 // JSON aqui não teria quem o lesse.
 // ============================================================
@@ -18,6 +21,7 @@ import {
   RATE_LIMITS,
 } from '@/lib/rate-limit';
 import { lerAppDoInstagram } from '@/lib/instagram/app';
+import { estadoDoCliente, urlDeEntrar } from '@/lib/instagram/central/cliente';
 import type { MotivoDoOAuth } from '@/lib/instagram/conexao';
 import {
   COOKIE_DO_OAUTH,
@@ -59,14 +63,23 @@ export async function GET(request: NextRequest) {
   const limit = checkRateLimit(`cb:igOauth:${ctx.userId}`, RATE_LIMITS.adminAction);
   if (!limit.success) return voltar('limite');
 
-  let app;
-  try {
-    app = await lerAppDoInstagram(supabaseAdmin(), ctx.accountId);
-  } catch (err) {
-    console.error('[cb/instagram/oauth] app ilegível:', err instanceof Error ? err.message : err);
+  // Pela central, o app é o da Atlas: o da conta não é lido (nem preciso).
+  const central = estadoDoCliente();
+  if (central.ligado && central.incompleto !== null) {
+    console.error('[cb/instagram/oauth] central do Instagram pela metade; falta:', central.incompleto.join(', '));
     return voltar('erro');
   }
-  if (!app) return voltar('sem_app');
+  const cliente = central.ligado && central.incompleto === null ? central.cliente : null;
+  let app: Awaited<ReturnType<typeof lerAppDoInstagram>> = null;
+  if (!cliente) {
+    try {
+      app = await lerAppDoInstagram(supabaseAdmin(), ctx.accountId);
+    } catch (err) {
+      console.error('[cb/instagram/oauth] app ilegível:', err instanceof Error ? err.message : err);
+      return voltar('erro');
+    }
+    if (!app) return voltar('sem_app');
+  }
 
   const nonce = novoNonce();
   let estado: string;
@@ -79,10 +92,16 @@ export async function GET(request: NextRequest) {
     return voltar('erro');
   }
   // O app da conta decide a porta (1153): o login unificado (app novo) ou o
-  // do Instagram (app antigo). A volta é a MESMA rota nos dois.
+  // do Instagram (app antigo). A volta é a MESMA rota nos dois, e na central.
   const redirectUri = urlDeRedirecionamento(origem);
   let destino: string;
-  if (app.login === 'unificado') {
+  if (cliente) {
+    // A central confere que o retorno é da origem cadastrada desta instância;
+    // o `state` vai opaco e volta intacto, com o nonce do cookie de sempre.
+    destino = urlDeEntrar(cliente, { retorno: redirectUri, estado });
+  } else if (!app) {
+    return voltar('sem_app');
+  } else if (app.login === 'unificado') {
     if (!app.configId) return voltar('sem_app');
     destino = urlDeAutorizacaoUnificada({
       appId: app.appId,
