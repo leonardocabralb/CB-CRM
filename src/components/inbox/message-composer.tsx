@@ -120,6 +120,7 @@ import {
   arquivoCabeNoDirect,
   bytesDoTexto,
   nomeComExtensaoDoDirect,
+  TETO_DA_IMAGEM_DO_DIRECT,
   TETO_DO_TEXTO_DO_DIRECT,
   type RecusaDoDirect,
 } from "@/lib/instagram/envio";
@@ -468,7 +469,10 @@ export function MessageComposer({
   // envio (decisão do operador, 02/10/2026). Áudio não tem seletor: sai do
   // gravador.
   const porQrCode = transporteConhecido && ehEvolution(channelKind);
-  const aceite = aceiteDoSeletor(porQrCode);
+  // No Instagram Direct, a lista é a do Direct (MOV e WEBM entram; WebP e
+  // Office não) nas mesmas portas: seletor, arrastar/colar, subida e Enviar.
+  const noDirect = ehInstagram(channelKind);
+  const aceite = aceiteDoSeletor(porQrCode, noDirect);
 
   // ⚠️⚠️ Um rascunho POR CONVERSA (pedido do operador, 15/10/2026): o
   // compositor não remonta na troca, e com um `useState` só o texto escrito
@@ -1580,8 +1584,10 @@ export function MessageComposer({
     async (kind: ComposerMediaKind, file: File) => {
       // Per-kind ceiling mirrors Meta's caps (image 5 MB, etc.) so we
       // reject before upload rather than orphaning an object that Meta
-      // would then refuse at send.
-      const max = MEDIA_MAX_BYTES_BY_KIND[kind];
+      // would then refuse at send. No Instagram Direct a imagem vai até 8 MB:
+      // o teto da Meta barraria a foto que o Direct aceita (o resto já cabe).
+      const max =
+        noDirect && kind === "image" ? TETO_DA_IMAGEM_DO_DIRECT : MEDIA_MAX_BYTES_BY_KIND[kind];
       if (file.size > max) {
         toast.error(
           t("arquivoGrandeDemais", {
@@ -1637,7 +1643,7 @@ export function MessageComposer({
         setBusy(false);
       }
     },
-    [setDrafts, conversationId, t, tUpload, channelKind, fraseDoDirect],
+    [setDrafts, conversationId, t, tUpload, channelKind, noDirect, fraseDoDirect],
   );
 
   /**
@@ -1653,12 +1659,12 @@ export function MessageComposer({
         // com parâmetro (`image/png; charset=binary`) — que o bucket, de lista
         // exata, recusa. Ver `arquivoParaEnviar`.
         const arquivo = arquivoParaEnviar(bruto);
-        const tipo = tipoDoArquivo(arquivo.type, porQrCode);
+        const tipo = tipoDoArquivo(arquivo.type, porQrCode, noDirect);
         if (!tipo) continue;
         await stageUpload(tipo, arquivo);
       }
     },
-    [stageUpload, porQrCode],
+    [stageUpload, porQrCode, noDirect],
   );
 
   /**
@@ -1671,14 +1677,17 @@ export function MessageComposer({
       if (readOnly || envioTravado || busy) return;
       // A fila de AGORA desta conversa: um upload pode ter pousado no quadro.
       const naFila = lerDrafts().length;
-      const r = escolherArquivos(arquivos, naFila, porQrCode);
+      const r = escolherArquivos(arquivos, naFila, porQrCode, noDirect);
       // Cada descarte tem seu aviso: o operador precisa saber o que NÃO foi.
-      // A lista do aviso é a desta conexão (a página .html só no QR code).
+      // A lista do aviso é a desta conexão (a página .html só no QR code; o
+      // Instagram Direct com a dele).
       if (r.recusados > 0) {
         toast.error(
-          porQrCode
-            ? t("arquivoNaoSuportadoQrCode", { n: r.recusados })
-            : t("arquivoNaoSuportado", { n: r.recusados }),
+          noDirect
+            ? t("arquivoNaoSuportadoInstagram", { n: r.recusados })
+            : porQrCode
+              ? t("arquivoNaoSuportadoQrCode", { n: r.recusados })
+              : t("arquivoNaoSuportado", { n: r.recusados }),
         );
       }
       if (r.excedentes > 0) toast.error(t("tetoDeAnexos", { max: MAX_ANEXOS, n: r.excedentes }));
@@ -1688,7 +1697,7 @@ export function MessageComposer({
       // conclusão, não a que a pessoa soltou.
       void stageUploads(r.aceitos);
     },
-    [readOnly, envioTravado, busy, stageUploads, t, porQrCode, lerDrafts],
+    [readOnly, envioTravado, busy, stageUploads, t, porQrCode, noDirect, lerDrafts],
   );
 
   /**
@@ -1949,9 +1958,10 @@ export function MessageComposer({
     // seletor do cabeçalho, ou a conversa solta que segue o número do cliente
     // (Codex, PR #376): o que só sai pelo QR code é conferido de novo, contra
     // a conexão de AGORA, antes de enviar OU de agendar. Fica na fila: a
-    // pessoa tira o arquivo ou volta para uma conexão por QR code.
-    if (drafts.some((d) => d.mime !== undefined && tipoDoArquivo(d.mime, porQrCode) === null)) {
-      toast.error(t("anexoSoNoQrCode"));
+    // pessoa tira o arquivo ou volta para uma conexão por QR code. No Instagram
+    // Direct, a régua é a dele (o anexo da fila de antes da troca de conexão).
+    if (drafts.some((d) => d.mime !== undefined && tipoDoArquivo(d.mime, porQrCode, noDirect) === null)) {
+      toast.error(noDirect ? t("instagramNaoCabe") : t("anexoSoNoQrCode"));
       return;
     }
     // A conexão caiu com o anexo já na fila: ele FICA (o botão está travado e
@@ -2055,7 +2065,7 @@ export function MessageComposer({
     const retidos = new Set(itens.map((d) => d.id));
     setDrafts((atual) => atual.filter((d) => !retidos.has(d.id)));
     setSelecionado(null);
-  }, [drafts, setDrafts, lerDrafts, busy, conexaoForaDoAr, replyTo?.id, quandoAg, agendar, porQrCode, t, liberarPendente, conversationId, channelKind]);
+  }, [drafts, setDrafts, lerDrafts, busy, conexaoForaDoAr, replyTo?.id, quandoAg, agendar, porQrCode, noDirect, t, liberarPendente, conversationId, channelKind]);
 
   /** Descarta UM item — recolhe o objeto, que subiu e não foi enviado. */
   const discardDraft = useCallback(

@@ -243,7 +243,10 @@ export function nomeComExtensaoDoDirect(
   return `${nome.trim() || 'arquivo'}.${daMime}`;
 }
 
-/** Os MIMEs aceitos por classe — só para o pino de `EXTENSAO_DO_MIME`. */
+/**
+ * Os MIMEs aceitos por classe: o pino de `EXTENSAO_DO_MIME` e a lista das
+ * portas do compositor no Direct (`MIMES_PELO_DIRECT`, `arquivo-solto.ts`).
+ */
 export const MIMES_DO_DIRECT: Readonly<Record<ClasseDoCrm, readonly string[]>> =
   MIMES;
 

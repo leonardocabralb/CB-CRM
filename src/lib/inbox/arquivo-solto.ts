@@ -9,6 +9,9 @@
  * WhatsApp o rejeita.
  */
 
+import { MIMES_DO_DIRECT } from "@/lib/instagram/envio";
+import { MIMES_DO_CHAT_MEDIA } from "@/lib/storage/tipos-do-chat-media";
+
 export type TipoDeAnexo = "image" | "video" | "document";
 
 /**
@@ -42,19 +45,41 @@ export const MIMES_ACEITOS: Record<TipoDeAnexo, readonly string[]> = {
 export const MIMES_SO_POR_QR_CODE: readonly string[] = ["text/html"];
 
 /**
+ * A lista da conversa do Instagram Direct: a régua do Direct (`envio.ts`,
+ * imagem png/jpeg, vídeo mp4/ogg/avi/mov/webm, documento SÓ PDF) dentro do
+ * que o bucket `chat-media` guarda — sobra vídeo mp4/mov/webm. NÃO é a lista
+ * da Meta: lá o MOV do iPhone é recusado, e aqui seria o vídeo mais comum
+ * barrado antes de subir; e o WebP e o Office que a Meta aceita o Direct
+ * recusa.
+ */
+export const MIMES_PELO_DIRECT: Record<TipoDeAnexo, readonly string[]> = {
+  image: MIMES_DO_DIRECT.image.filter((m) => MIMES_DO_CHAT_MEDIA.includes(m)),
+  video: MIMES_DO_DIRECT.video.filter((m) => MIMES_DO_CHAT_MEDIA.includes(m)),
+  document: MIMES_DO_DIRECT.document.filter((m) => MIMES_DO_CHAT_MEDIA.includes(m)),
+};
+
+/**
  * A lista de cada seletor PARA ESTA CONVERSA. `porQrCode` só é `true` com o
  * transporte CONHECIDO e Evolution: enquanto a lista de conexões não chega, ou
  * na conexão oficial, vale a lista estrita — um `.html` aceito ali só falharia
- * depois, na Meta, longe da causa.
+ * depois, na Meta, longe da causa. `noDirect` (o canal é o Instagram) troca a
+ * lista inteira pela do Direct.
  */
-export function mimesAceitos(porQrCode: boolean): Record<TipoDeAnexo, readonly string[]> {
+export function mimesAceitos(
+  porQrCode: boolean,
+  noDirect = false,
+): Record<TipoDeAnexo, readonly string[]> {
+  if (noDirect) return MIMES_PELO_DIRECT;
   if (!porQrCode) return MIMES_ACEITOS;
   return { ...MIMES_ACEITOS, document: [...MIMES_ACEITOS.document, ...MIMES_SO_POR_QR_CODE] };
 }
 
 /** O `accept=` de cada seletor, derivado da MESMA lista. */
-export function aceiteDoSeletor(porQrCode: boolean): Record<TipoDeAnexo, string> {
-  const lista = mimesAceitos(porQrCode);
+export function aceiteDoSeletor(
+  porQrCode: boolean,
+  noDirect = false,
+): Record<TipoDeAnexo, string> {
+  const lista = mimesAceitos(porQrCode, noDirect);
   return {
     image: lista.image.join(","),
     video: lista.video.join(","),
@@ -74,10 +99,11 @@ export function aceiteDoSeletor(porQrCode: boolean): Record<TipoDeAnexo, string>
 export function tipoDoArquivo(
   mime: string | null | undefined,
   porQrCode = false,
+  noDirect = false,
 ): TipoDeAnexo | null {
   const limpo = mimeNormalizado(mime);
   if (!limpo) return null;
-  const lista = mimesAceitos(porQrCode);
+  const lista = mimesAceitos(porQrCode, noDirect);
   for (const tipo of ["image", "video", "document"] as const) {
     if (lista[tipo].includes(limpo)) return tipo;
   }
@@ -161,11 +187,12 @@ export function escolherArquivos(
   arquivos: readonly File[],
   jaAnexados = 0,
   porQrCode = false,
+  noDirect = false,
 ): ArquivosRecebidos {
   const aceitos: File[] = [];
   let recusados = 0;
   for (const arquivo of arquivos) {
-    if (tipoDoArquivo(arquivo.type, porQrCode) === null) recusados += 1;
+    if (tipoDoArquivo(arquivo.type, porQrCode, noDirect) === null) recusados += 1;
     else aceitos.push(arquivo);
   }
   const vagas = Math.max(0, MAX_ANEXOS - jaAnexados);

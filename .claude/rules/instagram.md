@@ -134,7 +134,11 @@ Pino `send-message-instagram.test.ts`.
   some na tela, decisão de 21/11/2026); formato fora da doc (imagem png/jpeg,
   vídeo mp4/ogg/avi/mov/webm, áudio aac/m4a/wav/mp4, documento SÓ PDF), pela
   extensão do nome ou do caminho. O compositor recusa antes de subir
-  (`arquivoCabeNoDirect`, pelo MIME; imagem até 8 MB), o acervo também.
+  (`arquivoCabeNoDirect`, pelo MIME; imagem até 8 MB, no lugar dos 5 MiB da
+  Meta), o acervo também. ⚠️ As quatro portas do compositor (seletor,
+  arrastar/colar, subida, Enviar) usam a lista do Direct (`noDirect`,
+  `MIMES_PELO_DIRECT`: a régua dentro do bucket, vídeo mp4/mov/webm); pela da
+  Meta, o MOV do iPhone era barrado antes de subir.
   ⚠️ As duas pontas medem coisas diferentes (MIME × extensão): o compositor
   sobe com a extensão do MIME o nome que não a traz (`nomeComExtensaoDoDirect`;
   "foto" subia como `foto.bin`), e o envio e o agendamento deixam de fora a
@@ -210,8 +214,11 @@ Pino `send-message-instagram.test.ts`.
   `last_error`; o resto tenta no ciclo seguinte. ⚠️ A TENTATIVA é carimbada
   ANTES do pedido (`ig_token_refresh_tried_at`, 1152) e o lote começa pela
   tentada há mais tempo: ordenada só pela validade, a conexão que a Meta
-  recusa sempre ficava à frente das 100, e as de trás venciam sem renovar. Corre sob o PRAZO COMUM da
-  manutenção: não começa pedido (10 s) que não caiba nele. É a segunda exceção do `Bearer`: a doc só mostra o token na
+  recusa sempre ficava à frente das 100, e as de trás venciam sem renovar. Tem teto
+  próprio dentro do prazo comum da manutenção (`TETO_DO_TOKEN_MS`, 60 s; sob o
+  prazo inteiro, a Meta lenta comia o dos passos seguintes), contado do início
+  DELA: contado da manutenção, os alarmes (60 s próprios, antes) o comiam. Não
+  começa pedido (10 s) que não caiba nele. É a segunda exceção do `Bearer`: a doc só mostra o token na
   query do `refresh_access_token`.
 
 ### Conexão pelo login do Instagram (OAuth)

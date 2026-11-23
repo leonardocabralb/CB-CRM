@@ -7,10 +7,13 @@ import {
   escolherArquivos,
   MAX_ANEXOS,
   MIMES_ACEITOS,
+  MIMES_PELO_DIRECT,
   mimeNormalizado,
   nomeParaColagem,
   tipoDoArquivo,
 } from "./arquivo-solto";
+import { arquivoCabeNoDirect } from "@/lib/instagram/envio";
+import { MIMES_DO_CHAT_MEDIA } from "@/lib/storage/tipos-do-chat-media";
 
 const arquivo = (nome: string, mime: string, bytes = 10): File =>
   new File([new Uint8Array(bytes)], nome, { type: mime });
@@ -190,5 +193,43 @@ describe("mimeNormalizado / arquivoParaEnviar", () => {
   it("a extensão do nome sai do MIME LIMPO, nunca do cru", () => {
     const colado = new File([new Uint8Array(4)], "", { type: "image/webp; charset=binary" });
     expect(arquivoParaEnviar(colado, AGORA).name).toBe("imagem-20260908-163045.webp");
+  });
+});
+
+describe("a conversa do Instagram Direct (`noDirect`)", () => {
+  it("⚠️ o MOV do iPhone e o WEBM entram — a lista da Meta os barrava antes de subir", () => {
+    expect(tipoDoArquivo("video/quicktime", false, true)).toBe("video");
+    expect(tipoDoArquivo("video/webm", false, true)).toBe("video");
+    expect(tipoDoArquivo("video/mp4", false, true)).toBe("video");
+    expect(aceiteDoSeletor(false, true).video.split(",")).toContain("video/quicktime");
+    const r = escolherArquivos([arquivo("praia.mov", "video/quicktime")], 0, false, true);
+    expect(r).toMatchObject({ recusados: 0, excedentes: 0 });
+    // Sem o `noDirect`, o mesmo arquivo continua fora (a Meta o recusa).
+    expect(tipoDoArquivo("video/quicktime", false)).toBeNull();
+  });
+
+  it("o que o Direct recusa fica de fora nas três portas: WebP, 3GP, Office e a página HTML", () => {
+    for (const mime of [
+      "image/webp",
+      "video/3gpp",
+      "application/msword",
+      "text/plain",
+      "text/html",
+    ]) {
+      expect(tipoDoArquivo(mime, false, true)).toBeNull();
+      // O `noDirect` vence o `porQrCode`.
+      expect(tipoDoArquivo(mime, true, true)).toBeNull();
+    }
+    expect(aceiteDoSeletor(false, true).document).toBe("application/pdf");
+  });
+
+  it("⚠️ toda a lista sobe no bucket (lista exata) e passa na régua do Direct", () => {
+    for (const tipo of ["image", "video", "document"] as const) {
+      expect(MIMES_PELO_DIRECT[tipo].length).toBeGreaterThan(0);
+      for (const mime of MIMES_PELO_DIRECT[tipo]) {
+        expect(MIMES_DO_CHAT_MEDIA).toContain(mime);
+        expect(arquivoCabeNoDirect(tipo, mime, 1000)).toBeNull();
+      }
+    }
   });
 });

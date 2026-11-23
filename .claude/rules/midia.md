@@ -131,7 +131,11 @@ teto. A bolha, a fila de anexos do compositor e o player de áudio estão em
   recusaria depois do envio. As três portas do compositor leem o MESMO
   `porQrCode`, e o envio da fila (`sendDraft`, antes de enviar OU agendar)
   confere de novo pelo `mime` do item: a conexão pode mudar com o `.html` já
-  anexado (Codex, PR #376). Pino `arquivo-solto.chamadores.test.ts`.
+  anexado (Codex, PR #376). Na conversa do Instagram, as mesmas portas usam
+  a lista do Direct (`noDirect` → `MIMES_PELO_DIRECT`: a régua de `envio.ts`
+  dentro do bucket; MOV e WEBM entram, WebP e Office não), e a imagem sobe
+  até `TETO_DA_IMAGEM_DO_DIRECT` (8 MB) no lugar do teto da Meta. Pino
+  `arquivo-solto.chamadores.test.ts`.
 - ⚠️⚠️ **O MIME é NORMALIZADO antes de subir** (`arquivoParaEnviar`), não só
   antes de comparar: `uploadAccountMedia` manda `file.type` como
   `contentType`, e o bucket tem lista EXATA (023) — `image/png;

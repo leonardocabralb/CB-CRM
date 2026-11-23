@@ -197,10 +197,10 @@ destaque e ↑/↓ em `message-thread.tsx`.
 
 `src/lib/inbox/arquivo-solto.ts` e `message-composer.tsx`.
 
-- ⚠️⚠️ **A lista de MIMEs é UMA** (`MIMES_ACEITOS`; o `accept=` deriva dela em
+- ⚠️⚠️ **A lista de MIMEs é UMA** (`mimesAceitos`; o `accept=` deriva dela em
   `aceiteDoSeletor`): duas listas divergiriam e o arquivo falharia só no envio.
-  A página `.html` só nas conexões por QR code, com o transporte conhecido
-  (`porQrCode`, o mesmo nas três portas; `.claude/rules/midia.md`).
+  A página `.html` só no QR code, com o transporte conhecido (`porQrCode`), e
+  o Direct com a dele (`noDirect`), nas mesmas portas (`midia.md`).
 - ⚠️⚠️ **O MIME é NORMALIZADO antes de SUBIR** (`arquivoParaEnviar`): o bucket
   tem lista exata, e `image/png; charset=binary` era recusado. Outro caminho de
   upload repete a normalização.
