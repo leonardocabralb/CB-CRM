@@ -417,6 +417,11 @@ export interface ScheduledMessage {
   message_id: string | null;
   /** Nulo quando quem agendou saiu do `auth.users`. */
   created_by: string | null;
+  /**
+   * Agendada pela TELA do CRM (uma pessoa da equipe), não pela API v1 (1154).
+   * Só ela pode sair pela janela de 7 dias do Instagram (Human Agent).
+   */
+  pela_tela: boolean;
   /** Carimbado na escrita — sobrevive à saída do membro. */
   autor_nome: string;
   created_at: string;

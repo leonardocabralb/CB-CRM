@@ -287,6 +287,10 @@ export async function POST(request: Request) {
         // `userId` (do requireRole) já estava aqui — chave do rate limit e do
         // findOrCreateConversation — e morria antes do insert.
         senderUserId: userId,
+        // A resposta que uma pessoa digita (ou anexa) e envia na hora: a única,
+        // com a agendada pela tela, que pode sair pela janela de 7 dias do
+        // Instagram (Human Agent) quando a conexão a tem ligada (22/11/2026).
+        respostaDeGente: true,
       })
 
       return NextResponse.json({

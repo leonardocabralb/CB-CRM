@@ -93,6 +93,22 @@ describe('criarClienteInstagram no login unificado', () => {
     expect(pedidos[0].corpo).toEqual({ recipient: { id: '9988776655443322' }, message: { text: 'Olá' } });
   });
 
+  it('Human Agent: o mesmo pedido em graph.facebook.com/{conta}/messages, com MESSAGE_TAG + HUMAN_AGENT', async () => {
+    const { fetchFn, pedidos } = gravando([{ recipient_id: '1', message_id: 'mid.tag' }]);
+    await criarClienteInstagram(TOKEN, fetchFn, conta).enviarMensagem({
+      para: '9988776655443322',
+      texto: 'Olá',
+      humanAgent: true,
+    });
+    expect(pedidos[0].url).toBe(`https://graph.facebook.com/v27.0/${CONTA}/messages`);
+    expect(pedidos[0].corpo).toEqual({
+      recipient: { id: '9988776655443322' },
+      messaging_type: 'MESSAGE_TAG',
+      tag: 'HUMAN_AGENT',
+      message: { text: 'Olá' },
+    });
+  });
+
   it('o "quem é a conta" pergunta pelo nó da conta, não pelo /me', async () => {
     const { fetchFn, pedidos } = gravando([{ id: CONTA, username: 'escritorio_ficticio', name: 'Escritório' }]);
     const perfil = await criarClienteInstagram(TOKEN, fetchFn, conta).me();

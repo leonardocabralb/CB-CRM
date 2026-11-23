@@ -26,7 +26,7 @@
 import { differenceInMinutes } from 'date-fns';
 
 import type { CbChannel } from '@/lib/cb-channels/repo';
-import { ehMeta } from '@/lib/cb-channels/transporte';
+import { ehInstagram, ehMeta } from '@/lib/cb-channels/transporte';
 
 /** O mínimo que a regra precisa de uma mensagem. */
 export interface MensagemDaJanela {
@@ -41,8 +41,10 @@ export interface MensagemDaJanela {
 }
 
 /** O número por onde se vai responder: o `id` casa o carimbo; o `kind`
- *  decide o que fazer com a mensagem sem carimbo. */
-export type CanalDeSaida = Pick<CbChannel, 'id' | 'kind'>;
+ *  decide o que fazer com a mensagem sem carimbo. `ig_human_agent` (a conexão
+ *  inteira, `CbChannel`, o traz) liga a janela de 7 dias no Instagram. */
+export type CanalDeSaida = Pick<CbChannel, 'id' | 'kind'> &
+  Partial<Pick<CbChannel, 'ig_human_agent'>>;
 
 export const HORAS_DA_JANELA = 24;
 export const MINUTOS_DA_JANELA = HORAS_DA_JANELA * 60;
@@ -154,6 +156,39 @@ export function janelaFechada(
 ): boolean {
   if (mensagens.length === 0) return false;
   return minutosRestantes(mensagens, agora, canalDeSaida) === 0;
+}
+
+/** A janela do Human Agent do Instagram, em minutos (7 dias). */
+export const MINUTOS_DO_HUMAN_AGENT = 7 * 24 * 60;
+
+/** A conexão de saída é do Instagram e tem a janela de 7 dias ligada. */
+export function humanAgentNoCanal(canalDeSaida: CanalDeSaida | null): boolean {
+  return ehInstagram(canalDeSaida) && canalDeSaida?.ig_human_agent === true;
+}
+
+/**
+ * Instagram com a janela de 7 dias ligada na conexão (Human Agent): os minutos
+ * que restam dela quando a resposta cai DEPOIS das 24 h — o cliente escreveu
+ * por este número há mais de 24 h e menos de 7 dias. `null` fora dessa faixa
+ * (dentro das 24 h vale `minutosRestantes`; depois dos 7 dias, ou sem
+ * mensagem do cliente aqui, a janela está fechada).
+ *
+ * É o espelho, na tela, de `faixaDaJanelaDoDirect` (`instagram/envio.ts`), que
+ * o núcleo de envio confere no servidor. A conexão diz se tem o
+ * Human Agent pelo próprio canal (`humanAgentNoCanal`): sem ele, `null`.
+ */
+export function minutosDoHumanAgent(
+  mensagens: readonly MensagemDaJanela[],
+  agora: Date,
+  canalDeSaida: CanalDeSaida | null
+): number | null {
+  if (!humanAgentNoCanal(canalDeSaida)) return null;
+  const ultima = ultimaDoClienteNoCanal(mensagens, canalDeSaida);
+  if (!ultima) return null;
+  const passados = differenceInMinutes(agora, new Date(ultima.created_at));
+  if (passados < MINUTOS_DA_JANELA) return null;
+  const restam = MINUTOS_DO_HUMAN_AGENT - passados;
+  return restam > 0 ? restam : null;
 }
 
 /**

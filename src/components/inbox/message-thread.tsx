@@ -36,7 +36,9 @@ import { avisoDaConexao } from "@/lib/inbox/aviso-da-conexao";
 import { useQuemVeAConversa } from "@/hooks/use-conversa-aberta";
 import { intercalar, type ItemDaLinhaDoTempo } from "@/lib/lead-events/describe";
 import {
+  humanAgentNoCanal,
   janelaFechada,
+  minutosDoHumanAgent,
   minutosRestantes,
   restanteParaExibir,
   ultimaDoClienteNoCanal,
@@ -993,11 +995,28 @@ export function MessageThread({
   // portão do disparo (abaixo) tem de ler exatamente a mesma coisa com outro
   // relógio.
   const sessionInfo = useMemo(() => {
-    if (!messages.length) return { expired: false, remaining: "" };
+    if (!messages.length) return { expired: false, humanAgent: false, remaining: "" };
     // UM instante para as duas leituras: entre dois relógios cabe uma virada
     // de hora, e aí a janela sairia "aberta" com "0h restantes". O instante
     // vem do estado (não de `new Date()` aqui) para o memo envelhecer.
     const agora = agoraDaBadge;
+    // NOSSO — Instagram com a janela de 7 dias ligada na conexão (Human
+    // Agent, 22/11/2026): passadas as 24 h, a resposta da equipe ainda sai,
+    // com a tag, até 7 dias da última mensagem do cliente neste número. O
+    // servidor confere de novo (`faixaDaJanelaDoDirect`).
+    const restamDoHumanAgent = minutosDoHumanAgent(messages, agora, canalDaJanela);
+    if (restamDoHumanAgent !== null) {
+      const restante = restanteParaExibir(restamDoHumanAgent);
+      const remaining =
+        restamDoHumanAgent >= 24 * 60
+          ? tTimer("humanAgentDaysRemaining", {
+              days: Math.floor(restamDoHumanAgent / (24 * 60)),
+            })
+          : restante.unidade === "h"
+            ? tTimer("humanAgentHoursRemaining", { hours: restante.valor })
+            : tTimer("humanAgentMinutesRemaining", { minutes: restante.valor });
+      return { expired: false, humanAgent: true, remaining };
+    }
     if (janelaFechada(messages, agora, canalDaJanela)) {
       // "Expirada" só quando o cliente JÁ escreveu por este número. Sem
       // mensagem dele aqui a frase é outra: numa conversa mista ele pode ter
@@ -1007,6 +1026,7 @@ export function MessageThread({
         ultimaDoClienteNoCanal(messages, canalDaJanela) !== undefined;
       return {
         expired: true,
+        humanAgent: false,
         remaining: temCliente ? tTimer("expired") : tTimer("noCustomerMessages"),
       };
     }
@@ -1020,7 +1040,7 @@ export function MessageThread({
         ? tTimer("xhRemaining", { hours: restante.valor })
         : tTimer("xmRemaining", { minutes: restante.valor });
 
-    return { expired: false, remaining };
+    return { expired: false, humanAgent: false, remaining };
   }, [messages, tTimer, agoraDaBadge, canalDaJanela]);
 
   // A MESMA trava que o compositor recebe (janela de 24 h fechada, conexão
@@ -1139,16 +1159,22 @@ export function MessageThread({
   const janelaFechadaAgora = useCallback(
     () =>
       janelaDe24hRef.current &&
-      janelaFechada(mensagensRef.current, new Date(), canalDaJanelaRef.current),
+      janelaFechada(mensagensRef.current, new Date(), canalDaJanelaRef.current) &&
+      // NOSSO — Instagram com o Human Agent: a faixa de 24 h a 7 dias ainda
+      // envia (a mesma régua da etiqueta, `minutosDoHumanAgent`).
+      minutosDoHumanAgent(mensagensRef.current, new Date(), canalDaJanelaRef.current) === null,
     [],
   );
   // NOSSO — Instagram Direct (Fase 4): lá não há modelo; só a pessoa reabre
-  // a janela. A frase da recusa diz isso em vez de "use um modelo".
+  // a janela. A frase da recusa diz isso em vez de "use um modelo" — e, com a
+  // janela de 7 dias ligada na conexão, que foi ela que fechou.
   const fraseDaJanelaFechada = useCallback(
     () =>
-      ehInstagram(canalDaJanelaRef.current)
-        ? t("sessionExpiredBlockedInstagram")
-        : t("sessionExpiredBlocked"),
+      humanAgentNoCanal(canalDaJanelaRef.current)
+        ? t("sessionExpiredBlockedInstagramHumanAgent")
+        : ehInstagram(canalDaJanelaRef.current)
+          ? t("sessionExpiredBlockedInstagram")
+          : t("sessionExpiredBlocked"),
     [t],
   );
 
@@ -3000,7 +3026,13 @@ export function MessageThread({
               variant="outline"
               className={cn(
                 "ml-1 hidden gap-1 border-border text-[10px] sm:inline-flex sm:ml-2",
-                sessionInfo.expired ? "text-red-400" : "text-primary"
+                // NOSSO — âmbar na faixa de 7 dias do Human Agent (Instagram):
+                // aberta, mas fora das 24 h.
+                sessionInfo.expired
+                  ? "text-red-400"
+                  : sessionInfo.humanAgent
+                    ? "text-amber-400"
+                    : "text-primary"
               )}
             >
               <Clock className="h-3 w-3" />
@@ -3925,6 +3957,15 @@ export function MessageThread({
         ref={compositorRef}
         conversationId={conversation.id}
         sessionExpired={sessaoExpirada}
+        // NOSSO — Instagram com a janela de 7 dias ligada (Human Agent): a
+        // dica da faixa fora das 24 h e a frase da janela fechada.
+        humanAgent={
+          !janelaDe24h || !humanAgentNoCanal(activeChannel)
+            ? null
+            : sessionInfo.humanAgent
+              ? "na_faixa"
+              : "ligado"
+        }
         conexaoForaDoAr={conexaoForaDoAr}
         channelKind={activeChannel?.kind ?? null}
         transporteConhecido={!canaisCarregando && !canaisFalharam}

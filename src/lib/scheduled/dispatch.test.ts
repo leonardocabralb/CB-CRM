@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -225,6 +228,28 @@ describe('dispararVencidas', () => {
     // Quem agendou é quem assina (923).
     expect(args.senderUserId).toBe('quem-agendou');
     expect(args.messageType).toBe('text');
+  });
+
+  it('⚠️ só a agendada pela TELA é resposta de gente (a janela de 7 dias do Instagram, 1154)', async () => {
+    const { db } = makeDb({
+      vencidas: [
+        { ...LINHA, id: 'ag-tela', pela_tela: true },
+        // A da API v1 (e a linha anterior à 1154, que nasce falsa).
+        { ...LINHA, id: 'ag-api', pela_tela: false },
+        { ...LINHA, id: 'ag-sem-coluna' },
+      ],
+    });
+
+    await dispararVencidas(db);
+
+    expect(enviar.mock.calls.map((c) => c[2].respostaDeGente)).toEqual([true, false, false]);
+  });
+
+  it('a coluna `pela_tela` é lida junto com a linha (o dublê devolve o que lhe dão)', () => {
+    // Sem a coluna na lista, a linha chegaria sem ela e TODA agendada da tela
+    // perderia a janela de 7 dias, sem erro nenhum.
+    const fonte = readFileSync(join(__dirname, 'dispatch.ts'), 'utf8');
+    expect(fonte).toMatch(/const COLUNAS =\s*'[^']*\bpela_tela\b[^']*';/);
   });
 
   it('falha no envio vira `failed` com o motivo — nunca fica em `sending`', async () => {

@@ -464,6 +464,102 @@ describe('Instagram Direct — a janela de 24 h, no servidor', () => {
   });
 });
 
+describe('Instagram Direct — a janela de 7 dias (Human Agent, 22/11/2026)', () => {
+  const HA_SEIS_DIAS = new Date(AGORA - 6 * 24 * 3_600_000).toISOString();
+  const HA_OITO_DIAS = new Date(AGORA - 8 * 24 * 3_600_000).toISOString();
+  const comHumanAgent = () =>
+    resolver.mockResolvedValue({ ...CANAL_IG, ig_human_agent: true } as never);
+
+  it('ligada na conexão, resposta de gente depois das 24 h: sai com a tag', async () => {
+    comHumanAgent();
+    const { inserts } = await enviar(
+      { ultimaDoCliente: HA_DOIS_DIAS },
+      { respostaDeGente: true }
+    );
+    expect(h.enviar).toHaveBeenCalledWith('dec(token-cifrado)', {
+      para: 'igsid-1',
+      citando: null,
+      humanAgent: true,
+      texto: 'Olá, aqui é o escritório',
+    });
+    expect(inserts[0]).toMatchObject({ message_id: 'mid-novo', sender_id: 'user-1' });
+  });
+
+  it('o anexo também sai com a tag (é resposta de gente)', async () => {
+    comHumanAgent();
+    await enviar(
+      { ultimaDoCliente: HA_SEIS_DIAS },
+      {
+        respostaDeGente: true,
+        messageType: 'document',
+        contentText: null,
+        mediaUrl: 'https://x/y/contrato.pdf',
+        filename: 'contrato.pdf',
+      }
+    );
+    expect(h.enviar.mock.calls[0][1]).toMatchObject({
+      humanAgent: true,
+      anexo: { tipo: 'file' },
+    });
+  });
+
+  it('⚠️ dentro das 24 h a tag NÃO vai, mesmo ligada (a janela padrão basta)', async () => {
+    comHumanAgent();
+    await enviar({ ultimaDoCliente: HA_UMA_HORA }, { respostaDeGente: true });
+    expect(h.enviar.mock.calls[0][1]).not.toHaveProperty('humanAgent');
+  });
+
+  it('⚠️ quem não é gente (API v1, agendada pela API) não usa a janela de 7 dias, e ouve por quê', async () => {
+    comHumanAgent();
+    const e = await erroDe({ ultimaDoCliente: HA_DOIS_DIAS });
+    expect(e.code).toBe('window_closed');
+    expect(e.message).toContain('vale só para o que a equipe escreve');
+    expect(h.enviar).not.toHaveBeenCalled();
+  });
+
+  it('desligada na conexão: depois das 24 h fecha como sempre, mesmo para gente', async () => {
+    const e = await erroDe({ ultimaDoCliente: HA_DOIS_DIAS }, { respostaDeGente: true });
+    expect(e.code).toBe('window_closed');
+    expect(e.message).toContain('24 horas');
+    expect(h.enviar).not.toHaveBeenCalled();
+  });
+
+  it('depois de 7 dias fecha também com ela ligada, com a frase dos 7 dias', async () => {
+    comHumanAgent();
+    const e = await erroDe({ ultimaDoCliente: HA_OITO_DIAS }, { respostaDeGente: true });
+    expect(e.code).toBe('window_closed');
+    expect(e.message).toContain('7 dias');
+    expect(h.enviar).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ a Meta recusa a tag (sem a aprovação): bolha "não enviada" com a frase do Human Agent', async () => {
+    comHumanAgent();
+    for (const err of [
+      new InstagramApiError('meta_error', '(#100) Invalid tag', 400, 100),
+      // A recusa de janela, com a tag, também é recusa da tag: nada de
+      // `window_closed` calado.
+      new InstagramApiError('janela_fechada', 'outside', 400, 10, 2534022),
+    ]) {
+      h.enviar.mockRejectedValueOnce(err);
+      const e = await erroDe({ ultimaDoCliente: HA_DOIS_DIAS }, { respostaDeGente: true });
+      expect(e.code).toBe('instagram_rejected');
+      expect(e.tentativa).toBeDefined();
+      expect(e.message).toContain('Human Agent');
+      const causa = e.cause as InstagramApiError;
+      expect(causa).toBeInstanceOf(InstagramApiError);
+      expect(causa.status).toBe(400);
+      expect(causa.message).toContain(err.message);
+    }
+  });
+
+  it('com a tag, o "não sei" segue sendo "não sei" (nunca repete)', async () => {
+    comHumanAgent();
+    h.enviar.mockRejectedValueOnce(new InstagramApiError('rede', 'timeout'));
+    const e = await erroDe({ ultimaDoCliente: HA_DOIS_DIAS }, { respostaDeGente: true });
+    expect(e.code).toBe('instagram_error');
+  });
+});
+
 describe('Instagram Direct — recusa × "não sei"', () => {
   it('4xx da Meta: `instagram_rejected`, com a tentativa (vira bolha "não enviada")', async () => {
     h.enviar.mockRejectedValue(

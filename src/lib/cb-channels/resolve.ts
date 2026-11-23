@@ -55,12 +55,17 @@ export interface ResolvedChannel {
    */
   ig_login?: string | null;
   ig_user_id?: string | null;
+  /**
+   * Instagram: a janela de 7 dias do Human Agent ligada na conexão (989). Só
+   * vale para a resposta de GENTE (`respostaDeGente` do núcleo de envio).
+   */
+  ig_human_agent?: boolean | null;
 }
 
 // Server-side: inclui os segredos (não é o SAFE_COLUMNS do client).
 const CHANNEL_COLS =
   'id, kind, is_default, phone_number_id, waba_id, access_token, ' +
-  'server_url, instance_name, api_key, ig_login, ig_user_id';
+  'server_url, instance_name, api_key, ig_login, ig_user_id, ig_human_agent';
 
 interface ChannelRow {
   id: string;
@@ -73,6 +78,7 @@ interface ChannelRow {
   api_key: string | null;
   ig_login?: string | null;
   ig_user_id?: string | null;
+  ig_human_agent?: boolean | null;
 }
 
 function mapChannelRow(row: ChannelRow): ResolvedChannel {
@@ -90,6 +96,7 @@ function mapChannelRow(row: ChannelRow): ResolvedChannel {
     source: 'cb_channels',
     ig_login: row.ig_login ?? null,
     ig_user_id: row.ig_user_id ?? null,
+    ig_human_agent: row.ig_human_agent === true,
   };
 }
 

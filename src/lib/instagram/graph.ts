@@ -127,7 +127,7 @@ export type CodigoDoErroInstagram =
   | 'sem_permissao'
   /** 4/17/32/613: limite de chamadas. */
   | 'limite'
-  /** Subcódigo 2534022: fora da janela de 24h (ou 7 dias com HUMAN_AGENT). */
+  /** Subcódigo 2534022: fora da janela de 24h (ou dos 7 dias, com a tag). */
   | 'janela_fechada'
   /** Tempo esgotado ou falha de rede — pode ter chegado, pode não. */
   | 'rede'
@@ -212,6 +212,12 @@ export type MensagemDoDirect = {
   para: string;
   /** `mid` da mensagem citada (`reply_to`); nulo = sem citação. */
   citando?: string | null;
+  /**
+   * Sai com a tag HUMAN_AGENT (resposta de gente entre 24 h e 7 dias). Quem
+   * decide é o núcleo (`faixaDaJanelaDoDirect`, `envio.ts`); aqui só se monta
+   * o pedido.
+   */
+  humanAgent?: boolean;
 } & (
   | { texto: string; anexo?: never }
   | { anexo: { tipo: TipoDeAnexoDoDirect; url: string }; texto?: never }
@@ -247,13 +253,25 @@ export interface ClienteInstagram {
 
 type Fetch = typeof fetch;
 
-/** O corpo de `POST /me/messages`, na forma da doc. */
+/**
+ * O corpo de `POST /me/messages`, na forma da doc.
+ *
+ * O Human Agent vai em dois campos do topo, ao lado de `recipient` e
+ * `message`: `messaging_type: 'MESSAGE_TAG'` ("enviada fora da janela padrão
+ * de 24 horas com uma tag") e `tag: 'HUMAN_AGENT'` ("obrigatória para a API de
+ * Mensagens do Instagram"; até 7 dias da mensagem da pessoa) — referência da
+ * Send API, lida em 22/11/2026 na cópia arquivada de 10/01/2026 (a página
+ * atual da Meta vem vazia); a doc do Instagram diz que a API e o formato da
+ * mensagem são os mesmos. Sem a tag, o corpo fica como sempre, sem
+ * `messaging_type` (a forma medida nos envios reais de 21/11/2026).
+ */
 export function corpoDaMensagem(m: MensagemDoDirect): Record<string, unknown> {
   const message = m.anexo
     ? { attachment: { type: m.anexo.tipo, payload: { url: m.anexo.url } } }
     : { text: m.texto };
   return {
     recipient: { id: m.para },
+    ...(m.humanAgent ? { messaging_type: 'MESSAGE_TAG', tag: 'HUMAN_AGENT' } : {}),
     message,
     ...(m.citando ? { reply_to: { mid: m.citando } } : {}),
   };

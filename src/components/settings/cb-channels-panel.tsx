@@ -2329,9 +2329,11 @@ export function CbChannelsPanel() {
               )}
             </div>
 
-            {/* Human Agent (D2 do plano do Instagram). A Meta aprova a feature
-                DEPOIS de a conta estar conectada — por isso o interruptor
-                mora aqui, não só na criação (Codex, PR #167). */}
+            {/* Human Agent (D2 do plano do Instagram). Ligado, a resposta de
+                GENTE entre 24 h e 7 dias sai com a tag HUMAN_AGENT (núcleo de
+                envio, 22/11/2026). A Meta aprova a feature DEPOIS de a conta
+                estar conectada — por isso o interruptor mora aqui, não só na
+                criação (Codex, PR #167). */}
             {configTarget && ehInstagram(configTarget) && (
               <div className="rounded-md border border-border p-3">
                 <label className="flex cursor-pointer items-start gap-2">

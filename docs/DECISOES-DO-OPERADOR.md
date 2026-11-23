@@ -289,9 +289,15 @@ qualquer uma é pergunta ao operador.
   que falhou por até 7 dias e a apaga ao entregar (`instagram.md`).
 - Instagram, Human Agent (U9, 22/11/2026): o recurso vai na mesma análise da
   Meta do app da Atlas (`instagram.md`).
+- Instagram, a janela de 7 dias (22/11/2026): com o interruptor da conexão
+  ligado, sai com a tag HUMAN_AGENT, entre 24 h e 7 dias da última mensagem
+  da pessoa, a resposta que a equipe digita e envia na hora pela caixa E a
+  agendada pela tela; API v1 (e a agendada por ela), MCP, automação, robô e
+  IA ficam nas 24 h. O interruptor nasce desligado e só se liga depois de a
+  Meta aprovar o recurso (`instagram-human-agent.md`).
 - Responder pelo Instagram (21/11/2026): no login ATUAL do Instagram, nada do
   login unificado agora. Citar cabe; reagir fica fora; o anexo sai sem
-  legenda (o campo some); o Human Agent fica sem efeito até a Meta aprovar; o
+  legenda (o campo some); o Human Agent só depois de a Meta aprovar; o
   token renova sozinho na manutenção das agendadas, sem rota nova no
   agendador. Depois do 1º envio real: a assinatura sai sem os asteriscos
   (`Nome:`) e os botões de formatação somem no Instagram (`instagram.md`).

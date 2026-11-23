@@ -145,8 +145,8 @@ Pino `send-message-instagram.test.ts`.
   legenda digitada antes de a conexão carregar (`Retida.semLegenda`; o item a
   guarda para o Desfazer). Revisão do PR #539.
 - ⚠️⚠️ **A janela é conferida no SERVIDOR**: a última mensagem da PESSOA por
-  ESTA conexão (`messages.channel_id`), 24 h. Sem mensagem dela, fechada (só
-  ela abre). `window_closed` (409) e o subcódigo 2534022 da Meta dão a mesma
+  ESTA conexão (`messages.channel_id`), 24 h (7 dias com o Human Agent).
+  Sem mensagem dela, fechada (só ela abre). `window_closed` (409) e o subcódigo 2534022 da Meta dão a mesma
   frase, sem bolha gravada. Leitura que falha é `window_unknown` (503) — nunca
   `db_error`, que diria "saiu e não gravou". O fio conta a mesma janela
   (`janela-24h.ts`, pelo carimbo do canal) e a dica diz que só a pessoa
@@ -179,8 +179,8 @@ Pino `send-message-instagram.test.ts`.
   novo" — os três pelo canal (o "Tentar de novo" da linha GRAVADA, pelo canal
   por onde ELA saiu: a conversa pode ter trocado); os botões N/I/S/</> e os atalhos de formatação
   somem na conversa do Instagram.
-- **Human Agent (D2) segue sem efeito**: o interruptor existe e diz isso;
-  nada lê `ig_human_agent` até a Meta aprovar a feature.
+- **A janela de 7 dias (Human Agent, D2)**: só resposta de GENTE, atrás do
+  interruptor da conexão (22/11/2026): `instagram-human-agent.md`.
 - A agendada no Direct (tela e `POST /v1/scheduled-messages`) recusa no
   AGENDAMENTO o que não cabe; a janela fica para a hora do envio.
 - ⚠️ **`POST /v1/messages` continua só WhatsApp** (endereça por telefone):
@@ -355,8 +355,8 @@ Atlas, e o CB conecta pela central (acima).
   de fora do SaaS; a conexão de hoje, do login do Instagram, migra na U-7.
 - U6 (22/11): a central guarda a entrega que falhou por até 7 dias e a
   apaga ao entregar (código da central, no Atlas).
-- U9 (22/11): o Human Agent vai na mesma análise da Meta; até a aprovação,
-  nada lê `ig_human_agent`.
+- U9 (22/11): o Human Agent vai na mesma análise da Meta; o código o lê,
+  atrás do interruptor desligado até a aprovação (`instagram-human-agent.md`).
 - U3: app único da Atlas, como Provedor de Tecnologia (a marcação não se
   desfaz), com verificação da empresa e análise de acesso avançado. Revê a D3
   para o produto.

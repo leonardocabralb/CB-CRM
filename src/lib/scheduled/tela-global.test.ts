@@ -33,6 +33,7 @@ function agendada(
     media_filename: null,
     reply_to_message_id: null,
     citacao_perdida: false,
+    pela_tela: true,
     ...extra,
   };
 }

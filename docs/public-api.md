@@ -1205,7 +1205,13 @@ message goes out as an Instagram Direct reply. Two Instagram rules apply:
   reopen it (there are no templates on Instagram). It is checked at
   dispatch time, not when scheduling — the customer may write again in the
   meantime. Outside it the row ends `failed` with the reason, and nothing
-  was sent (`entrega_incerta: false`).
+  was sent (`entrega_incerta: false`). A connection may have the 7-day
+  **Human Agent** window turned on (*Settings → Connections*), but it only
+  covers replies a person writes in the CRM — typed in the inbox or
+  scheduled from the conversation screen. A row scheduled through this API
+  never goes out with Meta's `HUMAN_AGENT` tag: after 24 hours it fails
+  like above, with a reason that says so (Meta forbids the tag on automated
+  messages).
 
 A timeout or a server error from Instagram leaves `entrega_incerta: true`,
 exactly as on WhatsApp: the message may have gone out — don't re-send.

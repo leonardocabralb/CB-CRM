@@ -320,6 +320,14 @@ interface MessageComposerProps {
   conversationId: string;
   sessionExpired: boolean;
   /**
+   * NOSSO — Instagram com a janela de 7 dias ligada na conexão (Human Agent,
+   * 22/11/2026). `na_faixa`: passaram as 24 h e a resposta ainda sai, com a
+   * tag, até 7 dias da última mensagem da pessoa — a dica diz isso. `ligado`:
+   * dentro das 24 h, ou fechada (a dica da janela fechada fala dos 7 dias).
+   * Nulo no resto. Não trava nada: quem trava é `sessionExpired`.
+   */
+  humanAgent?: "ligado" | "na_faixa" | null;
+  /**
    * A conexão por onde a resposta sai está FORA DO AR (`aviso-da-conexao.ts`;
    * decisão do operador, 05/10/2026): trava tudo o que sai para o cliente —
    * texto, anexo, voz, agendar, modelo, interativa —, como a janela fechada.
@@ -431,6 +439,7 @@ export function MessageComposer({
   ref,
   conversationId,
   sessionExpired,
+  humanAgent = null,
   conexaoForaDoAr = false,
   channelKind = null,
   transporteConhecido = true,
@@ -2196,7 +2205,19 @@ export function MessageComposer({
           janela, e a dica diz isso, sem o botão de modelos. */}
       {sessionExpired && !conexaoForaDoAr && ehInstagram(channelKind) && (
         <div className="mb-2 rounded-lg bg-amber-500/10 px-3 py-2">
-          <p className="text-xs text-amber-400">{t("sessionExpiredHintInstagram")}</p>
+          <p className="text-xs text-amber-400">
+            {humanAgent
+              ? t("sessionExpiredHintInstagramHumanAgent")
+              : t("sessionExpiredHintInstagram")}
+          </p>
+        </div>
+      )}
+      {/* NOSSO — a faixa de 7 dias do Human Agent (Instagram): a resposta
+          ainda sai, com a tag; a dica diz por quê e que só vale o que a
+          equipe escreve. */}
+      {!sessionExpired && !conexaoForaDoAr && humanAgent === "na_faixa" && (
+        <div className="mb-2 rounded-lg bg-amber-500/10 px-3 py-2">
+          <p className="text-xs text-amber-400">{t("instagramHumanAgentHint")}</p>
         </div>
       )}
       {sessionExpired && !conexaoForaDoAr && !ehInstagram(channelKind) && (

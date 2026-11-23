@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  humanAgentNoCanal,
   janelaFechada,
+  minutosDoHumanAgent,
   minutosRestantes,
   restanteParaExibir,
   ultimaDoClienteNoCanal,
@@ -268,5 +270,34 @@ describe("restanteParaExibir", () => {
       unidade: "min",
       valor: 30,
     });
+  });
+});
+
+describe("minutosDoHumanAgent — Instagram com a janela de 7 dias ligada (22/11/2026)", () => {
+  const COM_HA = { ...INSTAGRAM, ig_human_agent: true };
+
+  it("só no Instagram com o interruptor ligado", () => {
+    expect(humanAgentNoCanal(COM_HA)).toBe(true);
+    expect(humanAgentNoCanal(INSTAGRAM)).toBe(false);
+    expect(humanAgentNoCanal({ ...OFICIAL, ig_human_agent: true })).toBe(false);
+    expect(humanAgentNoCanal(null)).toBe(false);
+  });
+
+  it("dentro das 24 h: null (vale a janela de sempre)", () => {
+    const fio = [msg("customer", 2, INSTAGRAM.id)];
+    expect(minutosDoHumanAgent(fio, AGORA, COM_HA)).toBeNull();
+  });
+
+  it("de 24 h a 7 dias: os minutos que restam dos 7 dias", () => {
+    const fio = [msg("customer", 48, INSTAGRAM.id)];
+    expect(minutosDoHumanAgent(fio, AGORA, COM_HA)).toBe(5 * 24 * 60);
+    // O fio dá a janela de 24 h por fechada, e é a régua dos 7 dias que a reabre.
+    expect(janelaFechada(fio, AGORA, COM_HA)).toBe(true);
+  });
+
+  it("depois de 7 dias, sem mensagem do cliente neste número ou sem o interruptor: null", () => {
+    expect(minutosDoHumanAgent([msg("customer", 7 * 24, INSTAGRAM.id)], AGORA, COM_HA)).toBeNull();
+    expect(minutosDoHumanAgent([msg("customer", 48, OFICIAL.id)], AGORA, COM_HA)).toBeNull();
+    expect(minutosDoHumanAgent([msg("customer", 48, INSTAGRAM.id)], AGORA, INSTAGRAM)).toBeNull();
   });
 });

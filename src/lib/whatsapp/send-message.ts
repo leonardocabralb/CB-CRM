@@ -87,9 +87,12 @@ import {
 } from '@/lib/instagram/graph';
 import {
   FRASES_DO_DIRECT,
+  FRASE_HUMAN_AGENT_RECUSADO,
+  FRASE_HUMAN_AGENT_SO_DE_GENTE,
   FRASE_JANELA_DO_DIRECT_FECHADA,
+  FRASE_JANELA_DO_HUMAN_AGENT_FECHADA,
   conferirParaODirect,
-  janelaDoDirectAberta,
+  faixaDaJanelaDoDirect,
 } from '@/lib/instagram/envio';
 
 export const MEDIA_KINDS = ['image', 'video', 'document', 'audio'] as const;
@@ -194,6 +197,18 @@ export interface SendMessageParams {
    * `not_supported`, antes de qualquer provedor (revisão do PR #539).
    */
   soWhatsApp?: boolean;
+  /**
+   * Quem escreveu é uma PESSOA da equipe, pela tela do CRM: a resposta que se
+   * digita e envia na hora pela caixa (`/api/whatsapp/send`) e a agendada pela
+   * tela (`cb_scheduled_messages.pela_tela`, 1154). Só ela pode usar a janela
+   * de 7 dias do Instagram (Human Agent) quando a conexão a tem ligada
+   * (decisão do operador, 22/11/2026).
+   *
+   * ⚠️ Ausente = falso: API v1 (e a agendada por ela), MCP, automação, robô e
+   * IA nunca saem com a tag — mensagem automática é uso proibido dela na Meta,
+   * e o uso fora do permitido restringe a conta.
+   */
+  respostaDeGente?: boolean;
 }
 
 export interface SendMessageResult {
@@ -323,6 +338,7 @@ export async function sendMessageToConversation(
     channelId: canalExigido,
     pauseFlows = true,
     soWhatsApp = false,
+    respostaDeGente = false,
   } = params;
 
   if (!conversationId) {
@@ -499,12 +515,17 @@ export async function sendMessageToConversation(
    * interativa não existem lá, o texto tem teto de 1000 BYTES (já com a
    * assinatura), anexo não leva legenda e só aceita os formatos da doc (D5).
    * Depois, a JANELA: só a pessoa a abre, e ela fecha 24 h depois da última
-   * mensagem dela por ESTA conexão (D2; o Human Agent fica fora).
+   * mensagem dela por ESTA conexão (D2). Com a janela de 7 dias ligada na
+   * conexão (`ig_human_agent`), a resposta de GENTE (`respostaDeGente`) entre
+   * 24 h e 7 dias sai com a tag HUMAN_AGENT (22/11/2026).
    *
    * ⚠️ Grupo não existe no Direct, e o destino é o IGSID — nunca o telefone
    * da ficha: o ramo da Meta com o token do Instagram mandaria ao número.
    */
   let anexoDoDirect: TipoDeAnexoDoDirect | null = null;
+  // A resposta sai com a tag HUMAN_AGENT (entre 24 h e 7 dias): decidido
+  // abaixo, pela janela.
+  let comTagHumanAgent = false;
   if (ehInstagram(channel)) {
     if (soWhatsApp) {
       throw new SendMessageError(
@@ -574,13 +595,29 @@ export async function sendMessageToConversation(
     }
     const ultimaEm =
       (ultima as { created_at?: string } | null)?.created_at ?? null;
-    if (!janelaDoDirectAberta(ultimaEm, new Date())) {
-      throw new SendMessageError(
-        'window_closed',
-        FRASE_JANELA_DO_DIRECT_FECHADA,
-        409
-      );
+    // O Human Agent precisa das DUAS pontas: a conexão com a janela de 7 dias
+    // ligada (o operador liga depois de a Meta aprovar o recurso) e uma
+    // pessoa escrevendo. Sem a aprovação, a Meta recusa o que sai com a tag.
+    const humanAgentNaConexao = channel.ig_human_agent === true;
+    const agora = new Date();
+    const faixa = faixaDaJanelaDoDirect(
+      ultimaEm,
+      agora,
+      humanAgentNaConexao && respostaDeGente
+    );
+    if (faixa === 'fechada') {
+      const frase = !humanAgentNaConexao
+        ? FRASE_JANELA_DO_DIRECT_FECHADA
+        : respostaDeGente
+          ? FRASE_JANELA_DO_HUMAN_AGENT_FECHADA
+          : // Quem não é gente, dentro dos 7 dias, ouve POR QUE a janela de 7
+            // dias da conexão não o alcança; depois deles, a de sempre.
+            faixaDaJanelaDoDirect(ultimaEm, agora, true) === 'human_agent'
+            ? FRASE_HUMAN_AGENT_SO_DE_GENTE
+            : FRASE_JANELA_DO_DIRECT_FECHADA;
+      throw new SendMessageError('window_closed', frase, 409);
     }
+    comTagHumanAgent = faixa === 'human_agent';
   }
 
   // ⚠️ Grupo NÃO existe na API oficial da Meta — não é limitação nossa nem
@@ -852,22 +889,46 @@ export async function sendMessageToConversation(
     // A linha irmã de um anexo extra do cliente tem o `mid` sufixado
     // (`persistir.ts`): no Direct, a citação é a DM inteira.
     const citando = contextMessageId ? contextMessageId.split('#')[0] : null;
+    // A tag só entra quando vai: sem ela, o pedido é o de sempre.
+    const tag = comTagHumanAgent ? { humanAgent: true } : {};
     try {
       const enviada = await cliente.enviarMensagem(
         anexoDoDirect
           ? {
               para: destinatario,
               citando,
+              ...tag,
               anexo: { tipo: anexoDoDirect, url: mediaUrl! },
             }
-          : { para: destinatario, citando, texto: textoFinal! }
+          : { para: destinatario, citando, ...tag, texto: textoFinal! }
       );
       waMessageId = enviada.messageId;
     } catch (err) {
       console.error(
-        '[send-message] Instagram send failed:',
+        `[send-message] Instagram send failed${comTagHumanAgent ? ' (HUMAN_AGENT)' : ''}:`,
         err instanceof Error ? err.message : err
       );
+      // Com a tag, toda RECUSA (4xx, a de janela inclusive) vira bolha "não
+      // enviada" com a frase do Human Agent: sem a aprovação do recurso a
+      // Meta recusa o que sai fora das 24 h, e a forma do erro não foi medida
+      // — a frase diz o que conferir, a mensagem da Meta vai junto. O "não
+      // sei" (rede, 5xx, 2xx sem `mid`) segue a régua de sempre, abaixo.
+      if (comTagHumanAgent && envioRecusado(err)) {
+        const original = err as InstagramApiError;
+        const explicada = new InstagramApiError(
+          original.codigo,
+          `${FRASE_HUMAN_AGENT_RECUSADO} Meta: ${original.message}`,
+          original.status,
+          original.codigoDaMeta,
+          original.subcodigoDaMeta
+        );
+        throw new SendMessageError(
+          'instagram_rejected',
+          `Instagram API error: ${explicada.message}`,
+          502,
+          { cause: explicada, tentativa }
+        );
+      }
       // ⚠️ Recusa COMPROVADA (4xx: nada saiu) × "não sei" (tempo esgotado,
       // 5xx, 2xx sem `mid`): só o segundo vira `entrega_incerta` na agendada
       // e esconde o "Tentar de novo" — a mesma régua da Evolution (932).

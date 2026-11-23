@@ -70,6 +70,10 @@ anexos, em `.claude/rules/midia.md`. O texto antigo, com a história, está em
   conta como resposta humana (é o que o Radar faz).
 - Conexão com agendada na FILA não se apaga: o `DELETE /api/cb/channels/[id]`
   barra, porque a FK da 925 é RESTRICT.
+- ⚠️ **`pela_tela` (1154) separa a agendada da TELA da da API v1** (a API
+  grava `created_by` com o dono da conta): só `/api/cb/scheduled` grava `true`,
+  e o disparador a passa ao núcleo como `respostaDeGente` — no Instagram, a
+  da tela pode sair pela janela de 7 dias (`instagram-human-agent.md`).
 - API v1: `scheduled_for` exige OFFSET escrito (`Z` ou `±HH:MM`). Sem ele o
   Postgres lê como UTC e a mensagem sai 3 h fora, sem erro nenhum.
 - `useAgendadorSaude`: batimento ilegível cai em `nuncaRodou`, que ACENDE o
