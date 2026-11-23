@@ -114,6 +114,11 @@ não dispara) está também em `.claude/rules/ingestao.md`.
   O `conversation.created` começa sem `await` (pino `persistir.aviso.test.ts`).
 - **Eco (`is_echo`) com `mid` já gravado é o nosso próprio envio** e o UNIQUE
   descarta; sem linha, veio do app do Instagram e entra como `from_device`.
+  ⚠️ O envio pela central volta `new_ig_dm_item:…` e o eco chega
+  `ig_dm_item:…`, do mesmo IGMessageID (23/11/2026): `idDaMensagem` casa pela
+  `chaveDoMid` (`mid.ts`) entre as que o CRM enviou (eco e citação), senão
+  cada resposta saía em dobro. Edição e exclusão pelo app e a adoção do 23505
+  no núcleo seguem só na grafia exata.
 
 ### Responder pela caixa (Fase 4, 21/11/2026)
 

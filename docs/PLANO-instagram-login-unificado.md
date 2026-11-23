@@ -205,24 +205,42 @@ instância: nada da central (rotas, fila, cadastro, migration) vem.
       `INSTAGRAM_CENTRAL_INSTANCIA` e `INSTAGRAM_CENTRAL_CHAVE`, no
       `environment:` da stack, no `.env.local.example` e em
       `docs/INSTALACAO.md`. Nenhuma migration (a 1153 já aceita `central`).
-- [ ] **Falta, com o operador:** revisão, PR e merge; o cadastro do CB na
-      central (a origem do `NEXT_PUBLIC_SITE_URL` do CB); as três variáveis
-      no `crm.env` e um `docker stack deploy` com ele carregado (o CI não
-      relê o `environment:`); a primeira conexão é o piloto (U-5).
+- [x] **Com o operador (23/11/2026):** PR #542 mesclado; o CB cadastrado
+      como instância da central; as três variáveis no `crm.env` e na stack
+      (`docker stack deploy` com ele carregado).
 
 ### U-4 — Painel da Meta (cada passo com o "pode")
-- [ ] A URL de retorno da central na configuração do unificado, no lugar da
-      do receptor de teste.
-- [ ] O webhook do objeto Instagram apontando para a central, no lugar do
-      receptor de teste (os campos de mensagem já estão assinados).
-- [ ] As contas testadoras.
-- [ ] Publicar o app (modo Ativo).
+- [x] A URL de retorno da central na configuração do unificado, no lugar da
+      do receptor de teste (23/11/2026, com a desautorização e a exclusão).
+- [x] O webhook do objeto Instagram apontando para a central, no lugar do
+      receptor de teste (23/11/2026, verificado; os campos seguem assinados).
+- [ ] As contas testadoras e a plataforma Site.
+- [ ] Publicar o app (modo Ativo): bloqueado até a verificação da empresa.
 
 ### U-5 — Piloto
 - [ ] Um escritório de teste da Atlas e o CB (U2 = sim) conectam pela
       central com acesso padrão.
 - [ ] Medir: DM entra, resposta sai, desconectar e reconectar, a M3 no
       unificado.
+- **O CB conectou pela central em 23/11/2026, com o app em
+  desenvolvimento.** Medido:
+  - Login: "Continuar com o Facebook", com a conta que administra o app;
+    "Continuar com o Instagram" dá "Aplicativo inativo".
+  - Saída: a resposta sai pelo token da central, e o IGSID é o mesmo nos
+    dois logins (a conversa antiga continuou).
+  - Entrada: em desenvolvimento, a Meta só entrega pela central a DM de
+    quem tem papel no app. A entrega do app antigo passou a ser recusada,
+    porque a linha agora guardava o segredo do repasse.
+- **Estado HÍBRIDO até a U-7.** Com o "pode gravar", a linha da conexão
+  voltou a guardar o segredo do app antigo: a entrada vem pelo app antigo e
+  a saída pela central. O repasse da central é recusado nesse meio tempo.
+- **A resposta do CRM saía em dobro.** O envio pela central devolve o mid
+  numa grafia (`new_ig_dm_item`) e o eco chega noutra (`ig_dm_item`), do
+  mesmo IGMessageID. `chaveDoMid` (`mid.ts`) casa as duas no eco e na
+  citação. Edição e exclusão feitas pelo app, e a corrida em que o eco
+  ganha os 2 s, seguem só na grafia exata.
+- **Falta medir:** a resposta citando (`reply_to`) uma DM do cliente pelo
+  graph.facebook.com, que recebe o mid na grafia do app antigo.
 
 ### U-6 — Análise da Meta
 Depende da verificação da empresa, que é do operador e pode correr desde já.
@@ -240,6 +258,9 @@ Depende da verificação da empresa, que é do operador e pode correr desde já.
 ### U-7 — Migração do CB e retirada do login antigo
 - [ ] A conexão do CB passa para o modo `central` (ou `unificado`), pelo
       caminho do estudo, §9. A DM em dobro é barrada pelo U-1.
+      ⚠️ Com o app publicado: reconectar pela central (devolve o segredo do
+      repasse à linha) e, logo depois, tirar o webhook do app antigo. Os
+      dois entregando, a DM do cliente chegaria em duas grafias.
 - [ ] Quando a última conexão migrar, sai o código do login do Instagram, e
       o app antigo do CB é aposentado (U13).
 
