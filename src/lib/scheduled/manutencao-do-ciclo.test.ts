@@ -102,11 +102,11 @@ beforeEach(() => {
 
 describe('a manutenção do ciclo das agendadas', () => {
   it('roda os nove passos EM SEQUÊNCIA: alarmes → token do Instagram → tarefas → vencimento da Lixeira → vencimento das anotações → poda dos turnos da IA → poda das gravações → fila → transcrições (o aviso de conexão primeiro; os vencimentos enchem a fila que a drenagem leva; a transcrição, que chama o provedor, por último)', async () => {
-    await rodarManutencaoDoCiclo(admin, 1_000);
+    await rodarManutencaoDoCiclo(admin, 1_000, () => 1_000);
     expect(ordem).toEqual(ORDEM);
     expect(alarmes).toHaveBeenCalledWith(admin, 1_000);
     // A renovação do token mede a idade a partir do INÍCIO e tem teto
-    // próprio, contado do início, dentro do prazo comum.
+    // próprio, contado do início DELA, dentro do prazo comum.
     expect(token).toHaveBeenCalledWith(
       admin,
       new Date(1_000),
@@ -130,6 +130,29 @@ describe('a manutenção do ciclo das agendadas', () => {
   it('o prazo fica abaixo do recolhimento da fila (10 min) e do laço (15 min)', () => {
     expect(PRAZO_DA_MANUTENCAO_MS).toBeGreaterThan(0);
     expect(PRAZO_DA_MANUTENCAO_MS).toBeLessThan(10 * 60_000);
+  });
+
+  it('⚠️ o teto do token conta do início DELA: alarmes lentos não comem a renovação (Codex, PR #543)', async () => {
+    // Os alarmes gastaram 55 s: contado do início da manutenção, sobrariam
+    // 5 s, menos que um pedido, e nenhum token renovaria nunca.
+    await rodarManutencaoDoCiclo(admin, 1_000, () => 56_000);
+    expect(token).toHaveBeenCalledWith(
+      admin,
+      new Date(1_000),
+      undefined,
+      56_000 + TETO_DO_TOKEN_MS
+    );
+  });
+
+  it('o teto do token nunca passa do prazo comum', async () => {
+    const quaseNoFim = 1_000 + PRAZO_DA_MANUTENCAO_MS - 20_000;
+    await rodarManutencaoDoCiclo(admin, 1_000, () => quaseNoFim);
+    expect(token).toHaveBeenCalledWith(
+      admin,
+      new Date(1_000),
+      undefined,
+      1_000 + PRAZO_DA_MANUTENCAO_MS
+    );
   });
 
   it('⚠️ o teto do token cabe um pedido e deixa ao menos metade do prazo para os passos seguintes', async () => {

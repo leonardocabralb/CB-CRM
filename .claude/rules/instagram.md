@@ -215,8 +215,9 @@ Pino `send-message-instagram.test.ts`.
   ANTES do pedido (`ig_token_refresh_tried_at`, 1152) e o lote começa pela
   tentada há mais tempo: ordenada só pela validade, a conexão que a Meta
   recusa sempre ficava à frente das 100, e as de trás venciam sem renovar. Tem teto
-  próprio dentro do prazo comum da manutenção (`TETO_DO_TOKEN_MS`, 60 s dos 5
-  min; sob o prazo inteiro, a Meta lenta comia o dos passos seguintes) e não
+  próprio dentro do prazo comum da manutenção (`TETO_DO_TOKEN_MS`, 60 s; sob o
+  prazo inteiro, a Meta lenta comia o dos passos seguintes), contado do início
+  DELA: contado da manutenção, os alarmes (60 s próprios, antes) o comiam. Não
   começa pedido (10 s) que não caiba nele. É a segunda exceção do `Bearer`: a doc só mostra o token na
   query do `refresh_access_token`.
 
