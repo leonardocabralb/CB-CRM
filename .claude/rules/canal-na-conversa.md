@@ -220,6 +220,9 @@ não reverter sem perguntar.
   distinção entre os dois vazios é a feature inteira.
 - **`restanteParaExibir` fala minutos na última hora** (antes ela aparecia
   inteira como "1h restantes").
+- **Instagram com o Human Agent ligado** (22/11/2026): passadas as 24 h,
+  `minutosDoHumanAgent` (o MESMO canal de saída) mantém aberta a faixa até 7
+  dias, com a etiqueta âmbar, nos dois relógios: `instagram-human-agent.md`.
 
 ### Selo da janela de 24h na lista (991/993): a ampulheta lê o BANCO, e o banco espelha o fio
 

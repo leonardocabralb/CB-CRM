@@ -83,6 +83,18 @@ describe('o fio e a janela de 24h (F5)', () => {
     expect(f).toContain('canalDaJanelaRef.current = canalDaJanela;');
   });
 
+  it('Human Agent (22/11/2026): a etiqueta e o portão do disparo contam os 7 dias com o MESMO canal', () => {
+    const f = fio();
+    expect(f).toContain('minutosDoHumanAgent(messages, agora, canalDaJanela)');
+    expect(f).toContain(
+      'minutosDoHumanAgent(mensagensRef.current, new Date(), canalDaJanelaRef.current) === null',
+    );
+    expect(f).toContain('humanAgentNoCanal(canalDaJanelaRef.current)');
+    // O compositor recebe a faixa: a dica fora das 24 h e a frase dos 7 dias.
+    expect(f).toContain('humanAgent={');
+    expect(compositor()).toContain('humanAgent === "na_faixa"');
+  });
+
   it('M13/#84: o portão do disparo cobre os TRÊS caminhos', () => {
     // Com a conversa NA TELA (15/10/2026): a fila de saída pode soltar o
     // envio depois de uma troca de conversa, e aí os refs da janela são da

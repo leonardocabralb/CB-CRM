@@ -285,9 +285,12 @@ para depois: host e token isolados em `graph.ts`). Regras:
       compositor conta a assinatura nos 1000 bytes; `.jfif`/`.jpe` aceitos
       como JPEG; card da ficha sem nome com o `@`; testes provando os filtros
       da janela. Limites que ficam: `.claude/rules/instagram.md`.
-- [ ] **Human Agent (D2) fica fora**: o interruptor segue na conexão, com o
-      aviso "ainda sem efeito". Depende de o operador pedir a feature à Meta e
-      de medir o formato da tag (a doc lida em 21/11 não o traz).
+- [x] **Human Agent (D2), 22/11/2026**: a janela de 7 dias atrás do
+      interruptor da conexão (desligado), só para resposta de gente (caixa e
+      agendada pela tela, 1154); a forma da tag saiu da referência da Send
+      API (`instagram-human-agent.md`). Falta: a Meta aprovar o recurso (U9,
+      na análise do app da Atlas), ligar e medir a primeira resposta real
+      com a tag.
 - [ ] Medir na primeira resposta real: o eco chega antes da nossa linha? O
       anexo `image` vai como `attachment` (a doc mostra `attachments` num
       exemplo)? A janela de 7 dias do anúncio Click-to-Direct (a doc cita)

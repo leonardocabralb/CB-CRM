@@ -230,6 +230,11 @@ Depende da verificação da empresa, que é do operador e pode correr desde já.
 - [ ] Vídeo da tela em inglês ou com legenda: login, portfólio, contas, DM
       chegando, resposta.
 - [ ] Textos de cada permissão e do "Human Agent" (U9 = sim, 22/11).
+      A referência da Send API pede, para o Human Agent, instruções claras e
+      uma DEMONSTRAÇÃO do uso da tag: o vídeo mostra também uma resposta da
+      equipe entre 24 h e 7 dias. O código que o texto promete (só resposta de
+      gente, 7 dias, tag HUMAN_AGENT) está pronto atrás do interruptor
+      desligado desde 22/11 (`.claude/rules/instagram-human-agent.md`).
 - [ ] Enviar e acompanhar.
 
 ### U-7 — Migração do CB e retirada do login antigo

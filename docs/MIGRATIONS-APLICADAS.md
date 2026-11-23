@@ -2362,3 +2362,19 @@ nome da época em que foram aplicadas.
   colunas com os padrões, os dois CHECKs, o registro no histórico,
   `cb_instagram_config` fechada a `authenticated`, e a conexão do Instagram
   e o app que já existiam no login `instagram`.
+
+- **1154_cb_agendada_pela_tela** — a agendada sabe se foi escrita pela TELA:
+  `cb_scheduled_messages.pela_tela` (`boolean NOT NULL DEFAULT false`, com
+  COMMENT), gravada `true` só por `/api/cb/scheduled`; o disparador a passa ao
+  núcleo como `respostaDeGente`, e só a agendada da tela pode sair pela janela
+  de 7 dias do Instagram (Human Agent). A da API v1 nasce falsa. PR #544.
+
+  ADITIVA, aplicada ANTES do merge com a autorização explícita do operador
+  ("Pode gravar", em resposta a "Aplico a migration 1154 no banco de produção
+  do CB?", 23/11/2026), em 23/11/2026 às 09:02 BRT (histórico
+  `20261123120239`), pela Management API, com o arquivo idêntico ao do commit
+  `aa6c0fc4` (sha256 `91c3fa2e…`), cujo replay do CI passou. Antes, medido na
+  produção (só leitura): a coluna ausente, nada no histórico e 16 agendadas
+  na fila. Conferida na produção: a coluna `boolean` NOT NULL com o padrão
+  `false` e o COMMENT, o registro no histórico e as 121 agendadas existentes
+  com `false` (as da fila saem como antes, sem a janela de 7 dias).

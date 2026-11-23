@@ -7,6 +7,7 @@ import {
   bytesDoTexto,
   conferirParaODirect,
   extensaoDoArquivo,
+  faixaDaJanelaDoDirect,
   janelaDoDirectAberta,
   MIMES_DO_DIRECT,
   nomeComExtensaoDoDirect,
@@ -158,6 +159,26 @@ describe('janelaDoDirectAberta', () => {
   it('sem mensagem da pessoa (ou data ilegível): fechada', () => {
     expect(janelaDoDirectAberta(null, agora)).toBe(false);
     expect(janelaDoDirectAberta('não é data', agora)).toBe(false);
+  });
+});
+
+describe('faixaDaJanelaDoDirect — a janela de 7 dias do Human Agent (22/11/2026)', () => {
+  const agora = new Date('2026-11-21T20:00:00Z');
+  it('dentro das 24 h: aberta, com ou sem o Human Agent (a tag não vai)', () => {
+    expect(faixaDaJanelaDoDirect('2026-11-20T20:00:01Z', agora, true)).toBe('aberta');
+    expect(faixaDaJanelaDoDirect('2026-11-20T20:00:01Z', agora, false)).toBe('aberta');
+  });
+  it('de 24 h a 7 dias: `human_agent` SÓ com ele; sem ele, fechada', () => {
+    expect(faixaDaJanelaDoDirect('2026-11-20T20:00:00Z', agora, true)).toBe('human_agent');
+    expect(faixaDaJanelaDoDirect('2026-11-14T20:00:01Z', agora, true)).toBe('human_agent');
+    expect(faixaDaJanelaDoDirect('2026-11-20T20:00:00Z', agora, false)).toBe('fechada');
+  });
+  it('7 dias ou mais: fechada também com o Human Agent', () => {
+    expect(faixaDaJanelaDoDirect('2026-11-14T20:00:00Z', agora, true)).toBe('fechada');
+  });
+  it('sem mensagem da pessoa (ou data ilegível): fechada, com ou sem ele', () => {
+    expect(faixaDaJanelaDoDirect(null, agora, true)).toBe('fechada');
+    expect(faixaDaJanelaDoDirect('não é data', agora, true)).toBe('fechada');
   });
 });
 

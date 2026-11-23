@@ -335,6 +335,10 @@ export async function POST(request: Request) {
         scheduled_for: data.toISOString(),
         created_by: ctx.userId,
         autor_nome: autorNome,
+        // Escrita por uma pessoa, nesta tela (1154): no Instagram, pode sair
+        // pela janela de 7 dias (Human Agent). A API v1 não grava, e o padrão
+        // do banco é falso.
+        pela_tela: true,
         // 932. `media_url` nulo é o caso comum (texto puro) e o CHECK de forma
         // exige que os três andem juntos.
         // ⚠️ A URL é DERIVADA do caminho já conferido, nunca aceita do

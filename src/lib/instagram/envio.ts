@@ -15,8 +15,10 @@
 //   · modelo e mensagem interativa não existem no Direct.
 //
 // A janela: o Direct só aceita resposta até 24 h depois da última mensagem
-// da PESSOA, e só ela a reabre (não há modelo). O Human Agent (7 dias) fica
-// fora até a Meta aprovar a feature (D2; decisão de 21/11/2026).
+// da PESSOA, e só ela a reabre (não há modelo). Com o interruptor da conexão
+// (`cb_channels.ig_human_agent`), a resposta de GENTE entre 24 h e 7 dias sai
+// com a tag HUMAN_AGENT (`faixaDaJanelaDoDirect`; decisão do operador,
+// 22/11/2026).
 // ============================================================
 
 import type { TipoDeAnexoDoDirect } from './graph';
@@ -250,20 +252,69 @@ export function nomeComExtensaoDoDirect(
 export const MIMES_DO_DIRECT: Readonly<Record<ClasseDoCrm, readonly string[]>> =
   MIMES;
 
+/** A janela do Human Agent: 7 dias da última mensagem da pessoa (doc da Meta). */
+export const DIAS_DO_HUMAN_AGENT = 7;
+
+/**
+ * Onde a resposta cai, contada da última mensagem da PESSOA por esta conexão:
+ *   · `aberta` — dentro das 24 h: sai como sempre, sem tag;
+ *   · `human_agent` — entre 24 h e 7 dias, e SÓ com `humanAgent` (o
+ *     interruptor da conexão ligado E a resposta escrita por gente): sai com a
+ *     tag HUMAN_AGENT;
+ *   · `fechada` — o resto. Sem mensagem dela, fechada: só ela abre a conversa.
+ *
+ * ⚠️ Mensagem AUTOMÁTICA é uso proibido da tag (referência da Send API da
+ * Meta): quem decide `humanAgent` é o núcleo, pelo caminho do envio — nunca
+ * automação, robô, IA nem API v1.
+ */
+export type FaixaDaJanelaDoDirect = 'aberta' | 'human_agent' | 'fechada';
+
+export function faixaDaJanelaDoDirect(
+  ultimaDoClienteEm: string | null,
+  agora: Date,
+  humanAgent: boolean
+): FaixaDaJanelaDoDirect {
+  if (!ultimaDoClienteEm) return 'fechada';
+  const quando = new Date(ultimaDoClienteEm).getTime();
+  if (!Number.isFinite(quando)) return 'fechada';
+  const passou = agora.getTime() - quando;
+  if (passou < HORAS_DA_JANELA_DO_DIRECT * 3_600_000) return 'aberta';
+  if (humanAgent && passou < DIAS_DO_HUMAN_AGENT * 24 * 3_600_000) {
+    return 'human_agent';
+  }
+  return 'fechada';
+}
+
 /**
  * A janela do Direct está aberta, contada da última mensagem da PESSOA por
- * esta conexão? Sem mensagem dela, fechada: só ela abre a conversa.
+ * esta conexão? Só as 24 h (sem o Human Agent).
  */
 export function janelaDoDirectAberta(
   ultimaDoClienteEm: string | null,
   agora: Date
 ): boolean {
-  if (!ultimaDoClienteEm) return false;
-  const quando = new Date(ultimaDoClienteEm).getTime();
-  if (!Number.isFinite(quando)) return false;
-  return agora.getTime() - quando < HORAS_DA_JANELA_DO_DIRECT * 3_600_000;
+  return faixaDaJanelaDoDirect(ultimaDoClienteEm, agora, false) === 'aberta';
 }
 
 /** A frase de quando a janela do Direct fechou. */
 export const FRASE_JANELA_DO_DIRECT_FECHADA =
   'A janela de 24 horas do Instagram fechou. No Direct só a pessoa reabre a conversa, mandando uma nova mensagem.';
+
+/** Fechou também a de 7 dias (o Human Agent ligado, resposta de gente). */
+export const FRASE_JANELA_DO_HUMAN_AGENT_FECHADA =
+  'A janela de 7 dias do Instagram (Human Agent) fechou. No Direct só a pessoa reabre a conversa, mandando uma nova mensagem.';
+
+/**
+ * A conexão tem o Human Agent, mas quem envia não é gente (API v1, agendada
+ * pela API): a tag não vale para ele.
+ */
+export const FRASE_HUMAN_AGENT_SO_DE_GENTE =
+  'A janela de 24 horas do Instagram fechou. A de 7 dias (Human Agent) vale só para o que a equipe escreve na tela do CRM, não para a API.';
+
+/**
+ * A Meta recusou a resposta que saiu com a tag. Sem a aprovação do recurso
+ * para o app, ela recusa toda resposta fora das 24 h — a forma exata do erro
+ * não foi medida (sem aprovação não há como).
+ */
+export const FRASE_HUMAN_AGENT_RECUSADO =
+  'A Meta recusou a resposta fora das 24 horas (Human Agent). Se ela ainda não aprovou o recurso para o app, desligue a janela de 7 dias na conexão do Instagram.';

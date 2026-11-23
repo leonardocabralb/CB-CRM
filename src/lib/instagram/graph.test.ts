@@ -249,6 +249,30 @@ describe('enviarMensagem (Fase 4)', () => {
     });
   });
 
+  it('Human Agent: `messaging_type: MESSAGE_TAG` e `tag: HUMAN_AGENT` no topo do corpo (Send API)', () => {
+    expect(corpoDaMensagem({ para: 'igsid-1', texto: 'oi', humanAgent: true })).toEqual({
+      recipient: { id: 'igsid-1' },
+      messaging_type: 'MESSAGE_TAG',
+      tag: 'HUMAN_AGENT',
+      message: { text: 'oi' },
+    });
+    expect(
+      corpoDaMensagem({
+        para: 'igsid-1',
+        humanAgent: true,
+        anexo: { tipo: 'file', url: 'https://x/contrato.pdf' },
+      })
+    ).toMatchObject({ messaging_type: 'MESSAGE_TAG', tag: 'HUMAN_AGENT' });
+  });
+
+  it('sem o Human Agent o corpo fica como sempre, sem `messaging_type` (a forma medida)', () => {
+    for (const humanAgent of [undefined, false]) {
+      const corpo = corpoDaMensagem({ para: 'igsid-1', texto: 'oi', humanAgent });
+      expect(corpo).not.toHaveProperty('messaging_type');
+      expect(corpo).not.toHaveProperty('tag');
+    }
+  });
+
   it('⚠️ 2xx sem `message_id` é "não sei" (status 200), nunca recusa', async () => {
     const { fetchFn } = capturando(200, { recipient_id: '1' });
     const erro = await criarClienteInstagram(TOKEN, fetchFn)

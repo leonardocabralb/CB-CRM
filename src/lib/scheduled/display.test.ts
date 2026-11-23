@@ -41,6 +41,7 @@ function ag(over: Partial<ScheduledMessage> = {}): ScheduledMessage {
     reply_to_message_id: null,
     citacao_perdida: false,
     entrega_incerta: false,
+    pela_tela: true,
     ...over,
   };
 }

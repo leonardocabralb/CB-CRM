@@ -617,6 +617,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 - `.claude/rules/instagram.md` — Instagram Direct, login OAuth, webhook,
   responder pela caixa (IGSID, janela, eco), renovação do token, ramos que
   falham fechado.
+- `.claude/rules/instagram-human-agent.md` — a janela de 7 dias do Direct:
+  só resposta de gente (caixa, agendada pela tela, 1154), a tag no pedido.
 - `.claude/rules/i18n.md` — portões de i18n por dentro, chave montada,
   date-fns.
 - `.claude/rules/deploy.md` — pipeline, agendador, Node, stack deploy,

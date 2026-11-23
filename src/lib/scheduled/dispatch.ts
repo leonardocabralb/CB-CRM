@@ -106,10 +106,11 @@ type LinhaAgendada = Pick<
   | 'media_kind'
   | 'media_filename'
   | 'reply_to_message_id'
+  | 'pela_tela'
 >;
 
 const COLUNAS =
-  'id, account_id, conversation_id, channel_id, body, created_by, media_url, media_path, media_kind, media_filename, reply_to_message_id';
+  'id, account_id, conversation_id, channel_id, body, created_by, media_url, media_path, media_kind, media_filename, reply_to_message_id, pela_tela';
 
 /**
  * O que o operador lê quando o arquivo sumiu do bucket entre agendar e enviar.
@@ -557,6 +558,10 @@ async function enviarEFinalizar(
       // fluxos NÃO param, porque não tem gente aqui agora (P4.5).
       channelId: linha.channel_id,
       pauseFlows: false,
+      // A agendada pela TELA foi escrita por uma pessoa: pode sair pela janela
+      // de 7 dias do Instagram (Human Agent), como a resposta da caixa
+      // (decisão do operador, 22/11/2026). A da API v1 nunca (1154).
+      respostaDeGente: linha.pela_tela === true,
     });
 
     await admin
