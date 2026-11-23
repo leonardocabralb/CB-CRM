@@ -17,7 +17,9 @@
 // ⚠️ A ORDEM: os alarmes vêm primeiro: são rápidos (duas leituras por
 // conexão) e são o aviso que precisa chegar a alguém em minutos. A renovação
 // do token do Instagram vem logo depois: é uma chamada por conexão uma vez por
-// semana, e é o que impede a conexão de vencer muda. O vencimento
+// semana, e é o que impede a conexão de vencer muda. Ela tem teto próprio
+// dentro do prazo comum (`TETO_DO_TOKEN_MS`): a Meta lenta, a 10 s por
+// pedido, comeria o prazo dos passos seguintes a cada ciclo. O vencimento
 // põe arquivos na fila, e a drenagem do MESMO ciclo já os leva. As tarefas vêm
 // antes do vencimento porque são o que alguém vê hoje. O vencimento das
 // anotações também enche a fila (o gatilho da 1102 leva os anexos da
@@ -61,6 +63,23 @@ import { retomarTranscricoes } from '@/lib/whatsapp/ligacoes/transcricao';
  */
 export const PRAZO_DA_MANUTENCAO_MS = 5 * 60_000;
 
+/**
+ * O pedaço do prazo que a renovação do token do Instagram pode usar, contado
+ * do INÍCIO da manutenção, como o prazo comum: 60 s dos 5 min.
+ *
+ * A conta: com a Meta lenta, cada pedido vai até o teto do cliente (10 s,
+ * `DURACAO_MAXIMA_DO_PEDIDO_MS`), e o lote de até 100 conexões gastaria o
+ * prazo inteiro — a Lixeira, as podas e a fila de arquivos receberiam o prazo
+ * já vencido, e a retomada das transcrições, que só começa com 4 min
+ * sobrando, ficaria parada a cada ciclo. Em 60 s cabem até seis pedidos
+ * lentos (com a Meta em dia, o lote inteiro), e sobram pelo menos 4 min, mais
+ * da metade do prazo, para os passos seguintes: nenhum outro passo desta
+ * manutenção tem teto próprio. O que não couber renova no ciclo seguinte: a
+ * tentativa é carimbada antes do pedido, e a tentada há mais tempo vai
+ * primeiro (1152).
+ */
+export const TETO_DO_TOKEN_MS = 60_000;
+
 /** Um passo que lançou (não devia: os nove engolem) não derruba os outros. */
 async function isolado(
   nome: string,
@@ -83,10 +102,16 @@ export async function rodarManutencaoDoCiclo(
 ): Promise<void> {
   const prazo = agora + PRAZO_DA_MANUTENCAO_MS;
   await isolado('alarmes de conexão', () => avisarAlarmesDeConexao(admin, agora));
-  // Sob o MESMO prazo dos outros passos (Codex, PR #539): com a Meta lenta,
-  // a renovação não come o orçamento da Lixeira, das podas e da transcrição.
+  // Com teto próprio dentro do prazo comum: só sob o prazo comum (Codex, PR
+  // #539), a Meta lenta ainda comeria o orçamento da Lixeira, das podas e da
+  // transcrição.
   await isolado('token do Instagram', () =>
-    renovarTokensDoInstagram(admin, new Date(agora), undefined, prazo)
+    renovarTokensDoInstagram(
+      admin,
+      new Date(agora),
+      undefined,
+      Math.min(prazo, agora + TETO_DO_TOKEN_MS)
+    )
   );
   await isolado('tarefas recorrentes', () => gerarTarefasRecorrentes(admin));
   await isolado('vencimento da Lixeira', () => vencerLixeira(admin, prazo));

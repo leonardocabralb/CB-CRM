@@ -69,6 +69,7 @@ vi.mock('@/lib/whatsapp/ligacoes/transcricao', () => ({
 
 import {
   PRAZO_DA_MANUTENCAO_MS,
+  TETO_DO_TOKEN_MS,
   rodarManutencaoDoCiclo,
 } from './manutencao-do-ciclo';
 
@@ -104,13 +105,13 @@ describe('a manutenção do ciclo das agendadas', () => {
     await rodarManutencaoDoCiclo(admin, 1_000);
     expect(ordem).toEqual(ORDEM);
     expect(alarmes).toHaveBeenCalledWith(admin, 1_000);
-    // A renovação do token mede a idade a partir do INÍCIO e corre sob o
-    // MESMO prazo dos outros passos (Codex, PR #539).
+    // A renovação do token mede a idade a partir do INÍCIO e tem teto
+    // próprio, contado do início, dentro do prazo comum.
     expect(token).toHaveBeenCalledWith(
       admin,
       new Date(1_000),
       undefined,
-      1_000 + PRAZO_DA_MANUTENCAO_MS
+      1_000 + TETO_DO_TOKEN_MS
     );
     expect(gerar).toHaveBeenCalledWith(admin);
     // O vencimento das anotações mede os 90 dias a partir do INÍCIO.
@@ -129,6 +130,18 @@ describe('a manutenção do ciclo das agendadas', () => {
   it('o prazo fica abaixo do recolhimento da fila (10 min) e do laço (15 min)', () => {
     expect(PRAZO_DA_MANUTENCAO_MS).toBeGreaterThan(0);
     expect(PRAZO_DA_MANUTENCAO_MS).toBeLessThan(10 * 60_000);
+  });
+
+  it('⚠️ o teto do token cabe um pedido e deixa ao menos metade do prazo para os passos seguintes', async () => {
+    const { DURACAO_MAXIMA_DO_PEDIDO_MS } = await vi.importActual<
+      typeof import('@/lib/instagram/renovar-token')
+    >('@/lib/instagram/renovar-token');
+    // Menor que um pedido, a renovação pararia antes do primeiro, e o token
+    // venceria mudo aos 60 dias.
+    expect(TETO_DO_TOKEN_MS).toBeGreaterThanOrEqual(DURACAO_MAXIMA_DO_PEDIDO_MS);
+    // Com a Meta lenta (10 s por pedido), o prazo inteiro calaria a Lixeira,
+    // as podas e a retomada das transcrições a cada ciclo.
+    expect(TETO_DO_TOKEN_MS).toBeLessThanOrEqual(PRAZO_DA_MANUTENCAO_MS / 2);
   });
 
   it('cada passo é ISOLADO: o que lança (ou rejeita) não impede o seguinte, e nada sai para fora', async () => {

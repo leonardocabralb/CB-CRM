@@ -58,18 +58,19 @@ interface LinhaDoCanal {
 
 /**
  * Quanto um pedido de renovação pode levar (o prazo do cliente em `graph.ts`).
- * Só se COMEÇA um pedido com isso sobrando no prazo comum da manutenção.
+ * Só se COMEÇA um pedido com isso sobrando no prazo da renovação.
  */
 export const DURACAO_MAXIMA_DO_PEDIDO_MS = 10_000;
 
 /**
  * NUNCA lança. `agora` e `renovar` são injetáveis no teste.
  *
- * ⚠️ `prazo` é o prazo COMUM da manutenção do ciclo (`manutencao-do-ciclo.ts`,
- * epoch ms): com a Meta lenta, 100 conexões × 10 s gastariam o orçamento
- * inteiro, e os passos seguintes (Lixeira, podas, transcrições) receberiam o
- * prazo já vencido (Codex, PR #539). Sem pedido novo quando ele não cabe; o
- * resto renova no próximo ciclo.
+ * ⚠️ `prazo` (epoch ms) é o pedaço do prazo comum da manutenção do ciclo que
+ * cabe à renovação (`TETO_DO_TOKEN_MS`, `manutencao-do-ciclo.ts`): com a Meta
+ * lenta, 100 conexões × 10 s gastariam o orçamento inteiro, e os passos
+ * seguintes (Lixeira, podas, transcrições) receberiam o prazo já vencido
+ * (Codex, PR #539). Sem pedido novo quando ele não cabe; o resto renova no
+ * próximo ciclo.
  */
 export async function renovarTokensDoInstagram(
   admin: SupabaseClient,
@@ -123,7 +124,7 @@ export async function renovarTokensDoInstagram(
 
   for (const canal of (data ?? []) as LinhaDoCanal[]) {
     if (relogio() + DURACAO_MAXIMA_DO_PEDIDO_MS > prazo) {
-      console.warn('[instagram/token] o prazo da manutenção acabou: o resto renova no próximo ciclo');
+      console.warn('[instagram/token] o prazo da renovação acabou: o resto renova no próximo ciclo');
       break;
     }
     if (!canal.access_token) continue;
