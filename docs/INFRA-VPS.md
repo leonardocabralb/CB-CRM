@@ -416,15 +416,26 @@ recupera o pareamento.
 `/root/crm.env` (fora do git, **corretamente**). Variáveis:
 
 `AUTOMATION_CRON_SECRET`, `ENCRYPTION_KEY`, `EVOLUTION_BASE_URL`,
-`EVOLUTION_GLOBAL_API_KEY`, `EVOLUTION_WEBHOOK_SECRET`, `LIGACOES_SEGREDO`
+`EVOLUTION_GLOBAL_API_KEY`, `EVOLUTION_WEBHOOK_SECRET`,
+`INSTAGRAM_CENTRAL_CHAVE`, `INSTAGRAM_CENTRAL_INSTANCIA` e
+`INSTAGRAM_CENTRAL_URL` (desde 23/11/2026, abaixo), `LIGACOES_SEGREDO`
 (desde 10/11/2026: o segredo de onde sai o de cada computador de ligações),
-`NEXT_PUBLIC_APP_LOCALE`, `NEXT_PUBLIC_SITE_URL`,
-`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SUPABASE_URL`,
-`SUPABASE_SERVICE_ROLE_KEY`.
+`META_APP_ID`, `META_APP_SECRET`, `NEXT_PUBLIC_APP_LOCALE`,
+`NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
 
-⚠️ **`META_APP_SECRET` está no `docker-stack.yml` mas NÃO no `crm.env`** —
-opcional hoje, porque a produção roda no transporte Evolution. Vira obrigatória
-na virada para a Meta.
+⚠️ **`META_APP_SECRET` e `META_APP_ID` estão no `crm.env`** (conferido em
+23/11/2026; antes esta página dizia que não). Vários segredos vão separados por
+vírgula SEM espaço: com espaço, o `set -a` faz a variável sumir e todo webhook
+da Meta vira 401 com o site em 200 (`CLAUDE.md`, seção 11).
+
+**`INSTAGRAM_CENTRAL_*` (desde 23/11/2026):** ligam o modo central do Instagram,
+em que o CB conecta pelo app único da Atlas. Saem do cadastro desta instância na
+central (`instalador/central-instagram.sh cadastrar`, no servidor da Atlas); a
+`_CHAVE` é segredo (a central guarda só o hash dela). As três também estão no
+`environment:` do `/root/docker-stack.yml`: só no `crm.env`, o contêiner não as
+recebe. Tirar as três dos dois arquivos e refazer o deploy desliga o modo
+central, e a tela de Conexões volta ao app próprio da conta.
 
 ⚠️ **`ENCRYPTION_KEY` não pode ser regenerada.** Ela decifra os tokens do
 WhatsApp já gravados no Supabase; uma chave nova torna todos ilegíveis e exige

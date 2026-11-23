@@ -51,6 +51,7 @@ import {
   type ClasseDeMidia,
   type EventoDoInstagram,
 } from './webhook';
+import { chaveDoMid } from './mid';
 
 export interface ContextoDoCanal {
   accountId: string;
@@ -264,7 +265,17 @@ export function conteudoDaMensagem(
   };
 }
 
-/** `messages.id` de uma mensagem desta conversa pelo `mid` da Meta. */
+/** Quantas das últimas mensagens que o CRM enviou a busca por `chaveDoMid` confere. */
+const ENVIADAS_CONFERIDAS = 100;
+
+/**
+ * `messages.id` de uma mensagem desta conversa pelo `mid` da Meta.
+ *
+ * ⚠️ Sem a grafia exata, procura entre as últimas que o CRM ENVIOU a de mesma
+ * `chaveDoMid`: o envio pela central volta numa grafia e o eco e a citação do
+ * cliente chegam noutra, do mesmo mid (`mid.ts`). Sem isso, toda resposta
+ * pela central aparecia duas vezes no fio. Leitura que falha = "não está".
+ */
 async function idDaMensagem(
   db: SupabaseClient,
   conversationId: string,
@@ -276,7 +287,26 @@ async function idDaMensagem(
     .eq('conversation_id', conversationId)
     .eq('message_id', mid)
     .maybeSingle();
-  return (data?.id as string | undefined) ?? null;
+  if (data?.id) return data.id as string;
+
+  const chave = chaveDoMid(mid);
+  if (!chave) return null;
+  const { data: enviadas, error } = await db
+    .from('messages')
+    .select('id, message_id')
+    .eq('conversation_id', conversationId)
+    .eq('sender_type', 'agent')
+    .eq('from_device', false)
+    .order('created_at', { ascending: false })
+    .limit(ENVIADAS_CONFERIDAS);
+  if (error) {
+    console.error(`${TAG} buscar pela outra grafia do mid falhou:`, error.message);
+    return null;
+  }
+  const achada = ((enviadas ?? []) as { id: string; message_id: string | null }[]).find(
+    (r) => r.message_id !== null && chaveDoMid(r.message_id) === chave
+  );
+  return achada?.id ?? null;
 }
 
 /**
